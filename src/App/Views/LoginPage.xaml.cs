@@ -11,7 +11,8 @@ public sealed partial class LoginPage : Page
 
     public LoginPage()
     {
-        ViewModel = App.Services.GetRequiredService<LoginViewModel>();
+        // 用完全限定名避免与命名空间 App.Services 冲突(App 类的静态属性 Services)。
+        ViewModel = global::App.App.Services.GetRequiredService<LoginViewModel>();
         InitializeComponent();
     }
 
