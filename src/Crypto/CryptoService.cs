@@ -95,6 +95,21 @@ public sealed class CryptoService : ICryptoService
         return new EncString(type, iv, ct, mac);
     }
 
+    // RSA 解密(OAEP)。type 3 用 SHA256,type 4 用 SHA1。privateKeyDer 为 PKCS8 DER。
+    public byte[] DecryptRsa(EncString data, byte[] privateKeyDer)
+    {
+        using var rsa = RSA.Create();
+        rsa.ImportPkcs8PrivateKey(privateKeyDer, out _);
+
+        var padding = data.Type switch
+        {
+            EncryptionType.Rsa2048_OaepSha256_B64 => RSAEncryptionPadding.OaepSHA256,
+            EncryptionType.Rsa2048_OaepSha1_B64 => RSAEncryptionPadding.OaepSHA1,
+            _ => throw new CryptographicException($"非 RSA encType: {(int)data.Type}"),
+        };
+        return rsa.Decrypt(data.Ct, padding);
+    }
+
     private static byte[] ComputeMac(byte[] macKey, byte[] iv, byte[] ct)
     {
         using var hmac = new HMACSHA256(macKey);
