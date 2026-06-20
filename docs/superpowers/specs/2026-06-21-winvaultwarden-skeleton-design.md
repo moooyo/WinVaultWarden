@@ -81,29 +81,36 @@ WinVaultWarden.sln
 ### 4.1 密钥派生链(登录时本地计算)
 
 ```
-1. MasterKey = KDF(主密码, salt = 邮箱小写, 参数 = prelogin 返回)
-     ├ PBKDF2-HMAC-SHA256, 默认 600,000 次              → 256-bit  【本次实现】
-     └ Argon2id, 默认 iterations=3 / memory=64MiB / parallelism=4  → 256-bit  【接口预留, 抛 NotImplemented】
+1. MasterKey = KDF(主密码, salt, 参数 = prelogin 返回)  → 32 字节(256-bit)
+     ├ PBKDF2-HMAC-SHA256, 默认 600,000 次, salt = 原始邮箱小写字符串        【本次实现】
+     └ Argon2id, 默认 iter=3 / mem=64MiB / parallel=4,
+        salt = SHA-256(邮箱小写)的 32 字节摘要(注意:与 PBKDF2 不同!)     【接口预留, 抛 NotImplemented】
+     ※ 两条路径 salt 处理不同:PBKDF2 用原始邮箱字节,Argon2id 用邮箱的 SHA-256 哈希。
 
 2. MasterPasswordHash(发送给服务端的 `password` 字段)
-     = PBKDF2-HMAC-SHA256(password = MasterKey, salt = 主密码, iterations = 1), 再 base64
+     = PBKDF2-HMAC-SHA256(password = MasterKey, salt = 主密码字节, iterations = 1), 再 base64
      ※ 绝非明文主密码
 
-3. StretchedMasterKey = HKDF-Expand(MasterKey, info)  → 512-bit
-     拆为 256-bit EncKey + 256-bit MacKey
-     ※ HKDF-SHA256;info 字符串遵循 Bitwarden 约定("enc" / "mac")
+3. 由 MasterKey 拉伸出两把 32 字节子钥(各做一次独立 HKDF-Expand,SHA-256):
+     StretchedEncKey = HKDF-Expand(prk = MasterKey, info = "enc", L = 32)
+     StretchedMacKey = HKDF-Expand(prk = MasterKey, info = "mac", L = 32)
+     ※ 是 Expand-only(非完整 HKDF,不做 Extract);info 是确切字节串 "enc" / "mac"。
+     ※ 合称 StretchedMasterKey(64 字节 = EncKey 32 ‖ MacKey 32)。
 
-4. UserKey = AES-256-CBC 解密(protected symmetric key = 登录响应 `Key`/`akey`, StretchedMasterKey)
-     UserKey 为 512-bit:256-bit EncKey + 256-bit MacKey
+4. UserKey = 用 (StretchedEncKey, StretchedMacKey) 解密 protected symmetric key
+     （= 登录响应 `Key`/`akey`,通常是 encType 2 的 EncString）
+     解密所得 UserKey 一般为 64 字节(EncKey 32 ‖ MacKey 32);
+     若源为 encType 0,则为 32 字节(仅 EncKey,无 MacKey)。长度由该 EncString 的 encType 决定。
 
-5. RSA 私钥 = AES 解密(登录响应 `PrivateKey`, UserKey)
-     用于组织共享(RSA-OAEP)
+5. RSA 私钥 = 用 UserKey 解密登录响应 `PrivateKey`(EncString),得到 DER 编码私钥
+     用于组织共享密钥交换(RSA-OAEP,见 4.3 的 encType 3/4)。
 ```
 
 ### 4.2 加解密原语
 
-- **Vault 数据**:AES-256-CBC + HMAC-SHA256,**Encrypt-then-MAC**(先验证 MAC,再解密)。
-- **MAC 比较**:必须恒定时间比较(`CryptographicOperations.FixedTimeEquals`),防时序攻击。
+- **Vault 数据**:AES-256-CBC + HMAC-SHA256(PKCS7 填充)。
+- **MAC 验证(解密时)**:在解密前先验 MAC——`HMAC-SHA256(MacKey, IV ‖ ciphertext)`,即 MAC 覆盖 **IV 在前、密文在后** 的拼接。计算值与 EncString 携带的 MAC 段做**恒定时间比较**(`CryptographicOperations.FixedTimeEquals`),通过才解密。
+- **特例**:encType 0(AesCbc256_B64)无 MAC 段,跳过 MAC 验证直接解密(仅历史遗留数据可能用到)。
 - 服务端永不解密(已从 Vaultwarden `crypto.rs` 确认,服务端只存密文)。
 
 ### 4.3 EncString 类型(`<encType>.<payload>`)
@@ -119,13 +126,14 @@ WinVaultWarden.sln
 ### 4.4 类型与接口
 
 - `KdfConfig`:`KdfType`(Pbkdf2=0 / Argon2id=1)、`Iterations`、`Memory?`、`Parallelism?`。
-- `SymmetricCryptoKey`:封装 EncKey + MacKey(可能 256 或 512-bit 输入)。
-- `EncString`:解析 `<encType>.iv|ct|mac` 字符串,持有各分段字节。
+- `SymmetricCryptoKey`:封装 EncKey(32) + 可选 MacKey(32)。接受 32 字节(仅 Enc)或 64 字节(Enc‖Mac)输入,据长度判定是否带 MAC。
+- `EncString`:解析 `<encType>.iv|ct|mac` 字符串(encType 0 与 RSA 类型无 `mac` 段),持有 encType 与各分段字节。
 - `ICryptoService`(纯函数式,无副作用):
-  - `byte[] DeriveMasterKey(string password, string email, KdfConfig kdf)`
+  - `byte[] DeriveMasterKey(string password, string email, KdfConfig kdf)` — 内部按 KdfType 分派;PBKDF2 用原始邮箱为 salt,Argon2id 用 SHA-256(邮箱) 为 salt
   - `string ComputeMasterPasswordHash(byte[] masterKey, string password)`
-  - `SymmetricCryptoKey DecryptUserKey(byte[] masterKey, EncString protectedUserKey)`
-  - `byte[] Decrypt(EncString data, SymmetricCryptoKey key)`
+  - `SymmetricCryptoKey StretchMasterKey(byte[] masterKey)` — 两次 HKDF-Expand(info="enc"/"mac")得 64 字节
+  - `SymmetricCryptoKey DecryptUserKey(SymmetricCryptoKey stretchedKey, EncString protectedUserKey)`
+  - `byte[] Decrypt(EncString data, SymmetricCryptoKey key)` — 先验 MAC(覆盖 IV‖ct)再解密
   - `EncString Encrypt(byte[] plaintext, SymmetricCryptoKey key)`
   - `byte[] DecryptRsa(EncString data, byte[] privateKeyDer)`
 
