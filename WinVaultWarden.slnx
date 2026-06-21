@@ -20,6 +20,8 @@
   <Project Path="src/App/App.csproj">
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="*|arm64" Project="arm64" />
+    <Deploy Solution="*|x64" />
+    <Deploy Solution="*|arm64" />
   </Project>
   <Project Path="tests/Crypto.Tests/Crypto.Tests.csproj">
     <Platform Solution="*|x64" Project="x64" />
