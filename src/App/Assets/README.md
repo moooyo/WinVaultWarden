@@ -1,15 +1,16 @@
-# App 资源占位说明
+# App 资源图标
 
-MSIX 打包需要 `Assets/` 下的图标文件,这些是二进制 PNG,无法在此手写生成。
-首次在 Visual Studio 打开本解决方案、或用 `dotnet new winui3` 生成一个临时项目后,
-将其 `Assets/` 目录下的以下文件复制到 `src/App/Assets/`:
+本目录的占位图标由脚本生成(深蓝底 + 白色 "V" 字),覆盖 MSIX 打包所需的全部尺寸:
 
-- StoreLogo.png
-- Square150x150Logo.png
-- Square44x44Logo.png
-- Wide310x150Logo.png
-- SplashScreen.png
-- LockScreenLogo.png(可选)
+| 文件 | 尺寸 | 用途 |
+| --- | --- | --- |
+| StoreLogo.png | 50×50 | 商店标识 |
+| Square150x150Logo.png | 150×150 | 中磁贴 |
+| Square44x44Logo.png | 44×44 | 应用列表/任务栏 |
+| Wide310x150Logo.png | 310×150 | 宽磁贴 |
+| SplashScreen.png | 620×300 | 启动画面 |
+| LockScreenLogo.png | 44×44 | 锁屏(透明底) |
 
-`Package.appxmanifest` 已引用上述路径。缺图标时 MSIX 构建会报资源缺失错误,
-补齐即可。纯调试(非打包)运行通常不强制要求全部图标。
+> 说明:这是**占位图标**,非 Bitwarden 官方 logo。配色接近但带自有 "V" 标记,
+> 避免与官方品牌混淆(商标考虑)。后续可替换为正式设计。
+> 重新生成:见 git 历史中的 PowerShell 脚本(System.Drawing 绘制)。
