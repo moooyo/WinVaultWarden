@@ -5,9 +5,24 @@
     <Platform Name="x64" />
     <Platform Name="arm64" />
   </Configurations>
-  <Project Path="src/Core/Core.csproj" />
-  <Project Path="src/Crypto/Crypto.csproj" />
-  <Project Path="src/Api/Api.csproj" />
-  <Project Path="src/App/App.csproj" />
-  <Project Path="tests/Crypto.Tests/Crypto.Tests.csproj" />
+  <Project Path="src/Core/Core.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|arm64" Project="arm64" />
+  </Project>
+  <Project Path="src/Crypto/Crypto.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|arm64" Project="arm64" />
+  </Project>
+  <Project Path="src/Api/Api.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|arm64" Project="arm64" />
+  </Project>
+  <Project Path="src/App/App.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|arm64" Project="arm64" />
+  </Project>
+  <Project Path="tests/Crypto.Tests/Crypto.Tests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|arm64" Project="arm64" />
+  </Project>
 </Solution>
