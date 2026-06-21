@@ -1,4 +1,10 @@
 <Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+    <Platform Name="x64" />
+    <Platform Name="arm64" />
+  </Configurations>
   <Project Path="src/Core/Core.csproj" />
   <Project Path="src/Crypto/Crypto.csproj" />
   <Project Path="src/Api/Api.csproj" />
