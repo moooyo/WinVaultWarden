@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="src/Core/Core.csproj" />
+  <Project Path="src/Crypto/Crypto.csproj" />
+  <Project Path="src/Api/Api.csproj" />
+  <Project Path="src/App/App.csproj" />
+  <Project Path="tests/Crypto.Tests/Crypto.Tests.csproj" />
+</Solution>

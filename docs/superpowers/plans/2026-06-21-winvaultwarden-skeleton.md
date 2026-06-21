@@ -1514,7 +1514,7 @@ public sealed partial class VaultPage : Page
 
 - [ ] **Step 10: 构建验证(装好工具链后)**
 
-Run: `dotnet build WinVaultWarden.sln -c Debug`
+Run: `dotnet build WinVaultWarden.slnx -c Debug`
 Expected: 全部 5 个项目编译成功(0 error)。若 WindowsAppSDK 版本号报错,据 NuGet 实际可还原版本调整 csproj。
 
 Run(VS 中):F5 启动 App
