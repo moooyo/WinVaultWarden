@@ -93,3 +93,6 @@ _ReSharper*/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Superpowers working docs (specs/plans) - local only
+docs/superpowers/
