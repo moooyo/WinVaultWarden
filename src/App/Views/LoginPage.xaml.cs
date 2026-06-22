@@ -16,6 +16,9 @@ public sealed partial class LoginPage : Page
         InitializeComponent();
     }
 
-    private void OnGoVault(object sender, RoutedEventArgs e)
-        => Frame.Navigate(typeof(VaultPage));
+    // mock 登录:不验真,直接切到主界面。真实认证后续接入 AuthService。
+    private void OnLogin(object sender, RoutedEventArgs e)
+    {
+        if (App.MainWindow is { } w) w.ShowVault();
+    }
 }

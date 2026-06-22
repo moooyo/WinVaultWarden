@@ -17,6 +17,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition x:Name="RightPaddingColumn" Width="0" />
             </Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <Border Width="24" Height="24" CornerRadius="6"
@@ -26,7 +27,8 @@
                 </Border>
                 <TextBlock Text="WinVaultWarden" VerticalAlignment="Center" FontWeight="SemiBold" />
             </StackPanel>
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <StackPanel x:Name="TitleBarActions" Grid.Column="2" Orientation="Horizontal"
+                        Spacing="4" VerticalAlignment="Center">
                 <Button Background="Transparent" BorderThickness="0">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE77B;" FontSize="14" />
@@ -39,7 +41,7 @@
                         <TextBlock Text="锁定" />
                     </StackPanel>
                 </Button>
-                <Button Background="Transparent" BorderThickness="0">
+                <Button Click="OnLogout" Background="Transparent" BorderThickness="0">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xF3B1;" FontSize="14" />
                         <TextBlock Text="退出登录" />
@@ -48,7 +50,7 @@
             </StackPanel>
         </Grid>
 
-        <!-- 主导航 -->
+        <!-- 主导航壳 -->
         <muxc:NavigationView x:Name="Nav" Grid.Row="1"
                              PaneDisplayMode="Left"
                              IsBackButtonVisible="Collapsed"
@@ -79,5 +81,10 @@
             </muxc:NavigationView.MenuItems>
             <Frame x:Name="ContentFrame" />
         </muxc:NavigationView>
+
+        <!-- 登录页宿主(覆盖在导航之上,登录前显示) -->
+        <Grid x:Name="LoginHost" Grid.Row="1" Visibility="Collapsed">
+            <Frame x:Name="LoginFrame" />
+        </Grid>
     </Grid>
 </Window>
