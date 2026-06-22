@@ -1,4 +1,5 @@
 using App.Services;
+using App.ViewModels;
 using App.ViewModels.Models;
 using Xunit;
 
@@ -40,5 +41,54 @@ public class MockVaultUiServiceTests
 
         Assert.Contains(filters, f => f.Kind == FilterKind.AllItems);
         Assert.Equal(5, filters.Count(f => f.Kind == FilterKind.Type));
+    }
+}
+
+public class VaultViewModelTests
+{
+    private static VaultViewModel NewVm() => new(new MockVaultUiService());
+
+    [Fact]
+    public void Initialize_LoadsItemsAndFilters()
+    {
+        var vm = NewVm();
+        Assert.Equal(5, vm.Items.Count);
+        Assert.NotEmpty(vm.Filters);
+    }
+
+    [Fact]
+    public void SelectingItem_PopulatesDetail()
+    {
+        var vm = NewVm();
+        vm.SelectedItem = vm.Items.First(i => i.Id == "1");
+        Assert.NotNull(vm.Detail);
+        Assert.IsType<LoginDetail>(vm.Detail);
+    }
+
+    [Fact]
+    public void ClearingSelection_ClearsDetail()
+    {
+        var vm = NewVm();
+        vm.SelectedItem = vm.Items.First();
+        vm.SelectedItem = null;
+        Assert.Null(vm.Detail);
+    }
+
+    [Fact]
+    public void SearchText_FiltersItemsByName()
+    {
+        var vm = NewVm();
+        vm.SearchText = "百度";
+        Assert.Single(vm.FilteredItems);
+        Assert.Equal("百度网盘", vm.FilteredItems[0].Name);
+    }
+
+    [Fact]
+    public void SearchText_Empty_ShowsAllItems()
+    {
+        var vm = NewVm();
+        vm.SearchText = "百度";
+        vm.SearchText = "";
+        Assert.Equal(5, vm.FilteredItems.Count);
     }
 }

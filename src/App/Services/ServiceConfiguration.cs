@@ -20,6 +20,8 @@ public static class ServiceConfiguration
         services.AddSingleton<IAuthService, AuthService>();
         services.AddSingleton<ISyncService, SyncService>();
         services.AddSingleton<IVaultService, VaultService>();
+        services.AddSingleton<IVaultUiService, MockVaultUiService>();
+        services.AddSingleton<IClipboardService, ClipboardService>();
 
         services.AddTransient<LoginViewModel>();
         services.AddTransient<VaultViewModel>();

@@ -10,6 +10,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
   </ItemGroup>
   <!-- 直接链接 App 的纯 C# 源(不依赖 WinUI),绕开 WinUI 打包任务无法在命令行加载的问题 -->
   <ItemGroup>
@@ -17,5 +18,7 @@
     <Compile Include="..\..\src\App\ViewModels\Models\CipherDetail.cs" Link="Models\CipherDetail.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\FilterNode.cs" Link="Models\FilterNode.cs" />
     <Compile Include="..\..\src\App\Services\MockVaultUiService.cs" Link="Services\MockVaultUiService.cs" />
+    <Compile Include="..\..\src\App\Services\IClipboardService.cs" Link="Services\IClipboardService.cs" />
+    <Compile Include="..\..\src\App\ViewModels\VaultViewModel.cs" Link="ViewModels\VaultViewModel.cs" />
   </ItemGroup>
 </Project>
