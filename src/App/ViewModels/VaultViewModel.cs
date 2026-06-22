@@ -19,6 +19,9 @@ public partial class VaultViewModel : ObservableObject
     [ObservableProperty] private CipherDetail? _detail;
     [ObservableProperty] private string _searchText = string.Empty;
 
+    public bool HasSelection => Detail is not null;
+    public bool NoSelection => Detail is null;
+
     public VaultViewModel(IVaultUiService service, IClipboardService? clipboard = null)
     {
         _service = service;
@@ -29,7 +32,11 @@ public partial class VaultViewModel : ObservableObject
     }
 
     partial void OnSelectedItemChanged(CipherListItem? value)
-        => Detail = value is null ? null : _service.GetDetail(value.Id);
+    {
+        Detail = value is null ? null : _service.GetDetail(value.Id);
+        OnPropertyChanged(nameof(HasSelection));
+        OnPropertyChanged(nameof(NoSelection));
+    }
 
     partial void OnSearchTextChanged(string value) => ApplyFilter();
 
