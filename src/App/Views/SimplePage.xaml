@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="App.Views.SimplePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <TextBlock x:Name="Title" HorizontalAlignment="Center" VerticalAlignment="Center"
+                   Style="{ThemeResource SubtitleTextBlockStyle}" Text="（占位页）" />
+    </Grid>
+</Page>

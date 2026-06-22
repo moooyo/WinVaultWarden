@@ -2,6 +2,82 @@
 <Window
     x:Class="App.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Frame x:Name="RootFrame" />
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 自定义标题栏 -->
+        <Grid x:Name="AppTitleBar" Height="44" Grid.Row="0" Padding="12,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Border Width="24" Height="24" CornerRadius="6"
+                        Background="{ThemeResource AccentFillColorDefaultBrush}">
+                    <TextBlock Text="V" Foreground="White" FontWeight="Bold"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <TextBlock Text="WinVaultWarden" VerticalAlignment="Center" FontWeight="SemiBold" />
+            </StackPanel>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <Button Background="Transparent" BorderThickness="0">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE77B;" FontSize="14" />
+                        <TextBlock Text="test@test.com" />
+                    </StackPanel>
+                </Button>
+                <Button Background="Transparent" BorderThickness="0">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE72E;" FontSize="14" />
+                        <TextBlock Text="锁定" />
+                    </StackPanel>
+                </Button>
+                <Button Background="Transparent" BorderThickness="0">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xF3B1;" FontSize="14" />
+                        <TextBlock Text="退出登录" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- 主导航 -->
+        <muxc:NavigationView x:Name="Nav" Grid.Row="1"
+                             PaneDisplayMode="Left"
+                             IsBackButtonVisible="Collapsed"
+                             IsSettingsVisible="False"
+                             SelectionChanged="Nav_SelectionChanged">
+            <muxc:NavigationView.MenuItems>
+                <muxc:NavigationViewItem Content="我的保险库" Tag="vault" IsSelected="True">
+                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE8F1;" /></muxc:NavigationViewItem.Icon>
+                </muxc:NavigationViewItem>
+                <muxc:NavigationViewItem Content="Send" Tag="send">
+                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE724;" /></muxc:NavigationViewItem.Icon>
+                </muxc:NavigationViewItem>
+                <muxc:NavigationViewItem Content="管理面板" Tag="admin">
+                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE7C4;" /></muxc:NavigationViewItem.Icon>
+                </muxc:NavigationViewItem>
+                <muxc:NavigationViewItem Content="账户设置" Tag="account">
+                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE713;" /></muxc:NavigationViewItem.Icon>
+                </muxc:NavigationViewItem>
+                <muxc:NavigationViewItem Content="设备管理" Tag="devices">
+                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE7F4;" /></muxc:NavigationViewItem.Icon>
+                </muxc:NavigationViewItem>
+                <muxc:NavigationViewItem Content="备份策略" Tag="backup">
+                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE8F7;" /></muxc:NavigationViewItem.Icon>
+                </muxc:NavigationViewItem>
+                <muxc:NavigationViewItem Content="导入导出" Tag="io">
+                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE8AB;" /></muxc:NavigationViewItem.Icon>
+                </muxc:NavigationViewItem>
+            </muxc:NavigationView.MenuItems>
+            <Frame x:Name="ContentFrame" />
+        </muxc:NavigationView>
+    </Grid>
 </Window>
