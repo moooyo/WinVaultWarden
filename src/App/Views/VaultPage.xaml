@@ -10,6 +10,7 @@
 
     <Page.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <conv:EmptyStringToCollapsedConverter x:Key="EmptyToCollapsed" />
         <DataTemplate x:Key="LoginTemplate" x:DataType="models:LoginDetail">
             <StackPanel Spacing="2">
                 <controls:FieldRow Label="用户名" Value="{x:Bind Username}" />
@@ -149,6 +150,49 @@
                 <ContentControl Content="{x:Bind ViewModel.Detail, Mode=OneWay}"
                                 ContentTemplateSelector="{StaticResource DetailSelector}"
                                 HorizontalContentAlignment="Stretch" />
+
+                <!-- 共用底部:备注/自定义字段/历史/操作 -->
+                <StackPanel Spacing="12"
+                            Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <!-- 备注 -->
+                    <StackPanel Spacing="4"
+                                Visibility="{x:Bind ViewModel.Detail.Notes, Mode=OneWay, Converter={StaticResource EmptyToCollapsed}}">
+                        <TextBlock Text="备注" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="{x:Bind ViewModel.Detail.Notes, Mode=OneWay}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <!-- 自定义字段 -->
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.Detail.CustomFields, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:CustomField">
+                                <controls:FieldRow Label="{x:Bind Label}" Value="{x:Bind Value}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <!-- 历史 -->
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="项目历史" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="{x:Bind ViewModel.Detail.HistoryText, Mode=OneWay}" />
+                    </StackPanel>
+                    <!-- 操作 -->
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button HorizontalAlignment="Stretch">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE70F;" FontSize="14" /><TextBlock Text="编辑" />
+                            </StackPanel>
+                        </Button>
+                        <Button Grid.Column="1" HorizontalAlignment="Stretch">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE74D;" FontSize="14" /><TextBlock Text="删除" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                </StackPanel>
+
                 <TextBlock Text="选择一个条目查看详情"
                            Visibility="{x:Bind ViewModel.NoSelection, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"

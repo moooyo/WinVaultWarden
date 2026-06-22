@@ -11,6 +11,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop();
 
         // 给系统标题栏按钮(最小化/最大化/关闭)留出右侧空间,避免与自定义内容重叠。
         SizeChanged += (_, _) => UpdateCaptionPadding();
