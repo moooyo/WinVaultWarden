@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="App.Controls.FieldRow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid ColumnSpacing="8" Padding="0,6">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="80" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock x:Name="LabelText" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   VerticalAlignment="Center" />
+        <TextBlock x:Name="ValueText" Grid.Column="1" VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
+            <Button x:Name="RevealButton" Visibility="Collapsed" Click="OnReveal"
+                    Background="Transparent" BorderThickness="0"
+                    ToolTipService.ToolTip="显示">
+                <FontIcon x:Name="RevealIcon" Glyph="&#xE890;" FontSize="14" />
+            </Button>
+            <Button x:Name="OpenButton" Visibility="Collapsed" Click="OnOpen"
+                    Background="Transparent" BorderThickness="0"
+                    ToolTipService.ToolTip="打开">
+                <FontIcon Glyph="&#xE8A7;" FontSize="14" />
+            </Button>
+            <Button Click="OnCopy" Background="Transparent" BorderThickness="0"
+                    ToolTipService.ToolTip="复制">
+                <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+            </Button>
+        </StackPanel>
+    </Grid>
+</UserControl>

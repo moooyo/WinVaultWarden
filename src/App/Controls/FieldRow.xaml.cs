@@ -1,0 +1,86 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.System;
+
+namespace App.Controls;
+
+public sealed partial class FieldRow : UserControl
+{
+    private const string GlyphView = "";  // View
+    private const string GlyphHide = "";  // Hide
+
+    private bool _revealed;
+
+    public FieldRow() => InitializeComponent();
+
+    public string Label
+    {
+        get => (string)GetValue(LabelProperty);
+        set => SetValue(LabelProperty, value);
+    }
+    public static readonly DependencyProperty LabelProperty =
+        DependencyProperty.Register(nameof(Label), typeof(string), typeof(FieldRow),
+            new PropertyMetadata("", (d, e) => ((FieldRow)d).LabelText.Text = (string)e.NewValue));
+
+    public string Value
+    {
+        get => (string)GetValue(ValueProperty);
+        set => SetValue(ValueProperty, value);
+    }
+    public static readonly DependencyProperty ValueProperty =
+        DependencyProperty.Register(nameof(Value), typeof(string), typeof(FieldRow),
+            new PropertyMetadata("", (d, e) => ((FieldRow)d).Render()));
+
+    public bool IsSecret
+    {
+        get => (bool)GetValue(IsSecretProperty);
+        set => SetValue(IsSecretProperty, value);
+    }
+    public static readonly DependencyProperty IsSecretProperty =
+        DependencyProperty.Register(nameof(IsSecret), typeof(bool), typeof(FieldRow),
+            new PropertyMetadata(false, (d, e) => ((FieldRow)d).OnSecretChanged()));
+
+    public bool ShowOpen
+    {
+        get => (bool)GetValue(ShowOpenProperty);
+        set => SetValue(ShowOpenProperty, value);
+    }
+    public static readonly DependencyProperty ShowOpenProperty =
+        DependencyProperty.Register(nameof(ShowOpen), typeof(bool), typeof(FieldRow),
+            new PropertyMetadata(false, (d, e) =>
+                ((FieldRow)d).OpenButton.Visibility = (bool)e.NewValue ? Visibility.Visible : Visibility.Collapsed));
+
+    private void OnSecretChanged()
+    {
+        RevealButton.Visibility = IsSecret ? Visibility.Visible : Visibility.Collapsed;
+        _revealed = false;
+        RevealIcon.Glyph = GlyphView;
+        Render();
+    }
+
+    private void Render()
+    {
+        ValueText.Text = IsSecret && !_revealed ? new string('•', 8) : Value;
+    }
+
+    private void OnReveal(object sender, RoutedEventArgs e)
+    {
+        _revealed = !_revealed;
+        RevealIcon.Glyph = _revealed ? GlyphHide : GlyphView;
+        Render();
+    }
+
+    private void OnCopy(object sender, RoutedEventArgs e)
+    {
+        var dp = new DataPackage();
+        dp.SetText(Value ?? string.Empty);
+        Clipboard.SetContent(dp);
+    }
+
+    private async void OnOpen(object sender, RoutedEventArgs e)
+    {
+        if (Uri.TryCreate(Value, UriKind.Absolute, out var uri))
+            await Launcher.LaunchUriAsync(uri);
+    }
+}
