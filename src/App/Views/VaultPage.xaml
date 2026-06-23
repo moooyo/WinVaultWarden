@@ -11,40 +11,66 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
         <conv:EmptyStringToCollapsedConverter x:Key="EmptyToCollapsed" />
         <DataTemplate x:Key="LoginTemplate" x:DataType="models:LoginDetail">
-            <StackPanel Spacing="2">
-                <controls:FieldRow Label="用户名" Value="{x:Bind Username}" />
-                <controls:FieldRow Label="密码" Value="{x:Bind Password}" IsSecret="True" />
-                <controls:TotpField Code="{x:Bind TotpSecret}" />
-                <controls:FieldRow Label="网址" Value="{x:Bind Uri}" ShowOpen="True" />
+            <StackPanel Spacing="12">
+                <controls:DetailCard Title="登录信息">
+                    <controls:DetailCard.CardContent>
+                        <StackPanel Spacing="2">
+                            <controls:FieldRow Label="用户名" Value="{x:Bind Username}" />
+                            <controls:FieldRow Label="密码" Value="{x:Bind Password}" IsSecret="True" />
+                            <controls:TotpField Code="{x:Bind TotpSecret}" />
+                        </StackPanel>
+                    </controls:DetailCard.CardContent>
+                </controls:DetailCard>
+                <controls:DetailCard Title="自动填充">
+                    <controls:DetailCard.CardContent>
+                        <controls:FieldRow Label="网址" Value="{x:Bind Uri}" ShowOpen="True" />
+                    </controls:DetailCard.CardContent>
+                </controls:DetailCard>
             </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="CardTemplate" x:DataType="models:CardDetail">
-            <StackPanel Spacing="2">
-                <controls:FieldRow Label="持卡人" Value="{x:Bind Cardholder}" />
-                <controls:FieldRow Label="卡号" Value="{x:Bind Number}" IsSecret="True" />
-                <controls:FieldRow Label="有效期" Value="{x:Bind Expiry}" />
-                <controls:FieldRow Label="品牌" Value="{x:Bind Brand}" />
-                <controls:FieldRow Label="CVV" Value="{x:Bind Cvv}" IsSecret="True" />
-            </StackPanel>
+            <controls:DetailCard Title="卡信息">
+                <controls:DetailCard.CardContent>
+                    <StackPanel Spacing="2">
+                        <controls:FieldRow Label="持卡人" Value="{x:Bind Cardholder}" />
+                        <controls:FieldRow Label="卡号" Value="{x:Bind Number}" IsSecret="True" />
+                        <controls:FieldRow Label="有效期" Value="{x:Bind Expiry}" />
+                        <controls:FieldRow Label="品牌" Value="{x:Bind Brand}" />
+                        <controls:FieldRow Label="CVV" Value="{x:Bind Cvv}" IsSecret="True" />
+                    </StackPanel>
+                </controls:DetailCard.CardContent>
+            </controls:DetailCard>
         </DataTemplate>
         <DataTemplate x:Key="IdentityTemplate" x:DataType="models:IdentityDetail">
-            <StackPanel Spacing="2">
-                <controls:FieldRow Label="姓名" Value="{x:Bind FullName}" />
-                <controls:FieldRow Label="邮箱" Value="{x:Bind Email}" />
-                <controls:FieldRow Label="电话" Value="{x:Bind Phone}" />
-                <controls:FieldRow Label="证件号" Value="{x:Bind IdNumber}" IsSecret="True" />
-                <controls:FieldRow Label="地址" Value="{x:Bind Address}" />
-            </StackPanel>
+            <controls:DetailCard Title="个人信息">
+                <controls:DetailCard.CardContent>
+                    <StackPanel Spacing="2">
+                        <controls:FieldRow Label="姓名" Value="{x:Bind FullName}" />
+                        <controls:FieldRow Label="邮箱" Value="{x:Bind Email}" />
+                        <controls:FieldRow Label="电话" Value="{x:Bind Phone}" />
+                        <controls:FieldRow Label="证件号" Value="{x:Bind IdNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="地址" Value="{x:Bind Address}" />
+                    </StackPanel>
+                </controls:DetailCard.CardContent>
+            </controls:DetailCard>
         </DataTemplate>
         <DataTemplate x:Key="NoteTemplate" x:DataType="models:NoteDetail">
-            <TextBlock Text="{x:Bind Content}" TextWrapping="Wrap" />
+            <controls:DetailCard Title="内容">
+                <controls:DetailCard.CardContent>
+                    <TextBlock Text="{x:Bind Content}" TextWrapping="Wrap" />
+                </controls:DetailCard.CardContent>
+            </controls:DetailCard>
         </DataTemplate>
         <DataTemplate x:Key="SshTemplate" x:DataType="models:SshDetail">
-            <StackPanel Spacing="2">
-                <controls:FieldRow Label="公钥" Value="{x:Bind PublicKey}" />
-                <controls:FieldRow Label="私钥" Value="{x:Bind PrivateKey}" IsSecret="True" />
-                <controls:FieldRow Label="指纹" Value="{x:Bind Fingerprint}" />
-            </StackPanel>
+            <controls:DetailCard Title="密钥">
+                <controls:DetailCard.CardContent>
+                    <StackPanel Spacing="2">
+                        <controls:FieldRow Label="公钥" Value="{x:Bind PublicKey}" />
+                        <controls:FieldRow Label="私钥" Value="{x:Bind PrivateKey}" IsSecret="True" />
+                        <controls:FieldRow Label="指纹" Value="{x:Bind Fingerprint}" />
+                    </StackPanel>
+                </controls:DetailCard.CardContent>
+            </controls:DetailCard>
         </DataTemplate>
 
     </Page.Resources>

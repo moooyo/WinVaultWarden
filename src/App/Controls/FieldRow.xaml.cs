@@ -51,6 +51,15 @@ public sealed partial class FieldRow : UserControl
             new PropertyMetadata(false, (d, e) =>
                 ((FieldRow)d).OpenButton.Visibility = (bool)e.NewValue ? Visibility.Visible : Visibility.Collapsed));
 
+    public bool HideWhenEmpty
+    {
+        get => (bool)GetValue(HideWhenEmptyProperty);
+        set => SetValue(HideWhenEmptyProperty, value);
+    }
+    public static readonly DependencyProperty HideWhenEmptyProperty =
+        DependencyProperty.Register(nameof(HideWhenEmpty), typeof(bool), typeof(FieldRow),
+            new PropertyMetadata(true, (d, e) => ((FieldRow)d).UpdateRowVisibility()));
+
     private void OnSecretChanged()
     {
         RevealButton.Visibility = IsSecret ? Visibility.Visible : Visibility.Collapsed;
@@ -62,6 +71,15 @@ public sealed partial class FieldRow : UserControl
     private void Render()
     {
         ValueText.Text = IsSecret && !_revealed ? new string('•', 8) : Value;
+        UpdateRowVisibility();
+    }
+
+    // HideWhenEmpty=true 且 Value 为空 → 整个 FieldRow 折叠。
+    private void UpdateRowVisibility()
+    {
+        Visibility = HideWhenEmpty && string.IsNullOrEmpty(Value)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
     }
 
     private void OnReveal(object sender, RoutedEventArgs e)
