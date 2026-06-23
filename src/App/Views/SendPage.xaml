@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="App.Views.SendPage"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conv="using:App.Converters"
+    xmlns:models="using:App.ViewModels.Models">
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
+    </Page.Resources>
+
+    <Grid Padding="24" RowSpacing="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Send" Style="{ThemeResource TitleTextBlockStyle}" />
+            <Button Grid.Column="1"
+                    Style="{ThemeResource AccentButtonStyle}"
+                    Command="{x:Bind ViewModel.AddCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE710;" FontSize="14" />
+                    <TextBlock Text="新增 Send" />
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <Grid Grid.Row="1" MinHeight="36" Padding="12,0"
+              BorderThickness="0,0,0,1"
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="180" />
+                <ColumnDefinition Width="104" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="名称" VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock Grid.Column="1" Text="删除日期" VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock Grid.Column="2" Text="选项" VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Grid>
+
+        <TextBlock Grid.Row="2"
+                   Text="没有符合当前筛选的 Send。"
+                   Margin="12,16,0,0"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   Visibility="{x:Bind ViewModel.NoItems, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+
+        <ListView Grid.Row="2"
+                  ItemsSource="{x:Bind ViewModel.FilteredItems}"
+                  SelectionMode="None"
+                  Visibility="{x:Bind ViewModel.HasItems, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="models:SendListItem">
+                    <Grid MinHeight="52" Padding="8,4" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="104" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <Border Width="32" Height="32" CornerRadius="6"
+                                    Background="{ThemeResource ControlFillColorSecondaryBrush}">
+                                <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" />
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" />
+                                <TextBlock Text="{x:Bind TypeLabel}" FontSize="12"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <TextBlock Grid.Column="1"
+                                   Text="{x:Bind DeleteDate}"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                                    HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <Button Width="36" Height="32" Padding="0"
+                                    Command="{Binding ElementName=Root, Path=ViewModel.CopyLinkCommand}"
+                                    CommandParameter="{x:Bind}">
+                                <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                            </Button>
+                            <Button Width="36" Height="32" Padding="0"
+                                    Command="{Binding ElementName=Root, Path=ViewModel.MoreCommand}"
+                                    CommandParameter="{x:Bind}">
+                                <FontIcon Glyph="&#xE712;" FontSize="14" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</Page>
