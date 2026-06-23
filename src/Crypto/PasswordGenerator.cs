@@ -34,7 +34,7 @@ public static class PasswordGenerator
 
         var groups = BuildGroups(options).ToList();
         if (groups.Count == 0)
-            groups.Add((Lowercase, 0));
+            groups.Add((options.AvoidAmbiguous ? LowercaseUnmistakable : Lowercase, 0));
 
         var requiredLength = groups.Sum(g => g.Minimum);
         if (requiredLength > options.Length)

@@ -91,6 +91,30 @@ public class PasswordGeneratorTests
     }
 
     [Fact]
+    public void Generate_NoCharacterSetSelectedWithAvoidAmbiguous_FallsBackToUnmistakableLowercase()
+    {
+        var passwords = Enumerable.Range(0, 8)
+            .Select(_ => PasswordGenerator.Generate(new PasswordGenerationOptions(
+                Length: 128,
+                IncludeUppercase: false,
+                IncludeLowercase: false,
+                IncludeNumbers: false,
+                IncludeSpecial: false,
+                MinUppercase: 0,
+                MinLowercase: 0,
+                MinNumbers: 0,
+                MinSpecial: 0,
+                AvoidAmbiguous: true)))
+            .ToList();
+
+        Assert.All(passwords, password =>
+        {
+            Assert.Equal(128, password.Length);
+            Assert.DoesNotContain(password, c => AmbiguousCharacters.Contains(c));
+        });
+    }
+
+    [Fact]
     public void Generate_MultipleCalls_AreNotAllEqual()
     {
         var values = Enumerable.Range(0, 8)
