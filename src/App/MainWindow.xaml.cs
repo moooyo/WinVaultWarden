@@ -50,10 +50,30 @@ public sealed partial class MainWindow : Window
     {
         if (args.SelectedItem is not NavigationViewItem item) return;
         var tag = item.Tag as string;
-        if (tag == "vault")
-            ContentFrame.Navigate(typeof(VaultPage));
-        else
-            ContentFrame.Navigate(typeof(SimplePage), item.Content as string);
+        switch (tag)
+        {
+            case "vault":
+                ContentFrame.Navigate(typeof(VaultPage));
+                break;
+            case "account":
+                ContentFrame.Navigate(typeof(SettingsPage));
+                break;
+            case "devices":
+                ContentFrame.Navigate(typeof(DevicesPage));
+                break;
+            case "send":
+                ContentFrame.Navigate(typeof(SimplePage), ("Send", ""));
+                break;
+            case "admin":
+                ContentFrame.Navigate(typeof(SimplePage), ("管理面板", ""));
+                break;
+            case "backup":
+                ContentFrame.Navigate(typeof(SimplePage), ("备份策略", ""));
+                break;
+            case "io":
+                ContentFrame.Navigate(typeof(SimplePage), ("导入导出", ""));
+                break;
+        }
     }
 
     private void OnLogout(object sender, RoutedEventArgs e) => ShowLogin();
