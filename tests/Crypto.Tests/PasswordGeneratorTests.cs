@@ -140,4 +140,21 @@ public class PasswordGeneratorTests
 
         Assert.Throws<ArgumentException>(() => PasswordGenerator.Generate(options));
     }
+
+    [Fact]
+    public void Generate_DisabledCharacterSetMinimumsGreaterThanLength_Throws()
+    {
+        var options = new PasswordGenerationOptions(
+            Length: 5,
+            IncludeUppercase: true,
+            IncludeLowercase: true,
+            IncludeNumbers: false,
+            IncludeSpecial: false,
+            MinUppercase: 0,
+            MinLowercase: 0,
+            MinNumbers: 6,
+            MinSpecial: 0);
+
+        Assert.Throws<ArgumentException>(() => PasswordGenerator.Generate(options));
+    }
 }

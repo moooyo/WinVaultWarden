@@ -32,13 +32,18 @@ public static class PasswordGenerator
         if (options.Length is < 5 or > 128)
             throw new ArgumentOutOfRangeException(nameof(options.Length), "密码长度必须在 5 到 128 之间。");
 
-        var groups = BuildGroups(options).ToList();
-        if (groups.Count == 0)
-            groups.Add((options.AvoidAmbiguous ? LowercaseUnmistakable : Lowercase, 0));
+        var minUppercase = NormalizeMinimum(options.MinUppercase, nameof(options.MinUppercase));
+        var minLowercase = NormalizeMinimum(options.MinLowercase, nameof(options.MinLowercase));
+        var minNumbers = NormalizeMinimum(options.MinNumbers, nameof(options.MinNumbers));
+        var minSpecial = NormalizeMinimum(options.MinSpecial, nameof(options.MinSpecial));
 
-        var requiredLength = groups.Sum(g => g.Minimum);
+        var requiredLength = (long)minUppercase + minLowercase + minNumbers + minSpecial;
         if (requiredLength > options.Length)
             throw new ArgumentException("最少字符数量之和不能超过密码长度。", nameof(options));
+
+        var groups = BuildGroups(options, minUppercase, minLowercase, minNumbers, minSpecial).ToList();
+        if (groups.Count == 0)
+            groups.Add((options.AvoidAmbiguous ? LowercaseUnmistakable : Lowercase, 0));
 
         var allCharacters = string.Concat(groups.Select(g => g.Characters));
         var result = new List<char>(options.Length);
@@ -56,20 +61,25 @@ public static class PasswordGenerator
         return new string(result.ToArray());
     }
 
-    private static IEnumerable<(string Characters, int Minimum)> BuildGroups(PasswordGenerationOptions options)
+    private static IEnumerable<(string Characters, int Minimum)> BuildGroups(
+        PasswordGenerationOptions options,
+        int minUppercase,
+        int minLowercase,
+        int minNumbers,
+        int minSpecial)
     {
         var uppercase = options.AvoidAmbiguous ? UppercaseUnmistakable : Uppercase;
         var lowercase = options.AvoidAmbiguous ? LowercaseUnmistakable : Lowercase;
         var numbers = options.AvoidAmbiguous ? NumbersUnmistakable : Numbers;
 
         if (options.IncludeUppercase)
-            yield return (uppercase, NormalizeMinimum(options.MinUppercase, nameof(options.MinUppercase)));
+            yield return (uppercase, minUppercase);
         if (options.IncludeLowercase)
-            yield return (lowercase, NormalizeMinimum(options.MinLowercase, nameof(options.MinLowercase)));
+            yield return (lowercase, minLowercase);
         if (options.IncludeNumbers)
-            yield return (numbers, NormalizeMinimum(options.MinNumbers, nameof(options.MinNumbers)));
+            yield return (numbers, minNumbers);
         if (options.IncludeSpecial)
-            yield return (Special, NormalizeMinimum(options.MinSpecial, nameof(options.MinSpecial)));
+            yield return (Special, minSpecial);
     }
 
     private static int NormalizeMinimum(int value, string name)
