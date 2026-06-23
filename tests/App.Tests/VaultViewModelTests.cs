@@ -157,3 +157,68 @@ public class VaultViewModelTests
         Assert.Equal(FilterKind.AllItems, vm.SelectedFilter!.Kind);
     }
 }
+
+public class SendViewModelTests
+{
+    private sealed class RecordingClipboard : IClipboardService
+    {
+        public string? Text { get; private set; }
+        public void SetText(string text) => Text = text;
+    }
+
+    [Fact]
+    public void MockSendUiService_ReturnsThreeSends()
+    {
+        var service = new MockSendUiService();
+
+        var sends = service.GetSends();
+
+        Assert.Equal(3, sends.Count);
+        Assert.Contains(sends, s => s.Type == SendType.Text);
+        Assert.Contains(sends, s => s.Type == SendType.File);
+    }
+
+    [Fact]
+    public void SelectFilterByTag_Text_ShowsOnlyTextSends()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+
+        vm.SelectFilterByTag("send:text");
+
+        Assert.NotEmpty(vm.FilteredItems);
+        Assert.All(vm.FilteredItems, item => Assert.Equal(SendType.Text, item.Type));
+    }
+
+    [Fact]
+    public void SelectFilterByTag_File_ShowsOnlyFileSends()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+
+        vm.SelectFilterByTag("send:file");
+
+        Assert.NotEmpty(vm.FilteredItems);
+        Assert.All(vm.FilteredItems, item => Assert.Equal(SendType.File, item.Type));
+    }
+
+    [Fact]
+    public void SelectFilterByTag_All_ShowsAllSends()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+
+        vm.SelectFilterByTag("send:all");
+
+        Assert.Equal(vm.Items.Count, vm.FilteredItems.Count);
+    }
+
+    [Fact]
+    public void CopyLinkCommand_CopiesLinkWhenPresent()
+    {
+        var clipboard = new RecordingClipboard();
+        var vm = new SendViewModel(new MockSendUiService(), clipboard);
+        var item = vm.Items.First(s => !string.IsNullOrEmpty(s.Link));
+
+        vm.CopyLinkCommand.Execute(item);
+
+        Assert.Equal(item.Link, clipboard.Text);
+    }
+}

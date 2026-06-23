@@ -20,5 +20,8 @@
     <Compile Include="..\..\src\App\Services\MockVaultUiService.cs" Link="Services\MockVaultUiService.cs" />
     <Compile Include="..\..\src\App\Services\IClipboardService.cs" Link="Services\IClipboardService.cs" />
     <Compile Include="..\..\src\App\ViewModels\VaultViewModel.cs" Link="ViewModels\VaultViewModel.cs" />
+    <Compile Include="..\..\src\App\ViewModels\Models\SendListItem.cs" Link="Models\SendListItem.cs" />
+    <Compile Include="..\..\src\App\Services\MockSendUiService.cs" Link="Services\MockSendUiService.cs" />
+    <Compile Include="..\..\src\App\ViewModels\SendViewModel.cs" Link="ViewModels\SendViewModel.cs" />
   </ItemGroup>
 </Project>
