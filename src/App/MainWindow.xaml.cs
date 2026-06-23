@@ -1,4 +1,4 @@
-using App.Views;
+﻿using App.Views;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -62,16 +62,16 @@ public sealed partial class MainWindow : Window
                 ContentFrame.Navigate(typeof(DevicesPage));
                 break;
             case "send":
-                ContentFrame.Navigate(typeof(SimplePage), ("Send", ""));
+                ContentFrame.Navigate(typeof(SimplePage), ("Send", ""));
                 break;
             case "admin":
-                ContentFrame.Navigate(typeof(SimplePage), ("管理面板", ""));
+                ContentFrame.Navigate(typeof(SimplePage), ("管理面板", ""));
                 break;
             case "backup":
-                ContentFrame.Navigate(typeof(SimplePage), ("备份策略", ""));
+                ContentFrame.Navigate(typeof(SimplePage), ("备份策略", ""));
                 break;
             case "io":
-                ContentFrame.Navigate(typeof(SimplePage), ("导入导出", ""));
+                ContentFrame.Navigate(typeof(SimplePage), ("导入导出", ""));
                 break;
         }
     }
