@@ -20,7 +20,8 @@ public class SettingsViewModel : ObservableObject
     private bool _enableSshAgent = true;
     private int _selectedSshAuthorizationPromptIndex;
     private bool _allowScreenshots = true;
-    private int _selectedThemeIndex;
+    private static int _currentThemeIndex;
+    private int _selectedThemeIndex = _currentThemeIndex;
     private int _selectedLanguageIndex;
 
     public int SelectedSessionTimeoutIndex
@@ -119,7 +120,10 @@ public class SettingsViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _selectedThemeIndex, value))
+            {
+                _currentThemeIndex = value;
                 ApplyTheme(value);
+            }
         }
     }
 

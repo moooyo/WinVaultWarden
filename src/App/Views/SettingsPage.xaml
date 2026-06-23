@@ -15,8 +15,8 @@
         </Style>
     </Page.Resources>
 
-    <ScrollViewer Padding="24">
-        <StackPanel Spacing="16" MaxWidth="680" HorizontalAlignment="Center">
+    <ScrollViewer Padding="24" HorizontalScrollBarVisibility="Auto">
+        <StackPanel Spacing="16" MinWidth="560" MaxWidth="680" HorizontalAlignment="Center">
             <TextBlock Text="设置" Style="{ThemeResource TitleTextBlockStyle}" />
 
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
