@@ -8,7 +8,6 @@
     xmlns:models="using:App.ViewModels.Models">
     <Page.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
-        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
     </Page.Resources>
 
     <Grid Padding="24" RowSpacing="14">
@@ -68,29 +67,41 @@
                             <ColumnDefinition Width="180" />
                             <ColumnDefinition Width="104" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <Grid ColumnSpacing="10" VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
                             <Border Width="32" Height="32" CornerRadius="6"
                                     Background="{ThemeResource ControlFillColorSecondaryBrush}">
                                 <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" />
                             </Border>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" MaxLines="1" />
                                 <TextBlock Text="{x:Bind TypeLabel}" FontSize="12"
+                                           TextTrimming="CharacterEllipsis" MaxLines="1"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </StackPanel>
-                        </StackPanel>
+                        </Grid>
                         <TextBlock Grid.Column="1"
                                    Text="{x:Bind DeleteDate}"
                                    VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="1"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
                                     HorizontalAlignment="Right" VerticalAlignment="Center">
                             <Button Width="36" Height="32" Padding="0"
+                                    AutomationProperties.Name="复制链接"
+                                    ToolTipService.ToolTip="复制链接"
                                     Command="{Binding ElementName=Root, Path=ViewModel.CopyLinkCommand}"
                                     CommandParameter="{x:Bind}">
                                 <FontIcon Glyph="&#xE8C8;" FontSize="14" />
                             </Button>
                             <Button Width="36" Height="32" Padding="0"
+                                    AutomationProperties.Name="更多"
+                                    ToolTipService.ToolTip="更多"
                                     Command="{Binding ElementName=Root, Path=ViewModel.MoreCommand}"
                                     CommandParameter="{x:Bind}">
                                 <FontIcon Glyph="&#xE712;" FontSize="14" />
