@@ -12,6 +12,9 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Crypto\Crypto.csproj" />
+  </ItemGroup>
   <!-- 直接链接 App 的纯 C# 源(不依赖 WinUI),绕开 WinUI 打包任务无法在命令行加载的问题 -->
   <ItemGroup>
     <Compile Include="..\..\src\App\ViewModels\Models\CipherListItem.cs" Link="Models\CipherListItem.cs" />
@@ -23,5 +26,6 @@
     <Compile Include="..\..\src\App\ViewModels\Models\SendListItem.cs" Link="Models\SendListItem.cs" />
     <Compile Include="..\..\src\App\Services\MockSendUiService.cs" Link="Services\MockSendUiService.cs" />
     <Compile Include="..\..\src\App\ViewModels\SendViewModel.cs" Link="ViewModels\SendViewModel.cs" />
+    <Compile Include="..\..\src\App\ViewModels\GeneratorViewModel.cs" Link="ViewModels\GeneratorViewModel.cs" />
   </ItemGroup>
 </Project>
