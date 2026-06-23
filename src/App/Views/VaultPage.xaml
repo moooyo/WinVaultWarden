@@ -4,7 +4,6 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:App.Controls"
-    xmlns:detail="using:App.Views.Detail"
     xmlns:conv="using:App.Converters"
     xmlns:models="using:App.ViewModels.Models">
 
@@ -48,12 +47,6 @@
             </StackPanel>
         </DataTemplate>
 
-        <detail:CipherDetailTemplateSelector x:Key="DetailSelector"
-            Login="{StaticResource LoginTemplate}"
-            Card="{StaticResource CardTemplate}"
-            Identity="{StaticResource IdentityTemplate}"
-            Note="{StaticResource NoteTemplate}"
-            Ssh="{StaticResource SshTemplate}" />
     </Page.Resources>
 
     <Grid>
@@ -147,8 +140,7 @@
                     <TextBlock Text="{x:Bind ViewModel.Detail.FolderName, Mode=OneWay}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
-                <ContentControl Content="{x:Bind ViewModel.Detail, Mode=OneWay}"
-                                ContentTemplateSelector="{StaticResource DetailSelector}"
+                <ContentControl x:Name="DetailHost"
                                 HorizontalContentAlignment="Stretch" />
 
                 <!-- 共用底部:备注/自定义字段/历史/操作 -->
