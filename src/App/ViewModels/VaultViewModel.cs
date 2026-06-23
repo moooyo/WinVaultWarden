@@ -18,6 +18,7 @@ public partial class VaultViewModel : ObservableObject
     [ObservableProperty] private CipherListItem? _selectedItem;
     [ObservableProperty] private CipherDetail? _detail;
     [ObservableProperty] private string _searchText = string.Empty;
+    [ObservableProperty] private FilterNode? _selectedFilter;
 
     public bool HasSelection => Detail is not null;
     public bool NoSelection => Detail is null;
@@ -28,6 +29,7 @@ public partial class VaultViewModel : ObservableObject
         _clipboard = clipboard;
         foreach (var it in service.GetItems()) Items.Add(it);
         foreach (var f in service.GetFilters()) Filters.Add(f);
+        SelectedFilter = Filters.FirstOrDefault();
         ApplyFilter();
     }
 
@@ -40,14 +42,26 @@ public partial class VaultViewModel : ObservableObject
 
     partial void OnSearchTextChanged(string value) => ApplyFilter();
 
+    partial void OnSelectedFilterChanged(FilterNode? value) => ApplyFilter();
+
     private void ApplyFilter()
     {
         FilteredItems.Clear();
-        var q = string.IsNullOrWhiteSpace(SearchText)
-            ? Items
-            : Items.Where(i => i.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase)
-                            || i.Subtitle.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
-        foreach (var i in q) FilteredItems.Add(i);
+
+        IEnumerable<CipherListItem> source = SelectedFilter?.Kind switch
+        {
+            FilterKind.Favorites => Items.Where(i => i.Favorite && !i.IsDeleted),
+            FilterKind.Trash     => Items.Where(i => i.IsDeleted),
+            FilterKind.Type      => Items.Where(i => i.Kind == SelectedFilter.TypeFilter && !i.IsDeleted),
+            FilterKind.Folder    => Items.Where(i => i.FolderId == SelectedFilter.FolderId && !i.IsDeleted),
+            _                    => Items.Where(i => !i.IsDeleted), // AllItems 及未选中
+        };
+
+        if (!string.IsNullOrWhiteSpace(SearchText))
+            source = source.Where(i => i.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase)
+                                    || i.Subtitle.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+
+        foreach (var i in source) FilteredItems.Add(i);
     }
 
     [RelayCommand]

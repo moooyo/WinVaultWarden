@@ -34,22 +34,36 @@ public sealed class MockVaultUiService : IVaultUiService
             Kind = d.Kind,
             Subtitle = SubtitleFor(d),
             Glyph = GlyphFor(d.Kind),
+            Favorite = FavoriteFor(d.Id),
+            FolderId = FolderFor(d.Id),
+            IsDeleted = d.IsDeleted,
         }).ToList();
 
     public CipherDetail GetDetail(string id) => _details.First(d => d.Id == id);
 
-    public IReadOnlyList<FilterNode> GetFilters() => new List<FilterNode>
+    // 收藏:百度网盘(id=1)。
+    private static bool FavoriteFor(string id) => id == "1";
+
+    // 文件夹归属:百度网盘(id=1)属于 f1,其余无文件夹。
+    private static string? FolderFor(string id) => id == "1" ? "f1" : null;
+
+    public IReadOnlyList<FilterNode> GetFilters()
     {
-        new() { Label = "所有项目", Glyph = GlyphAllItems, Kind = FilterKind.AllItems, Count = _details.Count },
-        new() { Label = "收藏", Glyph = GlyphFavorite, Kind = FilterKind.Favorites },
-        new() { Label = "回收站", Glyph = GlyphTrash, Kind = FilterKind.Trash },
-        new() { Label = "登录", Glyph = GlyphLogin, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Login },
-        new() { Label = "银行卡", Glyph = GlyphCard, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Card },
-        new() { Label = "身份", Glyph = GlyphIdentity, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Identity },
-        new() { Label = "笔记", Glyph = GlyphNote, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Note },
-        new() { Label = "SSH 密钥", Glyph = GlyphSsh, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Ssh },
-        new() { Label = "文件夹1", Glyph = GlyphFolder, Kind = FilterKind.Folder, FolderId = "f1" },
-    };
+        var items = GetItems();
+        int CountType(VaultItemKind k) => items.Count(i => i.Kind == k && !i.IsDeleted);
+        return new List<FilterNode>
+        {
+            new() { Label = "所有项目", Glyph = GlyphAllItems, Kind = FilterKind.AllItems, Count = items.Count(i => !i.IsDeleted) },
+            new() { Label = "收藏", Glyph = GlyphFavorite, Kind = FilterKind.Favorites, Count = items.Count(i => i.Favorite && !i.IsDeleted) },
+            new() { Label = "回收站", Glyph = GlyphTrash, Kind = FilterKind.Trash, Count = items.Count(i => i.IsDeleted) },
+            new() { Label = "登录", Glyph = GlyphLogin, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Login, Count = CountType(VaultItemKind.Login) },
+            new() { Label = "银行卡", Glyph = GlyphCard, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Card, Count = CountType(VaultItemKind.Card) },
+            new() { Label = "身份", Glyph = GlyphIdentity, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Identity, Count = CountType(VaultItemKind.Identity) },
+            new() { Label = "笔记", Glyph = GlyphNote, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Note, Count = CountType(VaultItemKind.Note) },
+            new() { Label = "SSH 密钥", Glyph = GlyphSsh, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Ssh, Count = CountType(VaultItemKind.Ssh) },
+            new() { Label = "文件夹1", Glyph = GlyphFolder, Kind = FilterKind.Folder, FolderId = "f1", Count = items.Count(i => i.FolderId == "f1" && !i.IsDeleted) },
+        };
+    }
 
     private static string SubtitleFor(CipherDetail d) => d switch
     {
@@ -110,6 +124,13 @@ public sealed class MockVaultUiService : IVaultUiService
             Fingerprint = "SHA256:abcd1234efgh5678",
             Created = new DateTimeOffset(2026, 2, 10, 7, 0, 0, TimeSpan.Zero),
             Edited = new DateTimeOffset(2026, 2, 10, 7, 0, 0, TimeSpan.Zero),
+        },
+        new LoginDetail
+        {
+            Id = "6", Name = "已删除的旧账号", IsDeleted = true,
+            Username = "old@example.com", Password = "obsolete",
+            Created = new DateTimeOffset(2026, 1, 5, 6, 0, 0, TimeSpan.Zero),
+            Edited = new DateTimeOffset(2026, 1, 10, 6, 0, 0, TimeSpan.Zero),
         },
     };
 }
