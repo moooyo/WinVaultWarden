@@ -12,8 +12,25 @@ public sealed partial class GeneratorDialog : ContentDialog
     {
         ViewModel = global::App.App.Services.GetRequiredService<GeneratorViewModel>();
         InitializeComponent();
+        GeneratorTabs.SelectedItem ??= PasswordTab;
+        UpdatePrimaryButtonState();
     }
 
-    private void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args) =>
-        ViewModel.CopyCommand.Execute(null);
+    private void OnGeneratorTabSelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        UpdatePrimaryButtonState();
+
+    private void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+    {
+        if (IsPasswordTabSelected())
+            ViewModel.CopyCommand.Execute(null);
+    }
+
+    private void UpdatePrimaryButtonState() =>
+        IsPrimaryButtonEnabled = IsPasswordTabSelected();
+
+    private bool IsPasswordTabSelected() =>
+        GeneratorTabs is not null
+        && PasswordTab is not null
+        && GeneratorTabs.SelectedItem is TabViewItem selectedTab
+        && ReferenceEquals(selectedTab, PasswordTab);
 }

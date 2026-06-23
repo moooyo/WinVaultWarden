@@ -10,11 +10,13 @@
     DefaultButton="Primary"
     MinWidth="560">
 
-    <TabView IsAddTabButtonVisible="False"
+    <TabView x:Name="GeneratorTabs"
+             IsAddTabButtonVisible="False"
              CanDragTabs="False"
              CanReorderTabs="False"
-             TabWidthMode="Equal">
-        <TabViewItem Header="密码" IsClosable="False">
+             TabWidthMode="Equal"
+             SelectionChanged="OnGeneratorTabSelectionChanged">
+        <TabViewItem x:Name="PasswordTab" Header="密码" IsClosable="False">
             <StackPanel Spacing="14" Padding="0,12,0,0">
                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -108,6 +110,7 @@
                             <TextBlock Text="数字最少个数" VerticalAlignment="Center" />
                             <NumberBox Grid.Column="1"
                                        Minimum="0"
+                                       Maximum="128"
                                        SpinButtonPlacementMode="Inline"
                                        Value="{x:Bind ViewModel.MinNumbersValue, Mode=TwoWay}" />
                         </Grid>
@@ -120,6 +123,7 @@
                             <TextBlock Text="符号最少个数" VerticalAlignment="Center" />
                             <NumberBox Grid.Column="1"
                                        Minimum="0"
+                                       Maximum="128"
                                        SpinButtonPlacementMode="Inline"
                                        Value="{x:Bind ViewModel.MinSpecialValue, Mode=TwoWay}" />
                         </Grid>

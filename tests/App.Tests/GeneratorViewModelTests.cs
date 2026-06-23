@@ -68,4 +68,25 @@ public class GeneratorViewModelTests
 
         Assert.Equal(5, vm.GeneratedPassword.Length);
     }
+
+    [Fact]
+    public void HugeMinimums_AreClampedBeforeGeneration()
+    {
+        var vm = new GeneratorViewModel
+        {
+            Length = 5,
+            IncludeUppercase = true,
+            IncludeLowercase = true,
+            IncludeNumbers = true,
+            IncludeSpecial = true,
+            MinNumbers = int.MaxValue,
+            MinSpecial = int.MaxValue,
+        };
+
+        vm.RegenerateCommand.Execute(null);
+
+        Assert.Equal(5, vm.GeneratedPassword.Length);
+        Assert.Equal(128, vm.MinNumbers);
+        Assert.Equal(128, vm.MinSpecial);
+    }
 }

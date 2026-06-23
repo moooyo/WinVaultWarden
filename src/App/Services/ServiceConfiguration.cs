@@ -26,6 +26,7 @@ public static class ServiceConfiguration
 
         services.AddTransient<LoginViewModel>();
         services.AddTransient<VaultViewModel>();
+        services.AddTransient<GeneratorViewModel>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<DevicesViewModel>();
 

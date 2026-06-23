@@ -78,7 +78,7 @@ public partial class GeneratorViewModel : ObservableObject
         get => _minNumbers;
         set
         {
-            var normalized = Math.Max(0, value);
+            var normalized = Math.Clamp(value, 0, 128);
             if (!SetProperty(ref _minNumbers, normalized))
                 return;
 
@@ -92,7 +92,7 @@ public partial class GeneratorViewModel : ObservableObject
         get => _minSpecial;
         set
         {
-            var normalized = Math.Max(0, value);
+            var normalized = Math.Clamp(value, 0, 128);
             if (!SetProperty(ref _minSpecial, normalized))
                 return;
 
@@ -120,19 +120,19 @@ public partial class GeneratorViewModel : ObservableObject
     public double LengthValue
     {
         get => Length;
-        set => Length = Math.Clamp((int)Math.Round(value), 5, 128);
+        set => Length = ClampRounded(value, 5, 128);
     }
 
     public double MinNumbersValue
     {
         get => MinNumbers;
-        set => MinNumbers = Math.Max(0, (int)Math.Round(value));
+        set => MinNumbers = ClampRounded(value, 0, 128);
     }
 
     public double MinSpecialValue
     {
         get => MinSpecial;
-        set => MinSpecial = Math.Max(0, (int)Math.Round(value));
+        set => MinSpecial = ClampRounded(value, 0, 128);
     }
 
     public GeneratorViewModel(IClipboardService? clipboard = null)
@@ -143,8 +143,9 @@ public partial class GeneratorViewModel : ObservableObject
 
     private void CharacterSetChanged()
     {
-        EnsureAtLeastOneCharacterSet();
-        Regenerate();
+        var fallbackApplied = EnsureAtLeastOneCharacterSet();
+        if (fallbackApplied || IncludeUppercase || IncludeLowercase || IncludeNumbers || IncludeSpecial)
+            Regenerate();
     }
 
     [RelayCommand]
@@ -163,8 +164,8 @@ public partial class GeneratorViewModel : ObservableObject
 
         var minUppercase = IncludeUppercase ? 1 : 0;
         var minLowercase = IncludeLowercase ? 1 : 0;
-        var minNumbers = IncludeNumbers ? Math.Max(0, MinNumbers) : 0;
-        var minSpecial = IncludeSpecial ? Math.Max(0, MinSpecial) : 0;
+        var minNumbers = IncludeNumbers ? Math.Clamp(MinNumbers, 0, 128) : 0;
+        var minSpecial = IncludeSpecial ? Math.Clamp(MinSpecial, 0, 128) : 0;
 
         ReduceMinimumsToFitLength(ref minNumbers, ref minSpecial, minUppercase + minLowercase);
 
@@ -181,23 +182,39 @@ public partial class GeneratorViewModel : ObservableObject
             AvoidAmbiguous);
     }
 
-    private void EnsureAtLeastOneCharacterSet()
+    private bool EnsureAtLeastOneCharacterSet()
     {
         if (!IncludeUppercase && !IncludeLowercase && !IncludeNumbers && !IncludeSpecial)
-            IncludeLowercase = true;
+        {
+            SetProperty(ref _includeLowercase, true, nameof(IncludeLowercase));
+            return true;
+        }
+
+        return false;
     }
 
     private void ReduceMinimumsToFitLength(ref int minNumbers, ref int minSpecial, int fixedMinimums)
     {
-        var overflow = fixedMinimums + minNumbers + minSpecial - Length;
+        var overflow = (long)fixedMinimums + minNumbers + minSpecial - Length;
         if (overflow <= 0)
             return;
 
-        var specialReduction = Math.Min(minSpecial, overflow);
+        var specialReduction = (int)Math.Min(minSpecial, overflow);
         minSpecial -= specialReduction;
         overflow -= specialReduction;
 
-        var numberReduction = Math.Min(minNumbers, overflow);
+        var numberReduction = (int)Math.Min(minNumbers, overflow);
         minNumbers -= numberReduction;
+    }
+
+    private static int ClampRounded(double value, int minimum, int maximum)
+    {
+        if (double.IsNaN(value) || value <= minimum)
+            return minimum;
+
+        if (value >= maximum)
+            return maximum;
+
+        return Math.Clamp((int)Math.Round(value), minimum, maximum);
     }
 }
