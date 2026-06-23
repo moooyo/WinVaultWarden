@@ -42,6 +42,37 @@ public partial class VaultViewModel : ObservableObject
 
     partial void OnSearchTextChanged(string value) => ApplyFilter();
 
+    public void SelectFilterByTag(string? tag)
+    {
+        SelectedFilter = FindFilterByTag(tag)
+            ?? Filters.FirstOrDefault(f => f.Kind == FilterKind.AllItems)
+            ?? Filters.FirstOrDefault();
+    }
+
+    private FilterNode? FindFilterByTag(string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag))
+            return null;
+
+        return tag switch
+        {
+            "vault:allitems" => Filters.FirstOrDefault(f => f.Kind == FilterKind.AllItems),
+            "vault:favorites" => Filters.FirstOrDefault(f => f.Kind == FilterKind.Favorites),
+            "vault:trash" => Filters.FirstOrDefault(f => f.Kind == FilterKind.Trash),
+            _ when tag.StartsWith("vault:type:", StringComparison.Ordinal) => FindTypeFilter(tag["vault:type:".Length..]),
+            _ when tag.StartsWith("vault:folder:", StringComparison.Ordinal) => FindFolderFilter(tag["vault:folder:".Length..]),
+            _ => null,
+        };
+    }
+
+    private FilterNode? FindTypeFilter(string typeName) =>
+        Enum.TryParse(typeName, out VaultItemKind type)
+            ? Filters.FirstOrDefault(f => f.Kind == FilterKind.Type && f.TypeFilter == type)
+            : null;
+
+    private FilterNode? FindFolderFilter(string folderId) =>
+        Filters.FirstOrDefault(f => f.Kind == FilterKind.Folder && f.FolderId == folderId);
+
     partial void OnSelectedFilterChanged(FilterNode? value) => ApplyFilter();
 
     private void ApplyFilter()

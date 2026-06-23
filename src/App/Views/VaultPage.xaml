@@ -77,34 +77,12 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="220" />
             <ColumnDefinition Width="*" MinWidth="280" />
             <ColumnDefinition Width="360" />
         </Grid.ColumnDefinitions>
 
-        <!-- 栏② 过滤 -->
-        <ListView Grid.Column="0" ItemsSource="{x:Bind ViewModel.Filters}"
-                  SelectionMode="Single" Padding="4,8"
-                  BorderThickness="0,0,1,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
-            <ListView.ItemTemplate>
-                <DataTemplate x:DataType="models:FilterNode">
-                    <Grid ColumnSpacing="10" Padding="4,2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Text="{x:Bind Label}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="2" Text="{x:Bind CountText}" VerticalAlignment="Center"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
-                    </Grid>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-        </ListView>
-
-        <!-- 栏③ 列表 -->
-        <Grid Grid.Column="1" Padding="12" RowSpacing="10"
+        <!-- 列表 -->
+        <Grid Grid.Column="0" Padding="12" RowSpacing="10"
               BorderThickness="0,0,1,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -156,8 +134,8 @@
             </ListView>
         </Grid>
 
-        <!-- 栏④ 详情 -->
-        <ScrollViewer Grid.Column="2" Padding="16">
+        <!-- 详情 -->
+        <ScrollViewer Grid.Column="1" Padding="16">
             <StackPanel Spacing="12">
                 <StackPanel Spacing="2"
                             Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay, Converter={StaticResource BoolToVis}}">

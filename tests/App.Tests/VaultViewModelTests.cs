@@ -140,6 +140,41 @@ public class VaultViewModelTests
     }
 
     [Fact]
+    public void SelectFilterByTag_TypeLogin_FiltersLoginItems()
+    {
+        var vm = NewVm();
+
+        vm.SelectFilterByTag("vault:type:Login");
+
+        Assert.Equal(FilterKind.Type, vm.SelectedFilter!.Kind);
+        Assert.Equal(VaultItemKind.Login, vm.SelectedFilter.TypeFilter);
+        Assert.All(vm.FilteredItems, item => Assert.Equal(VaultItemKind.Login, item.Kind));
+    }
+
+    [Fact]
+    public void SelectFilterByTag_Folder_FiltersFolderItems()
+    {
+        var vm = NewVm();
+
+        vm.SelectFilterByTag("vault:folder:f1");
+
+        Assert.Equal(FilterKind.Folder, vm.SelectedFilter!.Kind);
+        Assert.Equal("f1", vm.SelectedFilter.FolderId);
+        Assert.All(vm.FilteredItems, item => Assert.Equal("f1", item.FolderId));
+    }
+
+    [Fact]
+    public void SelectFilterByTag_UnknownTag_DefaultsToAllItems()
+    {
+        var vm = NewVm();
+
+        vm.SelectFilterByTag("vault:unknown");
+
+        Assert.Equal(FilterKind.AllItems, vm.SelectedFilter!.Kind);
+        Assert.All(vm.FilteredItems, item => Assert.False(item.IsDeleted));
+    }
+
+    [Fact]
     public void ApplyFilter_TypeAndSearch_Combined()
     {
         var vm = NewVm();
