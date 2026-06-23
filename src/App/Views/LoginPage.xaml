@@ -15,7 +15,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
                     <Border Width="40" Height="40" CornerRadius="10"
                             Background="{ThemeResource AccentFillColorDefaultBrush}">
-                        <TextBlock Text="V" Foreground="White" FontWeight="Bold" FontSize="22"
+                        <TextBlock Text="V" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" FontWeight="Bold" FontSize="22"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <TextBlock Text="WinVaultWarden" FontSize="22" FontWeight="SemiBold"

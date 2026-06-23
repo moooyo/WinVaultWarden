@@ -32,7 +32,7 @@
                                         <Border Background="{ThemeResource AccentFillColorDefaultBrush}"
                                                 CornerRadius="4" Padding="6,1"
                                                 Visibility="{x:Bind IsCurrent, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock Text="当前设备" FontSize="11" Foreground="White" />
+                                            <TextBlock Text="当前设备" FontSize="11" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
                                         </Border>
                                     </StackPanel>
                                     <TextBlock Text="{x:Bind LastActive}" FontSize="12"

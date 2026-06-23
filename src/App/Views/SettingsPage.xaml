@@ -22,7 +22,7 @@
                         </Grid.ColumnDefinitions>
                         <Border Width="40" Height="40" CornerRadius="20"
                                 Background="{ThemeResource AccentFillColorDefaultBrush}">
-                            <TextBlock Text="{x:Bind ViewModel.AccountInitial}" Foreground="White"
+                            <TextBlock Text="{x:Bind ViewModel.AccountInitial}" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
                                        FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.AccountEmail}"
