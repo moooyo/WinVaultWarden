@@ -9,6 +9,11 @@ public sealed partial class SimplePage : Page
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        if (e.Parameter is string label) Title.Text = $"{label}（占位页）";
+        if (e.Parameter is ValueTuple<string, string> p)
+        {
+            Title.Text = p.Item1;
+            Icon.Glyph = p.Item2;
+            Subtitle.Text = $"{p.Item1}正在开发中";
+        }
     }
 }
