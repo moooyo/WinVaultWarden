@@ -20,12 +20,17 @@
     <Compile Include="..\..\src\App\ViewModels\Models\CipherListItem.cs" Link="Models\CipherListItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\CipherDetail.cs" Link="Models\CipherDetail.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\FilterNode.cs" Link="Models\FilterNode.cs" />
+    <Compile Include="..\..\src\App\ViewModels\Models\VaultFolderNavigationItem.cs" Link="Models\VaultFolderNavigationItem.cs" />
     <Compile Include="..\..\src\App\Services\MockVaultUiService.cs" Link="Services\MockVaultUiService.cs" />
+    <Compile Include="..\..\src\App\Services\VaultNavigationService.cs" Link="Services\VaultNavigationService.cs" />
     <Compile Include="..\..\src\App\Services\IClipboardService.cs" Link="Services\IClipboardService.cs" />
     <Compile Include="..\..\src\App\ViewModels\VaultViewModel.cs" Link="ViewModels\VaultViewModel.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\SendListItem.cs" Link="Models\SendListItem.cs" />
+    <Compile Include="..\..\src\App\ViewModels\Models\SendEditorDraft.cs" Link="Models\SendEditorDraft.cs" />
+    <Compile Include="..\..\src\App\Views\SendEditorDialogLifecycle.cs" Link="Views\SendEditorDialogLifecycle.cs" />
     <Compile Include="..\..\src\App\Services\MockSendUiService.cs" Link="Services\MockSendUiService.cs" />
     <Compile Include="..\..\src\App\ViewModels\SendViewModel.cs" Link="ViewModels\SendViewModel.cs" />
+    <Compile Include="..\..\src\App\ViewModels\Models\GeneratorHistoryItem.cs" Link="Models\GeneratorHistoryItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\GeneratorViewModel.cs" Link="ViewModels\GeneratorViewModel.cs" />
   </ItemGroup>
 </Project>

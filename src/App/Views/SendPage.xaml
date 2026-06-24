@@ -25,7 +25,7 @@
             <TextBlock Text="Send" Style="{ThemeResource TitleTextBlockStyle}" />
             <Button Grid.Column="1"
                     Style="{ThemeResource AccentButtonStyle}"
-                    Command="{x:Bind ViewModel.AddCommand}">
+                    Click="OnAddSendClick">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <FontIcon Glyph="&#xE710;" FontSize="14" />
                     <TextBlock Text="新增 Send" />
@@ -95,16 +95,33 @@
                             <Button Width="36" Height="32" Padding="0"
                                     AutomationProperties.Name="复制链接"
                                     ToolTipService.ToolTip="复制链接"
-                                    Command="{Binding ElementName=Root, Path=ViewModel.CopyLinkCommand}"
-                                    CommandParameter="{x:Bind}">
+                                    Click="OnCopyLinkClick">
                                 <FontIcon Glyph="&#xE8C8;" FontSize="14" />
                             </Button>
                             <Button Width="36" Height="32" Padding="0"
                                     AutomationProperties.Name="更多"
                                     ToolTipService.ToolTip="更多"
-                                    Command="{Binding ElementName=Root, Path=ViewModel.MoreCommand}"
-                                    CommandParameter="{x:Bind}">
+                                    Click="OnMoreClick">
                                 <FontIcon Glyph="&#xE712;" FontSize="14" />
+                                <Button.Flyout>
+                                    <MenuFlyout>
+                                        <MenuFlyoutItem Text="复制链接" Click="OnCopyLinkMenuClick">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE8C8;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem Text="编辑">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE70F;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem Text="删除">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE74D;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                    </MenuFlyout>
+                                </Button.Flyout>
                             </Button>
                         </StackPanel>
                     </Grid>

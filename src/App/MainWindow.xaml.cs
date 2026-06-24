@@ -1,6 +1,8 @@
 ﻿using App.Views;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.Extensions.DependencyInjection;
+using App.Services;
 using System;
 using System.Threading.Tasks;
 
@@ -18,6 +20,7 @@ public sealed partial class MainWindow : Window
         // 给系统标题栏按钮(最小化/最大化/关闭)留出右侧空间,避免与自定义内容重叠。
         SizeChanged += (_, _) => UpdateCaptionPadding();
         UpdateCaptionPadding();
+        PopulateFolderNavigation();
 
         // 启动先进登录页;登录成功后由 LoginPage 切到主导航。
         ShowLogin();
@@ -28,6 +31,24 @@ public sealed partial class MainWindow : Window
         // RightInset 是物理像素,转成 DIP(除以光栅缩放)。
         var scale = AppTitleBar.XamlRoot?.RasterizationScale ?? 1.0;
         RightPaddingColumn.Width = new GridLength(AppWindow.TitleBar.RightInset / scale);
+    }
+
+    private void PopulateFolderNavigation()
+    {
+        var vaultService = global::App.App.Services.GetRequiredService<IVaultUiService>();
+        var folders = VaultNavigationService.BuildFolderItems(vaultService.GetFilters());
+        FoldersNavItem.MenuItems.Clear();
+        FoldersNavItem.Visibility = folders.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+
+        foreach (var folder in folders)
+        {
+            FoldersNavItem.MenuItems.Add(new NavigationViewItem
+            {
+                Content = folder.Label,
+                Tag = folder.Tag,
+                Icon = new FontIcon { Glyph = folder.Glyph },
+            });
+        }
     }
 
     // 登录前:隐藏导航壳,只显示登录页(占满整窗,标题栏仅保留品牌)。

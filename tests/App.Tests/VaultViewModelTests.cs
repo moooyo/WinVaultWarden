@@ -42,6 +42,31 @@ public class MockVaultUiServiceTests
         Assert.Contains(filters, f => f.Kind == FilterKind.AllItems);
         Assert.Equal(5, filters.Count(f => f.Kind == FilterKind.Type));
     }
+
+    [Fact]
+    public void BuildFolderNavigationItems_ReturnsOnlyFolderFilters()
+    {
+        var filters = new MockVaultUiService().GetFilters();
+
+        var folders = VaultNavigationService.BuildFolderItems(filters);
+
+        Assert.NotEmpty(folders);
+        Assert.All(folders, f => Assert.StartsWith("vault:folder:", f.Tag, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HasFolders_ReturnsFalseWhenNoFolderFilters()
+    {
+        var filters = new[]
+        {
+            new FilterNode { Label = "所有项目", Kind = FilterKind.AllItems },
+            new FilterNode { Label = "登录", Kind = FilterKind.Type, TypeFilter = VaultItemKind.Login },
+        };
+
+        var folders = VaultNavigationService.BuildFolderItems(filters);
+
+        Assert.Empty(folders);
+    }
 }
 
 public class VaultViewModelTests
@@ -255,5 +280,61 @@ public class SendViewModelTests
         vm.CopyLinkCommand.Execute(item);
 
         Assert.Equal(item.Link, clipboard.Text);
+    }
+
+    [Fact]
+    public void CreateSend_TextDraft_AddsTextSendToList()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        var draft = SendEditorDraft.CreateDefault(SendType.Text);
+        draft.Name = "一次性验证码";
+        draft.Text = "123456";
+        draft.DeletionDateLabel = "7 天";
+
+        var created = vm.CreateSend(draft);
+
+        Assert.True(created);
+        Assert.Contains(vm.Items, s => s.Name == "一次性验证码" && s.Type == SendType.Text);
+        Assert.Contains(vm.FilteredItems, s => s.Name == "一次性验证码");
+    }
+
+    [Fact]
+    public void CreateSend_FileDraft_AddsFileSendToList()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        var draft = SendEditorDraft.CreateDefault(SendType.File);
+        draft.Name = "合同.zip";
+        draft.FileName = "合同.zip";
+        draft.DeletionDateLabel = "30 天";
+
+        var created = vm.CreateSend(draft);
+
+        Assert.True(created);
+        Assert.Contains(vm.Items, s => s.Name == "合同.zip" && s.Type == SendType.File);
+    }
+
+    [Fact]
+    public void CreateSend_MissingRequiredData_ReturnsFalse()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        var draft = SendEditorDraft.CreateDefault(SendType.Text);
+        draft.Name = "";
+        draft.Text = "";
+
+        var created = vm.CreateSend(draft);
+
+        Assert.False(created);
+        Assert.DoesNotContain(vm.Items, s => string.IsNullOrWhiteSpace(s.Name));
+    }
+
+    [Fact]
+    public void MarkMoreMenuOpened_StoresSelectedSend()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        var item = vm.Items[0];
+
+        vm.MarkMoreMenuOpened(item);
+
+        Assert.Equal(item, vm.SelectedMenuItem);
     }
 }

@@ -89,4 +89,60 @@ public class GeneratorViewModelTests
         Assert.Equal(128, vm.MinNumbers);
         Assert.Equal(128, vm.MinSpecial);
     }
+
+    [Fact]
+    public void SwitchingToPassphrase_GeneratesPassphrase()
+    {
+        var vm = new GeneratorViewModel();
+
+        vm.Mode = GeneratorMode.Passphrase;
+
+        Assert.Equal(6, vm.GeneratedPassword.Split('-').Length);
+    }
+
+    [Fact]
+    public void SwitchingToUsername_GeneratesUsername()
+    {
+        var vm = new GeneratorViewModel();
+
+        vm.Mode = GeneratorMode.Username;
+
+        Assert.False(string.IsNullOrWhiteSpace(vm.GeneratedPassword));
+        Assert.DoesNotContain("@", vm.GeneratedPassword);
+    }
+
+    [Fact]
+    public void Regenerate_AddsGeneratedValueToHistory()
+    {
+        var vm = new GeneratorViewModel();
+
+        vm.RegenerateCommand.Execute(null);
+
+        Assert.NotEmpty(vm.History);
+        Assert.Equal(vm.GeneratedPassword, vm.History[0].Value);
+    }
+
+    [Fact]
+    public void ClearHistoryCommand_RemovesHistory()
+    {
+        var vm = new GeneratorViewModel();
+        vm.RegenerateCommand.Execute(null);
+
+        vm.ClearHistoryCommand.Execute(null);
+
+        Assert.Empty(vm.History);
+    }
+
+    [Fact]
+    public void CopyHistoryItemCommand_CopiesSelectedHistoryValue()
+    {
+        var clipboard = new RecordingClipboard();
+        var vm = new GeneratorViewModel(clipboard);
+        vm.RegenerateCommand.Execute(null);
+        var item = vm.History[0];
+
+        vm.CopyHistoryItemCommand.Execute(item);
+
+        Assert.Equal(item.Value, clipboard.Text);
+    }
 }

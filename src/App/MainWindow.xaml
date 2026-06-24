@@ -61,7 +61,10 @@
                         <muxc:NavigationViewItem Content="SSH 密钥" Tag="vault:type:Ssh">
                             <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE72E;" /></muxc:NavigationViewItem.Icon>
                         </muxc:NavigationViewItem>
-                        <muxc:NavigationViewItem Content="文件夹1" Tag="vault:folder:f1">
+                        <muxc:NavigationViewItem x:Name="FoldersNavItem"
+                                                 Content="文件夹"
+                                                 SelectsOnInvoked="False"
+                                                 IsExpanded="True">
                             <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE8B7;" /></muxc:NavigationViewItem.Icon>
                         </muxc:NavigationViewItem>
                         <muxc:NavigationViewItem Content="回收站" Tag="vault:trash">
