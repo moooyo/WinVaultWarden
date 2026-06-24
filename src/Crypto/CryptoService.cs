@@ -95,6 +95,23 @@ public sealed class CryptoService : ICryptoService
         return new EncString(type, iv, ct, mac);
     }
 
+    // Decode an encrypted string as UTF-8 text for vault read projections.
+    public string? DecryptToString(string? encStringText, SymmetricCryptoKey key)
+    {
+        if (string.IsNullOrWhiteSpace(encStringText))
+            return null;
+
+        var bytes = Decrypt(EncString.Parse(encStringText), key);
+        return Encoding.UTF8.GetString(bytes);
+    }
+
+    // Decrypt an item-level key encrypted by the user key.
+    public SymmetricCryptoKey DecryptItemKey(string cipherKeyEnc, SymmetricCryptoKey userKey)
+    {
+        var bytes = Decrypt(EncString.Parse(cipherKeyEnc), userKey);
+        return new SymmetricCryptoKey(bytes);
+    }
+
     // RSA 解密(OAEP)。type 3 用 SHA256,type 4 用 SHA1。privateKeyDer 为 PKCS8 DER。
     public byte[] DecryptRsa(EncString data, byte[] privateKeyDer)
     {
