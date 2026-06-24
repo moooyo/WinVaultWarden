@@ -1,10 +1,12 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using App.Services;
 using Microsoft.UI.Xaml;
 
 namespace App.ViewModels;
 
 public class SettingsViewModel : ObservableObject
 {
+    private readonly IAccountUiService? _accountUi;
     private int _selectedSessionTimeoutIndex;
     private int _selectedTimeoutActionIndex;
     private bool _usePinUnlock;
@@ -23,6 +25,12 @@ public class SettingsViewModel : ObservableObject
     private static int _currentThemeIndex;
     private int _selectedThemeIndex = _currentThemeIndex;
     private int _selectedLanguageIndex;
+
+    public SettingsViewModel()
+    {
+    }
+
+    public SettingsViewModel(IAccountUiService accountUi) => _accountUi = accountUi;
 
     public int SelectedSessionTimeoutIndex
     {
@@ -133,10 +141,10 @@ public class SettingsViewModel : ObservableObject
         set => SetProperty(ref _selectedLanguageIndex, value);
     }
 
-    public string AccountEmail => "lengyuchn@gmail.com";
-    public string AccountServer => "password.bf16.dev";
-    public string AccountInitial => "LE";
-    public string KdfSummary => "PBKDF2 · 600000 次迭代";
+    public string AccountEmail => _accountUi?.GetAccount().Email ?? string.Empty;
+    public string AccountServer => _accountUi?.GetAccount().ServerUrl ?? string.Empty;
+    public string AccountInitial => _accountUi?.GetAccount().Initial ?? string.Empty;
+    public string KdfSummary => _accountUi?.GetAccount().KdfSummary ?? string.Empty;
 
     private static void ApplyTheme(int index)
     {

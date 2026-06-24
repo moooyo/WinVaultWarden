@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using App.Services;
+using Core.Services;
 using System;
 using System.Threading.Tasks;
 
@@ -20,9 +21,7 @@ public sealed partial class MainWindow : Window
         // 给系统标题栏按钮(最小化/最大化/关闭)留出右侧空间,避免与自定义内容重叠。
         SizeChanged += (_, _) => UpdateCaptionPadding();
         UpdateCaptionPadding();
-        PopulateFolderNavigation();
 
-        // 启动先进登录页;登录成功后由 LoginPage 切到主导航。
         ShowLogin();
     }
 
@@ -62,6 +61,7 @@ public sealed partial class MainWindow : Window
     // 登录成功:显示主导航壳。
     public void ShowVault()
     {
+        PopulateFolderNavigation();
         LoginHost.Visibility = Visibility.Collapsed;
         Nav.Visibility = Visibility.Visible;
         Nav.SelectedItem = AllItemsNavItem;
@@ -116,7 +116,15 @@ public sealed partial class MainWindow : Window
     private void OnFooterDevicesClick(object sender, RoutedEventArgs e) =>
         ContentFrame.Navigate(typeof(DevicesPage));
 
-    private void OnFooterLockClick(object sender, RoutedEventArgs e) => ShowLogin();
+    private async void OnFooterLockClick(object sender, RoutedEventArgs e)
+    {
+        await global::App.App.Services.GetRequiredService<IAuthService>().LockAsync();
+        ShowLogin();
+    }
 
-    private void OnLogout(object sender, RoutedEventArgs e) => ShowLogin();
+    private async void OnLogout(object sender, RoutedEventArgs e)
+    {
+        await global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync();
+        ShowLogin();
+    }
 }

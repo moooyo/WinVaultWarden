@@ -1,4 +1,5 @@
 using App.ViewModels;
+using Core.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -11,14 +12,22 @@ public sealed partial class LoginPage : Page
 
     public LoginPage()
     {
-        // 用完全限定名避免与命名空间 App.Services 冲突(App 类的静态属性 Services)。
         ViewModel = global::App.App.Services.GetRequiredService<LoginViewModel>();
+        ViewModel.SetSuccessCallback(() =>
+        {
+            if (App.MainWindow is { } window)
+                window.ShowVault();
+        });
+
+        var tokenStore = global::App.App.Services.GetRequiredService<ITokenStore>();
+        if (tokenStore.TryLoad(out var session))
+            ViewModel.PrepareUnlock(session.ServerUrl, session.Email);
+
         InitializeComponent();
     }
 
-    // mock 登录:不验真,直接切到主界面。真实认证后续接入 AuthService。
-    private void OnLogin(object sender, RoutedEventArgs e)
+    private async void OnLogin(object sender, RoutedEventArgs e)
     {
-        if (App.MainWindow is { } w) w.ShowVault();
+        await ViewModel.LoginCommand.ExecuteAsync(null);
     }
 }
