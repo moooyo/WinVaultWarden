@@ -20,7 +20,8 @@
 - Create `src/Core/Models/DeviceInfo.cs`, `src/Core/Models/AccountInfo.cs`.
 - Create `src/Core/Session/VaultState.cs`, `src/Core/Session/IVaultSnapshot.cs`.
 - Create `src/Core/Abstractions/ITokenStore.cs`, `src/Core/Models/PersistedSession.cs`.
-- Modify `src/Core/Abstractions/IApiClient.cs`: add typed API methods.
+- Keep `src/Core/Abstractions/IApiClient.cs` as the base-address abstraction for existing callers.
+- Create `src/Api/IReadonlyApiClient.cs`: typed API methods returning Api DTOs. Vault may depend on this Api-level interface because `src/Vault` already references `src/Api`; Core must never reference Api DTOs.
 - Modify `src/Core/Services/IAuthService.cs`, `ISyncService.cs`, `IVaultService.cs`: add read-only session-oriented contracts.
 - Replace `src/Api/Dtos/*.cs` with complete read-only DTOs.
 - Modify `src/Api/ApiClient.cs`: implement config/prelogin/token/refresh/sync/devices methods.
@@ -417,7 +418,7 @@ git commit -m "feat: add vault core session contracts"
 ## Task 2: Api DTOs, ApiClient, and AuthHeaderHandler
 
 **Files:**
-- Modify: `src/Core/Abstractions/IApiClient.cs`
+- Create: `src/Api/IReadonlyApiClient.cs`
 - Modify: `src/Api/Dtos/PreloginDtos.cs`
 - Modify: `src/Api/Dtos/TokenDtos.cs`
 - Modify: `src/Api/Dtos/SyncDtos.cs`
@@ -556,18 +557,18 @@ Run:
 dotnet test tests/Vault.Tests/Vault.Tests.csproj -p:Platform=x64 --filter "FullyQualifiedName~ApiClientTests"
 ```
 
-Expected: FAIL because `IApiClient` and `ApiClient` methods do not exist.
+Expected: FAIL because `IReadonlyApiClient` and `ApiClient` methods do not exist.
 
-- [ ] **Step 2: Implement DTOs and IApiClient**
+- [ ] **Step 2: Implement DTOs and IReadonlyApiClient**
 
-Update `IApiClient.cs`:
+Create `src/Api/IReadonlyApiClient.cs`:
 
 ```csharp
 using Api.Dtos;
 
-namespace Core.Abstractions;
+namespace Api;
 
-public interface IApiClient
+public interface IReadonlyApiClient
 {
     void SetBaseAddress(string baseUrl);
     Task<ConfigResponse> GetConfigAsync(CancellationToken ct = default);
@@ -619,7 +620,7 @@ dotnet test -p:Platform=x64
 Expected: PASS. Commit:
 
 ```powershell
-git add src/Core/Abstractions/IApiClient.cs src/Api tests/Vault.Tests
+git add src/Api tests/Vault.Tests
 git commit -m "feat: implement readonly api client"
 ```
 
@@ -820,7 +821,7 @@ Use an in-memory `PersistedSession?` for tests and design-time.
 
 `AuthService` dependencies:
 
-- `IApiClient`
+- `IReadonlyApiClient`
 - `CryptoService`
 - `VaultSession`
 - `ITokenStore`
@@ -830,7 +831,7 @@ It must preserve pending 2FA context after a `TwoFactorRequired` result: server 
 
 - [ ] **Step 5: Implement SyncService, Bootstrapper, VaultService**
 
-`SyncService` calls `IApiClient.GetSyncAsync` and `VaultDecryptor.Decrypt`.
+`SyncService` calls `IReadonlyApiClient.GetSyncAsync` and `VaultDecryptor.Decrypt`.
 
 `VaultBootstrapper` calls sync, devices, and session setters. It sets state `Syncing` before HTTP and `Unlocked` after success.
 
@@ -1042,4 +1043,3 @@ Then push:
 ```powershell
 git push origin main
 ```
-
