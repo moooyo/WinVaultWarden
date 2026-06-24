@@ -35,6 +35,52 @@ public class CipherEditorXamlTests
         RequireByName(document, "CancelCipherEditorButton");
         RequireByName(document, "CipherEditorPanel");
         RequireByName(document, "CipherEditorTypeBox");
+        RequireByName(document, "CipherEditorFolderBox");
+        RequireByName(document, "AddCustomFieldButton");
+        RequireByName(document, "CustomFieldsEditorItems");
+        RequireByName(document, "AddFolderMenuItem");
+    }
+
+    [Fact]
+    public void VaultPage_FolderMenuItem_IsDisabledUntilFolderCreationExists()
+    {
+        var document = LoadVaultPageXaml();
+        var folderItem = RequireByName(document, "AddFolderMenuItem");
+
+        Assert.Equal("文件夹", folderItem.Attribute("Text")?.Value);
+        Assert.Equal("False", folderItem.Attribute("IsEnabled")?.Value);
+    }
+
+    [Fact]
+    public void VaultPage_FolderComboBox_BindsToFolderFiltersAndDraftFolderId()
+    {
+        var document = LoadVaultPageXaml();
+        var folderBox = RequireByName(document, "CipherEditorFolderBox");
+
+        Assert.Equal("{Binding FolderFilters}", folderBox.Attribute("ItemsSource")?.Value);
+        Assert.Equal("Label", folderBox.Attribute("DisplayMemberPath")?.Value);
+        Assert.Equal("FolderId", folderBox.Attribute("SelectedValuePath")?.Value);
+        Assert.Contains("EditorDraft.FolderId", folderBox.Attribute("SelectedValue")?.Value);
+        Assert.Equal("Stretch", folderBox.Attribute("HorizontalAlignment")?.Value);
+    }
+
+    [Fact]
+    public void VaultPage_CustomFieldEditor_HasAddActionAndNameValueInputs()
+    {
+        var document = LoadVaultPageXaml();
+        var addButton = RequireByName(document, "AddCustomFieldButton");
+        var customFields = RequireByName(document, "CustomFieldsEditorItems");
+
+        Assert.True(addButton.Attribute("Click") is not null || addButton.Attribute("Command") is not null);
+        Assert.Contains("EditorDraft.CustomFields", customFields.Attribute("ItemsSource")?.Value);
+
+        var textBoxes = customFields.Descendants(Xaml + "TextBox").ToArray();
+        Assert.Contains(textBoxes, textBox => textBox.Attribute("Header")?.Value == "名称"
+            && textBox.Attribute("Text")?.Value?.Contains("Name") == true
+            && textBox.Attribute("HorizontalAlignment")?.Value == "Stretch");
+        Assert.Contains(textBoxes, textBox => textBox.Attribute("Header")?.Value == "值"
+            && textBox.Attribute("Text")?.Value?.Contains("Value") == true
+            && textBox.Attribute("HorizontalAlignment")?.Value == "Stretch");
     }
 
     [Fact]

@@ -136,7 +136,9 @@
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutSeparator />
-                            <MenuFlyoutItem Text="文件夹" Click="OnAddFolderClick">
+                            <MenuFlyoutItem x:Name="AddFolderMenuItem"
+                                            Text="文件夹"
+                                            IsEnabled="False">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE8B7;" />
                                 </MenuFlyoutItem.Icon>
@@ -224,8 +226,13 @@
                                 <TextBox Header="项目名称（必填）"
                                          HorizontalAlignment="Stretch"
                                          Text="{Binding EditorDraft.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <ComboBox Header="文件夹"
+                                <ComboBox x:Name="CipherEditorFolderBox"
+                                          Header="文件夹"
                                           HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding FolderFilters}"
+                                          DisplayMemberPath="Label"
+                                          SelectedValuePath="FolderId"
+                                          SelectedValue="{Binding EditorDraft.FolderId, Mode=TwoWay}"
                                           PlaceholderText="-- 选择 --" />
                                 <CheckBox IsChecked="{Binding EditorDraft.Favorite, Mode=TwoWay}">
                                     <TextBlock Text="收藏" />
@@ -375,7 +382,25 @@
                                 <CheckBox IsChecked="{Binding EditorDraft.Reprompt, Mode=TwoWay}">
                                     <TextBlock Text="主密码重新提示" />
                                 </CheckBox>
-                                <Button Content="添加字段" HorizontalAlignment="Left" />
+                                <ItemsControl x:Name="CustomFieldsEditorItems"
+                                              ItemsSource="{Binding EditorDraft.CustomFields}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Spacing="8" Margin="0,4,0,0">
+                                                <TextBox Header="名称"
+                                                         HorizontalAlignment="Stretch"
+                                                         Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                <TextBox Header="值"
+                                                         HorizontalAlignment="Stretch"
+                                                         Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button x:Name="AddCustomFieldButton"
+                                        Content="添加字段"
+                                        HorizontalAlignment="Left"
+                                        Click="OnAddCustomFieldClick" />
                             </StackPanel>
                         </controls:DetailCard.CardContent>
                     </controls:DetailCard>

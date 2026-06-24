@@ -34,13 +34,6 @@ public sealed partial class VaultPage : Page
     {
         if (e.PropertyName == nameof(VaultViewModel.Detail))
             UpdateDetailTemplate();
-
-        if (e.PropertyName == nameof(VaultViewModel.IsEditing)
-            || e.PropertyName == nameof(VaultViewModel.EditorDraft)
-            || e.PropertyName == nameof(VaultViewModel.EditorError))
-        {
-            Bindings.Update();
-        }
     }
 
     private void OnAddLoginClick(object sender, RoutedEventArgs e) => BeginAdd(VaultItemKind.Login);
@@ -53,27 +46,18 @@ public sealed partial class VaultPage : Page
 
     private void OnAddSshClick(object sender, RoutedEventArgs e) => BeginAdd(VaultItemKind.Ssh);
 
-    private void OnAddFolderClick(object sender, RoutedEventArgs e) { }
-
     private void BeginAdd(VaultItemKind kind)
     {
         ViewModel.BeginAdd(kind);
         SyncEditorTypeSelection();
-        Bindings.Update();
     }
 
-    private void OnCancelCipherEditorClick(object sender, RoutedEventArgs e)
-    {
-        ViewModel.CancelEdit();
-        Bindings.Update();
-    }
+    private void OnCancelCipherEditorClick(object sender, RoutedEventArgs e) => ViewModel.CancelEdit();
 
     private void OnSaveCipherEditorClick(object sender, RoutedEventArgs e)
     {
         if (ViewModel.SaveDraft())
             UpdateDetailTemplate();
-
-        Bindings.Update();
     }
 
     private void OnCipherEditorTypeChanged(object sender, SelectionChangedEventArgs e)
@@ -84,8 +68,19 @@ public sealed partial class VaultPage : Page
         if (item.Tag is string tag && Enum.TryParse(tag, out VaultItemKind kind))
         {
             ViewModel.ChangeEditorType(kind);
-            Bindings.Update();
         }
+    }
+
+    private void OnAddCustomFieldClick(object sender, RoutedEventArgs e)
+    {
+        var draft = ViewModel.EditorDraft;
+        if (draft is null)
+            return;
+
+        draft.CustomFields.Add(new CustomFieldEditorDraft
+        {
+            Name = $"字段 {draft.CustomFields.Count + 1}",
+        });
     }
 
     private void SyncEditorTypeSelection()

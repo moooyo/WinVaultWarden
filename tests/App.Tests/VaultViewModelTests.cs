@@ -82,6 +82,18 @@ public class VaultViewModelTests
     }
 
     [Fact]
+    public void FolderFilters_ReturnsOnlyFolderFilters()
+    {
+        var vm = NewVm();
+
+        var folders = vm.FolderFilters.ToArray();
+
+        Assert.NotEmpty(folders);
+        Assert.All(folders, folder => Assert.Equal(FilterKind.Folder, folder.Kind));
+        Assert.Equal(vm.Filters.Where(f => f.Kind == FilterKind.Folder).Select(f => f.FolderId), folders.Select(f => f.FolderId));
+    }
+
+    [Fact]
     public void SelectingItem_PopulatesDetail()
     {
         var vm = NewVm();

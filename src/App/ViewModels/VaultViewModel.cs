@@ -14,6 +14,7 @@ public partial class VaultViewModel : ObservableObject
     public ObservableCollection<CipherListItem> Items { get; } = new();
     public ObservableCollection<FilterNode> Filters { get; } = new();
     public ObservableCollection<CipherListItem> FilteredItems { get; } = new();
+    public IEnumerable<FilterNode> FolderFilters => Filters.Where(f => f.Kind == FilterKind.Folder);
 
     [ObservableProperty] private CipherListItem? _selectedItem;
     [ObservableProperty] private CipherDetail? _detail;
