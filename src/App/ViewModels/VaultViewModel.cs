@@ -156,14 +156,15 @@ public partial class VaultViewModel : ObservableObject
         if (EditorDraft is null)
             return false;
 
-        var errors = EditorDraft.Validate();
+        var draft = EditorDraft;
+        var errors = draft.Validate();
         if (errors.Count > 0)
         {
             EditorError = string.Join(Environment.NewLine, errors);
             return false;
         }
 
-        var detail = CreateDetail(EditorDraft);
+        var detail = CreateDetail(draft);
         _createdDetails[detail.Id] = detail;
 
         var item = new CipherListItem
@@ -174,12 +175,14 @@ public partial class VaultViewModel : ObservableObject
             Subtitle = SubtitleFor(detail),
             Glyph = GlyphFor(detail.Kind),
             Favorite = detail.Favorite,
-            FolderId = detail.FolderName,
+            FolderId = draft.FolderId,
             IsDeleted = false,
         };
 
         Items.Add(item);
         EnsureFilterCanShow(item);
+        if (!SearchIncludesItem(item))
+            SearchText = string.Empty;
         ApplyFilter();
         SelectedItem = FilteredItems.FirstOrDefault(i => i.Id == item.Id) ?? item;
 
@@ -194,6 +197,7 @@ public partial class VaultViewModel : ObservableObject
     {
         var id = $"local-{_nextLocalCipherId++}";
         var now = DateTimeOffset.Now;
+        var folderName = FolderNameFor(draft.FolderId);
         var customFields = draft.CustomFields
             .Where(f => !string.IsNullOrWhiteSpace(f.Name))
             .Select(f => new CustomField(f.Name, f.Type == CipherEditorFieldType.Boolean ? f.BooleanValue.ToString() : f.Value))
@@ -205,7 +209,7 @@ public partial class VaultViewModel : ObservableObject
             {
                 Id = id,
                 Name = draft.Name.Trim(),
-                FolderName = draft.FolderId,
+                FolderName = folderName,
                 Username = EmptyToNull(draft.Login.Username),
                 Password = EmptyToNull(draft.Login.Password),
                 TotpSecret = EmptyToNull(draft.Login.Totp),
@@ -221,7 +225,7 @@ public partial class VaultViewModel : ObservableObject
             {
                 Id = id,
                 Name = draft.Name.Trim(),
-                FolderName = draft.FolderId,
+                FolderName = folderName,
                 Cardholder = EmptyToNull(draft.Card.CardholderName),
                 Number = EmptyToNull(draft.Card.Number),
                 Expiry = FormatExpiry(draft.Card.ExpMonth, draft.Card.ExpYear),
@@ -238,7 +242,7 @@ public partial class VaultViewModel : ObservableObject
             {
                 Id = id,
                 Name = draft.Name.Trim(),
-                FolderName = draft.FolderId,
+                FolderName = folderName,
                 FullName = EmptyToNull(JoinNonEmpty(draft.Identity.FirstName, draft.Identity.MiddleName, draft.Identity.LastName)),
                 Email = EmptyToNull(draft.Identity.Email),
                 Phone = EmptyToNull(draft.Identity.Phone),
@@ -255,7 +259,7 @@ public partial class VaultViewModel : ObservableObject
             {
                 Id = id,
                 Name = draft.Name.Trim(),
-                FolderName = draft.FolderId,
+                FolderName = folderName,
                 Content = EmptyToNull(draft.Notes),
                 Notes = EmptyToNull(draft.Notes),
                 CustomFields = customFields,
@@ -268,7 +272,7 @@ public partial class VaultViewModel : ObservableObject
             {
                 Id = id,
                 Name = draft.Name.Trim(),
-                FolderName = draft.FolderId,
+                FolderName = folderName,
                 PrivateKey = EmptyToNull(draft.SshKey.PrivateKey),
                 PublicKey = EmptyToNull(draft.SshKey.PublicKey),
                 Fingerprint = EmptyToNull(draft.SshKey.KeyFingerprint),
@@ -282,6 +286,11 @@ public partial class VaultViewModel : ObservableObject
             _ => throw new InvalidOperationException($"Unsupported cipher type: {draft.Type}"),
         };
     }
+
+    private string? FolderNameFor(string? folderId) =>
+        string.IsNullOrWhiteSpace(folderId)
+            ? null
+            : Filters.FirstOrDefault(f => f.Kind == FilterKind.Folder && f.FolderId == folderId)?.Label;
 
     private void EnsureFilterCanShow(CipherListItem item)
     {
@@ -299,6 +308,11 @@ public partial class VaultViewModel : ObservableObject
         FilterKind.Folder => item.FolderId == filter.FolderId && !item.IsDeleted,
         _ => !item.IsDeleted,
     };
+
+    private bool SearchIncludesItem(CipherListItem item) =>
+        string.IsNullOrWhiteSpace(SearchText)
+        || item.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase)
+        || item.Subtitle.Contains(SearchText, StringComparison.OrdinalIgnoreCase);
 
     private static string? EmptyToNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

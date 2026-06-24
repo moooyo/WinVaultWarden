@@ -350,6 +350,38 @@ public class VaultViewModelTests
         Assert.Contains(vm.FilteredItems, item => item.Name == "Filter Card");
         Assert.Equal("Filter Card", vm.SelectedItem!.Name);
     }
+
+    [Fact]
+    public void SaveDraft_SearchTextExcludesNewItem_ClearsSearchSoNewItemIsVisible()
+    {
+        var vm = NewVm();
+        vm.SearchText = "百度";
+        vm.BeginAdd(VaultItemKind.Card);
+        vm.EditorDraft!.Name = "Search Hidden Card";
+
+        var saved = vm.SaveDraft();
+
+        Assert.True(saved);
+        Assert.Equal("", vm.SearchText);
+        Assert.Equal("Search Hidden Card", vm.SelectedItem!.Name);
+        Assert.Contains(vm.FilteredItems, item => item.Id == vm.SelectedItem.Id);
+    }
+
+    [Fact]
+    public void SaveDraft_FolderId_UsesListFolderIdAndDetailFolderName()
+    {
+        var vm = NewVm();
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.EditorDraft!.Name = "Folder Login";
+        vm.EditorDraft.FolderId = "f1";
+
+        var saved = vm.SaveDraft();
+
+        Assert.True(saved);
+        Assert.Equal("f1", vm.SelectedItem!.FolderId);
+        var detail = Assert.IsType<LoginDetail>(vm.Detail);
+        Assert.Equal("文件夹1", detail.FolderName);
+    }
 }
 
 public class SendViewModelTests
