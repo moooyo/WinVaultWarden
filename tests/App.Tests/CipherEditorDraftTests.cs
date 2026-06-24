@@ -43,6 +43,27 @@ public class CipherEditorDraftTests
         Assert.True(draft.IsLogin);
     }
 
+    [Fact]
+    public void ChangingType_RaisesTypeFlagPropertyChangedNotifications()
+    {
+        var draft = CipherEditorDraft.CreateDefault(VaultItemKind.Login);
+        var changedProperties = new HashSet<string>();
+
+        draft.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName is not null)
+                changedProperties.Add(args.PropertyName);
+        };
+
+        draft.Type = VaultItemKind.Card;
+
+        Assert.Contains(nameof(CipherEditorDraft.IsLogin), changedProperties);
+        Assert.Contains(nameof(CipherEditorDraft.IsCard), changedProperties);
+        Assert.Contains(nameof(CipherEditorDraft.IsIdentity), changedProperties);
+        Assert.Contains(nameof(CipherEditorDraft.IsSecureNote), changedProperties);
+        Assert.Contains(nameof(CipherEditorDraft.IsSshKey), changedProperties);
+    }
+
     [Theory]
     [InlineData(VaultItemKind.Login)]
     [InlineData(VaultItemKind.Card)]
@@ -71,6 +92,21 @@ public class CipherEditorDraftTests
         Assert.Contains("SSH 公钥为必填项。", errors);
         Assert.Contains("SSH 指纹为必填项。", errors);
         Assert.False(draft.HasRequiredData());
+    }
+
+    [Fact]
+    public void Validate_SshAllowsAllKeyFieldsWhenNameExists()
+    {
+        var draft = CipherEditorDraft.CreateDefault(VaultItemKind.Ssh);
+        draft.Name = "prod ssh";
+        draft.SshKey.PrivateKey = "private";
+        draft.SshKey.PublicKey = "ssh-ed25519 AAAA";
+        draft.SshKey.KeyFingerprint = "SHA256:abc";
+
+        var errors = draft.Validate();
+
+        Assert.Empty(errors);
+        Assert.True(draft.HasRequiredData());
     }
 
     [Fact]

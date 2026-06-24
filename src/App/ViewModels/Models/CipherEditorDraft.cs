@@ -12,12 +12,23 @@ public enum CipherEditorFieldType
 
 public sealed partial class CipherEditorDraft : ObservableObject
 {
-    [ObservableProperty] private VaultItemKind _type;
-    [ObservableProperty] private string _name = string.Empty;
-    [ObservableProperty] private string? _folderId;
-    [ObservableProperty] private bool _favorite;
-    [ObservableProperty] private bool _reprompt;
-    [ObservableProperty] private string _notes = string.Empty;
+    [ObservableProperty]
+    public partial VaultItemKind Type { get; set; }
+
+    [ObservableProperty]
+    public partial string Name { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string? FolderId { get; set; }
+
+    [ObservableProperty]
+    public partial bool Favorite { get; set; }
+
+    [ObservableProperty]
+    public partial bool Reprompt { get; set; }
+
+    [ObservableProperty]
+    public partial string Notes { get; set; } = string.Empty;
 
     public LoginEditorDraft Login { get; } = new();
     public CardEditorDraft Card { get; } = new();
@@ -68,9 +79,14 @@ public sealed partial class CipherEditorDraft : ObservableObject
 
 public sealed partial class LoginEditorDraft : ObservableObject
 {
-    [ObservableProperty] private string _username = string.Empty;
-    [ObservableProperty] private string _password = string.Empty;
-    [ObservableProperty] private string _totp = string.Empty;
+    [ObservableProperty]
+    public partial string Username { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Password { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Totp { get; set; } = string.Empty;
 
     public ObservableCollection<LoginUriEditorDraft> Uris { get; } = new()
     {
@@ -80,58 +96,120 @@ public sealed partial class LoginEditorDraft : ObservableObject
 
 public sealed partial class LoginUriEditorDraft : ObservableObject
 {
-    [ObservableProperty] private string _uri = string.Empty;
-    [ObservableProperty] private int? _match;
+    [ObservableProperty]
+    public partial string Uri { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial int? Match { get; set; }
 }
 
 public sealed partial class CardEditorDraft : ObservableObject
 {
-    [ObservableProperty] private string _cardholderName = string.Empty;
-    [ObservableProperty] private string _number = string.Empty;
-    [ObservableProperty] private string _expMonth = string.Empty;
-    [ObservableProperty] private string _expYear = string.Empty;
-    [ObservableProperty] private string _code = string.Empty;
-    [ObservableProperty] private string _brand = string.Empty;
+    [ObservableProperty]
+    public partial string CardholderName { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Number { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string ExpMonth { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string ExpYear { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Code { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Brand { get; set; } = string.Empty;
 }
 
 public sealed partial class IdentityEditorDraft : ObservableObject
 {
-    [ObservableProperty] private string _title = string.Empty;
-    [ObservableProperty] private string _firstName = string.Empty;
-    [ObservableProperty] private string _middleName = string.Empty;
-    [ObservableProperty] private string _lastName = string.Empty;
-    [ObservableProperty] private string _username = string.Empty;
-    [ObservableProperty] private string _company = string.Empty;
-    [ObservableProperty] private string _ssn = string.Empty;
-    [ObservableProperty] private string _passportNumber = string.Empty;
-    [ObservableProperty] private string _licenseNumber = string.Empty;
-    [ObservableProperty] private string _email = string.Empty;
-    [ObservableProperty] private string _phone = string.Empty;
-    [ObservableProperty] private string _address1 = string.Empty;
-    [ObservableProperty] private string _address2 = string.Empty;
-    [ObservableProperty] private string _address3 = string.Empty;
-    [ObservableProperty] private string _city = string.Empty;
-    [ObservableProperty] private string _state = string.Empty;
-    [ObservableProperty] private string _postalCode = string.Empty;
-    [ObservableProperty] private string _country = string.Empty;
+    [ObservableProperty]
+    public partial string Title { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string FirstName { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string MiddleName { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string LastName { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Username { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Company { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Ssn { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string PassportNumber { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string LicenseNumber { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Email { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Phone { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Address1 { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Address2 { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Address3 { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string City { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string State { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string PostalCode { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Country { get; set; } = string.Empty;
 }
 
 public sealed partial class SecureNoteEditorDraft : ObservableObject
 {
-    [ObservableProperty] private int _type;
+    [ObservableProperty]
+    public partial int Type { get; set; }
 }
 
 public sealed partial class SshKeyEditorDraft : ObservableObject
 {
-    [ObservableProperty] private string _privateKey = string.Empty;
-    [ObservableProperty] private string _publicKey = string.Empty;
-    [ObservableProperty] private string _keyFingerprint = string.Empty;
+    [ObservableProperty]
+    public partial string PrivateKey { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string PublicKey { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string KeyFingerprint { get; set; } = string.Empty;
 }
 
 public sealed partial class CustomFieldEditorDraft : ObservableObject
 {
-    [ObservableProperty] private string _name = string.Empty;
-    [ObservableProperty] private CipherEditorFieldType _type = CipherEditorFieldType.Text;
-    [ObservableProperty] private string _value = string.Empty;
-    [ObservableProperty] private bool _booleanValue;
+    [ObservableProperty]
+    public partial string Name { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial CipherEditorFieldType Type { get; set; } = CipherEditorFieldType.Text;
+
+    [ObservableProperty]
+    public partial string Value { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool BooleanValue { get; set; }
 }
