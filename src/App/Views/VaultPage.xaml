@@ -9,6 +9,7 @@
 
     <Page.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <conv:EmptyStringToCollapsedConverter x:Key="EmptyToCollapsed" />
         <DataTemplate x:Key="LoginTemplate" x:DataType="models:LoginDetail">
             <StackPanel Spacing="12">
@@ -106,7 +107,43 @@
             </Grid>
             <CommandBar Grid.Row="1" DefaultLabelPosition="Right" HorizontalAlignment="Left"
                         Background="Transparent">
-                <AppBarButton Icon="Add" Label="新增" Command="{x:Bind ViewModel.AddCommand}" />
+                <AppBarButton x:Name="AddCipherButton" Icon="Add" Label="新增">
+                    <AppBarButton.Flyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem Text="登录" Click="OnAddLoginClick">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE7B7;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="支付卡" Click="OnAddCardClick">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8C7;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="身份" Click="OnAddIdentityClick">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE77B;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="笔记" Click="OnAddNoteClick">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE70B;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="SSH 密钥" Click="OnAddSshClick">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE72E;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Text="文件夹" Click="OnAddFolderClick">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8B7;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
+                    </AppBarButton.Flyout>
+                </AppBarButton>
                 <AppBarButton Icon="SelectAll" Label="全选" />
                 <AppBarButton Icon="MoveToFolder" Label="移动" />
             </CommandBar>
@@ -137,6 +174,215 @@
         <!-- 详情 -->
         <ScrollViewer Grid.Column="1" Padding="16">
             <StackPanel Spacing="12">
+                <StackPanel x:Name="CipherEditorPanel"
+                            Spacing="12"
+                            DataContext="{x:Bind ViewModel}"
+                            Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="{Binding EditorTitle, Mode=OneWay}"
+                                       Style="{ThemeResource SubtitleTextBlockStyle}" />
+                            <ComboBox x:Name="CipherEditorTypeBox"
+                                      Header="类型"
+                                      HorizontalAlignment="Stretch"
+                                      SelectionChanged="OnCipherEditorTypeChanged">
+                                <ComboBoxItem Content="登录" Tag="Login" />
+                                <ComboBoxItem Content="支付卡" Tag="Card" />
+                                <ComboBoxItem Content="身份" Tag="Identity" />
+                                <ComboBoxItem Content="笔记" Tag="Note" />
+                                <ComboBoxItem Content="SSH 密钥" Tag="Ssh" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <Button x:Name="CancelCipherEditorButton"
+                                Grid.Column="1"
+                                Content="取消"
+                                VerticalAlignment="Bottom"
+                                Click="OnCancelCipherEditorClick" />
+                        <Button x:Name="SaveCipherEditorButton"
+                                Grid.Column="2"
+                                Content="保存"
+                                VerticalAlignment="Bottom"
+                                Style="{StaticResource AccentButtonStyle}"
+                                Click="OnSaveCipherEditorClick" />
+                    </Grid>
+
+                    <TextBlock Text="{Binding EditorError, Mode=OneWay}"
+                               Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding EditorError, Mode=OneWay, Converter={StaticResource EmptyToCollapsed}}" />
+
+                    <controls:DetailCard Title="项目详细信息">
+                        <controls:DetailCard.CardContent>
+                            <StackPanel Spacing="10">
+                                <TextBox Header="项目名称（必填）"
+                                         HorizontalAlignment="Stretch"
+                                         Text="{Binding EditorDraft.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <ComboBox Header="文件夹"
+                                          HorizontalAlignment="Stretch"
+                                          PlaceholderText="-- 选择 --" />
+                                <CheckBox IsChecked="{Binding EditorDraft.Favorite, Mode=TwoWay}">
+                                    <TextBlock Text="收藏" />
+                                </CheckBox>
+                            </StackPanel>
+                        </controls:DetailCard.CardContent>
+                    </controls:DetailCard>
+
+                    <controls:DetailCard Title="登录凭据"
+                                         Visibility="{Binding EditorDraft.IsLogin, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <controls:DetailCard.CardContent>
+                            <StackPanel Spacing="10">
+                                <TextBox Header="用户名"
+                                         HorizontalAlignment="Stretch"
+                                         Text="{Binding EditorDraft.Login.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <PasswordBox Header="密码"
+                                             HorizontalAlignment="Stretch"
+                                             Password="{Binding EditorDraft.Login.Password, Mode=TwoWay}" />
+                                <TextBox Header="验证器密钥"
+                                         HorizontalAlignment="Stretch"
+                                         Text="{Binding EditorDraft.Login.Totp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Header="网站（URI）"
+                                         HorizontalAlignment="Stretch"
+                                         Text="{Binding EditorDraft.Login.Uris[0].Uri, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </controls:DetailCard.CardContent>
+                    </controls:DetailCard>
+
+                    <controls:DetailCard Title="支付卡信息"
+                                         Visibility="{Binding EditorDraft.IsCard, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <controls:DetailCard.CardContent>
+                            <StackPanel Spacing="10">
+                                <TextBox Header="持卡人"
+                                         HorizontalAlignment="Stretch"
+                                         Text="{Binding EditorDraft.Card.CardholderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <PasswordBox Header="卡号"
+                                             HorizontalAlignment="Stretch"
+                                             Password="{Binding EditorDraft.Card.Number, Mode=TwoWay}" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Header="到期月份"
+                                             HorizontalAlignment="Stretch"
+                                             Text="{Binding EditorDraft.Card.ExpMonth, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox Grid.Column="1"
+                                             Header="到期年份"
+                                             HorizontalAlignment="Stretch"
+                                             Text="{Binding EditorDraft.Card.ExpYear, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </Grid>
+                                <PasswordBox Header="安全码"
+                                             HorizontalAlignment="Stretch"
+                                             Password="{Binding EditorDraft.Card.Code, Mode=TwoWay}" />
+                                <Expander Header="更多支付卡字段">
+                                    <TextBox Header="品牌"
+                                             HorizontalAlignment="Stretch"
+                                             Text="{Binding EditorDraft.Card.Brand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </Expander>
+                            </StackPanel>
+                        </controls:DetailCard.CardContent>
+                    </controls:DetailCard>
+
+                    <controls:DetailCard Title="身份信息"
+                                         Visibility="{Binding EditorDraft.IsIdentity, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <controls:DetailCard.CardContent>
+                            <StackPanel Spacing="10">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Header="名"
+                                             HorizontalAlignment="Stretch"
+                                             Text="{Binding EditorDraft.Identity.FirstName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox Grid.Column="1"
+                                             Header="姓"
+                                             HorizontalAlignment="Stretch"
+                                             Text="{Binding EditorDraft.Identity.LastName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </Grid>
+                                <TextBox Header="电子邮箱"
+                                         HorizontalAlignment="Stretch"
+                                         Text="{Binding EditorDraft.Identity.Email, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Header="电话"
+                                         HorizontalAlignment="Stretch"
+                                         Text="{Binding EditorDraft.Identity.Phone, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Header="地址"
+                                         HorizontalAlignment="Stretch"
+                                         Text="{Binding EditorDraft.Identity.Address1, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <Expander Header="更多身份字段">
+                                    <StackPanel Spacing="10">
+                                        <TextBox Header="用户名"
+                                                 HorizontalAlignment="Stretch"
+                                                 Text="{Binding EditorDraft.Identity.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox Header="公司"
+                                                 HorizontalAlignment="Stretch"
+                                                 Text="{Binding EditorDraft.Identity.Company, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <PasswordBox Header="社会安全号 / 身份号"
+                                                     HorizontalAlignment="Stretch"
+                                                     Password="{Binding EditorDraft.Identity.Ssn, Mode=TwoWay}" />
+                                        <TextBox Header="护照号"
+                                                 HorizontalAlignment="Stretch"
+                                                 Text="{Binding EditorDraft.Identity.PassportNumber, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                </Expander>
+                            </StackPanel>
+                        </controls:DetailCard.CardContent>
+                    </controls:DetailCard>
+
+                    <controls:DetailCard Title="SSH 密钥"
+                                         Visibility="{Binding EditorDraft.IsSshKey, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <controls:DetailCard.CardContent>
+                            <StackPanel Spacing="10">
+                                <TextBox Header="公钥"
+                                         HorizontalAlignment="Stretch"
+                                         Text="{Binding EditorDraft.SshKey.PublicKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AcceptsReturn="True"
+                                         MinHeight="72"
+                                         TextWrapping="Wrap" />
+                                <PasswordBox Header="私钥"
+                                             HorizontalAlignment="Stretch"
+                                             Password="{Binding EditorDraft.SshKey.PrivateKey, Mode=TwoWay}" />
+                                <TextBox Header="指纹"
+                                         HorizontalAlignment="Stretch"
+                                         Text="{Binding EditorDraft.SshKey.KeyFingerprint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </controls:DetailCard.CardContent>
+                    </controls:DetailCard>
+
+                    <controls:DetailCard Title="安全笔记"
+                                         Visibility="{Binding EditorDraft.IsSecureNote, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <controls:DetailCard.CardContent>
+                            <TextBlock Text="安全笔记内容请填写在下方备注中。"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </controls:DetailCard.CardContent>
+                    </controls:DetailCard>
+
+                    <controls:DetailCard Title="附加选项">
+                        <controls:DetailCard.CardContent>
+                            <StackPanel Spacing="10">
+                                <TextBox Header="备注"
+                                         HorizontalAlignment="Stretch"
+                                         Text="{Binding EditorDraft.Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AcceptsReturn="True"
+                                         MinHeight="96"
+                                         TextWrapping="Wrap" />
+                                <CheckBox IsChecked="{Binding EditorDraft.Reprompt, Mode=TwoWay}">
+                                    <TextBlock Text="主密码重新提示" />
+                                </CheckBox>
+                                <Button Content="添加字段" HorizontalAlignment="Left" />
+                            </StackPanel>
+                        </controls:DetailCard.CardContent>
+                    </controls:DetailCard>
+                </StackPanel>
+
+                <StackPanel Spacing="12"
+                            Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}">
                 <StackPanel Spacing="2"
                             Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <TextBlock Text="{x:Bind ViewModel.Detail.Name, Mode=OneWay}"
@@ -193,6 +439,7 @@
                            Visibility="{x:Bind ViewModel.NoSelection, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            HorizontalAlignment="Center" Margin="0,48,0,0" />
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Grid>
