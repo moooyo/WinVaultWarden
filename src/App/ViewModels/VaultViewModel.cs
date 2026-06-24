@@ -9,7 +9,9 @@ namespace App.ViewModels;
 public partial class VaultViewModel : ObservableObject
 {
     private readonly IVaultUiService _service;
+    private readonly Dictionary<string, CipherDetail> _createdDetails = new();
     private readonly IClipboardService? _clipboard;
+    private int _nextLocalCipherId = 1;
 
     public ObservableCollection<CipherListItem> Items { get; } = new();
     public ObservableCollection<FilterNode> Filters { get; } = new();
@@ -53,10 +55,15 @@ public partial class VaultViewModel : ObservableObject
 
     partial void OnSelectedItemChanged(CipherListItem? value)
     {
-        Detail = value is null ? null : _service.GetDetail(value.Id);
+        Detail = value is null ? null : GetDetail(value.Id);
         OnPropertyChanged(nameof(HasSelection));
         OnPropertyChanged(nameof(NoSelection));
     }
+
+    private CipherDetail GetDetail(string id) =>
+        _createdDetails.TryGetValue(id, out var created)
+            ? created
+            : _service.GetDetail(id);
 
     partial void OnSearchTextChanged(string value) => ApplyFilter();
 
@@ -143,6 +150,194 @@ public partial class VaultViewModel : ObservableObject
         OnPropertyChanged(nameof(EditorTitle));
         OnPropertyChanged(nameof(EditorDraft));
     }
+
+    public bool SaveDraft()
+    {
+        if (EditorDraft is null)
+            return false;
+
+        var errors = EditorDraft.Validate();
+        if (errors.Count > 0)
+        {
+            EditorError = string.Join(Environment.NewLine, errors);
+            return false;
+        }
+
+        var detail = CreateDetail(EditorDraft);
+        _createdDetails[detail.Id] = detail;
+
+        var item = new CipherListItem
+        {
+            Id = detail.Id,
+            Name = detail.Name,
+            Kind = detail.Kind,
+            Subtitle = SubtitleFor(detail),
+            Glyph = GlyphFor(detail.Kind),
+            Favorite = detail.Favorite,
+            FolderId = detail.FolderName,
+            IsDeleted = false,
+        };
+
+        Items.Add(item);
+        EnsureFilterCanShow(item);
+        ApplyFilter();
+        SelectedItem = FilteredItems.FirstOrDefault(i => i.Id == item.Id) ?? item;
+
+        IsEditing = false;
+        EditorDraft = null;
+        EditorError = string.Empty;
+        OnPropertyChanged(nameof(EditorTitle));
+        return true;
+    }
+
+    private CipherDetail CreateDetail(CipherEditorDraft draft)
+    {
+        var id = $"local-{_nextLocalCipherId++}";
+        var now = DateTimeOffset.Now;
+        var customFields = draft.CustomFields
+            .Where(f => !string.IsNullOrWhiteSpace(f.Name))
+            .Select(f => new CustomField(f.Name, f.Type == CipherEditorFieldType.Boolean ? f.BooleanValue.ToString() : f.Value))
+            .ToArray();
+
+        return draft.Type switch
+        {
+            VaultItemKind.Login => new LoginDetail
+            {
+                Id = id,
+                Name = draft.Name.Trim(),
+                FolderName = draft.FolderId,
+                Username = EmptyToNull(draft.Login.Username),
+                Password = EmptyToNull(draft.Login.Password),
+                TotpSecret = EmptyToNull(draft.Login.Totp),
+                Uri = EmptyToNull(draft.Login.Uris.FirstOrDefault()?.Uri),
+                Notes = EmptyToNull(draft.Notes),
+                CustomFields = customFields,
+                Created = now,
+                Edited = now,
+                Favorite = draft.Favorite,
+                Reprompt = draft.Reprompt,
+            },
+            VaultItemKind.Card => new CardDetail
+            {
+                Id = id,
+                Name = draft.Name.Trim(),
+                FolderName = draft.FolderId,
+                Cardholder = EmptyToNull(draft.Card.CardholderName),
+                Number = EmptyToNull(draft.Card.Number),
+                Expiry = FormatExpiry(draft.Card.ExpMonth, draft.Card.ExpYear),
+                Brand = EmptyToNull(draft.Card.Brand),
+                Cvv = EmptyToNull(draft.Card.Code),
+                Notes = EmptyToNull(draft.Notes),
+                CustomFields = customFields,
+                Created = now,
+                Edited = now,
+                Favorite = draft.Favorite,
+                Reprompt = draft.Reprompt,
+            },
+            VaultItemKind.Identity => new IdentityDetail
+            {
+                Id = id,
+                Name = draft.Name.Trim(),
+                FolderName = draft.FolderId,
+                FullName = EmptyToNull(JoinNonEmpty(draft.Identity.FirstName, draft.Identity.MiddleName, draft.Identity.LastName)),
+                Email = EmptyToNull(draft.Identity.Email),
+                Phone = EmptyToNull(draft.Identity.Phone),
+                IdNumber = EmptyToNull(JoinNonEmpty(draft.Identity.Ssn, draft.Identity.PassportNumber, draft.Identity.LicenseNumber)),
+                Address = EmptyToNull(JoinNonEmpty(draft.Identity.Address1, draft.Identity.Address2, draft.Identity.Address3, draft.Identity.City, draft.Identity.State, draft.Identity.PostalCode, draft.Identity.Country)),
+                Notes = EmptyToNull(draft.Notes),
+                CustomFields = customFields,
+                Created = now,
+                Edited = now,
+                Favorite = draft.Favorite,
+                Reprompt = draft.Reprompt,
+            },
+            VaultItemKind.Note => new NoteDetail
+            {
+                Id = id,
+                Name = draft.Name.Trim(),
+                FolderName = draft.FolderId,
+                Content = EmptyToNull(draft.Notes),
+                Notes = EmptyToNull(draft.Notes),
+                CustomFields = customFields,
+                Created = now,
+                Edited = now,
+                Favorite = draft.Favorite,
+                Reprompt = draft.Reprompt,
+            },
+            VaultItemKind.Ssh => new SshDetail
+            {
+                Id = id,
+                Name = draft.Name.Trim(),
+                FolderName = draft.FolderId,
+                PrivateKey = EmptyToNull(draft.SshKey.PrivateKey),
+                PublicKey = EmptyToNull(draft.SshKey.PublicKey),
+                Fingerprint = EmptyToNull(draft.SshKey.KeyFingerprint),
+                Notes = EmptyToNull(draft.Notes),
+                CustomFields = customFields,
+                Created = now,
+                Edited = now,
+                Favorite = draft.Favorite,
+                Reprompt = draft.Reprompt,
+            },
+            _ => throw new InvalidOperationException($"Unsupported cipher type: {draft.Type}"),
+        };
+    }
+
+    private void EnsureFilterCanShow(CipherListItem item)
+    {
+        if (FilterIncludesItem(SelectedFilter, item))
+            return;
+
+        SelectedFilter = Filters.FirstOrDefault(f => f.Kind == FilterKind.AllItems) ?? Filters.FirstOrDefault();
+    }
+
+    private static bool FilterIncludesItem(FilterNode? filter, CipherListItem item) => filter?.Kind switch
+    {
+        FilterKind.Favorites => item.Favorite && !item.IsDeleted,
+        FilterKind.Trash => item.IsDeleted,
+        FilterKind.Type => item.Kind == filter.TypeFilter && !item.IsDeleted,
+        FilterKind.Folder => item.FolderId == filter.FolderId && !item.IsDeleted,
+        _ => !item.IsDeleted,
+    };
+
+    private static string? EmptyToNull(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string? FormatExpiry(string month, string year)
+    {
+        var cleanMonth = EmptyToNull(month);
+        var cleanYear = EmptyToNull(year);
+        return (cleanMonth, cleanYear) switch
+        {
+            (null, null) => null,
+            (not null, null) => cleanMonth,
+            (null, not null) => cleanYear,
+            _ => $"{cleanMonth}/{cleanYear}",
+        };
+    }
+
+    private static string JoinNonEmpty(params string[] values) =>
+        string.Join(" ", values.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()));
+
+    private static string SubtitleFor(CipherDetail detail) => detail switch
+    {
+        LoginDetail login => login.Username ?? "",
+        CardDetail card => card.Brand ?? "支付卡",
+        IdentityDetail identity => identity.FullName ?? "身份",
+        NoteDetail => "笔记",
+        SshDetail => "SSH 密钥",
+        _ => "",
+    };
+
+    private static string GlyphFor(VaultItemKind kind) => kind switch
+    {
+        VaultItemKind.Login => "",
+        VaultItemKind.Card => "",
+        VaultItemKind.Identity => "",
+        VaultItemKind.Note => "",
+        VaultItemKind.Ssh => "",
+        _ => "",
+    };
 
     [RelayCommand]
     private void Sync() { /* mock:占位,真实同步后续接入 */ }

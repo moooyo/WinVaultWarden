@@ -14,6 +14,8 @@ public abstract class CipherDetail
     public DateTimeOffset Created { get; init; }
     public DateTimeOffset Edited { get; init; }
     public bool IsDeleted { get; init; }
+    public bool Favorite { get; init; }
+    public bool Reprompt { get; init; }
 
     public string HistoryText =>
         $"最后编辑:{Edited.LocalDateTime:yyyy/M/d HH:mm:ss}　创建于:{Created.LocalDateTime:yyyy/M/d HH:mm:ss}";

@@ -261,6 +261,95 @@ public class VaultViewModelTests
         Assert.Equal("shared notes", vm.EditorDraft.Notes);
         Assert.Equal("新增 SSH 密钥", vm.EditorTitle);
     }
+
+    [Fact]
+    public void SaveDraft_MissingName_ReturnsFalseAndKeepsEditing()
+    {
+        var vm = NewVm();
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.EditorDraft!.Name = "";
+
+        var saved = vm.SaveDraft();
+
+        Assert.False(saved);
+        Assert.True(vm.IsEditing);
+        Assert.Equal("项目名称为必填项。", vm.EditorError);
+    }
+
+    [Fact]
+    public void SaveDraft_Login_AddsItemSelectsItAndShowsDetail()
+    {
+        var vm = NewVm();
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.EditorDraft!.Name = "GitHub";
+        vm.EditorDraft.Login.Username = "octo";
+        vm.EditorDraft.Login.Password = "secret";
+        vm.EditorDraft.Login.Uris[0].Uri = "https://github.com";
+
+        var saved = vm.SaveDraft();
+
+        Assert.True(saved);
+        Assert.False(vm.IsEditing);
+        Assert.NotNull(vm.SelectedItem);
+        Assert.Equal("GitHub", vm.SelectedItem!.Name);
+        Assert.Contains(vm.Items, item => item.Name == "GitHub" && item.Kind == VaultItemKind.Login);
+        var detail = Assert.IsType<LoginDetail>(vm.Detail);
+        Assert.Equal("octo", detail.Username);
+        Assert.Equal("https://github.com", detail.Uri);
+    }
+
+    [Fact]
+    public void SaveDraft_Ssh_RequiresKeyFields()
+    {
+        var vm = NewVm();
+        vm.BeginAdd(VaultItemKind.Ssh);
+        vm.EditorDraft!.Name = "prod";
+        vm.EditorDraft.SshKey.PrivateKey = "private";
+
+        var saved = vm.SaveDraft();
+
+        Assert.False(saved);
+        Assert.True(vm.IsEditing);
+        Assert.Contains("SSH 公钥为必填项。", vm.EditorError);
+    }
+
+    [Fact]
+    public void SaveDraft_Card_CreatesCardDetail()
+    {
+        var vm = NewVm();
+        vm.BeginAdd(VaultItemKind.Card);
+        vm.EditorDraft!.Name = "Travel Card";
+        vm.EditorDraft.Card.CardholderName = "Ming";
+        vm.EditorDraft.Card.Number = "4111111111111111";
+        vm.EditorDraft.Card.ExpMonth = "08";
+        vm.EditorDraft.Card.ExpYear = "2030";
+        vm.EditorDraft.Card.Code = "123";
+        vm.EditorDraft.Card.Brand = "Visa";
+
+        var saved = vm.SaveDraft();
+
+        Assert.True(saved);
+        var detail = Assert.IsType<CardDetail>(vm.Detail);
+        Assert.Equal("Ming", detail.Cardholder);
+        Assert.Equal("08/2030", detail.Expiry);
+        Assert.Equal("Visa", detail.Brand);
+    }
+
+    [Fact]
+    public void SaveDraft_FilterExcludesNewType_SwitchesToAllItemsSoNewItemIsVisible()
+    {
+        var vm = NewVm();
+        vm.SelectedFilter = vm.Filters.First(f => f.Kind == FilterKind.Type && f.TypeFilter == VaultItemKind.Login);
+        vm.BeginAdd(VaultItemKind.Card);
+        vm.EditorDraft!.Name = "Filter Card";
+
+        var saved = vm.SaveDraft();
+
+        Assert.True(saved);
+        Assert.Equal(FilterKind.AllItems, vm.SelectedFilter!.Kind);
+        Assert.Contains(vm.FilteredItems, item => item.Name == "Filter Card");
+        Assert.Equal("Filter Card", vm.SelectedItem!.Name);
+    }
 }
 
 public class SendViewModelTests
