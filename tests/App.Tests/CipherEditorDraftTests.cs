@@ -43,10 +43,15 @@ public class CipherEditorDraftTests
         Assert.True(draft.IsLogin);
     }
 
-    [Fact]
-    public void Validate_RequiresNameForEveryType()
+    [Theory]
+    [InlineData(VaultItemKind.Login)]
+    [InlineData(VaultItemKind.Card)]
+    [InlineData(VaultItemKind.Identity)]
+    [InlineData(VaultItemKind.Note)]
+    [InlineData(VaultItemKind.Ssh)]
+    public void Validate_RequiresNameForEveryType(VaultItemKind type)
     {
-        var draft = CipherEditorDraft.CreateDefault(VaultItemKind.Card);
+        var draft = CipherEditorDraft.CreateDefault(type);
 
         var errors = draft.Validate();
 
@@ -59,12 +64,10 @@ public class CipherEditorDraftTests
     {
         var draft = CipherEditorDraft.CreateDefault(VaultItemKind.Ssh);
         draft.Name = "prod ssh";
-        draft.SshKey.PrivateKey = "private";
-        draft.SshKey.PublicKey = "";
-        draft.SshKey.KeyFingerprint = "";
 
         var errors = draft.Validate();
 
+        Assert.Contains("SSH 私钥为必填项。", errors);
         Assert.Contains("SSH 公钥为必填项。", errors);
         Assert.Contains("SSH 指纹为必填项。", errors);
         Assert.False(draft.HasRequiredData());
@@ -86,12 +89,13 @@ public class CipherEditorDraftTests
     public void CustomFields_DefaultToTextAndCanStoreHiddenValues()
     {
         var draft = CipherEditorDraft.CreateDefault(VaultItemKind.Login);
-        var field = new CustomFieldEditorDraft
-        {
-            Name = "Recovery",
-            Type = CipherEditorFieldType.Hidden,
-            Value = "secret"
-        };
+        var field = new CustomFieldEditorDraft();
+
+        Assert.Equal(CipherEditorFieldType.Text, field.Type);
+
+        field.Name = "Recovery";
+        field.Type = CipherEditorFieldType.Hidden;
+        field.Value = "secret";
 
         draft.CustomFields.Add(field);
 
