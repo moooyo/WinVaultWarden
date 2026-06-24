@@ -19,6 +19,7 @@
   <ItemGroup>
     <Compile Include="..\..\src\App\ViewModels\Models\CipherListItem.cs" Link="Models\CipherListItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\CipherDetail.cs" Link="Models\CipherDetail.cs" />
+    <Compile Include="..\..\src\App\ViewModels\Models\CipherEditorDraft.cs" Link="Models\CipherEditorDraft.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\FilterNode.cs" Link="Models\FilterNode.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\VaultFolderNavigationItem.cs" Link="Models\VaultFolderNavigationItem.cs" />
     <Compile Include="..\..\src\App\Services\MockVaultUiService.cs" Link="Services\MockVaultUiService.cs" />
