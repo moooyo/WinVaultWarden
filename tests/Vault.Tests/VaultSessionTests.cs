@@ -37,8 +37,17 @@ public class VaultSessionTests
         session.Lock();
 
         Assert.Equal(VaultState.Locked, session.State);
+        Assert.Null(session.AccessToken);
+        Assert.Null(session.RefreshToken);
         Assert.Null(session.UserKey);
-        Assert.Single(session.Ciphers);
+        Assert.Empty(session.Ciphers);
+        Assert.Empty(session.Folders);
+        Assert.Empty(session.Devices);
+        Assert.All(key.FullKey, b => Assert.Equal(0, b));
+        Assert.All(key.EncKey, b => Assert.Equal(0, b));
+        Assert.NotNull(key.MacKey);
+        Assert.All(key.MacKey!, b => Assert.Equal(0, b));
+        Assert.Equal("me@example.com", session.Account.Email);
 
         session.Clear();
 

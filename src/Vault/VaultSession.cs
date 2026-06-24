@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Core.Models;
 using Core.Session;
 using Crypto;
@@ -82,7 +83,7 @@ public sealed class VaultSession : IVaultSnapshot
     {
         lock (_gate)
         {
-            UserKey = null;
+            ClearSensitiveState();
             State = VaultState.Locked;
         }
     }
@@ -91,14 +92,27 @@ public sealed class VaultSession : IVaultSnapshot
     {
         lock (_gate)
         {
-            AccessToken = null;
-            RefreshToken = null;
-            UserKey = null;
+            ClearSensitiveState();
             Account = AccountInfo.Empty;
-            _ciphers = Array.Empty<Cipher>();
-            _folders = Array.Empty<Folder>();
-            _devices = Array.Empty<DeviceInfo>();
             State = VaultState.LoggedOut;
         }
+    }
+
+    private void ClearSensitiveState()
+    {
+        if (UserKey is not null)
+        {
+            CryptographicOperations.ZeroMemory(UserKey.FullKey);
+            CryptographicOperations.ZeroMemory(UserKey.EncKey);
+            if (UserKey.MacKey is not null)
+                CryptographicOperations.ZeroMemory(UserKey.MacKey);
+        }
+
+        AccessToken = null;
+        RefreshToken = null;
+        UserKey = null;
+        _ciphers = Array.Empty<Cipher>();
+        _folders = Array.Empty<Folder>();
+        _devices = Array.Empty<DeviceInfo>();
     }
 }
