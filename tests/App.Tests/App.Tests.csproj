@@ -13,6 +13,7 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Core\Core.csproj" />
     <ProjectReference Include="..\..\src\Crypto\Crypto.csproj" />
   </ItemGroup>
   <!-- 直接链接 App 的纯 C# 源(不依赖 WinUI),绕开 WinUI 打包任务无法在命令行加载的问题 -->
@@ -21,8 +22,13 @@
     <Compile Include="..\..\src\App\ViewModels\Models\CipherDetail.cs" Link="Models\CipherDetail.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\CipherEditorDraft.cs" Link="Models\CipherEditorDraft.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\FilterNode.cs" Link="Models\FilterNode.cs" />
+    <Compile Include="..\..\src\App\ViewModels\Models\DeviceItem.cs" Link="Models\DeviceItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\VaultFolderNavigationItem.cs" Link="Models\VaultFolderNavigationItem.cs" />
     <Compile Include="..\..\src\App\Services\MockVaultUiService.cs" Link="Services\MockVaultUiService.cs" />
+    <Compile Include="..\..\src\App\Services\MockDeviceUiService.cs" Link="Services\MockDeviceUiService.cs" />
+    <Compile Include="..\..\src\App\Services\VaultUiService.cs" Link="Services\VaultUiService.cs" />
+    <Compile Include="..\..\src\App\Services\DeviceUiService.cs" Link="Services\DeviceUiService.cs" />
+    <Compile Include="..\..\src\App\Services\AccountUiService.cs" Link="Services\AccountUiService.cs" />
     <Compile Include="..\..\src\App\Services\VaultNavigationService.cs" Link="Services\VaultNavigationService.cs" />
     <Compile Include="..\..\src\App\Services\IClipboardService.cs" Link="Services\IClipboardService.cs" />
     <Compile Include="..\..\src\App\ViewModels\VaultViewModel.cs" Link="ViewModels\VaultViewModel.cs" />
