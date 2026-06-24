@@ -347,6 +347,7 @@ public class VaultViewModelTests
 
         Assert.True(saved);
         Assert.Equal(FilterKind.AllItems, vm.SelectedFilter!.Kind);
+        Assert.Equal("vault:allitems", vm.SelectedFilterTag);
         Assert.Contains(vm.FilteredItems, item => item.Name == "Filter Card");
         Assert.Equal("Filter Card", vm.SelectedItem!.Name);
     }
@@ -381,6 +382,25 @@ public class VaultViewModelTests
         Assert.Equal("f1", vm.SelectedItem!.FolderId);
         var detail = Assert.IsType<LoginDetail>(vm.Detail);
         Assert.Equal("文件夹1", detail.FolderName);
+    }
+
+    [Fact]
+    public void SaveDraft_PersistsInSharedMockServiceAcrossViewModels()
+    {
+        var service = new MockVaultUiService();
+        var first = new VaultViewModel(service);
+        first.BeginAdd(VaultItemKind.Login);
+        first.EditorDraft!.Name = "Persistent Login";
+        first.EditorDraft.Login.Username = "persisted";
+
+        Assert.True(first.SaveDraft());
+
+        var second = new VaultViewModel(service);
+        var item = Assert.Single(second.Items, i => i.Name == "Persistent Login");
+        second.SelectedItem = item;
+
+        var detail = Assert.IsType<LoginDetail>(second.Detail);
+        Assert.Equal("persisted", detail.Username);
     }
 }
 

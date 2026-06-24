@@ -9,6 +9,7 @@ public interface IVaultUiService
     IReadOnlyList<CipherListItem> GetItems();
     CipherDetail GetDetail(string id);
     IReadOnlyList<FilterNode> GetFilters();
+    void AddCipher(CipherDetail detail, string? folderId);
 }
 
 public sealed class MockVaultUiService : IVaultUiService
@@ -25,6 +26,10 @@ public sealed class MockVaultUiService : IVaultUiService
     private const string GlyphFolder = "";     // Folder
 
     private readonly List<CipherDetail> _details = BuildDetails();
+    private readonly Dictionary<string, string?> _folderIds = new()
+    {
+        ["1"] = "f1",
+    };
 
     public IReadOnlyList<CipherListItem> GetItems() =>
         _details.Select(d => new CipherListItem
@@ -34,18 +39,26 @@ public sealed class MockVaultUiService : IVaultUiService
             Kind = d.Kind,
             Subtitle = SubtitleFor(d),
             Glyph = GlyphFor(d.Kind),
-            Favorite = FavoriteFor(d.Id),
+            Favorite = d.Favorite || FavoriteFor(d.Id),
             FolderId = FolderFor(d.Id),
             IsDeleted = d.IsDeleted,
         }).ToList();
 
     public CipherDetail GetDetail(string id) => _details.First(d => d.Id == id);
 
+    public void AddCipher(CipherDetail detail, string? folderId)
+    {
+        _details.Add(detail);
+        if (!string.IsNullOrWhiteSpace(folderId))
+            _folderIds[detail.Id] = folderId;
+    }
+
     // 收藏:百度网盘(id=1)。
     private static bool FavoriteFor(string id) => id == "1";
 
     // 文件夹归属:百度网盘(id=1)属于 f1,其余无文件夹。
-    private static string? FolderFor(string id) => id == "1" ? "f1" : null;
+    private string? FolderFor(string id) =>
+        _folderIds.TryGetValue(id, out var folderId) ? folderId : null;
 
     public IReadOnlyList<FilterNode> GetFilters()
     {

@@ -9,9 +9,7 @@ namespace App.ViewModels;
 public partial class VaultViewModel : ObservableObject
 {
     private readonly IVaultUiService _service;
-    private readonly Dictionary<string, CipherDetail> _createdDetails = new();
     private readonly IClipboardService? _clipboard;
-    private int _nextLocalCipherId = 1;
 
     public ObservableCollection<CipherListItem> Items { get; } = new();
     public ObservableCollection<FilterNode> Filters { get; } = new();
@@ -33,6 +31,7 @@ public partial class VaultViewModel : ObservableObject
 
     public bool HasSelection => Detail is not null;
     public bool NoSelection => Detail is null;
+    public string? SelectedFilterTag => TagForFilter(SelectedFilter);
     public string EditorTitle => EditorDraft?.Type switch
     {
         VaultItemKind.Login => "新增登录",
@@ -55,15 +54,10 @@ public partial class VaultViewModel : ObservableObject
 
     partial void OnSelectedItemChanged(CipherListItem? value)
     {
-        Detail = value is null ? null : GetDetail(value.Id);
+        Detail = value is null ? null : _service.GetDetail(value.Id);
         OnPropertyChanged(nameof(HasSelection));
         OnPropertyChanged(nameof(NoSelection));
     }
-
-    private CipherDetail GetDetail(string id) =>
-        _createdDetails.TryGetValue(id, out var created)
-            ? created
-            : _service.GetDetail(id);
 
     partial void OnSearchTextChanged(string value) => ApplyFilter();
 
@@ -98,7 +92,21 @@ public partial class VaultViewModel : ObservableObject
     private FilterNode? FindFolderFilter(string folderId) =>
         Filters.FirstOrDefault(f => f.Kind == FilterKind.Folder && f.FolderId == folderId);
 
-    partial void OnSelectedFilterChanged(FilterNode? value) => ApplyFilter();
+    partial void OnSelectedFilterChanged(FilterNode? value)
+    {
+        ApplyFilter();
+        OnPropertyChanged(nameof(SelectedFilterTag));
+    }
+
+    private static string? TagForFilter(FilterNode? filter) => filter?.Kind switch
+    {
+        FilterKind.AllItems => "vault:allitems",
+        FilterKind.Favorites => "vault:favorites",
+        FilterKind.Trash => "vault:trash",
+        FilterKind.Type when filter.TypeFilter is not null => $"vault:type:{filter.TypeFilter}",
+        FilterKind.Folder when !string.IsNullOrWhiteSpace(filter.FolderId) => $"vault:folder:{filter.FolderId}",
+        _ => null,
+    };
 
     private void ApplyFilter()
     {
@@ -165,19 +173,8 @@ public partial class VaultViewModel : ObservableObject
         }
 
         var detail = CreateDetail(draft);
-        _createdDetails[detail.Id] = detail;
-
-        var item = new CipherListItem
-        {
-            Id = detail.Id,
-            Name = detail.Name,
-            Kind = detail.Kind,
-            Subtitle = SubtitleFor(detail),
-            Glyph = GlyphFor(detail.Kind),
-            Favorite = detail.Favorite,
-            FolderId = draft.FolderId,
-            IsDeleted = false,
-        };
+        _service.AddCipher(detail, draft.FolderId);
+        var item = _service.GetItems().First(i => i.Id == detail.Id);
 
         Items.Add(item);
         EnsureFilterCanShow(item);
@@ -195,7 +192,7 @@ public partial class VaultViewModel : ObservableObject
 
     private CipherDetail CreateDetail(CipherEditorDraft draft)
     {
-        var id = $"local-{_nextLocalCipherId++}";
+        var id = $"local-{Guid.NewGuid():N}";
         var now = DateTimeOffset.Now;
         var folderName = FolderNameFor(draft.FolderId);
         var customFields = draft.CustomFields
@@ -332,26 +329,6 @@ public partial class VaultViewModel : ObservableObject
 
     private static string JoinNonEmpty(params string[] values) =>
         string.Join(" ", values.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()));
-
-    private static string SubtitleFor(CipherDetail detail) => detail switch
-    {
-        LoginDetail login => login.Username ?? "",
-        CardDetail card => card.Brand ?? "支付卡",
-        IdentityDetail identity => identity.FullName ?? "身份",
-        NoteDetail => "笔记",
-        SshDetail => "SSH 密钥",
-        _ => "",
-    };
-
-    private static string GlyphFor(VaultItemKind kind) => kind switch
-    {
-        VaultItemKind.Login => "",
-        VaultItemKind.Card => "",
-        VaultItemKind.Identity => "",
-        VaultItemKind.Note => "",
-        VaultItemKind.Ssh => "",
-        _ => "",
-    };
 
     [RelayCommand]
     private void Sync() { /* mock:占位,真实同步后续接入 */ }
