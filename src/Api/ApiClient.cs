@@ -10,28 +10,29 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HttpClient _http;
+    private Uri? _baseAddress;
 
     public ApiClient(HttpClient http) => _http = http;
 
-    public void SetBaseAddress(string baseUrl) => _http.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
+    public void SetBaseAddress(string baseUrl) => _baseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
 
     public async Task<ConfigResponse> GetConfigAsync(CancellationToken ct = default)
     {
-        var response = await _http.GetAsync("api/config", ct);
+        var response = await _http.GetAsync(Url("api/config"), ct);
         response.EnsureSuccessStatusCode();
         return await ReadJson<ConfigResponse>(response, ct);
     }
 
     public async Task<PreloginResponse> PreloginAsync(string email, CancellationToken ct = default)
     {
-        var response = await _http.PostAsJsonAsync("identity/accounts/prelogin", new PreloginRequest(email), JsonOptions, ct);
+        var response = await _http.PostAsJsonAsync(Url("identity/accounts/prelogin"), new PreloginRequest(email), JsonOptions, ct);
         response.EnsureSuccessStatusCode();
         return await ReadJson<PreloginResponse>(response, ct);
     }
 
     public async Task<ConnectTokenResult> ConnectTokenAsync(ConnectTokenRequest request, CancellationToken ct = default)
     {
-        var response = await _http.PostAsync("identity/connect/token", new FormUrlEncodedContent(ToForm(request)), ct);
+        var response = await _http.PostAsync(Url("identity/connect/token"), new FormUrlEncodedContent(ToForm(request)), ct);
         if (response.IsSuccessStatusCode)
             return new ConnectTokenResult.Success(await ReadJson<TokenResponse>(response, ct));
 
@@ -55,17 +56,22 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient
 
     public async Task<SyncResponse> GetSyncAsync(CancellationToken ct = default)
     {
-        var response = await _http.GetAsync("api/sync?excludeDomains=true", ct);
+        var response = await _http.GetAsync(Url("api/sync?excludeDomains=true"), ct);
         response.EnsureSuccessStatusCode();
         return await ReadJson<SyncResponse>(response, ct);
     }
 
     public async Task<ListResponse<DeviceDto>> GetDevicesAsync(CancellationToken ct = default)
     {
-        var response = await _http.GetAsync("api/devices", ct);
+        var response = await _http.GetAsync(Url("api/devices"), ct);
         response.EnsureSuccessStatusCode();
         return await ReadJson<ListResponse<DeviceDto>>(response, ct);
     }
+
+    private Uri Url(string relativePath) =>
+        _baseAddress is null
+            ? new Uri(relativePath, UriKind.Relative)
+            : new Uri(_baseAddress, relativePath);
 
     private static IEnumerable<KeyValuePair<string, string>> ToForm(ConnectTokenRequest request)
     {
