@@ -198,7 +198,10 @@ public partial class VaultViewModel : ObservableObject
         var folderName = FolderNameFor(draft.FolderId);
         var customFields = draft.CustomFields
             .Where(f => !string.IsNullOrWhiteSpace(f.Name))
-            .Select(f => new CustomField(f.Name, f.Type == CipherEditorFieldType.Boolean ? f.BooleanValue.ToString() : f.Value))
+            .Select(f => new CustomField(
+                f.Name.Trim(),
+                f.Type == CipherEditorFieldType.Boolean ? f.BooleanValue.ToString() : f.Value,
+                f.Type))
             .ToArray();
 
         return draft.Type switch
@@ -242,6 +245,8 @@ public partial class VaultViewModel : ObservableObject
                 Name = draft.Name.Trim(),
                 FolderName = folderName,
                 FullName = EmptyToNull(JoinNonEmpty(draft.Identity.FirstName, draft.Identity.MiddleName, draft.Identity.LastName)),
+                Username = EmptyToNull(draft.Identity.Username),
+                Company = EmptyToNull(draft.Identity.Company),
                 Email = EmptyToNull(draft.Identity.Email),
                 Phone = EmptyToNull(draft.Identity.Phone),
                 IdNumber = EmptyToNull(JoinNonEmpty(draft.Identity.Ssn, draft.Identity.PassportNumber, draft.Identity.LicenseNumber)),

@@ -348,6 +348,126 @@ public class VaultViewModelTests
     }
 
     [Fact]
+    public void SaveDraft_Identity_CreatesIdentityDetailWithExtendedFields()
+    {
+        var vm = NewVm();
+        vm.BeginAdd(VaultItemKind.Identity);
+        vm.EditorDraft!.Name = "Profile";
+        vm.EditorDraft.Identity.FirstName = "Ming";
+        vm.EditorDraft.Identity.LastName = "Chen";
+        vm.EditorDraft.Identity.Username = "mingc";
+        vm.EditorDraft.Identity.Company = "Northwind";
+        vm.EditorDraft.Identity.Email = "ming@example.com";
+        vm.EditorDraft.Identity.Phone = "123456";
+        vm.EditorDraft.Identity.Address1 = "Road 1";
+
+        var saved = vm.SaveDraft();
+
+        Assert.True(saved);
+        var detail = Assert.IsType<IdentityDetail>(vm.Detail);
+        Assert.Equal("Ming Chen", detail.FullName);
+        Assert.Equal("mingc", detail.Username);
+        Assert.Equal("Northwind", detail.Company);
+        Assert.Equal("ming@example.com", detail.Email);
+        Assert.Equal("123456", detail.Phone);
+        Assert.Equal("Road 1", detail.Address);
+    }
+
+    [Fact]
+    public void SaveDraft_Note_CreatesNoteDetail()
+    {
+        var vm = NewVm();
+        vm.BeginAdd(VaultItemKind.Note);
+        vm.EditorDraft!.Name = "Recovery Note";
+        vm.EditorDraft.Notes = "keep offline";
+
+        var saved = vm.SaveDraft();
+
+        Assert.True(saved);
+        var detail = Assert.IsType<NoteDetail>(vm.Detail);
+        Assert.Equal("Recovery Note", detail.Name);
+        Assert.Equal("keep offline", detail.Content);
+        Assert.Equal("keep offline", detail.Notes);
+    }
+
+    [Fact]
+    public void SaveDraft_Ssh_CreatesSshDetail()
+    {
+        var vm = NewVm();
+        vm.BeginAdd(VaultItemKind.Ssh);
+        vm.EditorDraft!.Name = "Production SSH";
+        vm.EditorDraft.SshKey.PublicKey = "ssh-ed25519 AAAA";
+        vm.EditorDraft.SshKey.PrivateKey = "private-key";
+        vm.EditorDraft.SshKey.KeyFingerprint = "SHA256:abc";
+
+        var saved = vm.SaveDraft();
+
+        Assert.True(saved);
+        var detail = Assert.IsType<SshDetail>(vm.Detail);
+        Assert.Equal("ssh-ed25519 AAAA", detail.PublicKey);
+        Assert.Equal("private-key", detail.PrivateKey);
+        Assert.Equal("SHA256:abc", detail.Fingerprint);
+    }
+
+    [Fact]
+    public void SaveDraft_CommonMetadataAndCustomFields_RoundTripToDetail()
+    {
+        var vm = NewVm();
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.EditorDraft!.Name = "Metadata Login";
+        vm.EditorDraft.Favorite = true;
+        vm.EditorDraft.Reprompt = true;
+        vm.EditorDraft.CustomFields.Add(new CustomFieldEditorDraft
+        {
+            Name = "Text field",
+            Type = CipherEditorFieldType.Text,
+            Value = "visible",
+        });
+        vm.EditorDraft.CustomFields.Add(new CustomFieldEditorDraft
+        {
+            Name = "Hidden field",
+            Type = CipherEditorFieldType.Hidden,
+            Value = "secret",
+        });
+        vm.EditorDraft.CustomFields.Add(new CustomFieldEditorDraft
+        {
+            Name = "Boolean field",
+            Type = CipherEditorFieldType.Boolean,
+            BooleanValue = true,
+        });
+
+        var saved = vm.SaveDraft();
+
+        Assert.True(saved);
+        var detail = Assert.IsType<LoginDetail>(vm.Detail);
+        Assert.True(detail.Favorite);
+        Assert.True(detail.Reprompt);
+        Assert.Collection(
+            detail.CustomFields,
+            field =>
+            {
+                Assert.Equal("Text field", field.Label);
+                Assert.Equal("visible", field.Value);
+                Assert.Equal(CipherEditorFieldType.Text, field.Type);
+                Assert.False(field.IsSecret);
+            },
+            field =>
+            {
+                Assert.Equal("Hidden field", field.Label);
+                Assert.Equal("secret", field.Value);
+                Assert.Equal(CipherEditorFieldType.Hidden, field.Type);
+                Assert.True(field.IsSecret);
+            },
+            field =>
+            {
+                Assert.Equal("Boolean field", field.Label);
+                Assert.Equal("True", field.Value);
+                Assert.Equal(CipherEditorFieldType.Boolean, field.Type);
+                Assert.False(field.IsSecret);
+            });
+    }
+
+    [Fact]
     public void SaveDraft_FilterExcludesNewType_SwitchesToAllItemsSoNewItemIsVisible()
     {
         var vm = NewVm();

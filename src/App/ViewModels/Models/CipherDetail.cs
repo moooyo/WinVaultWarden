@@ -1,6 +1,9 @@
 namespace App.ViewModels.Models;
 
-public record CustomField(string Label, string Value);
+public record CustomField(string Label, string Value, CipherEditorFieldType Type = CipherEditorFieldType.Text)
+{
+    public bool IsSecret => Type == CipherEditorFieldType.Hidden;
+}
 
 // 详情基类。共用:名称、文件夹、备注、自定义字段、时间。
 public abstract class CipherDetail
@@ -44,6 +47,8 @@ public sealed class IdentityDetail : CipherDetail
 {
     public override VaultItemKind Kind => VaultItemKind.Identity;
     public string? FullName { get; init; }
+    public string? Username { get; init; }
+    public string? Company { get; init; }
     public string? Email { get; init; }
     public string? Phone { get; init; }
     public string? IdNumber { get; init; }

@@ -47,6 +47,8 @@
                 <controls:DetailCard.CardContent>
                     <StackPanel Spacing="2">
                         <controls:FieldRow Label="姓名" Value="{x:Bind FullName}" />
+                        <controls:FieldRow Label="用户名" Value="{x:Bind Username}" />
+                        <controls:FieldRow Label="公司" Value="{x:Bind Company}" />
                         <controls:FieldRow Label="邮箱" Value="{x:Bind Email}" />
                         <controls:FieldRow Label="电话" Value="{x:Bind Phone}" />
                         <controls:FieldRow Label="证件号" Value="{x:Bind IdNumber}" IsSecret="True" />
@@ -431,7 +433,7 @@
                     <ItemsControl ItemsSource="{x:Bind ViewModel.Detail.CustomFields, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="models:CustomField">
-                                <controls:FieldRow Label="{x:Bind Label}" Value="{x:Bind Value}" />
+                                <controls:FieldRow Label="{x:Bind Label}" Value="{x:Bind Value}" IsSecret="{x:Bind IsSecret}" />
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
