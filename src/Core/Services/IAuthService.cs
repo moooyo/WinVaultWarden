@@ -2,6 +2,16 @@ namespace Core.Services;
 
 public interface IAuthService
 {
-    // 登录主线占位:prelogin → 派生 → connect/token。
-    Task LoginAsync(string serverUrl, string email, string masterPassword, CancellationToken ct = default);
+    Task<AuthResult> LoginAsync(string serverUrl, string email, string masterPassword, CancellationToken ct = default);
+    Task<AuthResult> SubmitTwoFactorAsync(string code, CancellationToken ct = default);
+    Task<AuthResult> UnlockAsync(string masterPassword, CancellationToken ct = default);
+    Task LockAsync(CancellationToken ct = default);
+    Task LogoutAsync(CancellationToken ct = default);
+}
+
+public abstract record AuthResult
+{
+    public sealed record Success : AuthResult;
+    public sealed record TwoFactorRequired(IReadOnlyList<int> Providers) : AuthResult;
+    public sealed record Failure(string Message) : AuthResult;
 }

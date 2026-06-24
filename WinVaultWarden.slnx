@@ -17,6 +17,10 @@
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="*|arm64" Project="arm64" />
   </Project>
+  <Project Path="src/Vault/Vault.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|arm64" Project="arm64" />
+  </Project>
   <Project Path="src/App/App.csproj">
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="*|arm64" Project="arm64" />
@@ -28,6 +32,10 @@
     <Platform Solution="*|arm64" Project="arm64" />
   </Project>
   <Project Path="tests/App.Tests/App.Tests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|arm64" Project="arm64" />
+  </Project>
+  <Project Path="tests/Vault.Tests/Vault.Tests.csproj">
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="*|arm64" Project="arm64" />
   </Project>

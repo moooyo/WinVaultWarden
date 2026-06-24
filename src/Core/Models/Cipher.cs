@@ -2,15 +2,70 @@ using Core.Enums;
 
 namespace Core.Models;
 
-// 密码库条目骨架。name/notes 等为 EncString 密文,解密是客户端职责。
+// 解密后的密码库条目领域模型。明文字段只允许存在于内存中。
 public sealed class Cipher
 {
     public string Id { get; init; } = string.Empty;
     public CipherType Type { get; init; }
     public string? OrganizationId { get; init; }
     public string? FolderId { get; init; }
+    public bool Favorite { get; init; }
+    public bool Reprompt { get; init; }
     public string Name { get; init; } = string.Empty;
     public string? Notes { get; init; }
-    public bool Favorite { get; init; }
+    public DateTimeOffset CreationDate { get; init; }
     public DateTimeOffset RevisionDate { get; init; }
+    public DateTimeOffset? DeletedDate { get; init; }
+    public bool IsDeleted => DeletedDate is not null;
+    public CipherLogin? Login { get; init; }
+    public CipherCard? Card { get; init; }
+    public CipherIdentity? Identity { get; init; }
+    public CipherSecureNote? SecureNote { get; init; }
+    public CipherSsh? Ssh { get; init; }
+    public IReadOnlyList<CipherField> Fields { get; init; } = Array.Empty<CipherField>();
+}
+
+public sealed record CipherLogin(string? Username, string? Password, string? Totp, IReadOnlyList<CipherLoginUri> Uris);
+
+public sealed record CipherLoginUri(string? Uri, int? Match);
+
+public sealed record CipherCard(
+    string? CardholderName,
+    string? Number,
+    string? ExpMonth,
+    string? ExpYear,
+    string? Code,
+    string? Brand);
+
+public sealed record CipherIdentity(
+    string? Title,
+    string? FirstName,
+    string? MiddleName,
+    string? LastName,
+    string? Username,
+    string? Company,
+    string? Ssn,
+    string? PassportNumber,
+    string? LicenseNumber,
+    string? Email,
+    string? Phone,
+    string? Address1,
+    string? Address2,
+    string? Address3,
+    string? City,
+    string? State,
+    string? PostalCode,
+    string? Country);
+
+public sealed record CipherSecureNote(int Type);
+
+public sealed record CipherSsh(string? PrivateKey, string? PublicKey, string? Fingerprint);
+
+public sealed record CipherField(string Name, string? Value, CipherFieldType Type);
+
+public enum CipherFieldType
+{
+    Text = 0,
+    Hidden = 1,
+    Boolean = 2,
 }
