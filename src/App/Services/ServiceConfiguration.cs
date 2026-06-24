@@ -32,6 +32,9 @@ public static class ServiceConfiguration
         services.AddSingleton<IReadonlyApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<VaultDecryptor>();
         services.AddSingleton<VaultBootstrapper>();
+#if DEBUG
+        services.AddSingleton<IDemoVaultSessionService, DemoVaultSessionService>();
+#endif
         services.AddSingleton<IAuthService, Vault.AuthService>();
         services.AddSingleton<ISyncService, Vault.SyncService>();
         services.AddSingleton<IVaultService, Vault.VaultService>();

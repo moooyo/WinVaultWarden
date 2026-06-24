@@ -46,6 +46,11 @@
                         Click="OnLogin"
                         Style="{ThemeResource AccentButtonStyle}"
                         HorizontalAlignment="Stretch" />
+                <Button x:Name="DemoVaultButton"
+                        Content="使用演示保险库"
+                        Command="{x:Bind ViewModel.UseDemoVaultCommand, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.CanUseDemoVault, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                        HorizontalAlignment="Stretch" />
 
                 <TextBlock Text="{x:Bind ViewModel.Status, Mode=OneWay}"
                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"

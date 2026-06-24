@@ -1,3 +1,4 @@
+using App.Services;
 using App.ViewModels;
 using Core.Services;
 using Xunit;
@@ -74,6 +75,24 @@ public class LoginViewModelAuthTests
         Assert.False(vm.CanEditServer);
     }
 
+    [Fact]
+    public async Task UseDemoVaultCommand_WhenDemoServiceExists_OpensDemoVault()
+    {
+        var auth = new FakeAuthService();
+        var demo = new FakeDemoVaultSessionService();
+        var vm = new LoginViewModel(auth, demo);
+        var success = false;
+        vm.SetSuccessCallback(() => success = true);
+        vm.Status = "previous";
+
+        await vm.UseDemoVaultCommand.ExecuteAsync(null);
+
+        Assert.True(demo.Opened);
+        Assert.True(success);
+        Assert.Equal(string.Empty, vm.Status);
+        Assert.True(vm.CanUseDemoVault);
+    }
+
     private sealed class FakeAuthService : IAuthService
     {
         public AuthResult LoginResult { get; init; } = new AuthResult.Failure("not set");
@@ -104,5 +123,16 @@ public class LoginViewModelAuthTests
         public Task LockAsync(CancellationToken ct = default) => Task.CompletedTask;
 
         public Task LogoutAsync(CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private sealed class FakeDemoVaultSessionService : IDemoVaultSessionService
+    {
+        public bool Opened { get; private set; }
+
+        public Task OpenDemoVaultAsync(CancellationToken ct = default)
+        {
+            Opened = true;
+            return Task.CompletedTask;
+        }
     }
 }

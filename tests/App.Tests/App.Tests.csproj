@@ -16,6 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Core\Core.csproj" />
     <ProjectReference Include="..\..\src\Crypto\Crypto.csproj" />
+    <ProjectReference Include="..\..\src\Vault\Vault.csproj" />
   </ItemGroup>
   <!-- 直接链接 App 的纯 C# 源(不依赖 WinUI),绕开 WinUI 打包任务无法在命令行加载的问题 -->
   <ItemGroup>
@@ -31,6 +32,7 @@
     <Compile Include="..\..\src\App\Services\DeviceUiService.cs" Link="Services\DeviceUiService.cs" />
     <Compile Include="..\..\src\App\Services\AccountUiService.cs" Link="Services\AccountUiService.cs" />
     <Compile Include="..\..\src\App\Services\DpapiTokenStore.cs" Link="Services\DpapiTokenStore.cs" />
+    <Compile Include="..\..\src\App\Services\DemoVaultSessionService.cs" Link="Services\DemoVaultSessionService.cs" />
     <Compile Include="..\..\src\App\ViewModels\LoginViewModel.cs" Link="ViewModels\LoginViewModel.cs" />
     <Compile Include="..\..\src\App\Services\VaultNavigationService.cs" Link="Services\VaultNavigationService.cs" />
     <Compile Include="..\..\src\App\Services\IClipboardService.cs" Link="Services\IClipboardService.cs" />

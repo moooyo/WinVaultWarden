@@ -1,3 +1,4 @@
+using App.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Core.Services;
@@ -7,6 +8,7 @@ namespace App.ViewModels;
 public partial class LoginViewModel : ObservableObject
 {
     private readonly IAuthService _auth;
+    private readonly IDemoVaultSessionService? _demoVault;
     private Action? _onSuccess;
 
     [ObservableProperty] private string _serverUrl = "https://vault.bitwarden.com";
@@ -17,9 +19,20 @@ public partial class LoginViewModel : ObservableObject
     [ObservableProperty] private bool _isTwoFactorStage;
     [ObservableProperty] private bool _isUnlockStage;
 
-    public LoginViewModel(IAuthService auth) => _auth = auth;
+    public LoginViewModel(IAuthService auth)
+        : this(auth, null)
+    {
+    }
+
+    public LoginViewModel(IAuthService auth, IDemoVaultSessionService? demoVault)
+    {
+        _auth = auth;
+        _demoVault = demoVault;
+    }
 
     public bool CanEditServer => !IsTwoFactorStage && !IsUnlockStage;
+
+    public bool CanUseDemoVault => _demoVault is not null;
 
     public string PrimaryButtonText => IsUnlockStage ? "解锁" : IsTwoFactorStage ? "验证" : "登录";
 
@@ -46,6 +59,21 @@ public partial class LoginViewModel : ObservableObject
                 : await _auth.LoginAsync(ServerUrl, Email, MasterPassword);
 
         HandleResult(result);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanUseDemoVault))]
+    private async Task UseDemoVaultAsync()
+    {
+        if (_demoVault is null)
+            return;
+
+        await _demoVault.OpenDemoVaultAsync();
+        Status = string.Empty;
+        MasterPassword = string.Empty;
+        TwoFactorCode = string.Empty;
+        IsTwoFactorStage = false;
+        IsUnlockStage = false;
+        _onSuccess?.Invoke();
     }
 
     private void HandleResult(AuthResult result)
