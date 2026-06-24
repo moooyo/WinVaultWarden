@@ -20,8 +20,26 @@ public partial class VaultViewModel : ObservableObject
     [ObservableProperty] private string _searchText = string.Empty;
     [ObservableProperty] private FilterNode? _selectedFilter;
 
+    [ObservableProperty]
+    public partial bool IsEditing { get; set; }
+
+    [ObservableProperty]
+    public partial CipherEditorDraft? EditorDraft { get; set; }
+
+    [ObservableProperty]
+    public partial string EditorError { get; set; } = string.Empty;
+
     public bool HasSelection => Detail is not null;
     public bool NoSelection => Detail is null;
+    public string EditorTitle => EditorDraft?.Type switch
+    {
+        VaultItemKind.Login => "新增登录",
+        VaultItemKind.Card => "新增支付卡",
+        VaultItemKind.Identity => "新增身份",
+        VaultItemKind.Note => "新增笔记",
+        VaultItemKind.Ssh => "新增 SSH 密钥",
+        _ => string.Empty,
+    };
 
     public VaultViewModel(IVaultUiService service, IClipboardService? clipboard = null)
     {
@@ -95,11 +113,42 @@ public partial class VaultViewModel : ObservableObject
         foreach (var i in source) FilteredItems.Add(i);
     }
 
+    public void BeginAdd(VaultItemKind type)
+    {
+        EditorDraft = CipherEditorDraft.CreateDefault(type);
+        EditorError = string.Empty;
+        IsEditing = true;
+        SelectedItem = null;
+        Detail = null;
+        OnPropertyChanged(nameof(HasSelection));
+        OnPropertyChanged(nameof(NoSelection));
+        OnPropertyChanged(nameof(EditorTitle));
+    }
+
+    public void CancelEdit()
+    {
+        IsEditing = false;
+        EditorDraft = null;
+        EditorError = string.Empty;
+        OnPropertyChanged(nameof(EditorTitle));
+    }
+
+    public void ChangeEditorType(VaultItemKind type)
+    {
+        if (EditorDraft is null)
+            return;
+
+        EditorDraft.Type = type;
+        EditorError = string.Empty;
+        OnPropertyChanged(nameof(EditorTitle));
+        OnPropertyChanged(nameof(EditorDraft));
+    }
+
     [RelayCommand]
     private void Sync() { /* mock:占位,真实同步后续接入 */ }
 
     [RelayCommand]
-    private void Add() { /* mock:新增表单后续 */ }
+    private void Add() => BeginAdd(VaultItemKind.Login);
 
     [RelayCommand]
     private void Copy(string? value)

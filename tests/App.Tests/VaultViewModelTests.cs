@@ -216,6 +216,51 @@ public class VaultViewModelTests
         Assert.NotNull(vm.SelectedFilter);
         Assert.Equal(FilterKind.AllItems, vm.SelectedFilter!.Kind);
     }
+
+    [Fact]
+    public void BeginAdd_CreatesEditorDraftAndClearsSelection()
+    {
+        var vm = NewVm();
+        vm.SelectedItem = vm.Items.First();
+
+        vm.BeginAdd(VaultItemKind.Card);
+
+        Assert.True(vm.IsEditing);
+        Assert.NotNull(vm.EditorDraft);
+        Assert.Equal(VaultItemKind.Card, vm.EditorDraft!.Type);
+        Assert.Null(vm.SelectedItem);
+        Assert.Null(vm.Detail);
+        Assert.Equal("新增支付卡", vm.EditorTitle);
+    }
+
+    [Fact]
+    public void CancelEdit_ClearsEditorState()
+    {
+        var vm = NewVm();
+        vm.BeginAdd(VaultItemKind.Identity);
+
+        vm.CancelEdit();
+
+        Assert.False(vm.IsEditing);
+        Assert.Null(vm.EditorDraft);
+        Assert.Equal("", vm.EditorError);
+    }
+
+    [Fact]
+    public void ChangeEditorType_PreservesCommonFields()
+    {
+        var vm = NewVm();
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.EditorDraft!.Name = "shared name";
+        vm.EditorDraft.Notes = "shared notes";
+
+        vm.ChangeEditorType(VaultItemKind.Ssh);
+
+        Assert.Equal(VaultItemKind.Ssh, vm.EditorDraft!.Type);
+        Assert.Equal("shared name", vm.EditorDraft.Name);
+        Assert.Equal("shared notes", vm.EditorDraft.Notes);
+        Assert.Equal("新增 SSH 密钥", vm.EditorTitle);
+    }
 }
 
 public class SendViewModelTests
