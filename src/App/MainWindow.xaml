@@ -16,7 +16,6 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition x:Name="RightPaddingColumn" Width="0" />
             </Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -27,27 +26,6 @@
                 </Border>
                 <TextBlock Text="WinVaultWarden" VerticalAlignment="Center" FontWeight="SemiBold" />
             </StackPanel>
-            <StackPanel x:Name="TitleBarActions" Grid.Column="2" Orientation="Horizontal"
-                        Spacing="4" VerticalAlignment="Center">
-                <Button Background="Transparent" BorderThickness="0">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE77B;" FontSize="14" />
-                        <TextBlock Text="test@test.com" />
-                    </StackPanel>
-                </Button>
-                <Button Background="Transparent" BorderThickness="0">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE72E;" FontSize="14" />
-                        <TextBlock Text="锁定" />
-                    </StackPanel>
-                </Button>
-                <Button Click="OnLogout" Background="Transparent" BorderThickness="0">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xF3B1;" FontSize="14" />
-                        <TextBlock Text="退出登录" />
-                    </StackPanel>
-                </Button>
-            </StackPanel>
         </Grid>
 
         <!-- 主导航壳 -->
@@ -55,30 +33,102 @@
                              PaneDisplayMode="Left"
                              IsBackButtonVisible="Collapsed"
                              IsSettingsVisible="False"
-                             SelectionChanged="Nav_SelectionChanged">
+                             ItemInvoked="Nav_ItemInvoked">
             <muxc:NavigationView.MenuItems>
-                <muxc:NavigationViewItem Content="我的保险库" Tag="vault" IsSelected="True">
+                <muxc:NavigationViewItem Content="我的保险库"
+                                         SelectsOnInvoked="False"
+                                         IsExpanded="True">
                     <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE8F1;" /></muxc:NavigationViewItem.Icon>
+                    <muxc:NavigationViewItem.MenuItems>
+                        <muxc:NavigationViewItem x:Name="AllItemsNavItem" Content="所有项目" Tag="vault:allitems" IsSelected="True">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE80A;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem Content="收藏" Tag="vault:favorites">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE734;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem Content="登录" Tag="vault:type:Login">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE7B7;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem Content="银行卡" Tag="vault:type:Card">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE8C7;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem Content="身份" Tag="vault:type:Identity">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE77B;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem Content="笔记" Tag="vault:type:Note">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE70B;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem Content="SSH 密钥" Tag="vault:type:Ssh">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE72E;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem Content="文件夹1" Tag="vault:folder:f1">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE8B7;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem Content="回收站" Tag="vault:trash">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE74D;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                    </muxc:NavigationViewItem.MenuItems>
                 </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="Send" Tag="send">
+
+                <muxc:NavigationViewItem Content="Send"
+                                         SelectsOnInvoked="False"
+                                         IsExpanded="True">
                     <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE724;" /></muxc:NavigationViewItem.Icon>
+                    <muxc:NavigationViewItem.MenuItems>
+                        <muxc:NavigationViewItem Content="所有 Send" Tag="send:all">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE724;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem Content="文本" Tag="send:text">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE8D2;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem Content="文件" Tag="send:file">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE8A5;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                    </muxc:NavigationViewItem.MenuItems>
                 </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="管理面板" Tag="admin">
-                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE7C4;" /></muxc:NavigationViewItem.Icon>
+
+                <muxc:NavigationViewItem Content="生成器" Tag="gen" SelectsOnInvoked="False">
+                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE9D2;" /></muxc:NavigationViewItem.Icon>
                 </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="账户设置" Tag="account">
-                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE713;" /></muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="设备管理" Tag="devices">
-                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE7F4;" /></muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="备份策略" Tag="backup">
-                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE8F7;" /></muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
+
                 <muxc:NavigationViewItem Content="导入导出" Tag="io">
                     <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE8AB;" /></muxc:NavigationViewItem.Icon>
                 </muxc:NavigationViewItem>
             </muxc:NavigationView.MenuItems>
+
+            <muxc:NavigationView.PaneFooter>
+                <StackPanel Spacing="2" Margin="0,8,0,8">
+                    <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Background="Transparent" BorderThickness="0" Click="OnFooterSettingsClick">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon Glyph="&#xE713;" FontSize="16" />
+                            <TextBlock Text="设置" />
+                        </StackPanel>
+                    </Button>
+                    <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Background="Transparent" BorderThickness="0" Click="OnFooterDevicesClick">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon Glyph="&#xE7F4;" FontSize="16" />
+                            <TextBlock Text="设备管理" />
+                        </StackPanel>
+                    </Button>
+                    <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Background="Transparent" BorderThickness="0" Click="OnFooterLockClick">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon Glyph="&#xE72E;" FontSize="16" />
+                            <TextBlock Text="锁定" />
+                        </StackPanel>
+                    </Button>
+                    <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Background="Transparent" BorderThickness="0" Click="OnLogout">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon Glyph="&#xF3B1;" FontSize="16" />
+                            <TextBlock Text="退出登录" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </muxc:NavigationView.PaneFooter>
+
             <Frame x:Name="ContentFrame" />
         </muxc:NavigationView>
 

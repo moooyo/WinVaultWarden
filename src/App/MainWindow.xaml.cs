@@ -1,6 +1,8 @@
 ﻿using App.Views;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using System;
+using System.Threading.Tasks;
 
 namespace App;
 
@@ -32,7 +34,6 @@ public sealed partial class MainWindow : Window
     public void ShowLogin()
     {
         Nav.Visibility = Visibility.Collapsed;
-        TitleBarActions.Visibility = Visibility.Collapsed;
         LoginHost.Visibility = Visibility.Visible;
         LoginFrame.Navigate(typeof(LoginPage));
     }
@@ -42,39 +43,59 @@ public sealed partial class MainWindow : Window
     {
         LoginHost.Visibility = Visibility.Collapsed;
         Nav.Visibility = Visibility.Visible;
-        TitleBarActions.Visibility = Visibility.Visible;
-        ContentFrame.Navigate(typeof(VaultPage));
+        Nav.SelectedItem = AllItemsNavItem;
+        ContentFrame.Navigate(typeof(VaultPage), "vault:allitems");
     }
 
-    private void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    private async void Nav_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
     {
-        if (args.SelectedItem is not NavigationViewItem item) return;
-        var tag = item.Tag as string;
+        if (args.InvokedItemContainer is not NavigationViewItem item)
+            return;
+
+        await NavigateByTagAsync(item.Tag as string);
+    }
+
+    private async Task NavigateByTagAsync(string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag))
+            return;
+
+        if (tag.StartsWith("vault:", StringComparison.Ordinal))
+        {
+            ContentFrame.Navigate(typeof(VaultPage), tag);
+            return;
+        }
+
+        if (tag.StartsWith("send:", StringComparison.Ordinal))
+        {
+            ContentFrame.Navigate(typeof(SendPage), tag);
+            return;
+        }
+
         switch (tag)
         {
-            case "vault":
-                ContentFrame.Navigate(typeof(VaultPage));
-                break;
-            case "account":
-                ContentFrame.Navigate(typeof(SettingsPage));
-                break;
-            case "devices":
-                ContentFrame.Navigate(typeof(DevicesPage));
-                break;
-            case "send":
-                ContentFrame.Navigate(typeof(SimplePage), ("Send", ""));
-                break;
-            case "admin":
-                ContentFrame.Navigate(typeof(SimplePage), ("管理面板", ""));
-                break;
-            case "backup":
-                ContentFrame.Navigate(typeof(SimplePage), ("备份策略", ""));
+            case "gen":
+                await ShowGeneratorDialogAsync();
                 break;
             case "io":
-                ContentFrame.Navigate(typeof(SimplePage), ("导入导出", ""));
+                ContentFrame.Navigate(typeof(SimplePage), ("导入导出", "\uE8AB"));
                 break;
         }
     }
+
+    private async Task ShowGeneratorDialogAsync()
+    {
+        var dialog = new GeneratorDialog { XamlRoot = Nav.XamlRoot };
+        await dialog.ShowAsync();
+    }
+
+    private void OnFooterSettingsClick(object sender, RoutedEventArgs e) =>
+        ContentFrame.Navigate(typeof(SettingsPage));
+
+    private void OnFooterDevicesClick(object sender, RoutedEventArgs e) =>
+        ContentFrame.Navigate(typeof(DevicesPage));
+
+    private void OnFooterLockClick(object sender, RoutedEventArgs e) => ShowLogin();
 
     private void OnLogout(object sender, RoutedEventArgs e) => ShowLogin();
 }

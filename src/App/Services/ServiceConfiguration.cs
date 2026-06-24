@@ -21,11 +21,13 @@ public static class ServiceConfiguration
         services.AddSingleton<ISyncService, SyncService>();
         services.AddSingleton<IVaultService, VaultService>();
         services.AddSingleton<IVaultUiService, MockVaultUiService>();
+        services.AddSingleton<ISendUiService, MockSendUiService>();
         services.AddSingleton<IDeviceUiService, MockDeviceUiService>();
         services.AddSingleton<IClipboardService, ClipboardService>();
 
         services.AddTransient<LoginViewModel>();
         services.AddTransient<VaultViewModel>();
+        services.AddTransient<SendViewModel>();
         services.AddTransient<GeneratorViewModel>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<DevicesViewModel>();
