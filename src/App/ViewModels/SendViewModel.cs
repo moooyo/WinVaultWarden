@@ -8,18 +8,21 @@ namespace App.ViewModels;
 
 public partial class SendViewModel : ObservableObject
 {
+    private readonly ISendUiService _service;
     private readonly IClipboardService? _clipboard;
 
     public ObservableCollection<SendListItem> Items { get; } = new();
     public ObservableCollection<SendListItem> FilteredItems { get; } = new();
 
     [ObservableProperty] private string _selectedFilterTag = "send:all";
+    [ObservableProperty] private SendListItem? _selectedMenuItem;
 
     public bool HasItems => FilteredItems.Count > 0;
     public bool NoItems => !HasItems;
 
     public SendViewModel(ISendUiService service, IClipboardService? clipboard = null)
     {
+        _service = service;
         _clipboard = clipboard;
         foreach (var send in service.GetSends()) Items.Add(send);
         ApplyFilter();
@@ -51,6 +54,19 @@ public partial class SendViewModel : ObservableObject
         OnPropertyChanged(nameof(NoItems));
     }
 
+    public bool CreateSend(SendEditorDraft draft)
+    {
+        if (!draft.HasRequiredData())
+            return false;
+
+        var item = _service.CreateSend(draft);
+        Items.Add(item);
+        ApplyFilter();
+        return true;
+    }
+
+    public void MarkMoreMenuOpened(SendListItem? item) => SelectedMenuItem = item;
+
     [RelayCommand]
     private void CopyLink(SendListItem? item)
     {
@@ -66,5 +82,6 @@ public partial class SendViewModel : ObservableObject
     [RelayCommand]
     private void More(SendListItem? item)
     {
+        MarkMoreMenuOpened(item);
     }
 }

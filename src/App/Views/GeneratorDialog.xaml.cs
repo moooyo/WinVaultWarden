@@ -16,21 +16,27 @@ public sealed partial class GeneratorDialog : ContentDialog
         UpdatePrimaryButtonState();
     }
 
-    private void OnGeneratorTabSelectionChanged(object sender, SelectionChangedEventArgs e) =>
+    private void OnGeneratorTabSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        ViewModel.Mode = GeneratorTabs.SelectedIndex switch
+        {
+            1 => GeneratorMode.Passphrase,
+            2 => GeneratorMode.Username,
+            _ => GeneratorMode.Password,
+        };
         UpdatePrimaryButtonState();
+    }
 
     private void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
-        if (IsPasswordTabSelected())
-            ViewModel.CopyCommand.Execute(null);
+        ViewModel.CopyCommand.Execute(null);
     }
 
-    private void UpdatePrimaryButtonState() =>
-        IsPrimaryButtonEnabled = IsPasswordTabSelected();
+    private void UpdatePrimaryButtonState() => IsPrimaryButtonEnabled = true;
 
-    private bool IsPasswordTabSelected() =>
-        GeneratorTabs is not null
-        && PasswordTab is not null
-        && GeneratorTabs.SelectedItem is TabViewItem selectedTab
-        && ReferenceEquals(selectedTab, PasswordTab);
+    private async void OnHistoryClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        var dialog = new GeneratorHistoryDialog(ViewModel) { XamlRoot = XamlRoot };
+        await dialog.ShowAsync();
+    }
 }

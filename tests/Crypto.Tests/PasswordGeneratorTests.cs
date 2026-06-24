@@ -125,6 +125,36 @@ public class PasswordGeneratorTests
     }
 
     [Fact]
+    public void GeneratePassphrase_DefaultOptions_ReturnsSixWords()
+    {
+        var passphrase = PasswordGenerator.GeneratePassphrase();
+
+        Assert.Equal(6, passphrase.Split('-').Length);
+    }
+
+    [Fact]
+    public void GeneratePassphrase_CapitalizeAndNumber_AppliesOptions()
+    {
+        var passphrase = PasswordGenerator.GeneratePassphrase(
+            new PassphraseGenerationOptions(WordCount: 4, Separator: ".", Capitalize: true, IncludeNumber: true));
+
+        var words = passphrase.Split('.');
+        Assert.Equal(4, words.Length);
+        Assert.All(words.Take(3), word => Assert.True(char.IsUpper(word[0])));
+        Assert.Contains(words[3], char.IsDigit);
+    }
+
+    [Fact]
+    public void GenerateUsername_RandomWord_ReturnsSingleWord()
+    {
+        var username = PasswordGenerator.GenerateUsername();
+
+        Assert.False(string.IsNullOrWhiteSpace(username));
+        Assert.DoesNotContain("-", username);
+        Assert.DoesNotContain("@", username);
+    }
+
+    [Fact]
     public void Generate_MinimumsGreaterThanLength_Throws()
     {
         var options = new PasswordGenerationOptions(

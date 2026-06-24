@@ -8,143 +8,275 @@
     PrimaryButtonText="复制并使用"
     PrimaryButtonClick="OnPrimaryButtonClick"
     DefaultButton="Primary"
-    MinWidth="560">
+    MinWidth="620">
 
-    <TabView x:Name="GeneratorTabs"
-             IsAddTabButtonVisible="False"
-             CanDragTabs="False"
-             CanReorderTabs="False"
-             TabWidthMode="Equal"
-             SelectionChanged="OnGeneratorTabSelectionChanged">
-        <TabViewItem x:Name="PasswordTab" Header="密码" IsClosable="False">
-            <StackPanel Spacing="14" Padding="0,12,0,0">
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="8"
-                        Padding="12">
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="{x:Bind ViewModel.GeneratedPassword, Mode=OneWay}"
-                                   FontFamily="Consolas"
-                                   FontSize="22"
-                                   TextWrapping="Wrap"
-                                   VerticalAlignment="Center" />
-                        <Button Grid.Column="1"
-                                Width="36"
-                                Height="32"
-                                Padding="0"
-                                AutomationProperties.Name="重新生成密码"
-                                ToolTipService.ToolTip="重新生成"
-                                Command="{x:Bind ViewModel.RegenerateCommand}">
-                            <FontIcon Glyph="&#xE895;" FontSize="14" />
-                        </Button>
-                        <Button Grid.Column="2"
-                                Width="36"
-                                Height="32"
-                                Padding="0"
-                                AutomationProperties.Name="复制密码"
-                                ToolTipService.ToolTip="复制"
-                                Command="{x:Bind ViewModel.CopyCommand}">
-                            <FontIcon Glyph="&#xE8C8;" FontSize="14" />
-                        </Button>
-                    </Grid>
-                </Border>
+    <ScrollViewer MaxHeight="660">
+        <StackPanel Spacing="14">
+            <TabView x:Name="GeneratorTabs"
+                     IsAddTabButtonVisible="False"
+                     CanDragTabs="False"
+                     CanReorderTabs="False"
+                     TabWidthMode="Equal"
+                     SelectionChanged="OnGeneratorTabSelectionChanged">
+                <TabViewItem x:Name="PasswordTab" Header="密码" IsClosable="False">
+                    <StackPanel Spacing="14" Padding="0,12,0,0">
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="12">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{x:Bind ViewModel.GeneratedPassword, Mode=OneWay}"
+                                           FontFamily="Consolas"
+                                           FontSize="22"
+                                           TextWrapping="Wrap"
+                                           VerticalAlignment="Center" />
+                                <Button Grid.Column="1"
+                                        Width="36"
+                                        Height="32"
+                                        Padding="0"
+                                        AutomationProperties.Name="重新生成密码"
+                                        ToolTipService.ToolTip="重新生成"
+                                        Command="{x:Bind ViewModel.RegenerateCommand}">
+                                    <FontIcon Glyph="&#xE895;" FontSize="14" />
+                                </Button>
+                                <Button Grid.Column="2"
+                                        Width="36"
+                                        Height="32"
+                                        Padding="0"
+                                        AutomationProperties.Name="复制密码"
+                                        ToolTipService.ToolTip="复制"
+                                        Command="{x:Bind ViewModel.CopyCommand}">
+                                    <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                                </Button>
+                            </Grid>
+                        </Border>
 
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="8"
-                        Padding="14">
-                    <StackPanel Spacing="12">
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="92" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="长度" VerticalAlignment="Center" />
-                            <Slider Grid.Column="1"
-                                    Minimum="5"
-                                    Maximum="128"
-                                    StepFrequency="1"
-                                    Value="{x:Bind ViewModel.LengthValue, Mode=TwoWay}" />
-                            <NumberBox Grid.Column="2"
-                                       Minimum="5"
-                                       Maximum="128"
-                                       SpinButtonPlacementMode="Inline"
-                                       Value="{x:Bind ViewModel.LengthValue, Mode=TwoWay}" />
-                        </Grid>
+                        <TextBlock Text="选项" FontWeight="SemiBold" />
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="14">
+                            <StackPanel Spacing="12">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="92" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="长度" VerticalAlignment="Center" />
+                                    <Slider Grid.Column="1"
+                                            Minimum="5"
+                                            Maximum="128"
+                                            StepFrequency="1"
+                                            Value="{x:Bind ViewModel.LengthValue, Mode=TwoWay}" />
+                                    <NumberBox Grid.Column="2"
+                                               Minimum="5"
+                                               Maximum="128"
+                                               SpinButtonPlacementMode="Inline"
+                                               Value="{x:Bind ViewModel.LengthValue, Mode=TwoWay}" />
+                                </Grid>
 
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="包含字符"
-                                       VerticalAlignment="Top"
-                                       Margin="0,6,0,0" />
-                            <StackPanel Grid.Column="1"
-                                        Orientation="Horizontal"
-                                        Spacing="10">
-                                <CheckBox Content="A-Z"
-                                          IsChecked="{x:Bind ViewModel.IncludeUppercase, Mode=TwoWay}" />
-                                <CheckBox Content="a-z"
-                                          IsChecked="{x:Bind ViewModel.IncludeLowercase, Mode=TwoWay}" />
-                                <CheckBox Content="0-9"
-                                          IsChecked="{x:Bind ViewModel.IncludeNumbers, Mode=TwoWay}" />
-                                <CheckBox Content="!@#$%^&amp;*"
-                                          IsChecked="{x:Bind ViewModel.IncludeSpecial, Mode=TwoWay}" />
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="包含字符"
+                                               VerticalAlignment="Top"
+                                               Margin="0,6,0,0" />
+                                    <StackPanel Grid.Column="1"
+                                                Orientation="Horizontal"
+                                                Spacing="10">
+                                        <CheckBox Content="A-Z"
+                                                  IsChecked="{x:Bind ViewModel.IncludeUppercase, Mode=TwoWay}" />
+                                        <CheckBox Content="a-z"
+                                                  IsChecked="{x:Bind ViewModel.IncludeLowercase, Mode=TwoWay}" />
+                                        <CheckBox Content="0-9"
+                                                  IsChecked="{x:Bind ViewModel.IncludeNumbers, Mode=TwoWay}" />
+                                        <CheckBox Content="!@#$%^&amp;*"
+                                                  IsChecked="{x:Bind ViewModel.IncludeSpecial, Mode=TwoWay}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120" />
+                                        <ColumnDefinition Width="92" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="数字最少个数" VerticalAlignment="Center" />
+                                    <NumberBox Grid.Column="1"
+                                               Minimum="0"
+                                               Maximum="128"
+                                               SpinButtonPlacementMode="Inline"
+                                               Value="{x:Bind ViewModel.MinNumbersValue, Mode=TwoWay}" />
+                                </Grid>
+
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120" />
+                                        <ColumnDefinition Width="92" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="符号最少个数" VerticalAlignment="Center" />
+                                    <NumberBox Grid.Column="1"
+                                               Minimum="0"
+                                               Maximum="128"
+                                               SpinButtonPlacementMode="Inline"
+                                               Value="{x:Bind ViewModel.MinSpecialValue, Mode=TwoWay}" />
+                                </Grid>
+
+                                <CheckBox Content="避免易混淆的字符"
+                                          IsChecked="{x:Bind ViewModel.AvoidAmbiguous, Mode=TwoWay}" />
                             </StackPanel>
-                        </Grid>
-
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="92" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="数字最少个数" VerticalAlignment="Center" />
-                            <NumberBox Grid.Column="1"
-                                       Minimum="0"
-                                       Maximum="128"
-                                       SpinButtonPlacementMode="Inline"
-                                       Value="{x:Bind ViewModel.MinNumbersValue, Mode=TwoWay}" />
-                        </Grid>
-
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="92" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="符号最少个数" VerticalAlignment="Center" />
-                            <NumberBox Grid.Column="1"
-                                       Minimum="0"
-                                       Maximum="128"
-                                       SpinButtonPlacementMode="Inline"
-                                       Value="{x:Bind ViewModel.MinSpecialValue, Mode=TwoWay}" />
-                        </Grid>
-
-                        <CheckBox Content="避免易混淆的字符"
-                                  IsChecked="{x:Bind ViewModel.AvoidAmbiguous, Mode=TwoWay}" />
+                        </Border>
                     </StackPanel>
-                </Border>
-            </StackPanel>
-        </TabViewItem>
+                </TabViewItem>
 
-        <TabViewItem Header="密码短语" IsClosable="False">
-            <TextBlock Text="密码短语生成将在后续版本中实现。"
-                       Margin="0,16,0,0"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-        </TabViewItem>
+                <TabViewItem Header="密码短语" IsClosable="False">
+                    <StackPanel Spacing="14" Padding="0,12,0,0">
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="12">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{x:Bind ViewModel.GeneratedPassword, Mode=OneWay}"
+                                           FontFamily="Consolas"
+                                           FontSize="20"
+                                           TextWrapping="Wrap"
+                                           VerticalAlignment="Center" />
+                                <Button Grid.Column="1"
+                                        Width="36"
+                                        Height="32"
+                                        Padding="0"
+                                        AutomationProperties.Name="重新生成密码短语"
+                                        ToolTipService.ToolTip="重新生成"
+                                        Command="{x:Bind ViewModel.RegenerateCommand}">
+                                    <FontIcon Glyph="&#xE895;" FontSize="14" />
+                                </Button>
+                                <Button Grid.Column="2"
+                                        Width="36"
+                                        Height="32"
+                                        Padding="0"
+                                        AutomationProperties.Name="复制密码短语"
+                                        ToolTipService.ToolTip="复制"
+                                        Command="{x:Bind ViewModel.CopyCommand}">
+                                    <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                                </Button>
+                            </Grid>
+                        </Border>
 
-        <TabViewItem Header="用户名" IsClosable="False">
-            <TextBlock Text="用户名生成将在后续版本中实现。"
-                       Margin="0,16,0,0"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-        </TabViewItem>
-    </TabView>
+                        <TextBlock Text="选项" FontWeight="SemiBold" />
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="14">
+                            <StackPanel Spacing="12">
+                                <NumberBox Header="单词数"
+                                           Minimum="3"
+                                           Maximum="20"
+                                           SpinButtonPlacementMode="Inline"
+                                           Value="{x:Bind ViewModel.PassphraseWordCountValue, Mode=TwoWay}" />
+                                <TextBox Header="单词分隔符"
+                                         Text="{x:Bind ViewModel.PassphraseSeparator, Mode=TwoWay}" />
+                                <CheckBox Content="首字母大写"
+                                          IsChecked="{x:Bind ViewModel.PassphraseCapitalize, Mode=TwoWay}" />
+                                <CheckBox Content="包含数字"
+                                          IsChecked="{x:Bind ViewModel.PassphraseIncludeNumber, Mode=TwoWay}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </TabViewItem>
+
+                <TabViewItem Header="用户名" IsClosable="False">
+                    <StackPanel Spacing="14" Padding="0,12,0,0">
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="12">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{x:Bind ViewModel.GeneratedPassword, Mode=OneWay}"
+                                           FontFamily="Consolas"
+                                           FontSize="20"
+                                           TextWrapping="Wrap"
+                                           VerticalAlignment="Center" />
+                                <Button Grid.Column="1"
+                                        Width="36"
+                                        Height="32"
+                                        Padding="0"
+                                        AutomationProperties.Name="重新生成用户名"
+                                        ToolTipService.ToolTip="重新生成"
+                                        Command="{x:Bind ViewModel.RegenerateCommand}">
+                                    <FontIcon Glyph="&#xE895;" FontSize="14" />
+                                </Button>
+                                <Button Grid.Column="2"
+                                        Width="36"
+                                        Height="32"
+                                        Padding="0"
+                                        AutomationProperties.Name="复制用户名"
+                                        ToolTipService.ToolTip="复制"
+                                        Command="{x:Bind ViewModel.CopyCommand}">
+                                    <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                                </Button>
+                            </Grid>
+                        </Border>
+
+                        <TextBlock Text="选项" FontWeight="SemiBold" />
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="14">
+                            <StackPanel Spacing="12">
+                                <ComboBox Header="类型"
+                                          SelectedIndex="{x:Bind ViewModel.UsernameTypeIndex, Mode=TwoWay}">
+                                    <ComboBoxItem Content="随机单词" />
+                                    <ComboBoxItem Content="转发的电子邮箱别名" />
+                                    <ComboBoxItem Content="Catch-all 电子邮箱" />
+                                    <ComboBoxItem Content="附加地址电子邮箱" />
+                                </ComboBox>
+                                <CheckBox Content="首字母大写"
+                                          IsChecked="{x:Bind ViewModel.UsernameCapitalize, Mode=TwoWay}" />
+                                <CheckBox Content="包含数字"
+                                          IsChecked="{x:Bind ViewModel.UsernameIncludeNumber, Mode=TwoWay}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </TabViewItem>
+            </TabView>
+
+            <Button HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    Click="OnHistoryClick">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="生成器历史记录"
+                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                               FontWeight="SemiBold" />
+                    <FontIcon Grid.Column="1" Glyph="&#xE76C;" />
+                </Grid>
+            </Button>
+        </StackPanel>
+    </ScrollViewer>
 </ContentDialog>

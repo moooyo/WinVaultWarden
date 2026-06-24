@@ -1,9 +1,18 @@
+using System.Collections.ObjectModel;
 using App.Services;
+using App.ViewModels.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Crypto;
 
 namespace App.ViewModels;
+
+public enum GeneratorMode
+{
+    Password,
+    Passphrase,
+    Username,
+}
 
 public partial class GeneratorViewModel : ObservableObject
 {
@@ -18,6 +27,17 @@ public partial class GeneratorViewModel : ObservableObject
     private int _minSpecial;
     private bool _avoidAmbiguous;
     private string _generatedPassword = string.Empty;
+
+    public ObservableCollection<GeneratorHistoryItem> History { get; } = new();
+
+    [ObservableProperty] private GeneratorMode _mode;
+    [ObservableProperty] private int _passphraseWordCount = 6;
+    [ObservableProperty] private string _passphraseSeparator = "-";
+    [ObservableProperty] private bool _passphraseCapitalize;
+    [ObservableProperty] private bool _passphraseIncludeNumber;
+    [ObservableProperty] private UsernameGenerationType _usernameType = UsernameGenerationType.RandomWord;
+    [ObservableProperty] private bool _usernameCapitalize;
+    [ObservableProperty] private bool _usernameIncludeNumber;
 
     public int Length
     {
@@ -135,6 +155,18 @@ public partial class GeneratorViewModel : ObservableObject
         set => MinSpecial = ClampRounded(value, 0, 128);
     }
 
+    public double PassphraseWordCountValue
+    {
+        get => PassphraseWordCount;
+        set => PassphraseWordCount = ClampRounded(value, 3, 20);
+    }
+
+    public int UsernameTypeIndex
+    {
+        get => (int)UsernameType;
+        set => UsernameType = (UsernameGenerationType)Math.Clamp(value, 0, 3);
+    }
+
     public GeneratorViewModel(IClipboardService? clipboard = null)
     {
         _clipboard = clipboard;
@@ -149,7 +181,24 @@ public partial class GeneratorViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Regenerate() => GeneratedPassword = PasswordGenerator.Generate(BuildOptions());
+    private void Regenerate()
+    {
+        GeneratedPassword = Mode switch
+        {
+            GeneratorMode.Passphrase => PasswordGenerator.GeneratePassphrase(new PassphraseGenerationOptions(
+                PassphraseWordCount,
+                string.IsNullOrEmpty(PassphraseSeparator) ? "-" : PassphraseSeparator,
+                PassphraseCapitalize,
+                PassphraseIncludeNumber)),
+            GeneratorMode.Username => PasswordGenerator.GenerateUsername(new UsernameGenerationOptions(
+                UsernameType,
+                UsernameCapitalize,
+                UsernameIncludeNumber)),
+            _ => PasswordGenerator.Generate(BuildOptions()),
+        };
+
+        History.Insert(0, new GeneratorHistoryItem(GeneratedPassword, DateTimeOffset.Now));
+    }
 
     [RelayCommand]
     private void Copy()
@@ -157,6 +206,34 @@ public partial class GeneratorViewModel : ObservableObject
         if (!string.IsNullOrWhiteSpace(GeneratedPassword))
             _clipboard?.SetText(GeneratedPassword);
     }
+
+    [RelayCommand]
+    private void ClearHistory() => History.Clear();
+
+    [RelayCommand]
+    private void CopyHistoryItem(GeneratorHistoryItem? item)
+    {
+        if (!string.IsNullOrWhiteSpace(item?.Value))
+            _clipboard?.SetText(item.Value);
+    }
+
+    partial void OnModeChanged(GeneratorMode value) => Regenerate();
+    partial void OnPassphraseWordCountChanged(int value)
+    {
+        PassphraseWordCount = Math.Clamp(value, 3, 20);
+        OnPropertyChanged(nameof(PassphraseWordCountValue));
+        Regenerate();
+    }
+    partial void OnPassphraseSeparatorChanged(string value) => Regenerate();
+    partial void OnPassphraseCapitalizeChanged(bool value) => Regenerate();
+    partial void OnPassphraseIncludeNumberChanged(bool value) => Regenerate();
+    partial void OnUsernameTypeChanged(UsernameGenerationType value)
+    {
+        OnPropertyChanged(nameof(UsernameTypeIndex));
+        Regenerate();
+    }
+    partial void OnUsernameCapitalizeChanged(bool value) => Regenerate();
+    partial void OnUsernameIncludeNumberChanged(bool value) => Regenerate();
 
     private PasswordGenerationOptions BuildOptions()
     {

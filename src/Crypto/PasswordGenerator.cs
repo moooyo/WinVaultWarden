@@ -14,6 +14,25 @@ public sealed record PasswordGenerationOptions(
     int MinSpecial = 0,
     bool AvoidAmbiguous = false);
 
+public sealed record PassphraseGenerationOptions(
+    int WordCount = 6,
+    string Separator = "-",
+    bool Capitalize = false,
+    bool IncludeNumber = false);
+
+public enum UsernameGenerationType
+{
+    RandomWord,
+    ForwardedEmailAlias,
+    CatchAllEmail,
+    PlusAddressedEmail,
+}
+
+public sealed record UsernameGenerationOptions(
+    UsernameGenerationType Type = UsernameGenerationType.RandomWord,
+    bool Capitalize = false,
+    bool IncludeNumber = false);
+
 public static class PasswordGenerator
 {
     private const string Uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -24,6 +43,13 @@ public static class PasswordGenerator
     private const string UppercaseUnmistakable = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     private const string LowercaseUnmistakable = "abcdefghijkmnpqrstuvwxyz";
     private const string NumbersUnmistakable = "23456789";
+
+    private static readonly string[] Words =
+    [
+        "aware", "button", "chase", "dealt", "ditto", "enzyme", "football", "giddy",
+        "helium", "imperial", "jigsaw", "lantern", "marble", "nintendo", "orbit",
+        "powdery", "ripeness", "spongy", "steerable", "trifle", "unmasking", "wizard",
+    ];
 
     public static string Generate(PasswordGenerationOptions? options = null)
     {
@@ -61,6 +87,33 @@ public static class PasswordGenerator
         return new string(result.ToArray());
     }
 
+    public static string GeneratePassphrase(PassphraseGenerationOptions? options = null)
+    {
+        options ??= new PassphraseGenerationOptions();
+        if (options.WordCount is < 3 or > 20)
+            throw new ArgumentOutOfRangeException(nameof(options.WordCount), "单词数必须在 3 到 20 之间。");
+
+        var words = Enumerable.Range(0, options.WordCount)
+            .Select(_ => PickWord(options.Capitalize))
+            .ToArray();
+
+        if (options.IncludeNumber)
+            words[^1] += RandomNumberGenerator.GetInt32(10).ToString();
+
+        return string.Join(options.Separator, words);
+    }
+
+    public static string GenerateUsername(UsernameGenerationOptions? options = null)
+    {
+        options ??= new UsernameGenerationOptions();
+
+        var value = PickWord(options.Capitalize);
+        if (options.IncludeNumber)
+            value += RandomNumberGenerator.GetInt32(10, 100).ToString();
+
+        return value;
+    }
+
     private static IEnumerable<(string Characters, int Minimum)> BuildGroups(
         PasswordGenerationOptions options,
         int minUppercase,
@@ -91,6 +144,12 @@ public static class PasswordGenerator
 
     private static char Pick(string characters) =>
         characters[RandomNumberGenerator.GetInt32(characters.Length)];
+
+    private static string PickWord(bool capitalize)
+    {
+        var word = Words[RandomNumberGenerator.GetInt32(Words.Length)];
+        return capitalize ? char.ToUpperInvariant(word[0]) + word[1..] : word;
+    }
 
     private static void Shuffle(IList<char> value)
     {
