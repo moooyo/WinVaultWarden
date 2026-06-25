@@ -51,18 +51,28 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public async Task LoginAsync_Argon2id_ReturnsFailureWithoutTokenRequest()
+    public async Task LoginAsync_Argon2idSuccess_SavesSessionAndBootstrapsVault()
     {
+        var fixture = CreateArgon2idLoginFixture();
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
             """{"kdf":1,"kdfIterations":3,"kdfMemory":64,"kdfParallelism":4}"""));
-        var service = CreateAuthService(handler, new VaultSession(), new MemoryTokenStore());
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, TokenJson(fixture.ProtectedUserKey)));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, SyncJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, DevicesJson()));
+        var tokenStore = new MemoryTokenStore();
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, tokenStore);
 
         var result = await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
 
-        var failure = Assert.IsType<AuthResult.Failure>(result);
-        Assert.Contains("Argon2id", failure.Message);
-        Assert.Single(handler.Requests);
+        Assert.IsType<AuthResult.Success>(result);
+        Assert.Equal(fixture.UserKey.FullKey, session.UserKey!.FullKey);
+        Assert.Equal(4, handler.Requests.Count); // prelogin + token + sync + devices
+        var form = ParseForm(handler.Bodies[1]);
+        Assert.Equal(fixture.PasswordHash, form["password"]);
+        Assert.True(tokenStore.TryLoad(out var persisted));
+        Assert.Equal(KdfType.Argon2id, persisted.KdfType);
     }
 
     [Fact]
@@ -156,6 +166,16 @@ public class AuthServiceTests
     private LoginFixture CreateLoginFixture()
     {
         var masterKey = _crypto.DeriveMasterKey(Password, Email, KdfType.Pbkdf2, Iterations, null, null);
+        var passwordHash = _crypto.ComputeMasterPasswordHash(masterKey, Password);
+        var stretchedKey = _crypto.StretchMasterKey(masterKey);
+        var userKey = new SymmetricCryptoKey(Enumerable.Range(64, 64).Select(i => (byte)i).ToArray());
+        var protectedUserKey = _crypto.Encrypt(userKey.FullKey, stretchedKey).ToString();
+        return new LoginFixture(userKey, protectedUserKey, passwordHash);
+    }
+
+    private LoginFixture CreateArgon2idLoginFixture()
+    {
+        var masterKey = _crypto.DeriveMasterKey(Password, Email, KdfType.Argon2id, 3, 64, 4);
         var passwordHash = _crypto.ComputeMasterPasswordHash(masterKey, Password);
         var stretchedKey = _crypto.StretchMasterKey(masterKey);
         var userKey = new SymmetricCryptoKey(Enumerable.Range(64, 64).Select(i => (byte)i).ToArray());

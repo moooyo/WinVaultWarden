@@ -48,8 +48,6 @@ public sealed class AuthService : IAuthService
             _session.SetState(Core.Session.VaultState.Unlocking);
 
             var prelogin = await _api.PreloginAsync(email, ct);
-            if (prelogin.Kdf == KdfType.Argon2id)
-                return new AuthResult.Failure("Argon2id accounts are not supported yet.");
 
             var context = BuildLoginContext(normalizedServerUrl, email, masterPassword, prelogin, NewDeviceIdentifier());
             var result = await _api.ConnectTokenAsync(ConnectTokenRequest.Password(
@@ -237,9 +235,6 @@ public sealed class AuthService : IAuthService
         int? memory,
         int? parallelism)
     {
-        if (kdfType == KdfType.Argon2id)
-            throw new NotSupportedException("Argon2id accounts are not supported yet.");
-
         var masterKey = _crypto.DeriveMasterKey(masterPassword, email, kdfType, iterations, memory, parallelism);
         try
         {
