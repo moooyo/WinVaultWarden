@@ -109,7 +109,7 @@ public class TokenRefreshServiceTests
         session.SetTokens("old-access", "old-refresh");
         var service = Create(handler, session, StoreWithSession());
 
-        var first = service.TryRefreshAsync(TestContext.Current.CancellationToken);
+        var first = Task.Run(() => service.TryRefreshAsync(TestContext.Current.CancellationToken));
         await gate.Task; // 第一个调用已进入 HTTP(持有信号量)
         var second = service.TryRefreshAsync(TestContext.Current.CancellationToken); // 第二个排队等信号量
         release.SetResult();

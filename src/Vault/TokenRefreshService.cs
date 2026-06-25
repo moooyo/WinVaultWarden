@@ -30,10 +30,6 @@ public sealed class TokenRefreshService : ITokenRefresher
         if (string.IsNullOrEmpty(refreshToken))
             return false;
 
-        // Yield to caller so the returned Task is always pending on entry.
-        // This is essential for the single-flight guarantee: concurrent callers
-        // get a truly-async Task they can await while the semaphore is contested.
-        await Task.Yield();
         await _gate.WaitAsync(ct);
         try
         {
