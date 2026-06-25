@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WinVaultWarden passkey get test</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: Canvas;
+      color: CanvasText;
+    }
+
+    main {
+      display: grid;
+      gap: 18px;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 32px 20px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-weight: 600;
+    }
+
+    input,
+    select,
+    textarea,
+    button {
+      font: inherit;
+    }
+
+    input,
+    select,
+    textarea {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 8px 10px;
+    }
+
+    textarea {
+      min-height: 180px;
+      resize: vertical;
+    }
+
+    button {
+      width: fit-content;
+      padding: 8px 14px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    @media (max-width: 640px) {
+      .row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>WinVaultWarden passkey get test</h1>
+
+    <p>
+      Serve this page from localhost, open the Debug demo vault, then request a
+      passkey. The demo vault includes a discoverable passkey for rpId
+      localhost.
+    </p>
+
+    <div class="row">
+      <label>
+        rpId
+        <input id="rpId" autocomplete="off">
+      </label>
+
+      <label>
+        userVerification
+        <select id="userVerification">
+          <option value="preferred">preferred</option>
+          <option value="required">required</option>
+          <option value="discouraged">discouraged</option>
+        </select>
+      </label>
+    </div>
+
+    <label>
+      allowCredentials credential id (optional base64url)
+      <input id="credentialId" autocomplete="off" placeholder="leave blank for discoverable credential">
+    </label>
+
+    <button id="requestButton" type="button">Request passkey</button>
+
+    <label>
+      Result
+      <textarea id="result" readonly></textarea>
+    </label>
+  </main>
+
+  <script>
+    const rpIdInput = document.getElementById("rpId");
+    const credentialIdInput = document.getElementById("credentialId");
+    const userVerificationInput = document.getElementById("userVerification");
+    const result = document.getElementById("result");
+    const requestButton = document.getElementById("requestButton");
+
+    rpIdInput.value = location.hostname || "localhost";
+    requestButton.addEventListener("click", requestPasskey);
+
+    async function requestPasskey() {
+      result.value = "Waiting for WebAuthn response...";
+
+      try {
+        const challenge = new Uint8Array(32);
+        crypto.getRandomValues(challenge);
+
+        const allowCredentials = credentialIdInput.value.trim()
+          ? [{
+              id: fromBase64Url(credentialIdInput.value.trim()),
+              type: "public-key",
+              transports: ["internal"],
+            }]
+          : [];
+
+        const credential = await navigator.credentials.get({
+          publicKey: {
+            challenge,
+            rpId: rpIdInput.value.trim() || undefined,
+            allowCredentials,
+            timeout: 60000,
+            userVerification: userVerificationInput.value,
+          },
+        });
+
+        result.value = JSON.stringify(credential.toJSON(), null, 2);
+      } catch (error) {
+        result.value = `${error.name || "Error"}: ${error.message || error}`;
+      }
+    }
+
+    function fromBase64Url(value) {
+      const base64 = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+
+      for (let index = 0; index < binary.length; index++) {
+        bytes[index] = binary.charCodeAt(index);
+      }
+
+      return bytes.buffer;
+    }
+  </script>
+</body>
+</html>

@@ -117,6 +117,7 @@ public sealed class VaultUiService : IVaultUiService
                 Password = cipher.Login?.Password,
                 TotpSecret = cipher.Login?.Totp,
                 Uri = cipher.Login?.Uris.FirstOrDefault()?.Uri,
+                Passkeys = MapPasskeys(cipher.Login?.Fido2Credentials),
             },
             CipherType.Card => new CardDetail
             {
@@ -203,6 +204,16 @@ public sealed class VaultUiService : IVaultUiService
             CipherFieldType.Boolean => CipherEditorFieldType.Boolean,
             _ => CipherEditorFieldType.Text,
         })).ToArray();
+
+    private static IReadOnlyList<PasskeyDetail> MapPasskeys(IReadOnlyList<CipherFido2Credential>? credentials) =>
+        (credentials ?? Array.Empty<CipherFido2Credential>())
+            .Select(credential => new PasskeyDetail(
+                credential.RpId,
+                credential.UserName,
+                credential.UserDisplayName,
+                credential.Discoverable,
+                credential.CreationDate))
+            .ToArray();
 
     private static VaultItemKind KindFor(CipherType type) => type switch
     {

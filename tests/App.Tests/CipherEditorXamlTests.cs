@@ -37,6 +37,7 @@ public class CipherEditorXamlTests
         RequireByName(document, "CipherEditorTypeBox");
         RequireByName(document, "CipherEditorFolderBox");
         RequireByName(document, "AddCustomFieldButton");
+        RequireByName(document, "RemoveCustomFieldButton");
         RequireByName(document, "CustomFieldsEditorItems");
         RequireByName(document, "AddFolderMenuItem");
     }
@@ -49,6 +50,21 @@ public class CipherEditorXamlTests
 
         Assert.Equal("文件夹", folderItem.Attribute("Text")?.Value);
         Assert.Equal("False", folderItem.Attribute("IsEnabled")?.Value);
+    }
+
+    [Fact]
+    public void VaultPage_LoginTemplate_ShowsPasskeySummaryWhenPresent()
+    {
+        var document = LoadVaultPageXaml();
+        var passkeyCard = document.Descendants()
+            .FirstOrDefault(element => element.Attribute("Title")?.Value == "Passkey");
+
+        Assert.NotNull(passkeyCard);
+        Assert.Contains("HasPasskeys", passkeyCard!.Attribute("Visibility")?.Value);
+        Assert.Contains(passkeyCard.Descendants().Where(element => element.Name.LocalName == "FieldRow"),
+            row => row.Attribute("Label")?.Value == "RP ID" && row.Attribute("Value")?.Value?.Contains("RpId") == true);
+        Assert.Contains(passkeyCard.Descendants().Where(element => element.Name.LocalName == "FieldRow"),
+            row => row.Attribute("Value")?.Value?.Contains("DisplayName") == true);
     }
 
     [Fact]
@@ -69,9 +85,12 @@ public class CipherEditorXamlTests
     {
         var document = LoadVaultPageXaml();
         var addButton = RequireByName(document, "AddCustomFieldButton");
+        var removeButton = RequireByName(document, "RemoveCustomFieldButton");
         var customFields = RequireByName(document, "CustomFieldsEditorItems");
 
         Assert.True(addButton.Attribute("Click") is not null || addButton.Attribute("Command") is not null);
+        Assert.Equal("OnRemoveCustomFieldClick", removeButton.Attribute("Click")?.Value);
+        Assert.Equal("{Binding}", removeButton.Attribute("Tag")?.Value);
         Assert.Contains("EditorDraft.CustomFields", customFields.Attribute("ItemsSource")?.Value);
 
         var textBoxes = customFields.Descendants(Xaml + "TextBox").ToArray();

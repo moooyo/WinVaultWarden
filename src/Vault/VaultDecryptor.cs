@@ -79,12 +79,38 @@ public sealed class VaultDecryptor
     }
 
     private CipherLogin DecryptLogin(LoginDto login, SymmetricCryptoKey key) => new(
-        Dec(login.Username, key),
-        Dec(login.Password, key),
-        Dec(login.Totp, key),
-        (login.Uris ?? Array.Empty<LoginUriDto>())
-            .Select(uri => new CipherLoginUri(Dec(uri.Uri, key), uri.Match))
-            .ToArray());
+            Dec(login.Username, key),
+            Dec(login.Password, key),
+            Dec(login.Totp, key),
+            (login.Uris ?? Array.Empty<LoginUriDto>())
+                .Select(uri => new CipherLoginUri(Dec(uri.Uri, key), uri.Match))
+                .ToArray())
+        {
+            Fido2Credentials = DecryptFido2Credentials(login.Fido2Credentials, key),
+        };
+
+    private IReadOnlyList<CipherFido2Credential> DecryptFido2Credentials(Fido2CredentialDto[]? credentials, SymmetricCryptoKey key) =>
+        (credentials ?? Array.Empty<Fido2CredentialDto>())
+            .Select(credential =>
+            {
+                var counter = Dec(credential.Counter, key);
+                var discoverable = Dec(credential.Discoverable, key);
+                return new CipherFido2Credential(
+                    Dec(credential.CredentialId, key),
+                    Dec(credential.KeyType, key),
+                    Dec(credential.KeyAlgorithm, key),
+                    Dec(credential.KeyCurve, key),
+                    Dec(credential.KeyValue, key),
+                    Dec(credential.RpId, key),
+                    Dec(credential.UserHandle, key),
+                    Dec(credential.UserName, key),
+                    TryParseCounter(counter),
+                    Dec(credential.RpName, key),
+                    Dec(credential.UserDisplayName, key),
+                    string.Equals(discoverable, "true", StringComparison.OrdinalIgnoreCase),
+                    credential.CreationDate);
+            })
+            .ToArray();
 
     private CipherCard DecryptCard(CardDto card, SymmetricCryptoKey key) => new(
         Dec(card.CardholderName, key),
@@ -126,6 +152,9 @@ public sealed class VaultDecryptor
                 Dec(field.Value, key),
                 (CipherFieldType)field.Type))
             .ToArray();
+
+    private static long? TryParseCounter(string? value) =>
+        long.TryParse(value, out var counter) ? counter : null;
 
     private string? Dec(string? value, SymmetricCryptoKey key) => _crypto.DecryptToString(value, key);
 

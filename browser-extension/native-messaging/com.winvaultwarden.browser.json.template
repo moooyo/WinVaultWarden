@@ -1,0 +1,9 @@
+{
+  "name": "com.winvaultwarden.browser",
+  "description": "WinVaultWarden browser integration native host",
+  "path": "%WINVAULTWARDEN_NATIVE_HOST_PATH%",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://%CHROME_EXTENSION_ID%/"
+  ]
+}

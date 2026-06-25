@@ -5,6 +5,18 @@ public record CustomField(string Label, string Value, CipherEditorFieldType Type
     public bool IsSecret => Type == CipherEditorFieldType.Hidden;
 }
 
+public sealed record PasskeyDetail(
+    string? RpId,
+    string? UserName,
+    string? UserDisplayName,
+    bool Discoverable,
+    DateTimeOffset? Created)
+{
+    public string? DisplayName => string.IsNullOrWhiteSpace(UserDisplayName) ? UserName : UserDisplayName;
+    public string DiscoverableText => Discoverable ? "是" : "否";
+    public string? CreatedText => Created?.LocalDateTime.ToString("yyyy/M/d HH:mm:ss");
+}
+
 // 详情基类。共用:名称、文件夹、备注、自定义字段、时间。
 public abstract class CipherDetail
 {
@@ -31,6 +43,8 @@ public sealed class LoginDetail : CipherDetail
     public string? Password { get; init; }
     public string? TotpSecret { get; init; }
     public string? Uri { get; init; }
+    public IReadOnlyList<PasskeyDetail> Passkeys { get; init; } = Array.Empty<PasskeyDetail>();
+    public bool HasPasskeys => Passkeys.Count > 0;
 }
 
 public sealed class CardDetail : CipherDetail

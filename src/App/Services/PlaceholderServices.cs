@@ -9,7 +9,7 @@ public sealed class AuthService : IAuthService
     public Task<AuthResult> LoginAsync(string serverUrl, string email, string masterPassword, CancellationToken ct = default)
         => Task.FromResult<AuthResult>(new AuthResult.Failure("真实认证服务尚未接入。"));
 
-    public Task<AuthResult> SubmitTwoFactorAsync(string code, CancellationToken ct = default)
+    public Task<AuthResult> SubmitTwoFactorAsync(string code, CancellationToken ct = default, bool rememberDevice = true)
         => Task.FromResult<AuthResult>(new AuthResult.Failure("两步验证服务尚未接入。"));
 
     public Task<AuthResult> UnlockAsync(string masterPassword, CancellationToken ct = default)

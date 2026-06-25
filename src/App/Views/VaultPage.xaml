@@ -27,6 +27,23 @@
                         <controls:FieldRow Label="网址" Value="{x:Bind Uri}" ShowOpen="True" />
                     </controls:DetailCard.CardContent>
                 </controls:DetailCard>
+                <controls:DetailCard Title="Passkey"
+                                     Visibility="{x:Bind HasPasskeys, Converter={StaticResource BoolToVis}}">
+                    <controls:DetailCard.CardContent>
+                        <ItemsControl ItemsSource="{x:Bind Passkeys}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:PasskeyDetail">
+                                    <StackPanel Spacing="2">
+                                        <controls:FieldRow Label="RP ID" Value="{x:Bind RpId}" />
+                                        <controls:FieldRow Label="账号" Value="{x:Bind DisplayName}" />
+                                        <controls:FieldRow Label="可发现" Value="{x:Bind DiscoverableText}" />
+                                        <controls:FieldRow Label="创建" Value="{x:Bind CreatedText}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </controls:DetailCard.CardContent>
+                </controls:DetailCard>
             </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="CardTemplate" x:DataType="models:CardDetail">
@@ -388,14 +405,30 @@
                                               ItemsSource="{Binding EditorDraft.CustomFields}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <StackPanel Spacing="8" Margin="0,4,0,0">
-                                                <TextBox Header="名称"
-                                                         HorizontalAlignment="Stretch"
-                                                         Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                <TextBox Header="值"
-                                                         HorizontalAlignment="Stretch"
-                                                         Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                            </StackPanel>
+                                            <Grid ColumnSpacing="8" Margin="0,4,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Spacing="8">
+                                                    <TextBox Header="名称"
+                                                             HorizontalAlignment="Stretch"
+                                                             Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBox Header="值"
+                                                             HorizontalAlignment="Stretch"
+                                                             Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                </StackPanel>
+                                                <Button x:Name="RemoveCustomFieldButton"
+                                                        Grid.Column="1"
+                                                        Tag="{Binding}"
+                                                        VerticalAlignment="Top"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        ToolTipService.ToolTip="删除字段"
+                                                        Click="OnRemoveCustomFieldClick">
+                                                    <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                                                </Button>
+                                            </Grid>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>

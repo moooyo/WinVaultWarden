@@ -12,6 +12,11 @@ public interface IDemoVaultSessionService
 
 public sealed class DemoVaultSessionService : IDemoVaultSessionService
 {
+    private const string LocalhostPasskeyCredentialId = "CQgHBg";
+    private const string LocalhostPasskeyPrivateKey =
+        "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgfXz874GHUc-96SruIPvps7It_3vkLr_ip9gWl-QSu3WhRANCAARrUjrSufadd_VXs_3EfmvqIK1EFblpeKrR25ehyTmgVdpHGiEVsdrqvcSSuwtwSyLEh5LXjJMsTWOnvptRsy7L";
+    private const string LocalhostPasskeyUserHandle = "CgsMDQ";
+
     private readonly VaultSession _session;
 
     public DemoVaultSessionService(VaultSession session) => _session = session;
@@ -60,6 +65,41 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             Fields =
             [
                 new CipherField("Recovery code", "ABCD-EFGH", CipherFieldType.Hidden),
+            ],
+        },
+        new Cipher
+        {
+            Id = "demo-local-passkey",
+            Type = CipherType.Login,
+            Name = "Local WebAuthn test",
+            FolderId = folderId,
+            Favorite = true,
+            Notes = "Local-only demo passkey for browser bridge testing.",
+            CreationDate = DemoDate(18, 10, 30),
+            RevisionDate = DemoDate(23, 16, 15),
+            Login = new CipherLogin("tester@localhost", null, null, [new CipherLoginUri("http://localhost:8787", null)])
+            {
+                Fido2Credentials =
+                [
+                    new CipherFido2Credential(
+                        LocalhostPasskeyCredentialId,
+                        "public-key",
+                        "ECDSA",
+                        "P-256",
+                        LocalhostPasskeyPrivateKey,
+                        "localhost",
+                        LocalhostPasskeyUserHandle,
+                        "tester@localhost",
+                        0,
+                        "Localhost",
+                        "Local Demo User",
+                        true,
+                        DemoDate(18, 10, 30)),
+                ],
+            },
+            Fields =
+            [
+                new CipherField("Purpose", "Browser passkey bridge smoke test", CipherFieldType.Text),
             ],
         },
         new Cipher

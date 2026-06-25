@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Api;
 using Api.Dtos;
 using Core.Enums;
@@ -81,6 +82,80 @@ public class ApiClientTests
         Assert.Equal("sync", sync.Object);
         Assert.Equal("/api/sync", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Equal("excludeDomains=true", handler.Requests[0].RequestUri!.Query.TrimStart('?'));
+    }
+
+    [Fact]
+    public void SyncResponse_ReadsLoginFido2Credentials()
+    {
+        var sync = JsonSerializer.Deserialize<SyncResponse>(
+            """
+            {
+              "object": "sync",
+              "profile": { "email": "me@example.com" },
+              "folders": [],
+              "ciphers": [
+                {
+                  "id": "c-passkey",
+                  "type": 1,
+                  "name": "2.name",
+                  "notes": null,
+                  "key": null,
+                  "organizationId": null,
+                  "folderId": null,
+                  "favorite": false,
+                  "reprompt": 0,
+                  "login": {
+                    "username": null,
+                    "password": null,
+                    "totp": null,
+                    "uris": [],
+                    "fido2Credentials": [
+                      {
+                        "credentialId": "2.credential",
+                        "keyType": "2.public-key",
+                        "keyAlgorithm": "2.ECDSA",
+                        "keyCurve": "2.P-256",
+                        "keyValue": "2.private-key",
+                        "rpId": "2.example.com",
+                        "userHandle": "2.user-handle",
+                        "userName": "2.user@example.com",
+                        "counter": "2.7",
+                        "rpName": "2.Example",
+                        "userDisplayName": "2.User",
+                        "discoverable": "2.true",
+                        "creationDate": "2026-06-24T00:00:00Z"
+                      }
+                    ]
+                  },
+                  "card": null,
+                  "identity": null,
+                  "secureNote": null,
+                  "sshKey": null,
+                  "fields": null,
+                  "creationDate": "2026-06-24T00:00:00Z",
+                  "revisionDate": "2026-06-24T00:00:00Z",
+                  "deletedDate": null
+                }
+              ]
+            }
+            """,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+
+        var credential = Assert.Single(sync.Ciphers![0].Login!.Fido2Credentials!);
+
+        Assert.Equal("2.credential", credential.CredentialId);
+        Assert.Equal("2.public-key", credential.KeyType);
+        Assert.Equal("2.ECDSA", credential.KeyAlgorithm);
+        Assert.Equal("2.P-256", credential.KeyCurve);
+        Assert.Equal("2.private-key", credential.KeyValue);
+        Assert.Equal("2.example.com", credential.RpId);
+        Assert.Equal("2.user-handle", credential.UserHandle);
+        Assert.Equal("2.user@example.com", credential.UserName);
+        Assert.Equal("2.7", credential.Counter);
+        Assert.Equal("2.Example", credential.RpName);
+        Assert.Equal("2.User", credential.UserDisplayName);
+        Assert.Equal("2.true", credential.Discoverable);
+        Assert.Equal(DateTimeOffset.Parse("2026-06-24T00:00:00Z"), credential.CreationDate);
     }
 
     [Fact]

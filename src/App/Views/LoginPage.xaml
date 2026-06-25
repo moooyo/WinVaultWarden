@@ -9,53 +9,236 @@
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
     </Page.Resources>
 
-    <Grid>
-        <Border MaxWidth="380" Margin="24" Padding="32"
-                HorizontalAlignment="Center" VerticalAlignment="Center"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1" CornerRadius="12">
-            <StackPanel Spacing="16">
-                <!-- 品牌 -->
-                <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
-                    <Border Width="40" Height="40" CornerRadius="10"
+    <Grid x:Name="LoginSurface"
+          Padding="40,18,40,28">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="LoginForm"
+                        Width="360"
+                        Spacing="0"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Top"
+                        Margin="0,22,0,0">
+                <Grid MinHeight="56">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="40" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="40" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button x:Name="BackButton"
+                            Grid.Column="0"
+                            Width="36"
+                            Height="32"
+                            Padding="0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top"
+                            Command="{x:Bind ViewModel.BackCommand, Mode=OneWay}"
+                            IsEnabled="{x:Bind ViewModel.CanGoBack, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.CanGoBack, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                            ToolTipService.ToolTip="返回">
+                        <FontIcon Glyph="&#xE72B;" FontSize="14" />
+                    </Button>
+
+                    <Border Grid.Column="1"
+                            Width="52"
+                            Height="52"
+                            CornerRadius="12"
                             Background="{ThemeResource AccentFillColorDefaultBrush}">
-                        <TextBlock Text="V" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" FontWeight="Bold" FontSize="22"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <TextBlock Text="V"
+                                   Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                   FontWeight="SemiBold"
+                                   FontSize="28"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
                     </Border>
-                    <TextBlock Text="WinVaultWarden" FontSize="22" FontWeight="SemiBold"
-                               VerticalAlignment="Center" />
-                </StackPanel>
+                </Grid>
 
-                <TextBlock Text="登录到你的保险库" HorizontalAlignment="Center"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="{x:Bind ViewModel.FormTitle, Mode=OneWay}"
+                           Margin="0,18,0,0"
+                           FontSize="28"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center" />
 
-                <TextBox Header="服务器地址" PlaceholderText="https://vault.example.com"
-                         Text="{x:Bind ViewModel.ServerUrl, Mode=TwoWay}"
-                         IsEnabled="{x:Bind ViewModel.CanEditServer, Mode=OneWay}" />
-                <TextBox Header="邮箱" PlaceholderText="you@example.com"
-                         Text="{x:Bind ViewModel.Email, Mode=TwoWay}"
-                         IsEnabled="{x:Bind ViewModel.CanEditServer, Mode=OneWay}" />
-                <PasswordBox Header="主密码"
-                             Password="{x:Bind ViewModel.MasterPassword, Mode=TwoWay}" />
-                <TextBox Header="两步验证码"
-                         Text="{x:Bind ViewModel.TwoFactorCode, Mode=TwoWay}"
-                         Visibility="{x:Bind ViewModel.IsTwoFactorStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                <TextBlock Text="{x:Bind ViewModel.FormSubtitle, Mode=OneWay}"
+                           Margin="0,4,0,0"
+                           FontSize="13"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap" />
 
-                <Button Content="{x:Bind ViewModel.PrimaryButtonText, Mode=OneWay}"
-                        Click="OnLogin"
-                        Style="{ThemeResource AccentButtonStyle}"
-                        HorizontalAlignment="Stretch" />
-                <Button x:Name="DemoVaultButton"
-                        Content="使用演示保险库"
-                        Command="{x:Bind ViewModel.UseDemoVaultCommand, Mode=OneWay}"
-                        Visibility="{x:Bind ViewModel.CanUseDemoVault, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                        HorizontalAlignment="Stretch" />
+                <TextBlock Text="{x:Bind ViewModel.StepText, Mode=OneWay}"
+                           Margin="0,18,0,0"
+                           FontSize="12"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           HorizontalAlignment="Center" />
 
-                <TextBlock Text="{x:Bind ViewModel.Status, Mode=OneWay}"
-                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                           TextWrapping="Wrap" HorizontalAlignment="Center" />
+                <InfoBar x:Name="LoginStatusInfoBar"
+                         Margin="0,18,0,0"
+                         IsOpen="{x:Bind ViewModel.HasStatus, Mode=OneWay}"
+                         Severity="Error"
+                         Message="{x:Bind ViewModel.Status, Mode=OneWay}" />
+
+                    <StackPanel x:Name="LoginAccountStage"
+                                Margin="0,18,0,0"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsAccountStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <ComboBox x:Name="ServerOptionBox"
+                                  Header="登录到"
+                                  HorizontalAlignment="Stretch"
+                                  MinHeight="38"
+                                  SelectedIndex="{x:Bind ViewModel.SelectedServerOptionIndex, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind ViewModel.CanEditServer, Mode=OneWay}">
+                            <ComboBoxItem Content="Bitwarden.com (US)" />
+                            <ComboBoxItem Content="Bitwarden.com (EU)" />
+                            <ComboBoxItem Content="自托管" />
+                        </ComboBox>
+
+                        <TextBox x:Name="ServerUrlTextBox"
+                                 Header="服务器地址"
+                                 PlaceholderText="https://vault.example.com"
+                                 Text="{x:Bind ViewModel.ServerUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 IsEnabled="{x:Bind ViewModel.CanEditServer, Mode=OneWay}"
+                                 MinHeight="38"
+                                 Visibility="{x:Bind ViewModel.ShowCustomServerUrl, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                        <TextBox x:Name="EmailTextBox"
+                                 Header="邮箱地址"
+                                 PlaceholderText="you@example.com"
+                                 Text="{x:Bind ViewModel.Email, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 IsEnabled="{x:Bind ViewModel.CanEditServer, Mode=OneWay}"
+                                 MinHeight="38"
+                                 InputScope="EmailSmtpAddress" />
+
+                    </StackPanel>
+
+                    <StackPanel x:Name="LoginPasswordStage"
+                                Margin="0,18,0,0"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsPasswordStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Width="34"
+                                    Height="34"
+                                    CornerRadius="17"
+                                    Background="{ThemeResource AccentFillColorSecondaryBrush}">
+                                <TextBlock Text="{x:Bind ViewModel.AccountInitial, Mode=OneWay}"
+                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                            <StackPanel Grid.Column="1"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind ViewModel.AccountSummary, Mode=OneWay}"
+                                           FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind ViewModel.ServerSummary, Mode=OneWay}"
+                                           FontSize="12"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Grid>
+
+                        <PasswordBox x:Name="MasterPasswordBox"
+                                     Header="主密码"
+                                     MinHeight="38"
+                                     Password="{x:Bind ViewModel.MasterPassword, Mode=TwoWay}" />
+                    </StackPanel>
+
+                    <StackPanel x:Name="LoginTwoFactorStage"
+                                Margin="0,18,0,0"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsTwoFactorStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBox x:Name="TwoFactorCodeTextBox"
+                                 Header="验证码"
+                                 PlaceholderText="000000"
+                                 Text="{x:Bind ViewModel.TwoFactorCode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 MinHeight="38"
+                                 MaxLength="32" />
+
+                        <CheckBox Content="记住此设备"
+                                  IsChecked="{x:Bind ViewModel.RememberDevice, Mode=TwoWay}" />
+                    </StackPanel>
+
+                    <StackPanel x:Name="LoginUnlockStage"
+                                Margin="0,18,0,0"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsUnlockStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Width="34"
+                                    Height="34"
+                                    CornerRadius="17"
+                                    Background="{ThemeResource AccentFillColorSecondaryBrush}">
+                                <TextBlock Text="{x:Bind ViewModel.AccountInitial, Mode=OneWay}"
+                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                            <StackPanel Grid.Column="1"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind ViewModel.AccountSummary, Mode=OneWay}"
+                                           FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind ViewModel.ServerSummary, Mode=OneWay}"
+                                           FontSize="12"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Grid>
+
+                        <PasswordBox x:Name="UnlockPasswordBox"
+                                     Header="主密码"
+                                     MinHeight="38"
+                                     Password="{x:Bind ViewModel.MasterPassword, Mode=TwoWay}" />
+
+                        <Button x:Name="SwitchAccountButton"
+                                Content="切换账户"
+                                Command="{x:Bind ViewModel.SwitchAccountCommand, Mode=OneWay}"
+                                MinHeight="36"
+                                HorizontalAlignment="Stretch" />
+                    </StackPanel>
+
+                    <Button x:Name="PrimaryAuthButton"
+                            Margin="0,18,0,0"
+                            Click="OnLogin"
+                            Style="{ThemeResource AccentButtonStyle}"
+                            IsEnabled="{x:Bind ViewModel.CanUsePrimaryAction, Mode=OneWay}"
+                            MinHeight="40"
+                            FontWeight="SemiBold"
+                            HorizontalAlignment="Stretch">
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="8"
+                                    HorizontalAlignment="Center">
+                            <ProgressRing Width="16"
+                                          Height="16"
+                                          IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
+                                          Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <TextBlock Text="{x:Bind ViewModel.PrimaryButtonText, Mode=OneWay}" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button x:Name="DemoVaultButton"
+                            Margin="0,10,0,0"
+                            Content="使用演示保险库"
+                            Command="{x:Bind ViewModel.UseDemoVaultCommand, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.CanUseDemoVault, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                            MinHeight="34"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                            HorizontalAlignment="Stretch" />
             </StackPanel>
-        </Border>
+        </ScrollViewer>
     </Grid>
 </Page>

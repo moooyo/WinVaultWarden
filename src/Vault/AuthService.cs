@@ -68,7 +68,7 @@ public sealed class AuthService : IAuthService
         }
     }
 
-    public async Task<AuthResult> SubmitTwoFactorAsync(string code, CancellationToken ct = default)
+    public async Task<AuthResult> SubmitTwoFactorAsync(string code, CancellationToken ct = default, bool rememberDevice = true)
     {
         if (_pendingTwoFactor is not { } context)
             return new AuthResult.Failure("No two-factor challenge is pending.");
@@ -82,7 +82,7 @@ public sealed class AuthService : IAuthService
                 context.PasswordHash,
                 context.DeviceIdentifier,
                 DeviceName,
-                new TwoFactorPayload(provider, code, true)), ct);
+                new TwoFactorPayload(provider, code, rememberDevice)), ct);
 
             return await HandleLoginResultAsync(context with { Providers = Array.Empty<int>() }, result, ct);
         }

@@ -52,6 +52,50 @@ public class VaultDecryptorTests
     }
 
     [Fact]
+    public void Decrypt_Login_DecryptsFido2Credentials()
+    {
+        var dto = LoginDto() with
+        {
+            Login = new LoginDto(null, null, null, null,
+            [
+                new Fido2CredentialDto(
+                    Enc("credential-id", _userKey),
+                    Enc("public-key", _userKey),
+                    Enc("ECDSA", _userKey),
+                    Enc("P-256", _userKey),
+                    Enc("private-key", _userKey),
+                    Enc("github.com", _userKey),
+                    Enc("user-handle", _userKey),
+                    Enc("octo@example.com", _userKey),
+                    Enc("42", _userKey),
+                    Enc("GitHub", _userKey),
+                    Enc("Octo Cat", _userKey),
+                    Enc("true", _userKey),
+                    DateTimeOffset.Parse("2026-06-24T00:00:00Z"))
+            ]),
+        };
+
+        var result = NewDecryptor().Decrypt(Sync([dto]), _userKey, "https://vault.example");
+
+        var login = Assert.Single(result.Ciphers).Login!;
+        Assert.True(login.HasFido2Credentials);
+        var credential = Assert.Single(login.Fido2Credentials);
+        Assert.Equal("credential-id", credential.CredentialId);
+        Assert.Equal("public-key", credential.KeyType);
+        Assert.Equal("ECDSA", credential.KeyAlgorithm);
+        Assert.Equal("P-256", credential.KeyCurve);
+        Assert.Equal("private-key", credential.KeyValue);
+        Assert.Equal("github.com", credential.RpId);
+        Assert.Equal("user-handle", credential.UserHandle);
+        Assert.Equal("octo@example.com", credential.UserName);
+        Assert.Equal(42, credential.Counter);
+        Assert.Equal("GitHub", credential.RpName);
+        Assert.Equal("Octo Cat", credential.UserDisplayName);
+        Assert.True(credential.Discoverable);
+        Assert.Equal(DateTimeOffset.Parse("2026-06-24T00:00:00Z"), credential.CreationDate);
+    }
+
+    [Fact]
     public void Decrypt_Card_Identity_SecureNote_Ssh_MapToTypedChildren()
     {
         var card = new CipherDto("c-card", (int)CipherType.Card, Enc("Visa", _userKey), null, null, null, null, false, 0,

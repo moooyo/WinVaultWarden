@@ -27,6 +27,10 @@
     <Deploy Solution="*|x64" />
     <Deploy Solution="*|arm64" />
   </Project>
+  <Project Path="src/BrowserNativeHost/BrowserNativeHost.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|arm64" Project="arm64" />
+  </Project>
   <Project Path="tests/Crypto.Tests/Crypto.Tests.csproj">
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="*|arm64" Project="arm64" />
@@ -36,6 +40,10 @@
     <Platform Solution="*|arm64" Project="arm64" />
   </Project>
   <Project Path="tests/Vault.Tests/Vault.Tests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|arm64" Project="arm64" />
+  </Project>
+  <Project Path="tests/BrowserNativeHost.Tests/BrowserNativeHost.Tests.csproj">
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="*|arm64" Project="arm64" />
   </Project>

@@ -83,6 +83,15 @@ public sealed partial class VaultPage : Page
         });
     }
 
+    private void OnRemoveCustomFieldClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.EditorDraft is null)
+            return;
+
+        if (sender is FrameworkElement { Tag: CustomFieldEditorDraft field })
+            ViewModel.EditorDraft.CustomFields.Remove(field);
+    }
+
     private void SyncEditorTypeSelection()
     {
         if (ViewModel.EditorDraft is null)

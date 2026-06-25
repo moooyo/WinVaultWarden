@@ -44,11 +44,27 @@ public sealed record LoginDto(
     [property: JsonPropertyName("username")] string? Username,
     [property: JsonPropertyName("password")] string? Password,
     [property: JsonPropertyName("totp")] string? Totp,
-    [property: JsonPropertyName("uris")] LoginUriDto[]? Uris);
+    [property: JsonPropertyName("uris")] LoginUriDto[]? Uris,
+    [property: JsonPropertyName("fido2Credentials")] Fido2CredentialDto[]? Fido2Credentials = null);
 
 public sealed record LoginUriDto(
     [property: JsonPropertyName("uri")] string? Uri,
     [property: JsonPropertyName("match")] int? Match);
+
+public sealed record Fido2CredentialDto(
+    [property: JsonPropertyName("credentialId")] string? CredentialId,
+    [property: JsonPropertyName("keyType")] string? KeyType,
+    [property: JsonPropertyName("keyAlgorithm")] string? KeyAlgorithm,
+    [property: JsonPropertyName("keyCurve")] string? KeyCurve,
+    [property: JsonPropertyName("keyValue")] string? KeyValue,
+    [property: JsonPropertyName("rpId")] string? RpId,
+    [property: JsonPropertyName("userHandle")] string? UserHandle,
+    [property: JsonPropertyName("userName")] string? UserName,
+    [property: JsonPropertyName("counter")] string? Counter,
+    [property: JsonPropertyName("rpName")] string? RpName,
+    [property: JsonPropertyName("userDisplayName")] string? UserDisplayName,
+    [property: JsonPropertyName("discoverable")] string? Discoverable,
+    [property: JsonPropertyName("creationDate")] DateTimeOffset? CreationDate);
 
 public sealed record CardDto(
     [property: JsonPropertyName("cardholderName")] string? CardholderName,

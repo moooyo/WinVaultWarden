@@ -1,5 +1,6 @@
 using App.Services;
 using Core.Enums;
+using Core.Passkeys;
 using Core.Session;
 using Vault;
 using Xunit;
@@ -27,6 +28,12 @@ public class DemoVaultSessionServiceTests
         Assert.Contains(session.Ciphers, c => c.Type == CipherType.SecureNote);
         Assert.Contains(session.Ciphers, c => c.Type == CipherType.SshKey);
         Assert.Contains(session.Ciphers, c => c.DeletedDate is not null);
+        var localPasskey = Assert.Single(session.Ciphers, c => c.Id == "demo-local-passkey");
+        var credential = Assert.Single(localPasskey.Login!.Fido2Credentials);
+        Assert.Equal("localhost", credential.RpId);
+        Assert.False(string.IsNullOrWhiteSpace(WebAuthnAssertionService.CreateAssertion(
+            credential,
+            new WebAuthnGetAssertionRequest("http://localhost:8787", "AQIDBA", "localhost", [], false)).Signature));
         Assert.Single(session.Folders);
         Assert.Single(session.Devices);
     }

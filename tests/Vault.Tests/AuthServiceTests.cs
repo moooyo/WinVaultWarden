@@ -83,14 +83,14 @@ public class AuthServiceTests
         var challenge = Assert.IsType<AuthResult.TwoFactorRequired>(first);
         Assert.Equal([0], challenge.Providers);
 
-        var second = await service.SubmitTwoFactorAsync("123456", TestContext.Current.CancellationToken);
+        var second = await service.SubmitTwoFactorAsync("123456", TestContext.Current.CancellationToken, rememberDevice: false);
 
         Assert.IsType<AuthResult.Success>(second);
         Assert.Equal(fixture.UserKey.FullKey, session.UserKey!.FullKey);
         var form = ParseForm(handler.Bodies[2]);
         Assert.Equal("0", form["two_factor_provider"]);
         Assert.Equal("123456", form["two_factor_token"]);
-        Assert.Equal("1", form["two_factor_remember"]);
+        Assert.Equal("0", form["two_factor_remember"]);
         Assert.Equal(fixture.PasswordHash, form["password"]);
     }
 

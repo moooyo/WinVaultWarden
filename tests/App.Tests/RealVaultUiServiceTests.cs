@@ -45,6 +45,10 @@ public class RealVaultUiServiceTests
         Assert.Equal("Work", login.FolderName);
         Assert.True(login.Reprompt);
         Assert.True(Assert.Single(login.CustomFields).IsSecret);
+        var passkey = Assert.Single(login.Passkeys);
+        Assert.Equal("github.com", passkey.RpId);
+        Assert.Equal("Octo Cat", passkey.DisplayName);
+        Assert.Equal("是", passkey.DiscoverableText);
 
         var card = Assert.IsType<CardDetail>(service.GetDetail("card"));
         Assert.Equal("Jane", card.Cardholder);
@@ -98,7 +102,15 @@ public class RealVaultUiServiceTests
                 Reprompt = true,
                 CreationDate = DateTimeOffset.Parse("2026-06-01T00:00:00Z"),
                 RevisionDate = DateTimeOffset.Parse("2026-06-02T00:00:00Z"),
-                Login = new CipherLogin("octo", "pw", "otpauth", [new CipherLoginUri("https://github.com", null)]),
+                Login = new CipherLogin("octo", "pw", "otpauth", [new CipherLoginUri("https://github.com", null)])
+                {
+                    Fido2Credentials =
+                    [
+                        new CipherFido2Credential("credential-id", "public-key", "ECDSA", "P-256", "private-key",
+                            "github.com", "user-handle", "octo@example.com", 1, "GitHub", "Octo Cat", true,
+                            DateTimeOffset.Parse("2026-06-01T00:00:00Z")),
+                    ],
+                },
                 Fields = [new CipherField("Recovery", "secret", CipherFieldType.Hidden)],
             },
             new Cipher

@@ -25,9 +25,28 @@ public sealed class Cipher
     public IReadOnlyList<CipherField> Fields { get; init; } = Array.Empty<CipherField>();
 }
 
-public sealed record CipherLogin(string? Username, string? Password, string? Totp, IReadOnlyList<CipherLoginUri> Uris);
+public sealed record CipherLogin(string? Username, string? Password, string? Totp, IReadOnlyList<CipherLoginUri> Uris)
+{
+    public IReadOnlyList<CipherFido2Credential> Fido2Credentials { get; init; } = Array.Empty<CipherFido2Credential>();
+    public bool HasFido2Credentials => Fido2Credentials.Count > 0;
+}
 
 public sealed record CipherLoginUri(string? Uri, int? Match);
+
+public sealed record CipherFido2Credential(
+    string? CredentialId,
+    string? KeyType,
+    string? KeyAlgorithm,
+    string? KeyCurve,
+    string? KeyValue,
+    string? RpId,
+    string? UserHandle,
+    string? UserName,
+    long? Counter,
+    string? RpName,
+    string? UserDisplayName,
+    bool Discoverable,
+    DateTimeOffset? CreationDate);
 
 public sealed record CipherCard(
     string? CardholderName,

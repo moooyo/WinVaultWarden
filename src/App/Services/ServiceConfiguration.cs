@@ -1,5 +1,6 @@
 using Api;
 using Core.Abstractions;
+using Core.Passkeys;
 using Core.Services;
 using Crypto;
 using Vault;
@@ -38,6 +39,9 @@ public static class ServiceConfiguration
         services.AddSingleton<IAuthService, Vault.AuthService>();
         services.AddSingleton<ISyncService, Vault.SyncService>();
         services.AddSingleton<IVaultService, Vault.VaultService>();
+        services.AddSingleton<IPasskeyApprovalService, PasskeyApprovalDialogService>();
+        services.AddSingleton<BrowserPasskeyRequestHandler>();
+        services.AddSingleton<PasskeyBridgeServer>();
         services.AddSingleton<IVaultUiService, VaultUiService>();
         services.AddSingleton<ISendUiService, MockSendUiService>();
         services.AddTransient<IDeviceUiService>(sp =>

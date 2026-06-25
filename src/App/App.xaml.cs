@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using App.Services;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace App;
 
@@ -17,6 +18,7 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         MainWindow = new MainWindow();
+        Services.GetRequiredService<PasskeyBridgeServer>().Start();
         MainWindow.Activate();
     }
 }
