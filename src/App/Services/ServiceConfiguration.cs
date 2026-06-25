@@ -22,7 +22,9 @@ public static class ServiceConfiguration
         services.AddSingleton(sp =>
         {
             var session = sp.GetRequiredService<VaultSession>();
-            var handler = new AuthHeaderHandler(() => session.AccessToken, _ => Task.FromResult(false))
+            var handler = new AuthHeaderHandler(
+                () => session.AccessToken,
+                ct => sp.GetRequiredService<ITokenRefresher>().TryRefreshAsync(ct))
             {
                 InnerHandler = new HttpClientHandler(),
             };
@@ -36,6 +38,7 @@ public static class ServiceConfiguration
 #if DEBUG
         services.AddSingleton<IDemoVaultSessionService, DemoVaultSessionService>();
 #endif
+        services.AddSingleton<ITokenRefresher, Vault.TokenRefreshService>();
         services.AddSingleton<IAuthService, Vault.AuthService>();
         services.AddSingleton<ISyncService, Vault.SyncService>();
         services.AddSingleton<IVaultService, Vault.VaultService>();
