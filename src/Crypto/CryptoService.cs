@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Core.Abstractions;
 using Core.Enums;
+using Konscious.Security.Cryptography;
 
 namespace Crypto;
 
@@ -23,9 +24,8 @@ public sealed class CryptoService : ICryptoService
                 HashAlgorithmName.SHA256,
                 32),
 
-            // Argon2id:salt = SHA-256(邮箱);需第三方包,本次不实现
-            KdfType.Argon2id => throw new NotImplementedException(
-                "Argon2id 派生待实现:salt = SHA-256(邮箱),参数 iter/mem/parallel 来自 prelogin。引入 Konscious.Security.Cryptography.Argon2 后补全。"),
+            // Argon2id:salt = SHA-256(规范化邮箱);需第三方包,本次不实现
+            KdfType.Argon2id => DeriveArgon2idMasterKey(pw, normalizedEmail, iterations, memoryMiB, parallelism),
 
             _ => throw new ArgumentOutOfRangeException(nameof(kdfType)),
         };
@@ -125,6 +125,22 @@ public sealed class CryptoService : ICryptoService
             _ => throw new CryptographicException($"非 RSA encType: {(int)data.Type}"),
         };
         return rsa.Decrypt(data.Ct, padding);
+    }
+
+    private static byte[] DeriveArgon2idMasterKey(byte[] password, string normalizedEmail, int iterations, int? memoryMiB, int? parallelism)
+    {
+        if (memoryMiB is null || parallelism is null)
+            throw new ArgumentException("Argon2id 需要 memory 与 parallelism 参数(prelogin 应返回)。");
+
+        var salt = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedEmail));
+        using var argon2 = new Argon2id(password)
+        {
+            Salt = salt,
+            Iterations = iterations,
+            MemorySize = checked(memoryMiB.Value * 1024),
+            DegreeOfParallelism = parallelism.Value,
+        };
+        return argon2.GetBytes(32);
     }
 
     private static byte[] ComputeMac(byte[] macKey, byte[] iv, byte[] ct)
