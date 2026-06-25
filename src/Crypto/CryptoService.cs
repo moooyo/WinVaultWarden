@@ -24,7 +24,7 @@ public sealed class CryptoService : ICryptoService
                 HashAlgorithmName.SHA256,
                 32),
 
-            // Argon2id:salt = SHA-256(规范化邮箱);需第三方包,本次不实现
+            // Argon2id:salt = SHA-256(规范化邮箱);memory 单位 KiB = MiB*1024。
             KdfType.Argon2id => DeriveArgon2idMasterKey(pw, normalizedEmail, iterations, memoryMiB, parallelism),
 
             _ => throw new ArgumentOutOfRangeException(nameof(kdfType)),
