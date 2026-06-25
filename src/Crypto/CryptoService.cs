@@ -129,8 +129,10 @@ public sealed class CryptoService : ICryptoService
 
     private static byte[] DeriveArgon2idMasterKey(byte[] password, string normalizedEmail, int iterations, int? memoryMiB, int? parallelism)
     {
-        if (memoryMiB is null || parallelism is null)
-            throw new ArgumentException("Argon2id 需要 memory 与 parallelism 参数(prelogin 应返回)。");
+        if (memoryMiB is null)
+            throw new ArgumentException("Argon2id 需要 memory 参数(prelogin 应返回)。", nameof(memoryMiB));
+        if (parallelism is null)
+            throw new ArgumentException("Argon2id 需要 parallelism 参数(prelogin 应返回)。", nameof(parallelism));
 
         var salt = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedEmail));
         using var argon2 = new Argon2id(password)
