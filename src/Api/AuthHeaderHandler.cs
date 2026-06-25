@@ -22,6 +22,10 @@ public sealed class AuthHeaderHandler : DelegatingHandler
         if (response.StatusCode != System.Net.HttpStatusCode.Unauthorized)
             return response;
 
+        // connect/token 自身就是刷新机制;对它的 401 不再触发刷新,避免再入与信号量自死锁。
+        if (IsTokenEndpoint(request))
+            return response;
+
         response.Dispose();
         if (!await _refreshAsync(cancellationToken))
             return new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized) { RequestMessage = request };
@@ -30,6 +34,9 @@ public sealed class AuthHeaderHandler : DelegatingHandler
         ApplyHeaders(retry);
         return await base.SendAsync(retry, cancellationToken);
     }
+
+    private static bool IsTokenEndpoint(HttpRequestMessage request) =>
+        request.RequestUri?.AbsolutePath.EndsWith("connect/token", StringComparison.OrdinalIgnoreCase) == true;
 
     private void ApplyHeaders(HttpRequestMessage request)
     {

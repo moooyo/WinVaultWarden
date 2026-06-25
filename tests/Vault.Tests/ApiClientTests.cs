@@ -230,4 +230,30 @@ public class ApiClientTests
         Assert.Equal("old-token", handler.Requests[0].Headers.Authorization!.Parameter);
         Assert.Equal("new-token", handler.Requests[1].Headers.Authorization!.Parameter);
     }
+
+    [Fact]
+    public async Task AuthHeaderHandler_DoesNotRefreshOnConnectTokenEndpoint()
+    {
+        var refreshCalls = 0;
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
+        using var client = new HttpClient(new AuthHeaderHandler(
+            () => "token",
+            _ => { refreshCalls++; return Task.FromResult(true); })
+        {
+            InnerHandler = handler,
+        })
+        {
+            BaseAddress = new Uri("https://vault.example/"),
+        };
+
+        var response = await client.PostAsync(
+            "identity/connect/token",
+            new StringContent("grant_type=refresh_token"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(0, refreshCalls);
+        Assert.Single(handler.Requests);
+    }
 }
