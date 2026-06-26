@@ -6,7 +6,7 @@ using Core.Abstractions;
 
 namespace Api;
 
-public sealed class ApiClient : IApiClient, IReadonlyApiClient
+public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HttpClient _http;
@@ -66,6 +66,58 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient
         var response = await _http.GetAsync(Url("api/devices"), ct);
         response.EnsureSuccessStatusCode();
         return await ReadJson<ListResponse<DeviceDto>>(response, ct);
+    }
+
+    public async Task CreateCipherAsync(CipherRequest request, CancellationToken ct = default)
+        => await SendWriteAsync(HttpMethod.Post, "api/ciphers", request, ct);
+
+    public async Task UpdateCipherAsync(string cipherId, CipherRequest request, CancellationToken ct = default)
+        => await SendWriteAsync(HttpMethod.Put, $"api/ciphers/{cipherId}", request, ct);
+
+    public async Task SoftDeleteCipherAsync(string cipherId, CancellationToken ct = default)
+        => await SendWriteAsync(HttpMethod.Put, $"api/ciphers/{cipherId}/delete", ct);
+
+    public async Task HardDeleteCipherAsync(string cipherId, CancellationToken ct = default)
+        => await SendWriteAsync(HttpMethod.Delete, $"api/ciphers/{cipherId}", ct);
+
+    public async Task RestoreCipherAsync(string cipherId, CancellationToken ct = default)
+        => await SendWriteAsync(HttpMethod.Put, $"api/ciphers/{cipherId}/restore", ct);
+
+    public async Task CreateFolderAsync(FolderRequest request, CancellationToken ct = default)
+        => await SendWriteAsync(HttpMethod.Post, "api/folders", request, ct);
+
+    public async Task UpdateFolderAsync(string folderId, FolderRequest request, CancellationToken ct = default)
+        => await SendWriteAsync(HttpMethod.Put, $"api/folders/{folderId}", request, ct);
+
+    public async Task DeleteFolderAsync(string folderId, CancellationToken ct = default)
+        => await SendWriteAsync(HttpMethod.Delete, $"api/folders/{folderId}", ct);
+
+    private async Task SendWriteAsync<TBody>(HttpMethod method, string path, TBody body, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(method, Url(path))
+        {
+            Content = JsonContent.Create(body, options: JsonOptions),
+        };
+        await SendWriteCore(request, ct);
+    }
+
+    private async Task SendWriteAsync(HttpMethod method, string path, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(method, Url(path));
+        await SendWriteCore(request, ct);
+    }
+
+    private async Task SendWriteCore(HttpRequestMessage request, CancellationToken ct)
+    {
+        using var response = await _http.SendAsync(request, ct);
+        if (response.IsSuccessStatusCode)
+            return;
+
+        var error = await ReadJsonOrNull<WriteErrorResponse>(response, ct);
+        var message = string.IsNullOrWhiteSpace(error?.Message)
+            ? response.ReasonPhrase ?? "Vault write failed."
+            : error.Message;
+        throw new VaultWriteException(message);
     }
 
     private Uri Url(string relativePath) =>
