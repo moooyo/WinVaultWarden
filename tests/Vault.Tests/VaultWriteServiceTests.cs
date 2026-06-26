@@ -110,6 +110,7 @@ public class VaultWriteServiceTests
         await NewUnlockedService().DeleteCipherAsync("c-9", permanent: true, TestContext.Current.CancellationToken);
 
         Assert.Equal("hard", Assert.Single(_api.Calls));
+        Assert.Equal("c-9", _api.LastId);
         Assert.Equal(1, _sync.Calls);
     }
 
@@ -163,4 +164,53 @@ public class VaultWriteServiceTests
         Assert.Empty(_api.Calls);
         Assert.Equal(0, _sync.Calls);
     }
+
+    [Fact]
+    public async Task DeleteCipher_WhenLocked_ThrowsAndDoesNotCallApi()
+    {
+        var service = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.DeleteCipherAsync("c-9", permanent: false, TestContext.Current.CancellationToken));
+
+        Assert.Empty(_api.Calls);
+        Assert.Equal(0, _sync.Calls);
+    }
+
+    [Fact]
+    public async Task RestoreCipher_WhenLocked_ThrowsAndDoesNotCallApi()
+    {
+        var service = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RestoreCipherAsync("c-9", TestContext.Current.CancellationToken));
+
+        Assert.Empty(_api.Calls);
+        Assert.Equal(0, _sync.Calls);
+    }
+
+    [Fact]
+    public async Task SaveFolder_WhenLocked_ThrowsAndDoesNotCallApi()
+    {
+        var service = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SaveFolderAsync(null, "Work", TestContext.Current.CancellationToken));
+
+        Assert.Empty(_api.Calls);
+        Assert.Equal(0, _sync.Calls);
+    }
+
+    [Fact]
+    public async Task DeleteFolder_WhenLocked_ThrowsAndDoesNotCallApi()
+    {
+        var service = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.DeleteFolderAsync("f-1", TestContext.Current.CancellationToken));
+
+        Assert.Empty(_api.Calls);
+        Assert.Equal(0, _sync.Calls);
+    }
 }
+
