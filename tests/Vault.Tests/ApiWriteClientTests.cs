@@ -52,6 +52,7 @@ public class ApiWriteClientTests
 
         Assert.Equal(HttpMethod.Put, handler.Requests[0].Method);
         Assert.Equal("/api/ciphers/c-1", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Contains("\"name\":\"2.name\"", handler.Bodies[0]);
     }
 
     [Fact]
@@ -119,6 +120,7 @@ public class ApiWriteClientTests
 
         Assert.Equal(HttpMethod.Put, handler.Requests[0].Method);
         Assert.Equal("/api/folders/f-1", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Contains("\"name\":\"2.folder\"", handler.Bodies[0]);
     }
 
     [Fact]
@@ -155,7 +157,9 @@ public class ApiWriteClientTests
         handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.BadRequest));
         var client = NewClient(handler);
 
-        await Assert.ThrowsAsync<VaultWriteException>(() =>
+        var ex = await Assert.ThrowsAsync<VaultWriteException>(() =>
             client.SoftDeleteCipherAsync("c-1", TestContext.Current.CancellationToken));
+
+        Assert.Equal("Bad Request", ex.Message);
     }
 }
