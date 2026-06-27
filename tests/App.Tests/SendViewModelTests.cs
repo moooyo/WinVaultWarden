@@ -172,4 +172,40 @@ public class SendViewModelTests
         Assert.Contains(service.GetSends(), s => s.Id == target.Id && s.Name == "更新后的名称");
         Assert.Null(service.UpdateSend("does-not-exist", draft));
     }
+
+    [Fact]
+    public void DeleteSendCommand_RemovesFromItemsAndFiltered()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        var item = vm.Items[0];
+        var startCount = vm.Items.Count;
+
+        vm.DeleteSendCommand.Execute(item);
+
+        Assert.Equal(startCount - 1, vm.Items.Count);
+        Assert.DoesNotContain(vm.Items, s => s.Id == item.Id);
+        Assert.DoesNotContain(vm.FilteredItems, s => s.Id == item.Id);
+    }
+
+    [Fact]
+    public void DeleteSendCommand_LastItem_UpdatesHasItemsNoItems()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        foreach (var item in vm.Items.ToList())
+            vm.DeleteSendCommand.Execute(item);
+
+        Assert.False(vm.HasItems);
+        Assert.True(vm.NoItems);
+    }
+
+    [Fact]
+    public void DeleteSendCommand_NullItem_NoOp()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        var startCount = vm.Items.Count;
+
+        vm.DeleteSendCommand.Execute(null);
+
+        Assert.Equal(startCount, vm.Items.Count);
+    }
 }

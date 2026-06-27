@@ -65,6 +65,21 @@ public partial class SendViewModel : ObservableObject
         return true;
     }
 
+    [RelayCommand]
+    private void DeleteSend(SendListItem? item)
+    {
+        if (item is null)
+            return;
+
+        _service.DeleteSend(item.Id);
+
+        var existing = Items.FirstOrDefault(s => s.Id == item.Id);
+        if (existing is not null)
+            Items.Remove(existing);
+
+        ApplyFilter();
+    }
+
     public void MarkMoreMenuOpened(SendListItem? item) => SelectedMenuItem = item;
 
     [RelayCommand]
