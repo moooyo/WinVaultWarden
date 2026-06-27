@@ -304,6 +304,50 @@
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
+
+            <InfoBar x:Name="VaultErrorInfoBar"
+                     Grid.Row="3"
+                     VerticalAlignment="Top"
+                     IsClosable="True"
+                     Severity="Error"
+                     IsOpen="{x:Bind ViewModel.OperationError, Mode=OneWay, Converter={StaticResource EmptyToCollapsed}}"
+                     Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" />
+
+            <StackPanel x:Name="VaultEmptyPanel"
+                        Grid.Row="3"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Spacing="{StaticResource SpacingMedium}"
+                        Visibility="{x:Bind ViewModel.HasNoItems, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <FontIcon Glyph="&#xE8A1;" FontSize="44"
+                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                          HorizontalAlignment="Center" />
+                <TextBlock Text="保险库为空"
+                           Style="{ThemeResource SubtitleTextBlockStyle}"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="点击上方&#x201C;新增&#x201D;创建你的第一个条目。"
+                           Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                           TextAlignment="Center"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+
+            <StackPanel x:Name="VaultNoResultsPanel"
+                        Grid.Row="3"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Spacing="{StaticResource SpacingMedium}"
+                        Visibility="{x:Bind ViewModel.NoResults, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <FontIcon Glyph="&#xE721;" FontSize="44"
+                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                          HorizontalAlignment="Center" />
+                <TextBlock Text="没有匹配项"
+                           Style="{ThemeResource SubtitleTextBlockStyle}"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="没有符合当前搜索或筛选的条目。"
+                           Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                           TextAlignment="Center"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
         </Grid>
 
         <!-- 详情 -->
