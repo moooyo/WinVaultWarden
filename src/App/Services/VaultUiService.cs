@@ -69,9 +69,6 @@ public sealed class VaultUiService : IVaultUiService
 
     public Task SyncAsync(CancellationToken ct = default) => _sync.SyncAsync(ct);
 
-    // 过渡:Task 3 删除。re-sync 是事实源,此方法不再被使用。
-    public void AddCipher(CipherDetail detail, string? folderId) { }
-
     public IReadOnlyList<FilterNode> GetFilters()
     {
         var items = GetItems();

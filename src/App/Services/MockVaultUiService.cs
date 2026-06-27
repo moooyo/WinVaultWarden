@@ -18,9 +18,6 @@ public interface IVaultUiService
     Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default);
     Task DeleteFolderAsync(string folderId, CancellationToken ct = default);
     Task SyncAsync(CancellationToken ct = default);
-
-    // 过渡:旧同步写路径,Task 3 迁移 VM 后删除。
-    void AddCipher(CipherDetail detail, string? folderId);
 }
 
 public sealed class MockVaultUiService : IVaultUiService
@@ -151,12 +148,6 @@ public sealed class MockVaultUiService : IVaultUiService
     }
 
     public Task SyncAsync(CancellationToken ct = default) => Task.CompletedTask;
-
-    public void AddCipher(CipherDetail detail, string? folderId)
-    {
-        _details.Add(detail);
-        _folderIds[detail.Id] = string.IsNullOrWhiteSpace(folderId) ? null : folderId;
-    }
 
     private string? FolderIdFor(string id) => _folderIds.TryGetValue(id, out var f) ? f : null;
 

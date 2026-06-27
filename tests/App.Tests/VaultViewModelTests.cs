@@ -275,13 +275,13 @@ public class VaultViewModelTests
     }
 
     [Fact]
-    public void SaveDraft_MissingName_ReturnsFalseAndKeepsEditing()
+    public async Task SaveDraft_MissingName_ReturnsFalseAndKeepsEditing()
     {
         var vm = NewVm();
         vm.BeginAdd(VaultItemKind.Login);
         vm.EditorDraft!.Name = "";
 
-        var saved = vm.SaveDraft();
+        var saved = await vm.SaveDraftAsync();
 
         Assert.False(saved);
         Assert.True(vm.IsEditing);
@@ -289,7 +289,7 @@ public class VaultViewModelTests
     }
 
     [Fact]
-    public void SaveDraft_Login_AddsItemSelectsItAndShowsDetail()
+    public async Task SaveDraft_Login_AddsItemSelectsItAndShowsDetail()
     {
         var vm = NewVm();
         vm.BeginAdd(VaultItemKind.Login);
@@ -298,7 +298,7 @@ public class VaultViewModelTests
         vm.EditorDraft.Login.Password = "secret";
         vm.EditorDraft.Login.Uris[0].Uri = "https://github.com";
 
-        var saved = vm.SaveDraft();
+        var saved = await vm.SaveDraftAsync();
 
         Assert.True(saved);
         Assert.False(vm.IsEditing);
@@ -311,14 +311,14 @@ public class VaultViewModelTests
     }
 
     [Fact]
-    public void SaveDraft_Ssh_RequiresKeyFields()
+    public async Task SaveDraft_Ssh_RequiresKeyFields()
     {
         var vm = NewVm();
         vm.BeginAdd(VaultItemKind.Ssh);
         vm.EditorDraft!.Name = "prod";
         vm.EditorDraft.SshKey.PrivateKey = "private";
 
-        var saved = vm.SaveDraft();
+        var saved = await vm.SaveDraftAsync();
 
         Assert.False(saved);
         Assert.True(vm.IsEditing);
@@ -326,7 +326,7 @@ public class VaultViewModelTests
     }
 
     [Fact]
-    public void SaveDraft_Card_CreatesCardDetail()
+    public async Task SaveDraft_Card_CreatesCardDetail()
     {
         var vm = NewVm();
         vm.BeginAdd(VaultItemKind.Card);
@@ -338,7 +338,7 @@ public class VaultViewModelTests
         vm.EditorDraft.Card.Code = "123";
         vm.EditorDraft.Card.Brand = "Visa";
 
-        var saved = vm.SaveDraft();
+        var saved = await vm.SaveDraftAsync();
 
         Assert.True(saved);
         var detail = Assert.IsType<CardDetail>(vm.Detail);
@@ -348,7 +348,7 @@ public class VaultViewModelTests
     }
 
     [Fact]
-    public void SaveDraft_Identity_CreatesIdentityDetailWithExtendedFields()
+    public async Task SaveDraft_Identity_CreatesIdentityDetailWithExtendedFields()
     {
         var vm = NewVm();
         vm.BeginAdd(VaultItemKind.Identity);
@@ -361,7 +361,7 @@ public class VaultViewModelTests
         vm.EditorDraft.Identity.Phone = "123456";
         vm.EditorDraft.Identity.Address1 = "Road 1";
 
-        var saved = vm.SaveDraft();
+        var saved = await vm.SaveDraftAsync();
 
         Assert.True(saved);
         var detail = Assert.IsType<IdentityDetail>(vm.Detail);
@@ -374,14 +374,14 @@ public class VaultViewModelTests
     }
 
     [Fact]
-    public void SaveDraft_Note_CreatesNoteDetail()
+    public async Task SaveDraft_Note_CreatesNoteDetail()
     {
         var vm = NewVm();
         vm.BeginAdd(VaultItemKind.Note);
         vm.EditorDraft!.Name = "Recovery Note";
         vm.EditorDraft.Notes = "keep offline";
 
-        var saved = vm.SaveDraft();
+        var saved = await vm.SaveDraftAsync();
 
         Assert.True(saved);
         var detail = Assert.IsType<NoteDetail>(vm.Detail);
@@ -391,7 +391,7 @@ public class VaultViewModelTests
     }
 
     [Fact]
-    public void SaveDraft_Ssh_CreatesSshDetail()
+    public async Task SaveDraft_Ssh_CreatesSshDetail()
     {
         var vm = NewVm();
         vm.BeginAdd(VaultItemKind.Ssh);
@@ -400,7 +400,7 @@ public class VaultViewModelTests
         vm.EditorDraft.SshKey.PrivateKey = "private-key";
         vm.EditorDraft.SshKey.KeyFingerprint = "SHA256:abc";
 
-        var saved = vm.SaveDraft();
+        var saved = await vm.SaveDraftAsync();
 
         Assert.True(saved);
         var detail = Assert.IsType<SshDetail>(vm.Detail);
@@ -410,7 +410,7 @@ public class VaultViewModelTests
     }
 
     [Fact]
-    public void SaveDraft_CommonMetadataAndCustomFields_RoundTripToDetail()
+    public async Task SaveDraft_CommonMetadataAndCustomFields_RoundTripToDetail()
     {
         var vm = NewVm();
         vm.BeginAdd(VaultItemKind.Login);
@@ -436,7 +436,7 @@ public class VaultViewModelTests
             BooleanValue = true,
         });
 
-        var saved = vm.SaveDraft();
+        var saved = await vm.SaveDraftAsync();
 
         Assert.True(saved);
         var detail = Assert.IsType<LoginDetail>(vm.Detail);
@@ -468,14 +468,14 @@ public class VaultViewModelTests
     }
 
     [Fact]
-    public void SaveDraft_FilterExcludesNewType_SwitchesToAllItemsSoNewItemIsVisible()
+    public async Task SaveDraft_FilterExcludesNewType_SwitchesToAllItemsSoNewItemIsVisible()
     {
         var vm = NewVm();
         vm.SelectedFilter = vm.Filters.First(f => f.Kind == FilterKind.Type && f.TypeFilter == VaultItemKind.Login);
         vm.BeginAdd(VaultItemKind.Card);
         vm.EditorDraft!.Name = "Filter Card";
 
-        var saved = vm.SaveDraft();
+        var saved = await vm.SaveDraftAsync();
 
         Assert.True(saved);
         Assert.Equal(FilterKind.AllItems, vm.SelectedFilter!.Kind);
@@ -485,14 +485,14 @@ public class VaultViewModelTests
     }
 
     [Fact]
-    public void SaveDraft_SearchTextExcludesNewItem_ClearsSearchSoNewItemIsVisible()
+    public async Task SaveDraft_SearchTextExcludesNewItem_ClearsSearchSoNewItemIsVisible()
     {
         var vm = NewVm();
         vm.SearchText = "百度";
         vm.BeginAdd(VaultItemKind.Card);
         vm.EditorDraft!.Name = "Search Hidden Card";
 
-        var saved = vm.SaveDraft();
+        var saved = await vm.SaveDraftAsync();
 
         Assert.True(saved);
         Assert.Equal("", vm.SearchText);
@@ -501,14 +501,14 @@ public class VaultViewModelTests
     }
 
     [Fact]
-    public void SaveDraft_FolderId_UsesListFolderIdAndDetailFolderName()
+    public async Task SaveDraft_FolderId_UsesListFolderIdAndDetailFolderName()
     {
         var vm = NewVm();
         vm.BeginAdd(VaultItemKind.Login);
         vm.EditorDraft!.Name = "Folder Login";
         vm.EditorDraft.FolderId = "f1";
 
-        var saved = vm.SaveDraft();
+        var saved = await vm.SaveDraftAsync();
 
         Assert.True(saved);
         Assert.Equal("f1", vm.SelectedItem!.FolderId);
@@ -517,7 +517,7 @@ public class VaultViewModelTests
     }
 
     [Fact]
-    public void SaveDraft_PersistsInSharedMockServiceAcrossViewModels()
+    public async Task SaveDraft_PersistsInSharedMockServiceAcrossViewModels()
     {
         var service = new MockVaultUiService();
         var first = new VaultViewModel(service);
@@ -525,7 +525,7 @@ public class VaultViewModelTests
         first.EditorDraft!.Name = "Persistent Login";
         first.EditorDraft.Login.Username = "persisted";
 
-        Assert.True(first.SaveDraft());
+        Assert.True(await first.SaveDraftAsync());
 
         var second = new VaultViewModel(service);
         var item = Assert.Single(second.Items, i => i.Name == "Persistent Login");
@@ -534,6 +534,132 @@ public class VaultViewModelTests
         var detail = Assert.IsType<LoginDetail>(second.Detail);
         Assert.Equal("persisted", detail.Username);
     }
+
+    [Fact]
+    public void BeginEdit_LoadsDraftFromItemAndSetsEditTitle()
+    {
+        var vm = NewVm();
+        vm.SelectedItem = vm.Items.First(i => i.Id == "1");
+
+        vm.BeginEdit("1");
+
+        Assert.True(vm.IsEditing);
+        Assert.NotNull(vm.EditorDraft);
+        Assert.Equal("百度网盘", vm.EditorDraft!.Name);
+        Assert.Equal("admin", vm.EditorDraft.Login.Username);
+        Assert.Equal("编辑登录", vm.EditorTitle);
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_Edit_UpdatesItemInPlaceWithoutDuplicating()
+    {
+        var vm = NewVm();
+        var before = vm.Items.Count;
+        vm.SelectedItem = vm.Items.First(i => i.Id == "1");
+        vm.BeginEdit("1");
+        vm.EditorDraft!.Name = "百度网盘改名";
+
+        var saved = await vm.SaveDraftAsync();
+
+        Assert.True(saved);
+        Assert.Equal(before, vm.Items.Count);
+        Assert.Contains(vm.Items, i => i.Id == "1" && i.Name == "百度网盘改名");
+        Assert.Equal("百度网盘改名", vm.SelectedItem!.Name);
+    }
+
+    [Fact]
+    public async Task SoftDeleteAsync_MovesItemToTrashAndClearsSelection()
+    {
+        var vm = NewVm();
+        vm.SelectedItem = vm.Items.First(i => i.Id == "1");
+
+        var ok = await vm.SoftDeleteAsync("1");
+
+        Assert.True(ok);
+        Assert.Null(vm.SelectedItem);
+        Assert.True(vm.Items.First(i => i.Id == "1").IsDeleted);
+        Assert.DoesNotContain(vm.FilteredItems, i => i.Id == "1"); // AllItems hides trash
+    }
+
+    [Fact]
+    public async Task RestoreAsync_BringsItemBackFromTrash()
+    {
+        var vm = NewVm();
+
+        var ok = await vm.RestoreAsync("6");
+
+        Assert.True(ok);
+        Assert.False(vm.Items.First(i => i.Id == "6").IsDeleted);
+    }
+
+    [Fact]
+    public async Task PermanentDeleteAsync_RemovesItemEntirely()
+    {
+        var vm = NewVm();
+
+        var ok = await vm.PermanentDeleteAsync("6");
+
+        Assert.True(ok);
+        Assert.DoesNotContain(vm.Items, i => i.Id == "6");
+    }
+
+    [Fact]
+    public async Task SaveFolderAsync_AddsFolderFilterAndRaisesFoldersChanged()
+    {
+        var vm = NewVm();
+        var raised = false;
+        vm.FoldersChanged += (_, _) => raised = true;
+
+        var ok = await vm.SaveFolderAsync(null, "新建文件夹");
+
+        Assert.True(ok);
+        Assert.True(raised);
+        Assert.Contains(vm.Filters, f => f.Kind == FilterKind.Folder && f.Label == "新建文件夹");
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_RemovesFolderFilterAndRaisesFoldersChanged()
+    {
+        var vm = NewVm();
+        var raised = false;
+        vm.FoldersChanged += (_, _) => raised = true;
+
+        var ok = await vm.DeleteFolderAsync("f1");
+
+        Assert.True(ok);
+        Assert.True(raised);
+        Assert.DoesNotContain(vm.Filters, f => f.Kind == FilterKind.Folder && f.FolderId == "f1");
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_WhenServiceThrows_SetsOperationErrorAndReturnsFalse()
+    {
+        var vm = new VaultViewModel(new ThrowingVaultUiService());
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.EditorDraft!.Name = "Boom";
+
+        var saved = await vm.SaveDraftAsync();
+
+        Assert.False(saved);
+        Assert.Equal("boom", vm.OperationError);
+        Assert.True(vm.IsEditing);       // stays in editor so user can retry
+        Assert.False(vm.IsBusy);
+    }
+}
+
+public sealed class ThrowingVaultUiService : IVaultUiService
+{
+    private readonly MockVaultUiService _inner = new();
+    public IReadOnlyList<CipherListItem> GetItems() => _inner.GetItems();
+    public CipherDetail GetDetail(string id) => _inner.GetDetail(id);
+    public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
+    public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
+    public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => throw new InvalidOperationException("boom");
+    public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => throw new InvalidOperationException("boom");
+    public Task RestoreCipherAsync(string id, CancellationToken ct = default) => throw new InvalidOperationException("boom");
+    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => throw new InvalidOperationException("boom");
+    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => throw new InvalidOperationException("boom");
+    public Task SyncAsync(CancellationToken ct = default) => throw new InvalidOperationException("boom");
 }
 
 public class SendViewModelTests

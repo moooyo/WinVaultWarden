@@ -10,6 +10,7 @@ public partial class VaultViewModel : ObservableObject
 {
     private readonly IVaultUiService _service;
     private readonly IClipboardService? _clipboard;
+    private string? _editingId;
 
     public ObservableCollection<CipherListItem> Items { get; } = new();
     public ObservableCollection<FilterNode> Filters { get; } = new();
@@ -30,16 +31,27 @@ public partial class VaultViewModel : ObservableObject
     [ObservableProperty]
     public partial string EditorError { get; set; } = string.Empty;
 
+    [ObservableProperty]
+    public partial bool IsBusy { get; set; }
+
+    [ObservableProperty]
+    public partial string OperationError { get; set; } = string.Empty;
+
     public bool HasSelection => Detail is not null;
     public bool NoSelection => Detail is null;
     public string? SelectedFilterTag => TagForFilter(SelectedFilter);
+    public bool IsSelectedItemDeleted => SelectedItem?.IsDeleted == true;
+    public bool IsFolderFilterSelected => SelectedFilter?.Kind == FilterKind.Folder;
+
+    public event EventHandler? FoldersChanged;
+
     public string EditorTitle => EditorDraft?.Type switch
     {
-        VaultItemKind.Login => "新增登录",
-        VaultItemKind.Card => "新增支付卡",
-        VaultItemKind.Identity => "新增身份",
-        VaultItemKind.Note => "新增笔记",
-        VaultItemKind.Ssh => "新增 SSH 密钥",
+        VaultItemKind.Login => _editingId is null ? "新增登录" : "编辑登录",
+        VaultItemKind.Card => _editingId is null ? "新增支付卡" : "编辑支付卡",
+        VaultItemKind.Identity => _editingId is null ? "新增身份" : "编辑身份",
+        VaultItemKind.Note => _editingId is null ? "新增笔记" : "编辑笔记",
+        VaultItemKind.Ssh => _editingId is null ? "新增 SSH 密钥" : "编辑 SSH 密钥",
         _ => string.Empty,
     };
 
@@ -58,6 +70,7 @@ public partial class VaultViewModel : ObservableObject
         Detail = value is null ? null : _service.GetDetail(value.Id);
         OnPropertyChanged(nameof(HasSelection));
         OnPropertyChanged(nameof(NoSelection));
+        OnPropertyChanged(nameof(IsSelectedItemDeleted));
     }
 
     partial void OnSearchTextChanged(string value) => ApplyFilter();
@@ -97,6 +110,7 @@ public partial class VaultViewModel : ObservableObject
     {
         ApplyFilter();
         OnPropertyChanged(nameof(SelectedFilterTag));
+        OnPropertyChanged(nameof(IsFolderFilterSelected));
     }
 
     private static string? TagForFilter(FilterNode? filter) => filter?.Kind switch
@@ -131,8 +145,10 @@ public partial class VaultViewModel : ObservableObject
 
     public void BeginAdd(VaultItemKind type)
     {
+        _editingId = null;
         EditorDraft = CipherEditorDraft.CreateDefault(type);
         EditorError = string.Empty;
+        OperationError = string.Empty;
         IsEditing = true;
         SelectedItem = null;
         Detail = null;
@@ -141,11 +157,22 @@ public partial class VaultViewModel : ObservableObject
         OnPropertyChanged(nameof(EditorTitle));
     }
 
+    public void BeginEdit(string id)
+    {
+        EditorDraft = _service.GetDraft(id);
+        _editingId = id;
+        EditorError = string.Empty;
+        OperationError = string.Empty;
+        IsEditing = true;
+        OnPropertyChanged(nameof(EditorTitle));
+    }
+
     public void CancelEdit()
     {
         IsEditing = false;
         EditorDraft = null;
         EditorError = string.Empty;
+        _editingId = null;
         OnPropertyChanged(nameof(EditorTitle));
     }
 
@@ -160,7 +187,7 @@ public partial class VaultViewModel : ObservableObject
         OnPropertyChanged(nameof(EditorDraft));
     }
 
-    public bool SaveDraft()
+    public async Task<bool> SaveDraftAsync()
     {
         if (EditorDraft is null)
             return false;
@@ -173,171 +200,123 @@ public partial class VaultViewModel : ObservableObject
             return false;
         }
 
-        var detail = CreateDetail(draft);
-        _service.AddCipher(detail, draft.FolderId);
-        var item = _service.GetItems().First(i => i.Id == detail.Id);
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            var savedId = await _service.SaveCipherAsync(draft, _editingId);
+            ReloadItems();
+            ReloadFilters();
+            SelectById(savedId);
+            IsEditing = false;
+            EditorDraft = null;
+            EditorError = string.Empty;
+            _editingId = null;
+            OnPropertyChanged(nameof(EditorTitle));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            OperationError = ex.Message;
+            return false;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
-        Items.Add(item);
-        EnsureFilterCanShow(item);
-        if (!SearchIncludesItem(item))
-            SearchText = string.Empty;
+    public Task<bool> SoftDeleteAsync(string id) =>
+        RunWriteAsync(() => _service.DeleteCipherAsync(id, permanent: false), selectId: null);
+
+    public Task<bool> PermanentDeleteAsync(string id) =>
+        RunWriteAsync(() => _service.DeleteCipherAsync(id, permanent: true), selectId: null);
+
+    public Task<bool> RestoreAsync(string id) =>
+        RunWriteAsync(() => _service.RestoreCipherAsync(id), selectId: id);
+
+    public async Task<bool> SaveFolderAsync(string? folderId, string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+        var ok = await RunWriteAsync(() => _service.SaveFolderAsync(folderId, name.Trim()), selectId: SelectedItem?.Id);
+        if (ok)
+            FoldersChanged?.Invoke(this, EventArgs.Empty);
+        return ok;
+    }
+
+    public async Task<bool> DeleteFolderAsync(string folderId)
+    {
+        var ok = await RunWriteAsync(() => _service.DeleteFolderAsync(folderId), selectId: SelectedItem?.Id);
+        if (ok)
+            FoldersChanged?.Invoke(this, EventArgs.Empty);
+        return ok;
+    }
+
+    private async Task<bool> RunWriteAsync(Func<Task> operation, string? selectId)
+    {
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            await operation();
+            ReloadItems();
+            ReloadFilters();
+            SelectById(selectId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            OperationError = ex.Message;
+            return false;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void ReloadItems()
+    {
+        Items.Clear();
+        foreach (var item in _service.GetItems())
+            Items.Add(item);
+    }
+
+    private void ReloadFilters()
+    {
+        var tag = SelectedFilterTag;
+        Filters.Clear();
+        foreach (var filter in _service.GetFilters())
+            Filters.Add(filter);
+        OnPropertyChanged(nameof(FolderFilters));
+        SelectFilterByTag(tag); // 复原选中(凭 tag),触发 ApplyFilter
+    }
+
+    private void SelectById(string? id)
+    {
         ApplyFilter();
-        SelectedItem = FilteredItems.FirstOrDefault(i => i.Id == item.Id) ?? item;
-
-        IsEditing = false;
-        EditorDraft = null;
-        EditorError = string.Empty;
-        OnPropertyChanged(nameof(EditorTitle));
-        return true;
-    }
-
-    private CipherDetail CreateDetail(CipherEditorDraft draft)
-    {
-        var id = $"local-{Guid.NewGuid():N}";
-        var now = DateTimeOffset.Now;
-        var folderName = FolderNameFor(draft.FolderId);
-        var customFields = draft.CustomFields
-            .Where(f => !string.IsNullOrWhiteSpace(f.Name))
-            .Select(f => new CustomField(
-                f.Name.Trim(),
-                f.Type == CipherEditorFieldType.Boolean ? f.BooleanValue.ToString() : f.Value,
-                f.Type))
-            .ToArray();
-
-        return draft.Type switch
+        if (string.IsNullOrEmpty(id))
         {
-            VaultItemKind.Login => new LoginDetail
-            {
-                Id = id,
-                Name = draft.Name.Trim(),
-                FolderName = folderName,
-                Username = EmptyToNull(draft.Login.Username),
-                Password = EmptyToNull(draft.Login.Password),
-                TotpSecret = EmptyToNull(draft.Login.Totp),
-                Uri = EmptyToNull(draft.Login.Uris.FirstOrDefault()?.Uri),
-                Notes = EmptyToNull(draft.Notes),
-                CustomFields = customFields,
-                Created = now,
-                Edited = now,
-                Favorite = draft.Favorite,
-                Reprompt = draft.Reprompt,
-            },
-            VaultItemKind.Card => new CardDetail
-            {
-                Id = id,
-                Name = draft.Name.Trim(),
-                FolderName = folderName,
-                Cardholder = EmptyToNull(draft.Card.CardholderName),
-                Number = EmptyToNull(draft.Card.Number),
-                Expiry = FormatExpiry(draft.Card.ExpMonth, draft.Card.ExpYear),
-                Brand = EmptyToNull(draft.Card.Brand),
-                Cvv = EmptyToNull(draft.Card.Code),
-                Notes = EmptyToNull(draft.Notes),
-                CustomFields = customFields,
-                Created = now,
-                Edited = now,
-                Favorite = draft.Favorite,
-                Reprompt = draft.Reprompt,
-            },
-            VaultItemKind.Identity => new IdentityDetail
-            {
-                Id = id,
-                Name = draft.Name.Trim(),
-                FolderName = folderName,
-                FullName = EmptyToNull(JoinNonEmpty(draft.Identity.FirstName, draft.Identity.MiddleName, draft.Identity.LastName)),
-                Username = EmptyToNull(draft.Identity.Username),
-                Company = EmptyToNull(draft.Identity.Company),
-                Email = EmptyToNull(draft.Identity.Email),
-                Phone = EmptyToNull(draft.Identity.Phone),
-                IdNumber = EmptyToNull(JoinNonEmpty(draft.Identity.Ssn, draft.Identity.PassportNumber, draft.Identity.LicenseNumber)),
-                Address = EmptyToNull(JoinNonEmpty(draft.Identity.Address1, draft.Identity.Address2, draft.Identity.Address3, draft.Identity.City, draft.Identity.State, draft.Identity.PostalCode, draft.Identity.Country)),
-                Notes = EmptyToNull(draft.Notes),
-                CustomFields = customFields,
-                Created = now,
-                Edited = now,
-                Favorite = draft.Favorite,
-                Reprompt = draft.Reprompt,
-            },
-            VaultItemKind.Note => new NoteDetail
-            {
-                Id = id,
-                Name = draft.Name.Trim(),
-                FolderName = folderName,
-                Content = EmptyToNull(draft.Notes),
-                Notes = EmptyToNull(draft.Notes),
-                CustomFields = customFields,
-                Created = now,
-                Edited = now,
-                Favorite = draft.Favorite,
-                Reprompt = draft.Reprompt,
-            },
-            VaultItemKind.Ssh => new SshDetail
-            {
-                Id = id,
-                Name = draft.Name.Trim(),
-                FolderName = folderName,
-                PrivateKey = EmptyToNull(draft.SshKey.PrivateKey),
-                PublicKey = EmptyToNull(draft.SshKey.PublicKey),
-                Fingerprint = EmptyToNull(draft.SshKey.KeyFingerprint),
-                Notes = EmptyToNull(draft.Notes),
-                CustomFields = customFields,
-                Created = now,
-                Edited = now,
-                Favorite = draft.Favorite,
-                Reprompt = draft.Reprompt,
-            },
-            _ => throw new InvalidOperationException($"Unsupported cipher type: {draft.Type}"),
-        };
-    }
-
-    private string? FolderNameFor(string? folderId) =>
-        string.IsNullOrWhiteSpace(folderId)
-            ? null
-            : Filters.FirstOrDefault(f => f.Kind == FilterKind.Folder && f.FolderId == folderId)?.Label;
-
-    private void EnsureFilterCanShow(CipherListItem item)
-    {
-        if (FilterIncludesItem(SelectedFilter, item))
+            SelectedItem = null;
             return;
+        }
 
-        SelectedFilter = Filters.FirstOrDefault(f => f.Kind == FilterKind.AllItems) ?? Filters.FirstOrDefault();
-    }
-
-    private static bool FilterIncludesItem(FilterNode? filter, CipherListItem item) => filter?.Kind switch
-    {
-        FilterKind.Favorites => item.Favorite && !item.IsDeleted,
-        FilterKind.Trash => item.IsDeleted,
-        FilterKind.Type => item.Kind == filter.TypeFilter && !item.IsDeleted,
-        FilterKind.Folder => item.FolderId == filter.FolderId && !item.IsDeleted,
-        _ => !item.IsDeleted,
-    };
-
-    private bool SearchIncludesItem(CipherListItem item) =>
-        string.IsNullOrWhiteSpace(SearchText)
-        || item.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase)
-        || item.Subtitle.Contains(SearchText, StringComparison.OrdinalIgnoreCase);
-
-    private static string? EmptyToNull(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-
-    private static string? FormatExpiry(string month, string year)
-    {
-        var cleanMonth = EmptyToNull(month);
-        var cleanYear = EmptyToNull(year);
-        return (cleanMonth, cleanYear) switch
+        var item = FilteredItems.FirstOrDefault(i => i.Id == id);
+        if (item is null)
         {
-            (null, null) => null,
-            (not null, null) => cleanMonth,
-            (null, not null) => cleanYear,
-            _ => $"{cleanMonth}/{cleanYear}",
-        };
+            SearchText = string.Empty;
+            SelectedFilter = Filters.FirstOrDefault(f => f.Kind == FilterKind.AllItems) ?? Filters.FirstOrDefault();
+            item = FilteredItems.FirstOrDefault(i => i.Id == id);
+        }
+        SelectedItem = item;
     }
-
-    private static string JoinNonEmpty(params string[] values) =>
-        string.Join(" ", values.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()));
 
     [RelayCommand]
-    private void Sync() { /* mock:占位,真实同步后续接入 */ }
+    private async Task Sync()
+    {
+        await RunWriteAsync(() => _service.SyncAsync(), selectId: SelectedItem?.Id);
+    }
 
     [RelayCommand]
     private void Add() => BeginAdd(VaultItemKind.Login);
