@@ -46,5 +46,6 @@
     <Compile Include="..\..\src\App\ViewModels\SendViewModel.cs" Link="ViewModels\SendViewModel.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\GeneratorHistoryItem.cs" Link="Models\GeneratorHistoryItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\GeneratorViewModel.cs" Link="ViewModels\GeneratorViewModel.cs" />
+    <Compile Include="..\..\src\App\ViewModels\DevicesViewModel.cs" Link="ViewModels\DevicesViewModel.cs" />
   </ItemGroup>
 </Project>
