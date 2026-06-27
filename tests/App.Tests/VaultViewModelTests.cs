@@ -745,4 +745,50 @@ public sealed class ThrowingVaultUiService : IVaultUiService
     public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => throw new InvalidOperationException("boom");
     public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => throw new InvalidOperationException("boom");
     public Task SyncAsync(CancellationToken ct = default) => throw new InvalidOperationException("boom");
+    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => throw new InvalidOperationException("boom");
+}
+
+public class VaultSelectionTests
+{
+    [Fact]
+    public void ToggleSelectionMode_TogglesAndClearsSelectionOnExit()
+    {
+        var vm = new VaultViewModel(new MockVaultUiService());
+        Assert.False(vm.IsSelectionMode);
+
+        vm.ToggleSelectionModeCommand.Execute(null);
+        Assert.True(vm.IsSelectionMode);
+
+        vm.ToggleSelection("1");
+        Assert.Equal(1, vm.SelectedCount);
+
+        vm.ToggleSelectionModeCommand.Execute(null);
+        Assert.False(vm.IsSelectionMode);
+        Assert.Equal(0, vm.SelectedCount);
+    }
+
+    [Fact]
+    public void SelectAll_SelectsAllVisibleItems()
+    {
+        var vm = new VaultViewModel(new MockVaultUiService());
+        vm.ToggleSelectionModeCommand.Execute(null);
+
+        vm.SelectAllCommand.Execute(null);
+
+        Assert.Equal(vm.FilteredItems.Count, vm.SelectedCount);
+    }
+
+    [Fact]
+    public async Task MoveSelectedToFolder_MovesAndExitsSelectionMode()
+    {
+        var vm = new VaultViewModel(new MockVaultUiService());
+        vm.ToggleSelectionModeCommand.Execute(null);
+        vm.ToggleSelection("2"); // 招商银行, no folder
+
+        await vm.MoveSelectedToFolderAsync("f1");
+
+        Assert.False(vm.IsSelectionMode);
+        Assert.Equal(0, vm.SelectedCount);
+        Assert.Contains(vm.Items, i => i.Id == "2" && i.FolderId == "f1");
+    }
 }

@@ -11,12 +11,20 @@ public partial class VaultViewModel : ObservableObject
     private readonly IVaultUiService _service;
     private readonly IClipboardService? _clipboard;
     private string? _editingId;
+    private readonly HashSet<string> _selectedIds = new(StringComparer.Ordinal);
 
     public ObservableCollection<CipherListItem> Items { get; } = new();
     public ObservableCollection<FilterNode> Filters { get; } = new();
     public ObservableCollection<CipherListItem> FilteredItems { get; } = new();
     public ObservableCollection<VaultListGroup> GroupedItems { get; } = new();
     public IEnumerable<FilterNode> FolderFilters => Filters.Where(f => f.Kind == FilterKind.Folder);
+
+    [ObservableProperty]
+    public partial bool IsSelectionMode { get; set; }
+
+    public int SelectedCount => _selectedIds.Count;
+    public IReadOnlyCollection<string> SelectedIds => _selectedIds;
+    public bool HasSelectionForMove => IsSelectionMode && _selectedIds.Count > 0;
 
     [ObservableProperty] private CipherListItem? _selectedItem;
     [ObservableProperty] private CipherDetail? _detail;
@@ -390,6 +398,57 @@ public partial class VaultViewModel : ObservableObject
 
     [RelayCommand]
     private void Add() => BeginAdd(VaultItemKind.Login);
+
+    public void ToggleSelection(string id)
+    {
+        if (!_selectedIds.Remove(id))
+            _selectedIds.Add(id);
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(HasSelectionForMove));
+    }
+
+    public bool IsSelected(string id) => _selectedIds.Contains(id);
+
+    private void ClearSelection()
+    {
+        _selectedIds.Clear();
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(HasSelectionForMove));
+    }
+
+    partial void OnIsSelectionModeChanged(bool value)
+    {
+        if (!value)
+            ClearSelection();
+        OnPropertyChanged(nameof(HasSelectionForMove));
+    }
+
+    [RelayCommand]
+    private void ToggleSelectionMode() => IsSelectionMode = !IsSelectionMode;
+
+    [RelayCommand]
+    private void SelectAll()
+    {
+        if (!IsSelectionMode)
+            return;
+        foreach (var item in FilteredItems)
+            _selectedIds.Add(item.Id);
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(HasSelectionForMove));
+    }
+
+    [RelayCommand]
+    private async Task MoveSelectedToFolder(string? folderId)
+    {
+        if (_selectedIds.Count == 0)
+            return;
+        var ids = _selectedIds.ToArray();
+        var ok = await RunWriteAsync(() => _service.MoveCiphersAsync(ids, folderId), selectId: null);
+        if (ok)
+            IsSelectionMode = false; // OnIsSelectionModeChanged clears selection
+    }
+
+    public Task MoveSelectedToFolderAsync(string? folderId) => MoveSelectedToFolder(folderId);
 
     [RelayCommand]
     private void Copy(string? value)
