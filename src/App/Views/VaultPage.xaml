@@ -208,10 +208,18 @@
                 </ListView.GroupStyle>
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="models:CipherListItem">
-                        <Grid ColumnSpacing="10" Padding="4,6">
+                        <Grid x:Name="RowRoot"
+                              ColumnSpacing="10"
+                              Padding="4,6"
+                              PointerEntered="OnRowPointerEntered"
+                              PointerExited="OnRowPointerExited"
+                              GotFocus="OnRowGotFocus"
+                              LostFocus="OnRowLostFocus">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Border Width="32" Height="32"
                                     Style="{StaticResource IconBadgeBorderStyle}">
@@ -221,6 +229,61 @@
                                 <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" />
                                 <TextBlock Text="{x:Bind Subtitle}" FontSize="12"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <FontIcon Grid.Column="2"
+                                      Glyph="&#xE735;"
+                                      FontSize="14"
+                                      Margin="0,0,4,0"
+                                      VerticalAlignment="Center"
+                                      Foreground="{ThemeResource SystemFillColorAttentionBrush}"
+                                      Visibility="{x:Bind local:VaultPage.VisibleIfTrue(Favorite)}" />
+                            <StackPanel x:Name="RowActions"
+                                        Grid.Column="3"
+                                        Orientation="Horizontal"
+                                        Spacing="2"
+                                        Opacity="0"
+                                        VerticalAlignment="Center">
+                                <Button Style="{StaticResource IconButtonStyle}"
+                                        AutomationProperties.Name="复制"
+                                        ToolTipService.ToolTip="复制主值"
+                                        Command="{Binding ElementName=Root, Path=ViewModel.CopyPrimaryCommand}"
+                                        CommandParameter="{x:Bind Id}">
+                                    <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                                </Button>
+                                <Button Style="{StaticResource IconButtonStyle}"
+                                        AutomationProperties.Name="更多"
+                                        ToolTipService.ToolTip="更多操作">
+                                    <FontIcon Glyph="&#xE712;" FontSize="14" />
+                                    <Button.Flyout>
+                                        <MenuFlyout>
+                                            <MenuFlyoutItem Text="编辑"
+                                                            Click="OnRowEditClick"
+                                                            Visibility="{x:Bind local:VaultPage.VisibleIfFalse(IsDeleted)}">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE70F;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem Text="收藏 / 取消收藏"
+                                                            Click="OnRowFavoriteClick"
+                                                            Visibility="{x:Bind local:VaultPage.VisibleIfFalse(IsDeleted)}">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE734;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem Text="移到回收站"
+                                                            Click="OnRowSoftDeleteClick"
+                                                            Visibility="{x:Bind local:VaultPage.VisibleIfFalse(IsDeleted)}">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem Text="恢复"
+                                                            Click="OnRowRestoreClick"
+                                                            Visibility="{x:Bind local:VaultPage.VisibleIfTrue(IsDeleted)}">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7A7;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem Text="永久删除"
+                                                            Click="OnRowPermanentDeleteClick"
+                                                            Visibility="{x:Bind local:VaultPage.VisibleIfTrue(IsDeleted)}">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                        </MenuFlyout>
+                                    </Button.Flyout>
+                                </Button>
                             </StackPanel>
                         </Grid>
                     </DataTemplate>

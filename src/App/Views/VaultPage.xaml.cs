@@ -28,6 +28,57 @@ public sealed partial class VaultPage : Page
 
     public static Visibility VisibleIfTrue(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
 
+    public static Visibility VisibleIfFalse(bool value) => value ? Visibility.Collapsed : Visibility.Visible;
+
+    private static void SetRowActionsOpacity(object sender, double opacity)
+    {
+        if (sender is Grid root && root.FindName("RowActions") is FrameworkElement panel)
+            panel.Opacity = opacity;
+    }
+
+    private void OnRowPointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e) => SetRowActionsOpacity(sender, 1);
+    private void OnRowPointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e) => SetRowActionsOpacity(sender, 0);
+    private void OnRowGotFocus(object sender, RoutedEventArgs e) => SetRowActionsOpacity(sender, 1);
+    private void OnRowLostFocus(object sender, RoutedEventArgs e) => SetRowActionsOpacity(sender, 0);
+
+    private static CipherListItem? RowItem(object sender) =>
+        (sender as FrameworkElement)?.DataContext as CipherListItem;
+
+    private void OnRowEditClick(object sender, RoutedEventArgs e)
+    {
+        if (RowItem(sender) is { } item)
+        {
+            ViewModel.BeginEdit(item.Id);
+            SyncEditorTypeSelection();
+        }
+    }
+
+    private async void OnRowFavoriteClick(object sender, RoutedEventArgs e)
+    {
+        if (RowItem(sender) is { } item)
+            await ViewModel.ToggleFavoriteAsync(item.Id);
+    }
+
+    private async void OnRowSoftDeleteClick(object sender, RoutedEventArgs e)
+    {
+        if (RowItem(sender) is { } item
+            && await ConfirmAsync("移到回收站", $"确定要将“{item.Name}”移到回收站吗?", "删除"))
+            await ViewModel.SoftDeleteAsync(item.Id);
+    }
+
+    private async void OnRowRestoreClick(object sender, RoutedEventArgs e)
+    {
+        if (RowItem(sender) is { } item)
+            await ViewModel.RestoreAsync(item.Id);
+    }
+
+    private async void OnRowPermanentDeleteClick(object sender, RoutedEventArgs e)
+    {
+        if (RowItem(sender) is { } item
+            && await ConfirmAsync("永久删除", $"确定要永久删除“{item.Name}”吗?此操作无法撤销。", "永久删除"))
+            await ViewModel.PermanentDeleteAsync(item.Id);
+    }
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
