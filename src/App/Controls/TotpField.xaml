@@ -21,7 +21,9 @@
                                Minimum="0" Maximum="30" VerticalAlignment="Center" />
             <TextBlock x:Name="SecondsText" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        MinWidth="16" TextAlignment="Right" VerticalAlignment="Center" />
-            <Button x:Name="CopyButton" Click="OnCopy" Background="Transparent" BorderThickness="0"
+            <Button x:Name="CopyButton" Click="OnCopy"
+                    Style="{StaticResource IconButtonStyle}"
+                    AutomationProperties.Name="复制验证码"
                     ToolTipService.ToolTip="复制">
                 <FontIcon Glyph="&#xE8C8;" FontSize="14" />
             </Button>

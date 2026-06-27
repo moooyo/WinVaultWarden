@@ -30,7 +30,8 @@
 
         <!-- 主导航壳 -->
         <muxc:NavigationView x:Name="Nav" Grid.Row="1"
-                             PaneDisplayMode="Left"
+                             PaneDisplayMode="Auto"
+                             OpenPaneLength="248"
                              IsBackButtonVisible="Collapsed"
                              IsSettingsVisible="False"
                              ItemInvoked="Nav_ItemInvoked">
@@ -99,38 +100,20 @@
                 </muxc:NavigationViewItem>
             </muxc:NavigationView.MenuItems>
 
-            <muxc:NavigationView.PaneFooter>
-                <StackPanel Spacing="2" Margin="0,8,0,8">
-                    <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Background="Transparent" BorderThickness="0" Click="OnFooterSettingsClick">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <FontIcon Glyph="&#xE713;" FontSize="16" />
-                            <TextBlock Text="设置" />
-                        </StackPanel>
-                    </Button>
-                    <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Background="Transparent" BorderThickness="0" Click="OnFooterDevicesClick">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <FontIcon Glyph="&#xE7F4;" FontSize="16" />
-                            <TextBlock Text="设备管理" />
-                        </StackPanel>
-                    </Button>
-                    <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Background="Transparent" BorderThickness="0" Click="OnFooterLockClick">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <FontIcon Glyph="&#xE72E;" FontSize="16" />
-                            <TextBlock Text="锁定" />
-                        </StackPanel>
-                    </Button>
-                    <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Background="Transparent" BorderThickness="0" Click="OnLogout">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <FontIcon Glyph="&#xF3B1;" FontSize="16" />
-                            <TextBlock Text="退出登录" />
-                        </StackPanel>
-                    </Button>
-                </StackPanel>
-            </muxc:NavigationView.PaneFooter>
+            <muxc:NavigationView.FooterMenuItems>
+                <muxc:NavigationViewItem Content="设置" Tag="settings">
+                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE713;" /></muxc:NavigationViewItem.Icon>
+                </muxc:NavigationViewItem>
+                <muxc:NavigationViewItem Content="设备管理" Tag="devices">
+                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE7F4;" /></muxc:NavigationViewItem.Icon>
+                </muxc:NavigationViewItem>
+                <muxc:NavigationViewItem Content="锁定" Tag="lock" SelectsOnInvoked="False">
+                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE72E;" /></muxc:NavigationViewItem.Icon>
+                </muxc:NavigationViewItem>
+                <muxc:NavigationViewItem Content="退出登录" Tag="logout" SelectsOnInvoked="False">
+                    <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xF3B1;" /></muxc:NavigationViewItem.Icon>
+                </muxc:NavigationViewItem>
+            </muxc:NavigationView.FooterMenuItems>
 
             <Frame x:Name="ContentFrame" />
         </muxc:NavigationView>

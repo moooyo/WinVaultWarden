@@ -23,7 +23,7 @@
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="{StaticResource CardCornerRadius}"
                                 Padding="12">
                             <Grid ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
@@ -57,11 +57,11 @@
                             </Grid>
                         </Border>
 
-                        <TextBlock Text="选项" FontWeight="SemiBold" />
+                        <TextBlock Text="选项" Style="{StaticResource SectionHeaderTextBlockStyle}" />
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="{StaticResource CardCornerRadius}"
                                 Padding="14">
                             <StackPanel Spacing="12">
                                 <Grid ColumnSpacing="12">
@@ -143,7 +143,7 @@
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="{StaticResource CardCornerRadius}"
                                 Padding="12">
                             <Grid ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
@@ -177,11 +177,11 @@
                             </Grid>
                         </Border>
 
-                        <TextBlock Text="选项" FontWeight="SemiBold" />
+                        <TextBlock Text="选项" Style="{StaticResource SectionHeaderTextBlockStyle}" />
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="{StaticResource CardCornerRadius}"
                                 Padding="14">
                             <StackPanel Spacing="12">
                                 <NumberBox Header="单词数"
@@ -205,7 +205,7 @@
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="{StaticResource CardCornerRadius}"
                                 Padding="12">
                             <Grid ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
@@ -239,11 +239,11 @@
                             </Grid>
                         </Border>
 
-                        <TextBlock Text="选项" FontWeight="SemiBold" />
+                        <TextBlock Text="选项" Style="{StaticResource SectionHeaderTextBlockStyle}" />
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="{StaticResource CardCornerRadius}"
                                 Padding="14">
                             <StackPanel Spacing="12">
                                 <ComboBox Header="类型"

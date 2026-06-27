@@ -10,14 +10,14 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
     </Page.Resources>
-    <ScrollViewer Padding="24">
+    <ScrollViewer Padding="{StaticResource PageContentPadding}">
         <StackPanel Spacing="16" MaxWidth="640" HorizontalAlignment="Left">
             <TextBlock Text="设备管理" Style="{ThemeResource TitleTextBlockStyle}" />
             <ItemsControl ItemsSource="{x:Bind ViewModel.Devices}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="models:DeviceItem">
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,8"
+                                BorderThickness="1" CornerRadius="{StaticResource CardCornerRadius}" Padding="16" Margin="0,0,0,8"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
                             <Grid ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>

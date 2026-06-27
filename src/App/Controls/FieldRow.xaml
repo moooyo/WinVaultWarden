@@ -15,16 +15,20 @@
                    TextTrimming="CharacterEllipsis" />
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
             <Button x:Name="RevealButton" Visibility="Collapsed" Click="OnReveal"
-                    Background="Transparent" BorderThickness="0"
+                    Style="{StaticResource IconButtonStyle}"
+                    AutomationProperties.Name="显示"
                     ToolTipService.ToolTip="显示">
                 <FontIcon x:Name="RevealIcon" Glyph="&#xE890;" FontSize="14" />
             </Button>
             <Button x:Name="OpenButton" Visibility="Collapsed" Click="OnOpen"
-                    Background="Transparent" BorderThickness="0"
+                    Style="{StaticResource IconButtonStyle}"
+                    AutomationProperties.Name="打开链接"
                     ToolTipService.ToolTip="打开">
                 <FontIcon Glyph="&#xE8A7;" FontSize="14" />
             </Button>
-            <Button Click="OnCopy" Background="Transparent" BorderThickness="0"
+            <Button Click="OnCopy"
+                    Style="{StaticResource IconButtonStyle}"
+                    AutomationProperties.Name="复制"
                     ToolTipService.ToolTip="复制">
                 <FontIcon Glyph="&#xE8C8;" FontSize="14" />
             </Button>

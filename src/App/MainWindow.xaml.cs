@@ -207,6 +207,20 @@ public sealed partial class MainWindow : Window
             case "gen":
                 await ShowGeneratorDialogAsync();
                 break;
+            case "settings":
+                ContentFrame.Navigate(typeof(SettingsPage));
+                break;
+            case "devices":
+                ContentFrame.Navigate(typeof(DevicesPage));
+                break;
+            case "lock":
+                await global::App.App.Services.GetRequiredService<IAuthService>().LockAsync();
+                ShowLogin();
+                break;
+            case "logout":
+                await global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync();
+                ShowLogin();
+                break;
             case "io":
                 ContentFrame.Navigate(typeof(SimplePage), ("导入导出", "\uE8AB"));
                 break;
@@ -217,23 +231,5 @@ public sealed partial class MainWindow : Window
     {
         var dialog = new GeneratorDialog { XamlRoot = Nav.XamlRoot };
         await dialog.ShowAsync();
-    }
-
-    private void OnFooterSettingsClick(object sender, RoutedEventArgs e) =>
-        ContentFrame.Navigate(typeof(SettingsPage));
-
-    private void OnFooterDevicesClick(object sender, RoutedEventArgs e) =>
-        ContentFrame.Navigate(typeof(DevicesPage));
-
-    private async void OnFooterLockClick(object sender, RoutedEventArgs e)
-    {
-        await global::App.App.Services.GetRequiredService<IAuthService>().LockAsync();
-        ShowLogin();
-    }
-
-    private async void OnLogout(object sender, RoutedEventArgs e)
-    {
-        await global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync();
-        ShowLogin();
     }
 }

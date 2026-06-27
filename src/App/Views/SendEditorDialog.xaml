@@ -36,7 +36,7 @@
 
             <StackPanel Spacing="12">
                 <TextBlock Text="Send 详细信息"
-                           FontWeight="SemiBold" />
+                           Style="{StaticResource SectionHeaderTextBlockStyle}" />
 
                 <TextBox Header="Send 名称（必填）"
                          HorizontalAlignment="Stretch"
@@ -96,7 +96,7 @@
 
             <StackPanel Spacing="12">
                 <TextBlock Text="附加选项"
-                           FontWeight="SemiBold" />
+                           Style="{StaticResource SectionHeaderTextBlockStyle}" />
 
                 <NumberBox Header="最大访问次数"
                            HorizontalAlignment="Stretch"

@@ -97,8 +97,8 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" MinWidth="280" />
-            <ColumnDefinition Width="360" />
+            <ColumnDefinition Width="*" MinWidth="300" />
+            <ColumnDefinition Width="1.4*" MinWidth="360" MaxWidth="560" />
         </Grid.ColumnDefinitions>
 
         <!-- 列表 -->
@@ -184,8 +184,8 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Border Width="32" Height="32" CornerRadius="6"
-                                    Background="{ThemeResource ControlFillColorSecondaryBrush}">
+                            <Border Width="32" Height="32"
+                                    Style="{StaticResource IconBadgeBorderStyle}">
                                 <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" />
                             </Border>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -433,8 +433,8 @@
                                                         Grid.Column="1"
                                                         Tag="{Binding}"
                                                         VerticalAlignment="Top"
-                                                        Background="Transparent"
-                                                        BorderThickness="0"
+                                                        Style="{StaticResource IconButtonStyle}"
+                                                        AutomationProperties.Name="删除字段"
                                                         ToolTipService.ToolTip="删除字段"
                                                         Click="OnRemoveCustomFieldClick">
                                                     <FontIcon Glyph="&#xE74D;" FontSize="14" />
@@ -506,7 +506,8 @@
                         </Button>
                         <Button x:Name="DeleteCipherButton" Grid.Column="1" HorizontalAlignment="Stretch" Click="OnDeleteCipherClick">
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="&#xE74D;" FontSize="14" /><TextBlock Text="删除" />
+                                <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                <TextBlock Text="删除" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                             </StackPanel>
                         </Button>
                     </Grid>
@@ -524,16 +525,28 @@
                         </Button>
                         <Button x:Name="PermanentDeleteCipherButton" Grid.Column="1" HorizontalAlignment="Stretch" Click="OnPermanentDeleteCipherClick">
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="&#xE74D;" FontSize="14" /><TextBlock Text="永久删除" />
+                                <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                <TextBlock Text="永久删除" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                             </StackPanel>
                         </Button>
                     </Grid>
                 </StackPanel>
 
-                <TextBlock Text="选择一个条目查看详情"
-                           Visibility="{x:Bind ViewModel.NoSelection, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           HorizontalAlignment="Center" Margin="0,48,0,0" />
+                <StackPanel Visibility="{x:Bind ViewModel.NoSelection, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                            HorizontalAlignment="Center"
+                            Spacing="{StaticResource SpacingMedium}"
+                            Margin="0,72,0,0">
+                    <FontIcon Glyph="&#xE8F1;" FontSize="44"
+                              Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                              HorizontalAlignment="Center" />
+                    <TextBlock Text="未选择任何项目"
+                               Style="{ThemeResource SubtitleTextBlockStyle}"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="从左侧列表选择一个条目以查看详情。"
+                               Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                               TextAlignment="Center"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>

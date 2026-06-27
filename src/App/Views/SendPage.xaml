@@ -10,7 +10,7 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
     </Page.Resources>
 
-    <Grid Padding="24" RowSpacing="14">
+    <Grid Padding="{StaticResource PageContentPadding}" RowSpacing="14">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -49,11 +49,22 @@
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         </Grid>
 
-        <TextBlock Grid.Row="2"
-                   Text="没有符合当前筛选的 Send。"
-                   Margin="12,16,0,0"
-                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                   Visibility="{x:Bind ViewModel.NoItems, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+        <StackPanel Grid.Row="2"
+                    HorizontalAlignment="Center"
+                    Spacing="{StaticResource SpacingMedium}"
+                    Margin="0,72,0,0"
+                    Visibility="{x:Bind ViewModel.NoItems, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <FontIcon Glyph="&#xE724;" FontSize="44"
+                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                      HorizontalAlignment="Center" />
+            <TextBlock Text="没有 Send"
+                       Style="{ThemeResource SubtitleTextBlockStyle}"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="没有符合当前筛选的 Send。点击右上角“新增 Send”开始分享。"
+                       Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center" />
+        </StackPanel>
 
         <ListView Grid.Row="2"
                   ItemsSource="{x:Bind ViewModel.FilteredItems}"
@@ -72,8 +83,8 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Border Width="32" Height="32" CornerRadius="6"
-                                    Background="{ThemeResource ControlFillColorSecondaryBrush}">
+                            <Border Width="32" Height="32"
+                                    Style="{StaticResource IconBadgeBorderStyle}">
                                 <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" />
                             </Border>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
