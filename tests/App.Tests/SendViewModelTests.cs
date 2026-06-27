@@ -1,5 +1,6 @@
 using App.Services;
 using App.ViewModels;
+using App.ViewModels.Models;
 using Xunit;
 
 namespace App.Tests;
@@ -14,6 +15,118 @@ public class SendViewModelTests
 
         public void SetText(string text) { Text = text; PlainCount++; }
         public void SetSecretText(string text, int autoClearSeconds = 30) { Text = text; SecretCount++; }
+    }
+
+    [Fact]
+    public void MockSendUiService_ReturnsThreeSends()
+    {
+        var service = new MockSendUiService();
+
+        var sends = service.GetSends();
+
+        Assert.Equal(3, sends.Count);
+        Assert.Contains(sends, s => s.Type == SendType.Text);
+        Assert.Contains(sends, s => s.Type == SendType.File);
+    }
+
+    [Fact]
+    public void SelectFilterByTag_Text_ShowsOnlyTextSends()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+
+        vm.SelectFilterByTag("send:text");
+
+        Assert.NotEmpty(vm.FilteredItems);
+        Assert.All(vm.FilteredItems, item => Assert.Equal(SendType.Text, item.Type));
+    }
+
+    [Fact]
+    public void SelectFilterByTag_File_ShowsOnlyFileSends()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+
+        vm.SelectFilterByTag("send:file");
+
+        Assert.NotEmpty(vm.FilteredItems);
+        Assert.All(vm.FilteredItems, item => Assert.Equal(SendType.File, item.Type));
+    }
+
+    [Fact]
+    public void SelectFilterByTag_All_ShowsAllSends()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+
+        vm.SelectFilterByTag("send:all");
+
+        Assert.Equal(vm.Items.Count, vm.FilteredItems.Count);
+    }
+
+    [Fact]
+    public void CopyLinkCommand_CopiesLinkWhenPresent()
+    {
+        var clipboard = new RecordingClipboard();
+        var vm = new SendViewModel(new MockSendUiService(), clipboard);
+        var item = vm.Items.First(s => !string.IsNullOrEmpty(s.Link));
+
+        vm.CopyLinkCommand.Execute(item);
+
+        Assert.Equal(item.Link, clipboard.Text);
+    }
+
+    [Fact]
+    public void CreateSend_TextDraft_AddsTextSendToList()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        var draft = SendEditorDraft.CreateDefault(SendType.Text);
+        draft.Name = "一次性验证码";
+        draft.Text = "123456";
+        draft.DeletionDateLabel = "7 天";
+
+        var created = vm.CreateSend(draft);
+
+        Assert.True(created);
+        Assert.Contains(vm.Items, s => s.Name == "一次性验证码" && s.Type == SendType.Text);
+        Assert.Contains(vm.FilteredItems, s => s.Name == "一次性验证码");
+    }
+
+    [Fact]
+    public void CreateSend_FileDraft_AddsFileSendToList()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        var draft = SendEditorDraft.CreateDefault(SendType.File);
+        draft.Name = "合同.zip";
+        draft.FileName = "合同.zip";
+        draft.DeletionDateLabel = "30 天";
+
+        var created = vm.CreateSend(draft);
+
+        Assert.True(created);
+        Assert.Contains(vm.Items, s => s.Name == "合同.zip" && s.Type == SendType.File);
+    }
+
+    [Fact]
+    public void CreateSend_MissingRequiredData_ReturnsFalse()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        var draft = SendEditorDraft.CreateDefault(SendType.Text);
+        draft.Name = "";
+        draft.Text = "";
+
+        var created = vm.CreateSend(draft);
+
+        Assert.False(created);
+        Assert.DoesNotContain(vm.Items, s => string.IsNullOrWhiteSpace(s.Name));
+    }
+
+    [Fact]
+    public void MarkMoreMenuOpened_StoresSelectedSend()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        var item = vm.Items[0];
+
+        vm.MarkMoreMenuOpened(item);
+
+        Assert.Equal(item, vm.SelectedMenuItem);
     }
 
     [Fact]
