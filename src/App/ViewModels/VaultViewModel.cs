@@ -52,6 +52,11 @@ public partial class VaultViewModel : ObservableObject
     public bool IsSelectedItemDeleted => SelectedItem?.IsDeleted == true;
     public bool IsFolderFilterSelected => SelectedFilter?.Kind == FilterKind.Folder;
 
+    // 保险库内一条(未删除)记录都没有 → 空库引导。
+    public bool HasNoItems => Items.All(i => i.IsDeleted);
+    // 库里有记录,但当前搜索/筛选结果为空 → 无结果提示。
+    public bool NoResults => !HasNoItems && FilteredItems.Count == 0;
+
     public event EventHandler? FoldersChanged;
 
     public string EditorTitle => EditorDraft?.Type switch
@@ -151,6 +156,8 @@ public partial class VaultViewModel : ObservableObject
 
         foreach (var i in source) FilteredItems.Add(i);
         RebuildGroups();
+        OnPropertyChanged(nameof(HasNoItems));
+        OnPropertyChanged(nameof(NoResults));
     }
 
     private static readonly VaultItemKind[] TypeOrder =

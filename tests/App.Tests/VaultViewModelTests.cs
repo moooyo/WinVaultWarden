@@ -730,6 +730,36 @@ public class VaultViewModelTests
         Assert.False(result);
         Assert.Equal(string.Empty, vm.OperationError);
     }
+
+    [Fact]
+    public void NoResults_True_WhenSearchMatchesNothingButVaultNotEmpty()
+    {
+        var vm = NewVm();
+        vm.SearchText = "zzz-no-such-item";
+
+        Assert.Empty(vm.FilteredItems);
+        Assert.True(vm.NoResults);
+        Assert.False(vm.HasNoItems);
+    }
+
+    [Fact]
+    public void NoResults_False_WhenItemsPresent()
+    {
+        var vm = NewVm();
+
+        Assert.NotEmpty(vm.FilteredItems);
+        Assert.False(vm.NoResults);
+        Assert.False(vm.HasNoItems);
+    }
+
+    [Fact]
+    public void HasNoItems_True_WhenVaultHasNoNonDeletedItems()
+    {
+        var vm = new VaultViewModel(new EmptyVaultUiService());
+
+        Assert.True(vm.HasNoItems);
+        Assert.False(vm.NoResults);
+    }
 }
 
 public sealed class ThrowingVaultUiService : IVaultUiService
@@ -746,6 +776,22 @@ public sealed class ThrowingVaultUiService : IVaultUiService
     public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => throw new InvalidOperationException("boom");
     public Task SyncAsync(CancellationToken ct = default) => throw new InvalidOperationException("boom");
     public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => throw new InvalidOperationException("boom");
+}
+
+public sealed class EmptyVaultUiService : IVaultUiService
+{
+    private readonly MockVaultUiService _inner = new();
+    public IReadOnlyList<CipherListItem> GetItems() => Array.Empty<CipherListItem>();
+    public CipherDetail GetDetail(string id) => _inner.GetDetail(id);
+    public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
+    public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
+    public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => Task.FromResult("x");
+    public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => Task.CompletedTask;
+    public Task RestoreCipherAsync(string id, CancellationToken ct = default) => Task.CompletedTask;
+    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => Task.CompletedTask;
+    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => Task.CompletedTask;
+    public Task SyncAsync(CancellationToken ct = default) => Task.CompletedTask;
+    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => Task.CompletedTask;
 }
 
 public class VaultSelectionTests
