@@ -71,7 +71,7 @@ public partial class SendViewModel : ObservableObject
     private void CopyLink(SendListItem? item)
     {
         if (!string.IsNullOrWhiteSpace(item?.Link))
-            _clipboard?.SetText(item.Link);
+            _clipboard?.SetSecretText(item.Link);
     }
 
     [RelayCommand]
