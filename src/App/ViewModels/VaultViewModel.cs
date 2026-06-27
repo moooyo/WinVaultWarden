@@ -15,6 +15,7 @@ public partial class VaultViewModel : ObservableObject
     public ObservableCollection<CipherListItem> Items { get; } = new();
     public ObservableCollection<FilterNode> Filters { get; } = new();
     public ObservableCollection<CipherListItem> FilteredItems { get; } = new();
+    public ObservableCollection<VaultListGroup> GroupedItems { get; } = new();
     public IEnumerable<FilterNode> FolderFilters => Filters.Where(f => f.Kind == FilterKind.Folder);
 
     [ObservableProperty] private CipherListItem? _selectedItem;
@@ -141,6 +142,71 @@ public partial class VaultViewModel : ObservableObject
                                     || i.Subtitle.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
 
         foreach (var i in source) FilteredItems.Add(i);
+        RebuildGroups();
+    }
+
+    private static readonly VaultItemKind[] TypeOrder =
+        { VaultItemKind.Login, VaultItemKind.Card, VaultItemKind.Identity, VaultItemKind.Note, VaultItemKind.Ssh };
+
+    private static string TypeDisplayName(VaultItemKind kind) => kind switch
+    {
+        VaultItemKind.Login => "登录",
+        VaultItemKind.Card => "银行卡",
+        VaultItemKind.Identity => "身份",
+        VaultItemKind.Note => "笔记",
+        VaultItemKind.Ssh => "SSH 密钥",
+        _ => "其他",
+    };
+
+    private string FolderNameFor(string? folderId)
+    {
+        if (string.IsNullOrEmpty(folderId))
+            return "无文件夹";
+        var folder = Filters.FirstOrDefault(f => f.Kind == FilterKind.Folder && f.FolderId == folderId);
+        return folder?.Label ?? "无文件夹";
+    }
+
+    private void RebuildGroups()
+    {
+        GroupedItems.Clear();
+
+        // 选具体文件夹:单组、不显头。
+        if (SelectedFilter?.Kind == FilterKind.Folder)
+        {
+            if (FilteredItems.Count == 0)
+                return;
+            var single = new VaultListGroup { Key = SelectedFilter.Label, ShowHeader = false };
+            foreach (var i in FilteredItems) single.Items.Add(i);
+            GroupedItems.Add(single);
+            return;
+        }
+
+        // 选具体类型:按文件夹分组,"无文件夹"置末,其余按名称。
+        if (SelectedFilter?.Kind == FilterKind.Type)
+        {
+            var byFolder = FilteredItems
+                .GroupBy(i => i.FolderId)
+                .OrderBy(g => string.IsNullOrEmpty(g.Key) ? 1 : 0)
+                .ThenBy(g => FolderNameFor(g.Key), StringComparer.CurrentCulture);
+            foreach (var g in byFolder)
+            {
+                var group = new VaultListGroup { Key = FolderNameFor(g.Key), ShowHeader = true };
+                foreach (var i in g) group.Items.Add(i);
+                GroupedItems.Add(group);
+            }
+            return;
+        }
+
+        // 聚合视图:按类型分组,固定组序。
+        foreach (var kind in TypeOrder)
+        {
+            var items = FilteredItems.Where(i => i.Kind == kind).ToList();
+            if (items.Count == 0)
+                continue;
+            var group = new VaultListGroup { Key = TypeDisplayName(kind), ShowHeader = true };
+            foreach (var i in items) group.Items.Add(i);
+            GroupedItems.Add(group);
+        }
     }
 
     public void BeginAdd(VaultItemKind type)

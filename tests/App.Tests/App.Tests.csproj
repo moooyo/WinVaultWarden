@@ -21,6 +21,7 @@
   <!-- 直接链接 App 的纯 C# 源(不依赖 WinUI),绕开 WinUI 打包任务无法在命令行加载的问题 -->
   <ItemGroup>
     <Compile Include="..\..\src\App\ViewModels\Models\CipherListItem.cs" Link="Models\CipherListItem.cs" />
+    <Compile Include="..\..\src\App\ViewModels\Models\VaultListGroup.cs" Link="Models\VaultListGroup.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\CipherDetail.cs" Link="Models\CipherDetail.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\CipherEditorDraft.cs" Link="Models\CipherEditorDraft.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\FilterNode.cs" Link="Models\FilterNode.cs" />
