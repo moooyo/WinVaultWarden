@@ -8,7 +8,6 @@ namespace App.Services;
 public sealed class ClipboardService : IClipboardService
 {
     private DispatcherQueueTimer? _clearTimer;
-    private string? _pendingSecret;
 
     public void SetText(string text)
     {
@@ -27,7 +26,7 @@ public sealed class ClipboardService : IClipboardService
             IsRoamable = false,
         });
 
-        _pendingSecret = text;
+        // 取消上一个尚未触发的清除定时器。
         _clearTimer?.Stop();
         if (autoClearSeconds <= 0)
             return;
@@ -42,13 +41,14 @@ public sealed class ClipboardService : IClipboardService
         _clearTimer.Tick += (timer, _) =>
         {
             timer.Stop();
-            _ = ClearIfUnchangedAsync();
+            _ = ClearIfUnchangedAsync(text);
         };
         _clearTimer.Start();
     }
 
     // 仅当剪贴板当前文本仍是本次写入的密钥时才清除,避免清掉用户随后复制的其他内容。
-    private async Task ClearIfUnchangedAsync()
+    // 闭包捕获本次写入值(而非共享字段),消除快速连续复制时的竞态。
+    private static async Task ClearIfUnchangedAsync(string expected)
     {
         try
         {
@@ -56,17 +56,13 @@ public sealed class ClipboardService : IClipboardService
             if (view.Contains(StandardDataFormats.Text))
             {
                 var current = await view.GetTextAsync();
-                if (current == _pendingSecret)
+                if (current == expected)
                     Clipboard.Clear();
             }
         }
         catch
         {
             // 剪贴板被其他进程占用等:忽略,下次复制会重置定时。
-        }
-        finally
-        {
-            _pendingSecret = null;
         }
     }
 }
