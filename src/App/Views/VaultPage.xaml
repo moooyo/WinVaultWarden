@@ -102,8 +102,8 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" MinWidth="300" />
-            <ColumnDefinition Width="1.4*" MinWidth="360" MaxWidth="560" />
+            <ColumnDefinition Width="360" MinWidth="320" MaxWidth="420" />
+            <ColumnDefinition Width="*" MinWidth="380" />
         </Grid.ColumnDefinitions>
 
         <!-- 列表 -->
@@ -293,7 +293,7 @@
 
         <!-- 详情 -->
         <ScrollViewer Grid.Column="1" Padding="16">
-            <StackPanel Spacing="12">
+            <StackPanel Spacing="12" MaxWidth="720" HorizontalAlignment="Left">
                 <StackPanel x:Name="CipherEditorPanel"
                             Spacing="12"
                             DataContext="{x:Bind ViewModel}"
@@ -548,8 +548,16 @@
                             Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}">
                 <StackPanel Spacing="2"
                             Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Text="{x:Bind ViewModel.Detail.Name, Mode=OneWay}"
-                               Style="{ThemeResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="{x:Bind ViewModel.SelectedItem.Glyph, Mode=OneWay}"
+                                  FontSize="18" VerticalAlignment="Center" />
+                        <TextBlock Text="{x:Bind ViewModel.Detail.Name, Mode=OneWay}"
+                                   Style="{ThemeResource SubtitleTextBlockStyle}" />
+                        <FontIcon Glyph="&#xE735;" FontSize="14"
+                                  VerticalAlignment="Center"
+                                  Foreground="{ThemeResource SystemFillColorAttentionBrush}"
+                                  Visibility="{x:Bind local:VaultPage.VisibleIfTrue(ViewModel.Detail.Favorite), Mode=OneWay}" />
+                    </StackPanel>
                     <TextBlock Text="{x:Bind ViewModel.Detail.FolderName, Mode=OneWay}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
