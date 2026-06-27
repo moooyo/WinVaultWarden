@@ -40,8 +40,8 @@
                                 </StackPanel>
                                 <Button Grid.Column="2" VerticalAlignment="Center"
                                         Visibility="{x:Bind IsCurrent, Converter={StaticResource InverseBoolToVis}}"
-                                        Command="{Binding ElementName=Root, Path=ViewModel.RevokeCommand}"
-                                        CommandParameter="{x:Bind}">
+                                        Tag="{x:Bind}"
+                                        Click="OnRevokeClick">
                                     <TextBlock Text="撤销" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                                 </Button>
                             </Grid>

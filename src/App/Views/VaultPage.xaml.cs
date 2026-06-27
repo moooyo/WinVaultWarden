@@ -247,19 +247,8 @@ public sealed partial class VaultPage : Page
             await ViewModel.DeleteFolderAsync(folder.FolderId);
     }
 
-    private async Task<bool> ConfirmAsync(string title, string message, string primaryText)
-    {
-        var dialog = new ContentDialog
-        {
-            Title = title,
-            Content = message,
-            PrimaryButtonText = primaryText,
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
-        };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary;
-    }
+    private Task<bool> ConfirmAsync(string title, string message, string primaryText) =>
+        DialogHelper.ConfirmAsync(XamlRoot, title, message, primaryText);
 
     private async Task<string?> PromptTextAsync(string title, string placeholder, string initial)
     {
