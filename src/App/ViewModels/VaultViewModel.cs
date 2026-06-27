@@ -172,6 +172,7 @@ public partial class VaultViewModel : ObservableObject
         IsEditing = false;
         EditorDraft = null;
         EditorError = string.Empty;
+        OperationError = string.Empty;
         _editingId = null;
         OnPropertyChanged(nameof(EditorTitle));
     }
