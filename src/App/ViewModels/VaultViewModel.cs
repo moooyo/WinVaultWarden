@@ -190,7 +190,7 @@ public partial class VaultViewModel : ObservableObject
 
     public async Task<bool> SaveDraftAsync()
     {
-        if (EditorDraft is null)
+        if (EditorDraft is null || IsBusy)
             return false;
 
         var draft = EditorDraft;
@@ -256,6 +256,9 @@ public partial class VaultViewModel : ObservableObject
 
     private async Task<bool> RunWriteAsync(Func<Task> operation, string? selectId)
     {
+        if (IsBusy)
+            return false;
+
         IsBusy = true;
         OperationError = string.Empty;
         try

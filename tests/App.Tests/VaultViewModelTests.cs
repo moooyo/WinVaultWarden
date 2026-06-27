@@ -645,6 +645,32 @@ public class VaultViewModelTests
         Assert.True(vm.IsEditing);       // stays in editor so user can retry
         Assert.False(vm.IsBusy);
     }
+
+    [Fact]
+    public async Task SaveDraftAsync_WhenAlreadyBusy_ShortCircuitsBeforeCallingService()
+    {
+        var vm = new VaultViewModel(new ThrowingVaultUiService());
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.EditorDraft!.Name = "X";
+        vm.IsBusy = true; // 模拟已有写入在途(防快速双击重复创建)
+
+        var result = await vm.SaveDraftAsync();
+
+        Assert.False(result);
+        Assert.Equal(string.Empty, vm.OperationError); // 服务未被调用(否则 ThrowingVaultUiService 会抛出并置错误)
+    }
+
+    [Fact]
+    public async Task SoftDeleteAsync_WhenAlreadyBusy_ShortCircuitsBeforeCallingService()
+    {
+        var vm = new VaultViewModel(new ThrowingVaultUiService());
+        vm.IsBusy = true;
+
+        var result = await vm.SoftDeleteAsync("1");
+
+        Assert.False(result);
+        Assert.Equal(string.Empty, vm.OperationError);
+    }
 }
 
 public sealed class ThrowingVaultUiService : IVaultUiService
