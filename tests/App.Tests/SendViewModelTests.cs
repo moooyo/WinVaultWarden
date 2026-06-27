@@ -142,4 +142,34 @@ public class SendViewModelTests
         Assert.Equal(1, clipboard.SecretCount);
         Assert.Equal(0, clipboard.PlainCount);
     }
+
+    [Fact]
+    public void MockSendUiService_DeleteSend_RemovesAndReportsResult()
+    {
+        var service = new MockSendUiService();
+        var first = service.GetSends()[0];
+
+        Assert.True(service.DeleteSend(first.Id));
+        Assert.DoesNotContain(service.GetSends(), s => s.Id == first.Id);
+        Assert.False(service.DeleteSend("does-not-exist"));
+    }
+
+    [Fact]
+    public void MockSendUiService_UpdateSend_ReplacesNameAndType()
+    {
+        var service = new MockSendUiService();
+        var target = service.GetSends().First(s => s.Type == SendType.Text);
+        var draft = SendEditorDraft.CreateDefault(SendType.Text);
+        draft.Name = "更新后的名称";
+        draft.Text = "新内容";
+        draft.DeletionDateLabel = "30 天";
+
+        var updated = service.UpdateSend(target.Id, draft);
+
+        Assert.NotNull(updated);
+        Assert.Equal("更新后的名称", updated!.Name);
+        Assert.Equal(target.Id, updated.Id);
+        Assert.Contains(service.GetSends(), s => s.Id == target.Id && s.Name == "更新后的名称");
+        Assert.Null(service.UpdateSend("does-not-exist", draft));
+    }
 }

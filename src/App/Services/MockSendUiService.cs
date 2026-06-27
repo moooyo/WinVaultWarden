@@ -6,6 +6,8 @@ public interface ISendUiService
 {
     IReadOnlyList<SendListItem> GetSends();
     SendListItem CreateSend(SendEditorDraft draft);
+    bool DeleteSend(string id);
+    SendListItem? UpdateSend(string id, SendEditorDraft draft);
 }
 
 public sealed class MockSendUiService : ISendUiService
@@ -34,5 +36,34 @@ public sealed class MockSendUiService : ISendUiService
             $"https://vault.example/send/{id}");
         _sends.Add(item);
         return item;
+    }
+
+    public bool DeleteSend(string id)
+    {
+        var index = _sends.FindIndex(s => s.Id == id);
+        if (index < 0)
+            return false;
+        _sends.RemoveAt(index);
+        return true;
+    }
+
+    public SendListItem? UpdateSend(string id, SendEditorDraft draft)
+    {
+        var index = _sends.FindIndex(s => s.Id == id);
+        if (index < 0)
+            return null;
+
+        var name = draft.Type == SendType.File && !string.IsNullOrWhiteSpace(draft.FileName)
+            ? draft.FileName
+            : draft.Name;
+
+        var updated = _sends[index] with
+        {
+            Name = name,
+            Type = draft.Type,
+            DeleteDate = $"{draft.DeletionDateLabel} 后删除",
+        };
+        _sends[index] = updated;
+        return updated;
     }
 }
