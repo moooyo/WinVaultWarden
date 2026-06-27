@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="App.Views.VaultPage"
+    x:Name="Root"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:App.Views"
     xmlns:controls="using:App.Controls"
     xmlns:conv="using:App.Converters"
     xmlns:models="using:App.ViewModels.Models">
@@ -11,6 +13,9 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <conv:EmptyStringToCollapsedConverter x:Key="EmptyToCollapsed" />
+        <CollectionViewSource x:Name="GroupedItemsSource"
+                              IsSourceGrouped="True"
+                              ItemsPath="Items" />
         <DataTemplate x:Key="LoginTemplate" x:DataType="models:LoginDetail">
             <StackPanel Spacing="12">
                 <controls:DetailCard Title="登录信息">
@@ -175,8 +180,32 @@
                 <Button x:Name="DeleteFolderButton" Content="删除文件夹" Click="OnDeleteFolderClick" />
                 <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="20" Height="20" />
             </StackPanel>
-            <ListView Grid.Row="3" ItemsSource="{x:Bind ViewModel.FilteredItems}"
+            <ListView Grid.Row="3"
+                      x:Name="CipherList"
+                      ItemsSource="{x:Bind GroupedItemsSource.View, Mode=OneWay}"
                       SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}">
+                <ListView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <ItemsStackPanel AreStickyGroupHeadersEnabled="True" />
+                    </ItemsPanelTemplate>
+                </ListView.ItemsPanel>
+                <ListView.GroupStyle>
+                    <GroupStyle HidesIfEmpty="True">
+                        <GroupStyle.HeaderTemplate>
+                            <DataTemplate x:DataType="models:VaultListGroup">
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="8"
+                                            Margin="4,8,0,2"
+                                            Visibility="{x:Bind local:VaultPage.VisibleIfTrue(ShowHeader)}">
+                                    <TextBlock Text="{x:Bind Key}" Style="{StaticResource SectionHeaderTextBlockStyle}" />
+                                    <TextBlock Text="{x:Bind Count}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </GroupStyle.HeaderTemplate>
+                    </GroupStyle>
+                </ListView.GroupStyle>
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="models:CipherListItem">
                         <Grid ColumnSpacing="10" Padding="4,6">
