@@ -53,6 +53,25 @@ public class DevicesViewModelTests
         Assert.Equal("撤销失败", vm.Error);
     }
 
+    [Fact]
+    public void HasError_FalseWhenErrorNull_TrueWhenErrorSet()
+    {
+        var vm = new DevicesViewModel(new MockDeviceUiService());
+        var notifications = new List<string?>();
+        vm.PropertyChanged += (_, e) => notifications.Add(e.PropertyName);
+
+        Assert.False(vm.HasError);
+
+        vm.Error = "连接超时";
+
+        Assert.True(vm.HasError);
+        Assert.Contains(nameof(DevicesViewModel.HasError), notifications);
+
+        vm.Error = null;
+
+        Assert.False(vm.HasError);
+    }
+
     private sealed class EmptyDeviceUiService : IDeviceUiService
     {
         public IReadOnlyList<DeviceItem> GetDevices() => Array.Empty<DeviceItem>();
