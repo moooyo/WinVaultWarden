@@ -127,12 +127,12 @@
                                                 <FontIcon Glyph="&#xE8C8;" />
                                             </MenuFlyoutItem.Icon>
                                         </MenuFlyoutItem>
-                                        <MenuFlyoutItem Text="编辑">
+                                        <MenuFlyoutItem Text="编辑" Click="OnEditSendClick">
                                             <MenuFlyoutItem.Icon>
                                                 <FontIcon Glyph="&#xE70F;" />
                                             </MenuFlyoutItem.Icon>
                                         </MenuFlyoutItem>
-                                        <MenuFlyoutItem Text="删除">
+                                        <MenuFlyoutItem Text="删除" Click="OnDeleteSendClick">
                                             <MenuFlyoutItem.Icon>
                                                 <FontIcon Glyph="&#xE74D;" />
                                             </MenuFlyoutItem.Icon>
