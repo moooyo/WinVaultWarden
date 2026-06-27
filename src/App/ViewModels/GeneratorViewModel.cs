@@ -180,6 +180,8 @@ public partial class GeneratorViewModel : ObservableObject
             Regenerate();
     }
 
+    private const int MaxHistory = 20;
+
     [RelayCommand]
     private void Regenerate()
     {
@@ -196,15 +198,15 @@ public partial class GeneratorViewModel : ObservableObject
                 UsernameIncludeNumber)),
             _ => PasswordGenerator.Generate(BuildOptions()),
         };
-
-        History.Insert(0, new GeneratorHistoryItem(GeneratedPassword, DateTimeOffset.Now));
     }
 
     [RelayCommand]
     private void Copy()
     {
-        if (!string.IsNullOrWhiteSpace(GeneratedPassword))
-            _clipboard?.SetText(GeneratedPassword);
+        if (string.IsNullOrWhiteSpace(GeneratedPassword))
+            return;
+        _clipboard?.SetSecretText(GeneratedPassword);
+        RecordHistory(GeneratedPassword);
     }
 
     [RelayCommand]
@@ -214,7 +216,24 @@ public partial class GeneratorViewModel : ObservableObject
     private void CopyHistoryItem(GeneratorHistoryItem? item)
     {
         if (!string.IsNullOrWhiteSpace(item?.Value))
-            _clipboard?.SetText(item.Value);
+            _clipboard?.SetSecretText(item.Value);
+    }
+
+    // 仅在用户显式复制/采用时记录;相邻去重 + 封顶 20。
+    private void RecordHistory(string value)
+    {
+        if (History.Count > 0 && History[0].Value == value)
+            return;
+        History.Insert(0, new GeneratorHistoryItem(value, DateTimeOffset.Now));
+        while (History.Count > MaxHistory)
+            History.RemoveAt(History.Count - 1);
+    }
+
+    // 锁定/退出时清除内存中的明文密钥足迹(本批仅提供,接入留后续)。
+    public void ClearSensitive()
+    {
+        History.Clear();
+        GeneratedPassword = string.Empty;
     }
 
     partial void OnModeChanged(GeneratorMode value) => Regenerate();

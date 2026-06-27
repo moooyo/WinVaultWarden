@@ -115,21 +115,22 @@ public class GeneratorViewModelTests
     }
 
     [Fact]
-    public void Regenerate_AddsGeneratedValueToHistory()
+    public void Regenerate_DoesNotAddToHistory()
     {
         var vm = new GeneratorViewModel();
 
         vm.RegenerateCommand.Execute(null);
 
-        Assert.NotEmpty(vm.History);
-        Assert.Equal(vm.GeneratedPassword, vm.History[0].Value);
+        Assert.Empty(vm.History);
     }
 
     [Fact]
     public void ClearHistoryCommand_RemovesHistory()
     {
-        var vm = new GeneratorViewModel();
-        vm.RegenerateCommand.Execute(null);
+        var clipboard = new RecordingClipboard();
+        var vm = new GeneratorViewModel(clipboard);
+        vm.CopyCommand.Execute(null);
+        Assert.NotEmpty(vm.History);
 
         vm.ClearHistoryCommand.Execute(null);
 
@@ -141,11 +142,77 @@ public class GeneratorViewModelTests
     {
         var clipboard = new RecordingClipboard();
         var vm = new GeneratorViewModel(clipboard);
-        vm.RegenerateCommand.Execute(null);
+        vm.CopyCommand.Execute(null);
         var item = vm.History[0];
 
         vm.CopyHistoryItemCommand.Execute(item);
 
         Assert.Equal(item.Value, clipboard.Text);
+    }
+
+    [Fact]
+    public void OptionChanges_DoNotGrowHistory()
+    {
+        var vm = new GeneratorViewModel();
+
+        vm.Length = 20;
+        vm.IncludeSpecial = true;
+        vm.Mode = GeneratorMode.Passphrase;
+
+        Assert.Empty(vm.History);
+    }
+
+    [Fact]
+    public void CopyCommand_RecordsHistory_AndUsesSecretClipboard()
+    {
+        var clipboard = new RecordingClipboard();
+        var vm = new GeneratorViewModel(clipboard);
+
+        vm.CopyCommand.Execute(null);
+
+        Assert.Single(vm.History);
+        Assert.Equal(vm.GeneratedPassword, vm.History[0].Value);
+        Assert.Equal(1, clipboard.SecretCount);
+        Assert.Equal(0, clipboard.PlainCount);
+    }
+
+    [Fact]
+    public void CopyingSameValueTwice_DoesNotDuplicateHistory()
+    {
+        var clipboard = new RecordingClipboard();
+        var vm = new GeneratorViewModel(clipboard);
+
+        vm.CopyCommand.Execute(null);
+        vm.CopyCommand.Execute(null);
+
+        Assert.Single(vm.History);
+    }
+
+    [Fact]
+    public void History_CapsAtTwenty()
+    {
+        var clipboard = new RecordingClipboard();
+        var vm = new GeneratorViewModel(clipboard);
+
+        for (int i = 0; i < 25; i++)
+        {
+            vm.RegenerateCommand.Execute(null);
+            vm.CopyCommand.Execute(null);
+        }
+
+        Assert.Equal(20, vm.History.Count);
+    }
+
+    [Fact]
+    public void ClearSensitive_ClearsHistoryAndGeneratedValue()
+    {
+        var clipboard = new RecordingClipboard();
+        var vm = new GeneratorViewModel(clipboard);
+        vm.CopyCommand.Execute(null);
+
+        vm.ClearSensitive();
+
+        Assert.Empty(vm.History);
+        Assert.Equal(string.Empty, vm.GeneratedPassword);
     }
 }
