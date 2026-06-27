@@ -243,12 +243,12 @@
                 <TextBlock Text="危险区" Style="{StaticResource SectionHeaderTextBlockStyle}" />
 
                 <tk:SettingsCard Header="删除账户"
-                                 Description="永久删除您的账户与所有密码库数据">
+                                 Description="永久删除您的账户与所有密码库数据(即将推出)">
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE74D;"
                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                     </tk:SettingsCard.HeaderIcon>
-                    <Button>
+                    <Button IsEnabled="False">
                         <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingSmall}">
                             <FontIcon Glyph="&#xE74D;" FontSize="14"
                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
