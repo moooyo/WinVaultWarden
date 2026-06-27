@@ -73,6 +73,49 @@ public class VaultViewModelTests
 {
     private static VaultViewModel NewVm() => new(new MockVaultUiService());
 
+    private sealed class RecordingClipboard : IClipboardService
+    {
+        public string? Text { get; private set; }
+        public void SetText(string text) => Text = text;
+    }
+
+    [Fact]
+    public void CopyPrimary_Login_CopiesPasswordOrUsername()
+    {
+        var clipboard = new RecordingClipboard();
+        var service = new MockVaultUiService();
+        var vm = new VaultViewModel(service, clipboard);
+        var login = (LoginDetail)service.GetDetail("1");
+        var expected = string.IsNullOrEmpty(login.Password) ? login.Username : login.Password;
+
+        vm.CopyPrimaryCommand.Execute("1");
+
+        Assert.Equal(expected, clipboard.Text);
+    }
+
+    [Fact]
+    public void CopyPrimary_NullId_DoesNothing()
+    {
+        var clipboard = new RecordingClipboard();
+        var vm = new VaultViewModel(new MockVaultUiService(), clipboard);
+
+        vm.CopyPrimaryCommand.Execute(null);
+
+        Assert.Null(clipboard.Text);
+    }
+
+    [Fact]
+    public async Task ToggleFavorite_FlipsFavoriteState()
+    {
+        var vm = NewVm();
+        var item = vm.Items.First(i => !i.IsDeleted);
+        var before = item.Favorite;
+
+        await vm.ToggleFavoriteAsync(item.Id);
+
+        Assert.Equal(!before, vm.Items.First(i => i.Id == item.Id).Favorite);
+    }
+
     [Fact]
     public void Initialize_LoadsItemsAndFilters()
     {

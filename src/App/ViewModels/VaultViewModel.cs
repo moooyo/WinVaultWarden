@@ -396,4 +396,32 @@ public partial class VaultViewModel : ObservableObject
     {
         if (!string.IsNullOrEmpty(value)) _clipboard?.SetText(value);
     }
+
+    [RelayCommand]
+    private void CopyPrimary(string? id)
+    {
+        if (string.IsNullOrEmpty(id))
+            return;
+        var value = PrimaryValue(_service.GetDetail(id));
+        if (!string.IsNullOrEmpty(value))
+            _clipboard?.SetText(value);
+    }
+
+    // 各类型主值:登录→密码(空则用户名),卡→卡号,笔记→内容,SSH→公钥,身份等→名称。
+    private static string? PrimaryValue(CipherDetail detail) => detail switch
+    {
+        LoginDetail l => string.IsNullOrEmpty(l.Password) ? l.Username : l.Password,
+        CardDetail c => c.Number,
+        NoteDetail n => n.Content,
+        SshDetail s => s.PublicKey,
+        _ => detail.Name,
+    };
+
+    public Task<bool> ToggleFavoriteAsync(string id) =>
+        RunWriteAsync(async () =>
+        {
+            var draft = _service.GetDraft(id);
+            draft.Favorite = !draft.Favorite;
+            await _service.SaveCipherAsync(draft, id);
+        }, selectId: id);
 }
