@@ -53,4 +53,15 @@ public sealed partial class SendPage : Page
     {
         ViewModel.MarkMoreMenuOpened(ItemFromSender(sender));
     }
+
+    private static void SetRowActionsOpacity(object sender, double opacity)
+    {
+        if (sender is Grid root && root.FindName("RowActions") is FrameworkElement panel)
+            panel.Opacity = opacity;
+    }
+
+    private void OnRowPointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e) => SetRowActionsOpacity(sender, 1);
+    private void OnRowPointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e) => SetRowActionsOpacity(sender, 0);
+    private void OnRowGotFocus(object sender, RoutedEventArgs e) => SetRowActionsOpacity(sender, 1);
+    private void OnRowLostFocus(object sender, RoutedEventArgs e) => SetRowActionsOpacity(sender, 0);
 }

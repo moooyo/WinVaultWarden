@@ -72,7 +72,11 @@
                   Visibility="{x:Bind ViewModel.HasItems, Mode=OneWay, Converter={StaticResource BoolToVis}}">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:SendListItem">
-                    <Grid MinHeight="52" Padding="8,4" ColumnSpacing="12">
+                    <Grid MinHeight="52" Padding="8,4" ColumnSpacing="12"
+                          PointerEntered="OnRowPointerEntered"
+                          PointerExited="OnRowPointerExited"
+                          GotFocus="OnRowGotFocus"
+                          LostFocus="OnRowLostFocus">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="180" />
@@ -101,7 +105,9 @@
                                    TextTrimming="CharacterEllipsis"
                                    MaxLines="1"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                        <StackPanel x:Name="RowActions"
+                                    Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                                    Opacity="0"
                                     HorizontalAlignment="Right" VerticalAlignment="Center">
                             <Button Width="36" Height="32" Padding="0"
                                     AutomationProperties.Name="复制链接"
