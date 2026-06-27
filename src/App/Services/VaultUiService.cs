@@ -18,26 +18,59 @@ public sealed class VaultUiService : IVaultUiService
     private const string GlyphFolder = "\uE8B7";
 
     private readonly IVaultService _vault;
-    private readonly List<(CipherDetail Detail, string? FolderId)> _localDetails = new();
+    private readonly IVaultWriteService _writeService;
+    private readonly ISyncService _sync;
 
-    public VaultUiService(IVaultService vault) => _vault = vault;
-
-    public IReadOnlyList<CipherListItem> GetItems()
+    public VaultUiService(IVaultService vault, IVaultWriteService writeService, ISyncService sync)
     {
-        var domainItems = _vault.GetCiphers().Select(ToListItem);
-        var localItems = _localDetails.Select(item => ToListItem(item.Detail, item.FolderId));
-        return domainItems.Concat(localItems).ToList();
+        _vault = vault;
+        _writeService = writeService;
+        _sync = sync;
     }
 
-    public CipherDetail GetDetail(string id)
-    {
-        var local = _localDetails.FirstOrDefault(item => item.Detail.Id == id);
-        if (local.Detail is not null)
-            return local.Detail;
+    public IReadOnlyList<CipherListItem> GetItems() => _vault.GetCiphers().Select(ToListItem).ToList();
 
-        var cipher = _vault.GetCiphers().First(c => c.Id == id);
-        return ToDetail(cipher);
+    public CipherDetail GetDetail(string id) => ToDetail(_vault.GetCiphers().First(c => c.Id == id));
+
+    public CipherEditorDraft GetDraft(string id) =>
+        CipherDraftMapper.ToDraft(_vault.GetCiphers().First(c => c.Id == id));
+
+    public async Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default)
+    {
+        var original = string.IsNullOrEmpty(editingId)
+            ? null
+            : _vault.GetCiphers().FirstOrDefault(c => c.Id == editingId);
+        var cipher = CipherDraftMapper.ToCipher(draft, original);
+
+        if (original is null)
+        {
+            // 新建:写前/写后 cipher id 差集定位新条目(re-sync 已重建快照)。
+            var before = _vault.GetCiphers().Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
+            await _writeService.SaveCipherAsync(cipher, ct);
+            var created = _vault.GetCiphers().FirstOrDefault(c => !before.Contains(c.Id));
+            return created?.Id ?? string.Empty;
+        }
+
+        await _writeService.SaveCipherAsync(cipher, ct);
+        return editingId!;
     }
+
+    public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) =>
+        _writeService.DeleteCipherAsync(id, permanent, ct);
+
+    public Task RestoreCipherAsync(string id, CancellationToken ct = default) =>
+        _writeService.RestoreCipherAsync(id, ct);
+
+    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) =>
+        _writeService.SaveFolderAsync(folderId, name, ct);
+
+    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) =>
+        _writeService.DeleteFolderAsync(folderId, ct);
+
+    public Task SyncAsync(CancellationToken ct = default) => _sync.SyncAsync(ct);
+
+    // 过渡:Task 3 删除。re-sync 是事实源,此方法不再被使用。
+    public void AddCipher(CipherDetail detail, string? folderId) { }
 
     public IReadOnlyList<FilterNode> GetFilters()
     {
@@ -68,8 +101,6 @@ public sealed class VaultUiService : IVaultUiService
         return filters;
     }
 
-    public void AddCipher(CipherDetail detail, string? folderId) => _localDetails.Add((detail, folderId));
-
     private CipherListItem ToListItem(Cipher cipher) => new()
     {
         Id = cipher.Id,
@@ -80,18 +111,6 @@ public sealed class VaultUiService : IVaultUiService
         Favorite = cipher.Favorite,
         FolderId = cipher.FolderId,
         IsDeleted = cipher.IsDeleted,
-    };
-
-    private static CipherListItem ToListItem(CipherDetail detail, string? folderId) => new()
-    {
-        Id = detail.Id,
-        Name = detail.Name,
-        Kind = detail.Kind,
-        Subtitle = SubtitleFor(detail),
-        Glyph = GlyphFor(detail.Kind),
-        Favorite = detail.Favorite,
-        FolderId = folderId,
-        IsDeleted = detail.IsDeleted,
     };
 
     private CipherDetail ToDetail(Cipher cipher)
@@ -242,16 +261,6 @@ public sealed class VaultUiService : IVaultUiService
         CipherType.Identity => "身份",
         CipherType.SecureNote => "笔记",
         CipherType.SshKey => "SSH 密钥",
-        _ => string.Empty,
-    };
-
-    private static string SubtitleFor(CipherDetail detail) => detail switch
-    {
-        LoginDetail login => login.Username ?? string.Empty,
-        CardDetail card => card.Brand ?? "银行卡",
-        IdentityDetail => "身份",
-        NoteDetail => "笔记",
-        SshDetail => "SSH 密钥",
         _ => string.Empty,
     };
 

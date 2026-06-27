@@ -13,7 +13,7 @@ public class RealVaultUiServiceTests
     [Fact]
     public void GetItemsAndFilters_MapSnapshotCounts()
     {
-        var service = new VaultUiService(new TestVaultService());
+        var service = new VaultUiService(new TestVaultService(), new NoopWriteService(), new NoopSyncService());
 
         var items = service.GetItems();
         var filters = service.GetFilters();
@@ -35,7 +35,7 @@ public class RealVaultUiServiceTests
     [Fact]
     public void GetDetail_MapsAllCipherTypes()
     {
-        var service = new VaultUiService(new TestVaultService());
+        var service = new VaultUiService(new TestVaultService(), new NoopWriteService(), new NoopSyncService());
 
         var login = Assert.IsType<LoginDetail>(service.GetDetail("login"));
         Assert.Equal("octo", login.Username);
@@ -160,5 +160,139 @@ public class RealVaultUiServiceTests
                 Login = new CipherLogin("old", null, null, []),
             },
         ];
+    }
+}
+
+public class RealVaultUiServiceWriteTests
+{
+    [Fact]
+    public async Task SaveCipherAsync_Create_SendsEmptyIdAndReturnsServerAssignedId()
+    {
+        var vault = new MutableVaultService();
+        var write = new RecordingWriteService(vault);
+        var service = new VaultUiService(vault, write, new NoopSyncService());
+        var draft = new CipherEditorDraft { Type = VaultItemKind.Login, Name = "New" };
+
+        var id = await service.SaveCipherAsync(draft, editingId: null);
+
+        Assert.Equal("", write.LastSavedCipher!.Id);   // create = empty id on the wire
+        Assert.Equal("created-1", id);                 // located via id-set diff after re-sync
+    }
+
+    [Fact]
+    public async Task SaveCipherAsync_Edit_PreservesPasskeysAndReturnsEditingId()
+    {
+        var vault = new MutableVaultService();
+        var passkey = new CipherFido2Credential("cred", "kt", "alg", "P-256", "kv", "github.com", "uh", "u", 1, "GitHub", "Octo", true, DateTimeOffset.UnixEpoch);
+        vault.Ciphers.Add(new Cipher
+        {
+            Id = "edit-1", Type = CipherType.Login, Name = "Old",
+            Login = new CipherLogin("octo", null, null, System.Array.Empty<CipherLoginUri>()) { Fido2Credentials = new[] { passkey } },
+        });
+        var write = new RecordingWriteService(vault);
+        var service = new VaultUiService(vault, write, new NoopSyncService());
+        var draft = new CipherEditorDraft { Type = VaultItemKind.Login, Name = "Renamed" };
+
+        var id = await service.SaveCipherAsync(draft, editingId: "edit-1");
+
+        Assert.Equal("edit-1", id);
+        Assert.Equal("edit-1", write.LastSavedCipher!.Id);
+        Assert.Equal("Renamed", write.LastSavedCipher.Name);
+        Assert.Equal("cred", Assert.Single(write.LastSavedCipher.Login!.Fido2Credentials).CredentialId);
+    }
+
+    [Fact]
+    public async Task DeleteRestoreFolderSync_DelegateToWriteService()
+    {
+        var vault = new MutableVaultService();
+        var write = new RecordingWriteService(vault);
+        var sync = new NoopSyncService();
+        var service = new VaultUiService(vault, write, sync);
+
+        await service.DeleteCipherAsync("x", permanent: true);
+        await service.RestoreCipherAsync("y");
+        await service.SaveFolderAsync(null, "Docs");
+        await service.DeleteFolderAsync("f1");
+        await service.SyncAsync();
+
+        Assert.Equal(("x", true), write.LastDelete);
+        Assert.Equal("y", write.LastRestore);
+        Assert.Equal((null, "Docs"), write.LastFolderSave);
+        Assert.Equal("f1", write.LastFolderDelete);
+        Assert.Equal(1, sync.SyncCount);
+    }
+
+}
+
+file sealed class MutableVaultService : IVaultService
+{
+    public List<Cipher> Ciphers { get; } = new();
+    public List<Folder> Folders { get; } = new();
+    public Core.Session.IVaultSnapshot Snapshot => throw new NotSupportedException();
+    public IReadOnlyList<Cipher> GetCiphers() => Ciphers;
+    public IReadOnlyList<Folder> GetFolders() => Folders;
+    public IReadOnlyList<DeviceInfo> GetDevices() => System.Array.Empty<DeviceInfo>();
+}
+
+file sealed class RecordingWriteService : IVaultWriteService
+{
+    private readonly MutableVaultService _vault;
+    public RecordingWriteService(MutableVaultService vault) => _vault = vault;
+
+    public Cipher? LastSavedCipher { get; private set; }
+    public (string Id, bool Permanent)? LastDelete { get; private set; }
+    public string? LastRestore { get; private set; }
+    public (string? Id, string Name)? LastFolderSave { get; private set; }
+    public string? LastFolderDelete { get; private set; }
+
+    public Task SaveCipherAsync(Cipher cipher, CancellationToken ct = default)
+    {
+        LastSavedCipher = cipher;
+        if (string.IsNullOrEmpty(cipher.Id))
+            _vault.Ciphers.Add(new Cipher { Id = "created-1", Type = cipher.Type, Name = cipher.Name });
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteCipherAsync(string cipherId, bool permanent, CancellationToken ct = default)
+    {
+        LastDelete = (cipherId, permanent);
+        return Task.CompletedTask;
+    }
+
+    public Task RestoreCipherAsync(string cipherId, CancellationToken ct = default)
+    {
+        LastRestore = cipherId;
+        return Task.CompletedTask;
+    }
+
+    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default)
+    {
+        LastFolderSave = (folderId, name);
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default)
+    {
+        LastFolderDelete = folderId;
+        return Task.CompletedTask;
+    }
+}
+
+file sealed class NoopWriteService : IVaultWriteService
+{
+    public Task SaveCipherAsync(Cipher cipher, CancellationToken ct = default) => Task.CompletedTask;
+    public Task DeleteCipherAsync(string cipherId, bool permanent, CancellationToken ct = default) => Task.CompletedTask;
+    public Task RestoreCipherAsync(string cipherId, CancellationToken ct = default) => Task.CompletedTask;
+    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => Task.CompletedTask;
+    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => Task.CompletedTask;
+}
+
+file sealed class NoopSyncService : ISyncService
+{
+    public int SyncCount { get; private set; }
+    public Task<IReadOnlyList<Cipher>> SyncAsync(CancellationToken ct = default)
+    {
+        SyncCount++;
+        return Task.FromResult<IReadOnlyList<Cipher>>(System.Array.Empty<Cipher>());
     }
 }
