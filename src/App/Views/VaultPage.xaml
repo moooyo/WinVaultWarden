@@ -113,6 +113,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <Grid ColumnSpacing="8">
@@ -171,19 +172,33 @@
                         </MenuFlyout>
                     </AppBarButton.Flyout>
                 </AppBarButton>
-                <AppBarButton Icon="SelectAll" Label="全选" />
-                <AppBarButton Icon="MoveToFolder" Label="移动" />
+                <AppBarButton Icon="SelectAll" Label="全选"
+                              Command="{x:Bind ViewModel.SelectAllCommand}"
+                              IsEnabled="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay}" />
+                <AppBarButton Icon="MoveToFolder" Label="移动"
+                              Command="{x:Bind ViewModel.MoveSelectedToFolderCommand}"
+                              CommandParameter="{x:Null}"
+                              IsEnabled="{x:Bind ViewModel.HasSelectionForMove, Mode=OneWay}" />
             </CommandBar>
-            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8"
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" Margin="0,4,0,0"
+                        Visibility="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <TextBlock VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="{x:Bind ViewModel.SelectedCount, Mode=OneWay}" />
+                <TextBlock VerticalAlignment="Center" Text="项已选" />
+                <Button Content="完成" Command="{x:Bind ViewModel.ToggleSelectionModeCommand}" />
+            </StackPanel>
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8"
                         Visibility="{x:Bind ViewModel.IsFolderFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                 <Button x:Name="RenameFolderButton" Content="重命名文件夹" Click="OnRenameFolderClick" />
                 <Button x:Name="DeleteFolderButton" Content="删除文件夹" Click="OnDeleteFolderClick" />
                 <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="20" Height="20" />
             </StackPanel>
-            <ListView Grid.Row="3"
+            <ListView Grid.Row="4"
                       x:Name="CipherList"
                       ItemsSource="{x:Bind GroupedItemsSource.View, Mode=OneWay}"
-                      SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}">
+                      SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
+                      SelectionMode="{x:Bind local:VaultPage.SelectionModeFromBool(ViewModel.IsSelectionMode), Mode=OneWay}">
                 <ListView.ItemsPanel>
                     <ItemsPanelTemplate>
                         <ItemsStackPanel AreStickyGroupHeadersEnabled="True" />

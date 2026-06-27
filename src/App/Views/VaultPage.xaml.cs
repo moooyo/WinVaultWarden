@@ -30,6 +30,9 @@ public sealed partial class VaultPage : Page
 
     public static Visibility VisibleIfFalse(bool value) => value ? Visibility.Collapsed : Visibility.Visible;
 
+    public static ListViewSelectionMode SelectionModeFromBool(bool isSelectionMode) =>
+        isSelectionMode ? ListViewSelectionMode.Multiple : ListViewSelectionMode.Single;
+
     private static void SetRowActionsOpacity(object sender, double opacity)
     {
         if (sender is Grid root && root.FindName("RowActions") is FrameworkElement panel)
