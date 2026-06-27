@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace App.Controls;
 
@@ -91,14 +92,36 @@ public sealed partial class FieldRow : UserControl
 
     private void OnCopy(object sender, RoutedEventArgs e)
     {
-        var dp = new DataPackage();
-        dp.SetText(Value ?? string.Empty);
-        Clipboard.SetContent(dp);
+        var value = Value ?? string.Empty;
+        var clipboard = global::App.App.Services?.GetService<App.Services.IClipboardService>();
+        if (clipboard is null)
+        {
+            // 回退:无 DI(设计时)时直接写,保证不崩。
+            var dp = new DataPackage();
+            dp.SetText(value);
+            Clipboard.SetContent(dp);
+            return;
+        }
+
+        if (IsSecret)
+            clipboard.SetSecretText(value);
+        else
+            clipboard.SetText(value);
     }
 
     private async void OnOpen(object sender, RoutedEventArgs e)
     {
-        if (Uri.TryCreate(Value, UriKind.Absolute, out var uri))
+        if (!Uri.TryCreate(Value, UriKind.Absolute, out var uri))
+            return;
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            return;
+        try
+        {
             await Launcher.LaunchUriAsync(uri);
+        }
+        catch
+        {
+            // 无默认处理器/受限协议等:忽略,不让 async void 异常崩溃 UI。
+        }
     }
 }

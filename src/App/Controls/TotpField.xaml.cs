@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace App.Controls;
 
@@ -40,8 +41,16 @@ public sealed partial class TotpField : UserControl
 
     private void OnCopy(object sender, RoutedEventArgs e)
     {
-        var dp = new DataPackage();
-        dp.SetText(Code ?? string.Empty);
-        Clipboard.SetContent(dp);
+        var value = Code ?? string.Empty;
+        var clipboard = global::App.App.Services?.GetService<App.Services.IClipboardService>();
+        if (clipboard is null)
+        {
+            var dp = new DataPackage();
+            dp.SetText(value);
+            Clipboard.SetContent(dp);
+            return;
+        }
+
+        clipboard.SetSecretText(value);
     }
 }
