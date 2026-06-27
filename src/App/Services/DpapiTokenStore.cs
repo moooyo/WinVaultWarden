@@ -26,13 +26,14 @@ public sealed class DpapiTokenStore : ITokenStore
         if (!OperatingSystem.IsWindows())
             return false;
 
+        byte[]? jsonBytes = null;
         try
         {
             if (!File.Exists(_path))
                 return false;
 
             var protectedBytes = File.ReadAllBytes(_path);
-            var jsonBytes = ProtectedData.Unprotect(protectedBytes, null, DataProtectionScope.CurrentUser);
+            jsonBytes = ProtectedData.Unprotect(protectedBytes, null, DataProtectionScope.CurrentUser);
             var loaded = JsonSerializer.Deserialize<PersistedSession>(jsonBytes, JsonOptions);
             if (loaded is null)
                 return false;
@@ -51,6 +52,11 @@ public sealed class DpapiTokenStore : ITokenStore
         catch (JsonException)
         {
             return false;
+        }
+        finally
+        {
+            if (jsonBytes is not null)
+                CryptographicOperations.ZeroMemory(jsonBytes);
         }
     }
 
