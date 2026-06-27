@@ -210,6 +210,8 @@ public static class CipherDraftMapper
         _ => VaultItemKind.Login,
     };
 
+    // 字段值原样保留:机密(密码/TOTP/SSH 私钥)与备注可能含有意空白,trim 会静默损坏数据。
+    // 仅空/空白 → null。项目 Name、URI、自定义字段名在各自调用点单独 trim(非机密标签)。
     private static string? NullIfBlank(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        string.IsNullOrWhiteSpace(value) ? null : value;
 }

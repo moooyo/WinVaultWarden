@@ -142,4 +142,19 @@ public class CipherDraftMapperTests
         Assert.Equal(CipherEditorFieldType.Boolean, field.Type);
         Assert.True(field.BooleanValue);
     }
+
+    [Fact]
+    public void ToCipher_PreservesWhitespaceInSecretAndNotesValues()
+    {
+        var draft = new CipherEditorDraft { Type = VaultItemKind.Login, Name = "  Trim Me  ", Notes = "  keep\n  indent  " };
+        draft.Login.Password = "  secret  ";
+        draft.Login.Totp = "  otp  ";
+
+        var cipher = CipherDraftMapper.ToCipher(draft, null);
+
+        Assert.Equal("Trim Me", cipher.Name);               // Name 仍 trim
+        Assert.Equal("  secret  ", cipher.Login!.Password); // 密码原样保留(不 trim)
+        Assert.Equal("  otp  ", cipher.Login.Totp);
+        Assert.Equal("  keep\n  indent  ", cipher.Notes);   // 备注原样保留
+    }
 }
