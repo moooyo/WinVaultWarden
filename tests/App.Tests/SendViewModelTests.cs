@@ -208,4 +208,33 @@ public class SendViewModelTests
 
         Assert.Equal(startCount, vm.Items.Count);
     }
+
+    [Fact]
+    public void UpdateSendFromDraft_ReplacesItemInCollections()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        var item = vm.Items.First(s => s.Type == SendType.Text);
+        var draft = SendEditorDraft.CreateDefault(SendType.Text);
+        draft.Name = "改名后的 Send";
+        draft.Text = "新文本";
+        draft.DeletionDateLabel = "1 天";
+
+        var ok = vm.UpdateSendFromDraft(item, draft);
+
+        Assert.True(ok);
+        Assert.Contains(vm.Items, s => s.Id == item.Id && s.Name == "改名后的 Send");
+        Assert.Contains(vm.FilteredItems, s => s.Id == item.Id && s.Name == "改名后的 Send");
+        Assert.DoesNotContain(vm.Items, s => ReferenceEquals(s, item));
+    }
+
+    [Fact]
+    public void UpdateSendFromDraft_InvalidDraft_ReturnsFalse()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        var item = vm.Items.First(s => s.Type == SendType.Text);
+        var draft = SendEditorDraft.CreateDefault(SendType.Text);
+        draft.Name = "";
+
+        Assert.False(vm.UpdateSendFromDraft(item, draft));
+    }
 }

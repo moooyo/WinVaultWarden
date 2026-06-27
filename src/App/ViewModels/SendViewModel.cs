@@ -80,6 +80,29 @@ public partial class SendViewModel : ObservableObject
         ApplyFilter();
     }
 
+    public bool UpdateSendFromDraft(SendListItem item, SendEditorDraft draft)
+    {
+        if (!draft.HasRequiredData())
+            return false;
+
+        var updated = _service.UpdateSend(item.Id, draft);
+        if (updated is null)
+            return false;
+
+        var index = Items.IndexOf(item);
+        if (index >= 0)
+            Items[index] = updated;
+        else
+        {
+            var existing = Items.FirstOrDefault(s => s.Id == item.Id);
+            if (existing is not null)
+                Items[Items.IndexOf(existing)] = updated;
+        }
+
+        ApplyFilter();
+        return true;
+    }
+
     public void MarkMoreMenuOpened(SendListItem? item) => SelectedMenuItem = item;
 
     [RelayCommand]
