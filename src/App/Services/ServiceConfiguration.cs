@@ -33,6 +33,9 @@ public static class ServiceConfiguration
         services.AddSingleton<ApiClient>();
         services.AddSingleton<IApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<IReadonlyApiClient>(sp => sp.GetRequiredService<ApiClient>());
+        services.AddSingleton<IVaultWriteApiClient>(sp => sp.GetRequiredService<ApiClient>());
+        services.AddSingleton<CipherEncryptor>();
+        services.AddSingleton<IVaultWriteService, Vault.VaultWriteService>();
         services.AddSingleton<VaultDecryptor>();
         services.AddSingleton<VaultBootstrapper>();
 #if DEBUG

@@ -43,13 +43,14 @@ public class CipherEditorXamlTests
     }
 
     [Fact]
-    public void VaultPage_FolderMenuItem_IsDisabledUntilFolderCreationExists()
+    public void VaultPage_FolderMenuItem_IsEnabledAndWired()
     {
         var document = LoadVaultPageXaml();
         var folderItem = RequireByName(document, "AddFolderMenuItem");
 
         Assert.Equal("文件夹", folderItem.Attribute("Text")?.Value);
-        Assert.Equal("False", folderItem.Attribute("IsEnabled")?.Value);
+        Assert.Null(folderItem.Attribute("IsEnabled")); // no longer disabled
+        Assert.Equal("OnAddFolderClick", folderItem.Attribute("Click")?.Value);
     }
 
     [Fact]
@@ -159,5 +160,25 @@ public class CipherEditorXamlTests
         }
 
         throw new FileNotFoundException("Could not find VaultPage.xaml from the test output directory.");
+    }
+
+    [Fact]
+    public void VaultPage_DetailActions_AreNamedAndWired()
+    {
+        var document = LoadVaultPageXaml();
+
+        Assert.Equal("OnEditCipherClick", RequireByName(document, "EditCipherButton").Attribute("Click")?.Value);
+        Assert.Equal("OnDeleteCipherClick", RequireByName(document, "DeleteCipherButton").Attribute("Click")?.Value);
+        Assert.Equal("OnRestoreCipherClick", RequireByName(document, "RestoreCipherButton").Attribute("Click")?.Value);
+        Assert.Equal("OnPermanentDeleteCipherClick", RequireByName(document, "PermanentDeleteCipherButton").Attribute("Click")?.Value);
+        Assert.Equal("OnRenameFolderClick", RequireByName(document, "RenameFolderButton").Attribute("Click")?.Value);
+        Assert.Equal("OnDeleteFolderClick", RequireByName(document, "DeleteFolderButton").Attribute("Click")?.Value);
+    }
+
+    [Fact]
+    public void VaultPage_SaveButton_StaysWiredToSaveHandler()
+    {
+        var document = LoadVaultPageXaml();
+        Assert.Equal("OnSaveCipherEditorClick", RequireByName(document, "SaveCipherEditorButton").Attribute("Click")?.Value);
     }
 }

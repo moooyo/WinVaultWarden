@@ -107,6 +107,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <Grid ColumnSpacing="8">
@@ -157,7 +158,7 @@
                             <MenuFlyoutSeparator />
                             <MenuFlyoutItem x:Name="AddFolderMenuItem"
                                             Text="文件夹"
-                                            IsEnabled="False">
+                                            Click="OnAddFolderClick">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE8B7;" />
                                 </MenuFlyoutItem.Icon>
@@ -168,7 +169,13 @@
                 <AppBarButton Icon="SelectAll" Label="全选" />
                 <AppBarButton Icon="MoveToFolder" Label="移动" />
             </CommandBar>
-            <ListView Grid.Row="2" ItemsSource="{x:Bind ViewModel.FilteredItems}"
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8"
+                        Visibility="{x:Bind ViewModel.IsFolderFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <Button x:Name="RenameFolderButton" Content="重命名文件夹" Click="OnRenameFolderClick" />
+                <Button x:Name="DeleteFolderButton" Content="删除文件夹" Click="OnDeleteFolderClick" />
+                <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="20" Height="20" />
+            </StackPanel>
+            <ListView Grid.Row="3" ItemsSource="{x:Bind ViewModel.FilteredItems}"
                       SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="models:CipherListItem">
@@ -238,6 +245,10 @@
                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                TextWrapping="Wrap"
                                Visibility="{Binding EditorError, Mode=OneWay, Converter={StaticResource EmptyToCollapsed}}" />
+                    <TextBlock Text="{Binding OperationError, Mode=OneWay}"
+                               Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding OperationError, Mode=OneWay, Converter={StaticResource EmptyToCollapsed}}" />
 
                     <controls:DetailCard Title="项目详细信息">
                         <controls:DetailCard.CardContent>
@@ -476,20 +487,44 @@
                         <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    Text="{x:Bind ViewModel.Detail.HistoryText, Mode=OneWay}" />
                     </StackPanel>
-                    <!-- 操作 -->
-                    <Grid ColumnSpacing="8">
+                    <!-- 操作错误条 -->
+                    <TextBlock Text="{x:Bind ViewModel.OperationError, Mode=OneWay}"
+                               Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                               TextWrapping="Wrap"
+                               Visibility="{x:Bind ViewModel.OperationError, Mode=OneWay, Converter={StaticResource EmptyToCollapsed}}" />
+                    <!-- 操作:常规(非回收站) -->
+                    <Grid ColumnSpacing="8"
+                          Visibility="{x:Bind ViewModel.IsSelectedItemDeleted, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <Button HorizontalAlignment="Stretch">
+                        <Button x:Name="EditCipherButton" HorizontalAlignment="Stretch" Click="OnEditCipherClick">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE70F;" FontSize="14" /><TextBlock Text="编辑" />
                             </StackPanel>
                         </Button>
-                        <Button Grid.Column="1" HorizontalAlignment="Stretch">
+                        <Button x:Name="DeleteCipherButton" Grid.Column="1" HorizontalAlignment="Stretch" Click="OnDeleteCipherClick">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE74D;" FontSize="14" /><TextBlock Text="删除" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                    <!-- 操作:回收站 -->
+                    <Grid ColumnSpacing="8"
+                          Visibility="{x:Bind ViewModel.IsSelectedItemDeleted, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="RestoreCipherButton" HorizontalAlignment="Stretch" Click="OnRestoreCipherClick">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE7A7;" FontSize="14" /><TextBlock Text="恢复" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="PermanentDeleteCipherButton" Grid.Column="1" HorizontalAlignment="Stretch" Click="OnPermanentDeleteCipherClick">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE74D;" FontSize="14" /><TextBlock Text="永久删除" />
                             </StackPanel>
                         </Button>
                     </Grid>

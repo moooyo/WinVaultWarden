@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using System.ComponentModel;
 using App.ViewModels;
 using App.ViewModels.Models;
@@ -20,6 +21,7 @@ public sealed partial class VaultPage : Page
         ViewModel = global::App.App.Services.GetRequiredService<VaultViewModel>();
         InitializeComponent();
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        ViewModel.FoldersChanged += OnVaultFoldersChanged;
         UpdateDetailTemplate();
     }
 
@@ -54,9 +56,9 @@ public sealed partial class VaultPage : Page
 
     private void OnCancelCipherEditorClick(object sender, RoutedEventArgs e) => ViewModel.CancelEdit();
 
-    private void OnSaveCipherEditorClick(object sender, RoutedEventArgs e)
+    private async void OnSaveCipherEditorClick(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.SaveDraft())
+        if (await ViewModel.SaveDraftAsync())
             UpdateDetailTemplate();
     }
 
@@ -131,5 +133,92 @@ public sealed partial class VaultPage : Page
 
         DetailHost.ContentTemplate = key is not null ? Resources[key] as DataTemplate : null;
         DetailHost.Content = detail;
+    }
+
+    private void OnVaultFoldersChanged(object? sender, EventArgs e) =>
+        global::App.App.MainWindow?.RefreshFolderNavigation();
+
+    private void OnEditCipherClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedItem is { } item)
+        {
+            ViewModel.BeginEdit(item.Id);
+            SyncEditorTypeSelection();
+        }
+    }
+
+    private async void OnDeleteCipherClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedItem is not { } item)
+            return;
+        if (await ConfirmAsync("移到回收站", $"确定要将“{item.Name}”移到回收站吗?", "删除"))
+            await ViewModel.SoftDeleteAsync(item.Id);
+    }
+
+    private async void OnRestoreCipherClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedItem is { } item)
+            await ViewModel.RestoreAsync(item.Id);
+    }
+
+    private async void OnPermanentDeleteCipherClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedItem is not { } item)
+            return;
+        if (await ConfirmAsync("永久删除", $"确定要永久删除“{item.Name}”吗?此操作无法撤销。", "永久删除"))
+            await ViewModel.PermanentDeleteAsync(item.Id);
+    }
+
+    private async void OnAddFolderClick(object sender, RoutedEventArgs e)
+    {
+        var name = await PromptTextAsync("新建文件夹", "文件夹名称", string.Empty);
+        if (!string.IsNullOrWhiteSpace(name))
+            await ViewModel.SaveFolderAsync(null, name!);
+    }
+
+    private async void OnRenameFolderClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedFilter is not { Kind: FilterKind.Folder } folder || folder.FolderId is null)
+            return;
+        var name = await PromptTextAsync("重命名文件夹", "文件夹名称", folder.Label);
+        if (!string.IsNullOrWhiteSpace(name))
+            await ViewModel.SaveFolderAsync(folder.FolderId, name!);
+    }
+
+    private async void OnDeleteFolderClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedFilter is not { Kind: FilterKind.Folder } folder || folder.FolderId is null)
+            return;
+        if (await ConfirmAsync("删除文件夹", $"确定要删除文件夹“{folder.Label}”吗?其中的项目会移出该文件夹。", "删除"))
+            await ViewModel.DeleteFolderAsync(folder.FolderId);
+    }
+
+    private async Task<bool> ConfirmAsync(string title, string message, string primaryText)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = message,
+            PrimaryButtonText = primaryText,
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
+    private async Task<string?> PromptTextAsync(string title, string placeholder, string initial)
+    {
+        var input = new TextBox { PlaceholderText = placeholder, Text = initial };
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = input,
+            PrimaryButtonText = "确定",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary ? input.Text : null;
     }
 }

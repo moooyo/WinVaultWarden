@@ -78,6 +78,8 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    public void RefreshFolderNavigation() => PopulateFolderNavigation();
+
     // 登录前:隐藏导航壳,只显示登录页(占满整窗,标题栏仅保留品牌)。
     public void ShowLogin()
     {
