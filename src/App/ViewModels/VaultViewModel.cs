@@ -419,8 +419,9 @@ public partial class VaultViewModel : ObservableObject
     partial void OnIsSelectionModeChanged(bool value)
     {
         if (!value)
-            ClearSelection();
-        OnPropertyChanged(nameof(HasSelectionForMove));
+            ClearSelection(); // ClearSelection 已通知 HasSelectionForMove
+        else
+            OnPropertyChanged(nameof(HasSelectionForMove));
     }
 
     [RelayCommand]
