@@ -18,6 +18,7 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         MainWindow = new MainWindow();
+        ThemeManager.Apply(AppPreferences.Current.ThemeIndex);
         Services.GetRequiredService<PasskeyBridgeServer>().Start();
         MainWindow.Activate();
     }

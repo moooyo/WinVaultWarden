@@ -1,6 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using App.Services;
-using Microsoft.UI.Xaml;
 
 namespace App.ViewModels;
 
@@ -22,8 +21,7 @@ public class SettingsViewModel : ObservableObject
     private bool _enableSshAgent = true;
     private int _selectedSshAuthorizationPromptIndex;
     private bool _allowScreenshots = true;
-    private static int _currentThemeIndex;
-    private int _selectedThemeIndex = _currentThemeIndex;
+    private int _selectedThemeIndex = AppPreferences.Current.ThemeIndex;
     private int _selectedLanguageIndex;
 
     public SettingsViewModel()
@@ -129,8 +127,9 @@ public class SettingsViewModel : ObservableObject
         {
             if (SetProperty(ref _selectedThemeIndex, value))
             {
-                _currentThemeIndex = value;
-                ApplyTheme(value);
+                AppPreferences.Current.ThemeIndex = value;
+                AppPreferences.Save();
+                ThemeManager.Apply(value);
             }
         }
     }
@@ -146,16 +145,9 @@ public class SettingsViewModel : ObservableObject
     public string AccountInitial => _accountUi?.GetAccount().Initial ?? string.Empty;
     public string KdfSummary => _accountUi?.GetAccount().KdfSummary ?? string.Empty;
 
-    private static void ApplyTheme(int index)
-    {
-        if (global::App.App.MainWindow?.Content is FrameworkElement root)
-        {
-            root.RequestedTheme = index switch
-            {
-                1 => ElementTheme.Light,
-                2 => ElementTheme.Dark,
-                _ => ElementTheme.Default,
-            };
-        }
-    }
+    // “关于”区:运行时真实诊断信息。
+    public string AppVersion => AboutInfo.AppVersion;
+    public string WindowsVersion => AboutInfo.WindowsVersion;
+    public string DotNetVersion => AboutInfo.DotNetVersion;
+    public string AppArchitecture => AboutInfo.Architecture;
 }
