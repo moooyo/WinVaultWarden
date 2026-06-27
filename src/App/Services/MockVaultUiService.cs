@@ -99,8 +99,10 @@ public sealed class MockVaultUiService : IVaultUiService
 
         var index = _details.FindIndex(d => d.Id == editingId);
         if (index >= 0)
+        {
             _details[index] = RenderDetail(draft, editingId, folderName);
-        _folderIds[editingId] = folderId;
+            _folderIds[editingId] = folderId;
+        }
         return Task.FromResult(editingId);
     }
 
