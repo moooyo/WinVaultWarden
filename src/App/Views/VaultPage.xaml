@@ -310,7 +310,7 @@
                      VerticalAlignment="Top"
                      IsClosable="True"
                      Severity="Error"
-                     IsOpen="{x:Bind ViewModel.OperationError, Mode=OneWay, Converter={StaticResource EmptyToCollapsed}}"
+                     IsOpen="{x:Bind ViewModel.HasOperationError, Mode=OneWay}"
                      Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" />
 
             <StackPanel x:Name="VaultEmptyPanel"

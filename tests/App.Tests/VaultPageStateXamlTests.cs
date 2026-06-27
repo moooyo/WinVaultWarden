@@ -37,7 +37,7 @@ public class VaultPageStateXamlTests
 
         Assert.Equal("Error", infoBar.Attribute("Severity")?.Value);
         Assert.Contains("ViewModel.OperationError", infoBar.Attribute("Message")?.Value);
-        Assert.Contains("ViewModel.OperationError", infoBar.Attribute("IsOpen")?.Value);
+        Assert.Contains("ViewModel.HasOperationError", infoBar.Attribute("IsOpen")?.Value);
     }
 
     private static XDocument LoadXaml()

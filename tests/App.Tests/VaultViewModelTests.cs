@@ -760,6 +760,23 @@ public class VaultViewModelTests
         Assert.True(vm.HasNoItems);
         Assert.False(vm.NoResults);
     }
+
+    [Fact]
+    public void HasOperationError_TrueWhenErrorSet_FalseWhenCleared()
+    {
+        var vm = NewVm();
+        var notified = new List<string?>();
+        vm.PropertyChanged += (_, e) => notified.Add(e.PropertyName);
+
+        Assert.False(vm.HasOperationError); // 初始为空 → false
+
+        vm.OperationError = "boom";
+        Assert.True(vm.HasOperationError);
+        Assert.Contains(nameof(VaultViewModel.HasOperationError), notified);
+
+        vm.OperationError = string.Empty;
+        Assert.False(vm.HasOperationError);
+    }
 }
 
 public sealed class ThrowingVaultUiService : IVaultUiService

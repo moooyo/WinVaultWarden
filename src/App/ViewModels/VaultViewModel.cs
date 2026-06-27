@@ -44,7 +44,11 @@ public partial class VaultViewModel : ObservableObject
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOperationError))]
     public partial string OperationError { get; set; } = string.Empty;
+
+    // InfoBar.IsOpen 需要 bool;OperationError 是 string,直接用转换器会因返回 Visibility 而绑定失败。
+    public bool HasOperationError => !string.IsNullOrEmpty(OperationError);
 
     public bool HasSelection => Detail is not null;
     public bool NoSelection => Detail is null;
