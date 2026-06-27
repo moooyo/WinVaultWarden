@@ -234,7 +234,24 @@ public class SendViewModelTests
         var item = vm.Items.First(s => s.Type == SendType.Text);
         var draft = SendEditorDraft.CreateDefault(SendType.Text);
         draft.Name = "";
+        var startCount = vm.Items.Count;
 
         Assert.False(vm.UpdateSendFromDraft(item, draft));
+        Assert.Equal(startCount, vm.Items.Count);
+    }
+
+    [Fact]
+    public void UpdateSendFromDraft_UnknownItem_ReturnsFalse()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        var bogus = new SendListItem("does-not-exist", "x", SendType.Text, "", null);
+        var draft = SendEditorDraft.CreateDefault(SendType.Text);
+        draft.Name = "有效名称";
+        draft.Text = "有效文本";
+        draft.DeletionDateLabel = "7 天";
+        var startCount = vm.Items.Count;
+
+        Assert.False(vm.UpdateSendFromDraft(bogus, draft));
+        Assert.Equal(startCount, vm.Items.Count);
     }
 }

@@ -90,15 +90,16 @@ public partial class SendViewModel : ObservableObject
             return false;
 
         var index = Items.IndexOf(item);
-        if (index >= 0)
-            Items[index] = updated;
-        else
+        if (index < 0)
         {
             var existing = Items.FirstOrDefault(s => s.Id == item.Id);
-            if (existing is not null)
-                Items[Items.IndexOf(existing)] = updated;
+            index = existing is null ? -1 : Items.IndexOf(existing);
         }
 
+        if (index < 0)
+            return false;
+
+        Items[index] = updated;
         ApplyFilter();
         return true;
     }
