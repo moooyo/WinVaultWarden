@@ -404,7 +404,7 @@ public partial class VaultViewModel : ObservableObject
             return;
         var value = PrimaryValue(_service.GetDetail(id));
         if (!string.IsNullOrEmpty(value))
-            _clipboard?.SetText(value);
+            _clipboard?.SetSecretText(value);
     }
 
     // 各类型主值:登录→密码(空则用户名),卡→卡号,笔记→内容,SSH→公钥,身份等→名称。

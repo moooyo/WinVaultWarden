@@ -109,6 +109,18 @@ public class VaultViewModelTests
     }
 
     [Fact]
+    public void CopyPrimary_UsesSecretClipboard()
+    {
+        var clipboard = new RecordingClipboard();
+        var vm = new VaultViewModel(new MockVaultUiService(), clipboard);
+
+        vm.CopyPrimaryCommand.Execute("1");
+
+        Assert.Equal(1, clipboard.SecretCount);
+        Assert.Equal(0, clipboard.PlainCount);
+    }
+
+    [Fact]
     public async Task ToggleFavorite_FlipsFavoriteState()
     {
         var vm = NewVm();
