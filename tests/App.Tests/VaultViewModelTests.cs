@@ -76,7 +76,11 @@ public class VaultViewModelTests
     private sealed class RecordingClipboard : IClipboardService
     {
         public string? Text { get; private set; }
-        public void SetText(string text) => Text = text;
+        public int SecretCount { get; private set; }
+        public int PlainCount { get; private set; }
+
+        public void SetText(string text) { Text = text; PlainCount++; }
+        public void SetSecretText(string text, int autoClearSeconds = 30) { Text = text; SecretCount++; }
     }
 
     [Fact]
