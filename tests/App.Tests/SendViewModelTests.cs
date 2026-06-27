@@ -266,4 +266,44 @@ public class SendViewModelTests
         Assert.Equal(SendType.File, draft.Type);
         Assert.Equal("周报.pdf", draft.FileName);
     }
+
+    [Fact]
+    public void IsBusy_DefaultsFalse_AndRaisesPropertyChanged()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        var raised = false;
+        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(SendViewModel.IsBusy)) raised = true; };
+
+        Assert.False(vm.IsBusy);
+        vm.IsBusy = true;
+
+        Assert.True(vm.IsBusy);
+        Assert.True(raised);
+    }
+
+    [Fact]
+    public void Error_DefaultsNull_AndIsSettable()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+
+        Assert.Null(vm.Error);
+        vm.Error = "网络错误";
+
+        Assert.Equal("网络错误", vm.Error);
+    }
+
+    [Fact]
+    public void HasError_FalseWhenErrorNull_TrueWhenErrorSet()
+    {
+        var vm = new SendViewModel(new MockSendUiService());
+        var notifications = new List<string?>();
+        vm.PropertyChanged += (_, e) => notifications.Add(e.PropertyName);
+
+        Assert.False(vm.HasError);
+
+        vm.Error = "连接超时";
+
+        Assert.True(vm.HasError);
+        Assert.Contains(nameof(SendViewModel.HasError), notifications);
+    }
 }

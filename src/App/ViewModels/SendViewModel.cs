@@ -16,7 +16,14 @@ public partial class SendViewModel : ObservableObject
 
     [ObservableProperty] private string _selectedFilterTag = "send:all";
     [ObservableProperty] private SendListItem? _selectedMenuItem;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    private bool _isBusy;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    private string? _error;
 
+    public bool HasError => !string.IsNullOrEmpty(Error);
     public bool HasItems => FilteredItems.Count > 0;
     public bool NoItems => !HasItems;
 
