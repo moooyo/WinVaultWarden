@@ -20,6 +20,13 @@ public sealed partial class SendEditorDraft : ObservableObject
 
     public static SendEditorDraft CreateDefault(SendType type) => new() { Type = type };
 
+    public static SendEditorDraft FromExisting(SendListItem item) => new()
+    {
+        Type = item.Type,
+        Name = item.Name,
+        FileName = item.Type == SendType.File ? item.Name : string.Empty,
+    };
+
     partial void OnTypeChanged(SendType value)
     {
         OnPropertyChanged(nameof(IsText));

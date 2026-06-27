@@ -254,4 +254,16 @@ public class SendViewModelTests
         Assert.False(vm.UpdateSendFromDraft(bogus, draft));
         Assert.Equal(startCount, vm.Items.Count);
     }
+
+    [Fact]
+    public void SendEditorDraft_FromExisting_CopiesNameAndType()
+    {
+        var item = new SendListItem("s9", "周报.pdf", SendType.File, "7 天 后删除", "https://x/s9");
+
+        var draft = SendEditorDraft.FromExisting(item);
+
+        Assert.Equal("周报.pdf", draft.Name);
+        Assert.Equal(SendType.File, draft.Type);
+        Assert.Equal("周报.pdf", draft.FileName);
+    }
 }
