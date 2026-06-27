@@ -8,7 +8,6 @@
     xmlns:models="using:App.ViewModels.Models">
     <Page.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
-        <conv:EmptyStringToCollapsedConverter x:Key="EmptyToCollapsed" />
     </Page.Resources>
 
     <Grid Padding="{StaticResource PageContentPadding}" RowSpacing="14">
@@ -27,7 +26,7 @@
             <InfoBar x:Name="SendErrorInfoBar"
                      IsClosable="True"
                      Severity="Error"
-                     IsOpen="{x:Bind ViewModel.Error, Mode=OneWay, Converter={StaticResource EmptyToCollapsed}}"
+                     IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
                      Message="{x:Bind ViewModel.Error, Mode=OneWay}" />
             <ProgressRing x:Name="SendBusyRing"
                           Grid.Column="1"

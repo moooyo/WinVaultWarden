@@ -18,7 +18,7 @@ public class SendPageStateXamlTests
 
         Assert.Equal("Error", infoBar.Attribute("Severity")?.Value);
         Assert.Contains("ViewModel.Error", infoBar.Attribute("Message")?.Value);
-        Assert.Contains("ViewModel.Error", infoBar.Attribute("IsOpen")?.Value);
+        Assert.Contains("ViewModel.HasError", infoBar.Attribute("IsOpen")?.Value);
     }
 
     [Fact]
