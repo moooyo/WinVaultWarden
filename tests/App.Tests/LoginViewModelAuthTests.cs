@@ -104,6 +104,25 @@ public class LoginViewModelAuthTests
     }
 
     [Fact]
+    public async Task LoginCommand_OnSuccess_ClearsMasterPassword()
+    {
+        var auth = new FakeAuthService { LoginResult = new AuthResult.Success() };
+        var vm = new LoginViewModel(auth)
+        {
+            SelectedServerOptionIndex = 2,
+            ServerUrl = "https://vault.example",
+            Email = "me@example.com",
+            MasterPassword = "password",
+        };
+
+        await vm.LoginCommand.ExecuteAsync(null); // Account → Password 阶段
+        vm.MasterPassword = "password";
+        await vm.LoginCommand.ExecuteAsync(null); // 登录成功
+
+        Assert.Equal(string.Empty, vm.MasterPassword);
+    }
+
+    [Fact]
     public async Task LoginCommand_UnlockStage_CallsUnlock()
     {
         var auth = new FakeAuthService { UnlockResult = new AuthResult.Success() };
