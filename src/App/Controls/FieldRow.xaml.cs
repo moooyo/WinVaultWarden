@@ -93,7 +93,7 @@ public sealed partial class FieldRow : UserControl
     private void OnCopy(object sender, RoutedEventArgs e)
     {
         var value = Value ?? string.Empty;
-        var clipboard = global::App.App.Services?.GetService<App.Services.IClipboardService>();
+        var clipboard = global::App.App.Services?.GetService<global::App.Services.IClipboardService>();
         if (clipboard is null)
         {
             // 回退:无 DI(设计时)时直接写,保证不崩。

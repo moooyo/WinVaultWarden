@@ -218,7 +218,7 @@ public sealed partial class MainWindow : Window
                 ShowLogin();
                 break;
             case "logout":
-                if (await App.Views.DialogHelper.ConfirmAsync(
+                if (await global::App.Views.DialogHelper.ConfirmAsync(
                         Nav.XamlRoot, "退出登录", "确定退出登录?将清除本地会话,需重新登录。", "退出登录"))
                 {
                     await global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync();

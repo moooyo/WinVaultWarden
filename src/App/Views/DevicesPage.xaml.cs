@@ -21,7 +21,7 @@ public sealed partial class DevicesPage : Page
         if (sender is not FrameworkElement { Tag: DeviceItem device })
             return;
         if (await DialogHelper.ConfirmAsync(
-                XamlRoot, "撤销设备", $"确定要撤销"{device.Name}"吗?该设备的会话将被终止。", "撤销"))
+                XamlRoot, "撤销设备", $"确定要撤销“{device.Name}”吗?该设备的会话将被终止。", "撤销"))
         {
             ViewModel.RevokeCommand.Execute(device);
         }

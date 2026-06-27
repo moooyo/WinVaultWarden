@@ -42,7 +42,7 @@ public sealed partial class TotpField : UserControl
     private void OnCopy(object sender, RoutedEventArgs e)
     {
         var value = Code ?? string.Empty;
-        var clipboard = global::App.App.Services?.GetService<App.Services.IClipboardService>();
+        var clipboard = global::App.App.Services?.GetService<global::App.Services.IClipboardService>();
         if (clipboard is null)
         {
             var dp = new DataPackage();
