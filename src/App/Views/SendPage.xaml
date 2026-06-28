@@ -130,12 +130,14 @@
                                     HorizontalAlignment="Right" VerticalAlignment="Center">
                             <Button Width="36" Height="32" Padding="0"
                                     AutomationProperties.Name="复制链接"
+                                    AutomationProperties.AutomationId="SendRowCopyLinkButton"
                                     ToolTipService.ToolTip="复制链接"
                                     Click="OnCopyLinkClick">
                                 <FontIcon Glyph="&#xE8C8;" FontSize="14" />
                             </Button>
                             <Button Width="36" Height="32" Padding="0"
                                     AutomationProperties.Name="更多"
+                                    AutomationProperties.AutomationId="SendRowMoreButton"
                                     ToolTipService.ToolTip="更多"
                                     Click="OnMoreClick">
                                 <FontIcon Glyph="&#xE712;" FontSize="14" />

@@ -264,6 +264,7 @@
                                         VerticalAlignment="Center">
                                 <Button Style="{StaticResource IconButtonStyle}"
                                         AutomationProperties.Name="复制"
+                                        AutomationProperties.AutomationId="VaultRowCopyButton"
                                         ToolTipService.ToolTip="复制主值"
                                         Command="{Binding ElementName=Root, Path=ViewModel.CopyPrimaryCommand}"
                                         CommandParameter="{x:Bind Id}">
@@ -271,6 +272,7 @@
                                 </Button>
                                 <Button Style="{StaticResource IconButtonStyle}"
                                         AutomationProperties.Name="更多"
+                                        AutomationProperties.AutomationId="VaultRowMoreButton"
                                         ToolTipService.ToolTip="更多操作">
                                     <FontIcon Glyph="&#xE712;" FontSize="14" />
                                     <Button.Flyout>
