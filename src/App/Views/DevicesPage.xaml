@@ -9,7 +9,6 @@
     <Page.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
-        <conv:EmptyStringToCollapsedConverter x:Key="EmptyToCollapsed" />
     </Page.Resources>
     <ScrollViewer Padding="{StaticResource PageContentPadding}">
         <StackPanel Spacing="16" MaxWidth="640" HorizontalAlignment="Left">

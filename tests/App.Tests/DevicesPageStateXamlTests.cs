@@ -30,6 +30,10 @@ public class DevicesPageStateXamlTests
 
         Assert.Equal("Error", infoBar.Attribute("Severity")?.Value);
         Assert.Contains("ViewModel.Error", infoBar.Attribute("Message")?.Value);
+
+        var isOpen = infoBar.Attribute("IsOpen")?.Value ?? "";
+        Assert.Contains("ViewModel.HasError", isOpen);
+        Assert.DoesNotContain("Converter", isOpen);
     }
 
     [Fact]
