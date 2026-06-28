@@ -46,6 +46,10 @@ public static class ServiceConfiguration
         services.AddSingleton<IAuthService, Vault.AuthService>();
         services.AddSingleton<ISyncService, Vault.SyncService>();
         services.AddSingleton<IVaultService, Vault.VaultService>();
+        services.AddSingleton<SendCryptoService>();
+        services.AddSingleton<ISendService, Vault.SendService>();
+        services.AddSingleton<ISendWriteService, Vault.SendWriteService>();
+        services.AddSingleton<ISendAccessService, Vault.SendAccessService>();
         services.AddSingleton<IPasskeyApprovalService, PasskeyApprovalDialogService>();
         services.AddSingleton<BrowserPasskeyRequestHandler>();
         services.AddSingleton<PasskeyBridgeServer>();
