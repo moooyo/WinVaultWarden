@@ -26,10 +26,17 @@ public partial class VaultViewModel : ObservableObject
     public IReadOnlyCollection<string> SelectedIds => _selectedIds;
     public bool HasSelectionForMove => IsSelectionMode && _selectedIds.Count > 0;
 
-    [ObservableProperty] private CipherListItem? _selectedItem;
-    [ObservableProperty] private CipherDetail? _detail;
-    [ObservableProperty] private string _searchText = string.Empty;
-    [ObservableProperty] private FilterNode? _selectedFilter;
+    [ObservableProperty]
+    public partial CipherListItem? SelectedItem { get; set; }
+
+    [ObservableProperty]
+    public partial CipherDetail? Detail { get; set; }
+
+    [ObservableProperty]
+    public partial string SearchText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial FilterNode? SelectedFilter { get; set; }
 
     [ObservableProperty]
     public partial bool IsEditing { get; set; }
