@@ -44,6 +44,8 @@ public class AttachmentDomainTests
         Assert.Equal("att-1", cipher.Attachments[0].Id);
         Assert.Equal("b.png", cipher.Attachments[1].FileName);
         Assert.Equal(2_048, cipher.Attachments[1].Size);
+        Assert.Equal(10, cipher.Attachments[0].Size);
+        Assert.Equal("10 Bytes", cipher.Attachments[0].SizeName);
     }
 
     [Fact]
