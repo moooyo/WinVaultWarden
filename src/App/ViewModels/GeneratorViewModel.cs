@@ -30,14 +30,29 @@ public partial class GeneratorViewModel : ObservableObject
 
     public ObservableCollection<GeneratorHistoryItem> History { get; } = new();
 
-    [ObservableProperty] private GeneratorMode _mode;
-    [ObservableProperty] private int _passphraseWordCount = 6;
-    [ObservableProperty] private string _passphraseSeparator = "-";
-    [ObservableProperty] private bool _passphraseCapitalize;
-    [ObservableProperty] private bool _passphraseIncludeNumber;
-    [ObservableProperty] private UsernameGenerationType _usernameType = UsernameGenerationType.RandomWord;
-    [ObservableProperty] private bool _usernameCapitalize;
-    [ObservableProperty] private bool _usernameIncludeNumber;
+    [ObservableProperty]
+    public partial GeneratorMode Mode { get; set; }
+
+    [ObservableProperty]
+    public partial int PassphraseWordCount { get; set; } = 6;
+
+    [ObservableProperty]
+    public partial string PassphraseSeparator { get; set; } = "-";
+
+    [ObservableProperty]
+    public partial bool PassphraseCapitalize { get; set; }
+
+    [ObservableProperty]
+    public partial bool PassphraseIncludeNumber { get; set; }
+
+    [ObservableProperty]
+    public partial UsernameGenerationType UsernameType { get; set; } = UsernameGenerationType.RandomWord;
+
+    [ObservableProperty]
+    public partial bool UsernameCapitalize { get; set; }
+
+    [ObservableProperty]
+    public partial bool UsernameIncludeNumber { get; set; }
 
     public int Length
     {
