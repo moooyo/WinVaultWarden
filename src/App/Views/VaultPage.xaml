@@ -360,6 +360,7 @@
         <ScrollViewer Grid.Column="1" Padding="16">
             <StackPanel Spacing="12" MaxWidth="720" HorizontalAlignment="Left">
                 <StackPanel x:Name="CipherEditorPanel"
+                            x:Load="{x:Bind ViewModel.IsEditing, Mode=OneWay}"
                             Spacing="12"
                             DataContext="{x:Bind ViewModel}"
                             Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay, Converter={StaticResource BoolToVis}}">
