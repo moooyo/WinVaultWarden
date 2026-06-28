@@ -49,7 +49,7 @@ public sealed class BrowserPasskeyRequestHandler
             .ToArray();
         var credential = FindCredential(rpId!, allowedCredentialIds);
         if (credential is null)
-            return Error(requestId, "credential_not_found", $"No passkey for {rpId} was found in the unlocked vault.");
+            return Error(requestId, "no_credential_or_cancelled", "The passkey request could not be completed.");
 
         var approved = await _approval.ConfirmUseAsync(new PasskeyApprovalRequest(
             requestId ?? string.Empty,
@@ -61,7 +61,7 @@ public sealed class BrowserPasskeyRequestHandler
             credential.Credential.UserDisplayName), ct);
 
         if (!approved)
-            return Error(requestId, "user_cancelled", "The passkey request was cancelled.");
+            return Error(requestId, "no_credential_or_cancelled", "The passkey request could not be completed.");
 
         try
         {
