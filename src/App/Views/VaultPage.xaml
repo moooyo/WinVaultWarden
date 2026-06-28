@@ -123,8 +123,12 @@
                 </Grid.ColumnDefinitions>
                 <AutoSuggestBox PlaceholderText="搜索你的保险库…"
                                 Text="{x:Bind ViewModel.SearchText, Mode=TwoWay}"
-                                QueryIcon="Find" />
-                <Button Grid.Column="1" Command="{x:Bind ViewModel.SyncCommand}">
+                                QueryIcon="Find"
+                                AutomationProperties.Name="搜索保险库"
+                                AutomationProperties.AutomationId="VaultSearchBox" />
+                <Button Grid.Column="1" Command="{x:Bind ViewModel.SyncCommand}"
+                        AutomationProperties.Name="同步保险库"
+                        AutomationProperties.AutomationId="VaultSyncButton">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE895;" FontSize="14" />
                         <TextBlock Text="同步" />
