@@ -10,8 +10,10 @@
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
     <PublishProfile>Properties\PublishProfiles\win10-$(Platform).pubxml</PublishProfile>
+    <!-- 本地开发默认版本;发布时 CI 用 -p:Version=<tag 派生> 覆盖。
+         不再显式钉 AssemblyVersion/FileVersion,使其自动跟随 $(Version)
+         (发 tag vX.Y.Z → 装配版本 X.Y.Z 同步)。 -->
     <Version>0.1.0</Version>
-    <AssemblyVersion>0.1.0.0</AssemblyVersion>
     <Platforms>x64;arm64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <!-- 打包应用不能是 AnyCPU(neutral 架构);给默认 RID 防止无平台参数构建时退化。 -->
