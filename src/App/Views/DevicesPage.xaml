@@ -42,7 +42,7 @@
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="models:DeviceItem">
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderThickness="1" CornerRadius="{StaticResource CardCornerRadius}" Padding="16" Margin="0,0,0,8"
+                                BorderThickness="1" CornerRadius="{StaticResource CardCornerRadius}" Padding="{StaticResource CardContentPadding}" Margin="0,0,0,8"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
                             <Grid ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
@@ -57,11 +57,11 @@
                                         <Border Background="{ThemeResource AccentFillColorDefaultBrush}"
                                                 CornerRadius="4" Padding="6,1"
                                                 Visibility="{x:Bind IsCurrent, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock Text="当前设备" FontSize="11" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                                            <TextBlock Text="当前设备" FontSize="12" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
                                         </Border>
                                     </StackPanel>
-                                    <TextBlock Text="{x:Bind LastActive}" FontSize="12"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Text="{x:Bind LastActive}"
+                                               Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
                                 </StackPanel>
                                 <Button Grid.Column="2" VerticalAlignment="Center"
                                         Visibility="{x:Bind IsCurrent, Converter={StaticResource InverseBoolToVis}}"
