@@ -14,14 +14,18 @@ public partial class SendViewModel : ObservableObject
     public ObservableCollection<SendListItem> Items { get; } = new();
     public ObservableCollection<SendListItem> FilteredItems { get; } = new();
 
-    [ObservableProperty] private string _selectedFilterTag = "send:all";
-    [ObservableProperty] private SendListItem? _selectedMenuItem;
+    [ObservableProperty]
+    public partial string SelectedFilterTag { get; set; } = "send:all";
+
+    [ObservableProperty]
+    public partial SendListItem? SelectedMenuItem { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsBusy { get; set; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
-    private bool _isBusy;
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasError))]
-    private string? _error;
+    public partial string? Error { get; set; }
 
     public bool HasError => !string.IsNullOrEmpty(Error);
     public bool HasItems => FilteredItems.Count > 0;
