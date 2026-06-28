@@ -19,6 +19,15 @@ public sealed class PasskeyApprovalThrottle
     }
 
     /// <summary>
+    /// Number of origins currently tracked. Test seam to verify stale-entry pruning;
+    /// kept internal because App.Tests links this file as source.
+    /// </summary>
+    internal int TrackedOriginCount
+    {
+        get { lock (_gate) return _lastPrompt.Count; }
+    }
+
+    /// <summary>
     /// Returns true and records the timestamp if a prompt for <paramref name="origin"/>
     /// is allowed now; returns false if the previous prompt was within the cooldown.
     /// </summary>
@@ -29,6 +38,18 @@ public sealed class PasskeyApprovalThrottle
 
         lock (_gate)
         {
+            // Prune stale entries so a flood of synthetic origins can't grow the map
+            // forever. A stale entry would be allowed again anyway, so removing it is
+            // behaviorally invisible. Snapshot keys first to avoid mutating during enum.
+            var stale = new List<string>();
+            foreach (var entry in _lastPrompt)
+            {
+                if (now - entry.Value >= _cooldown)
+                    stale.Add(entry.Key);
+            }
+            foreach (var k in stale)
+                _lastPrompt.Remove(k);
+
             if (_lastPrompt.TryGetValue(key, out var last) && now - last < _cooldown)
                 return false;
 
