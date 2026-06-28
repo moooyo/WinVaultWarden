@@ -48,5 +48,6 @@
     <Compile Include="..\..\src\App\ViewModels\GeneratorViewModel.cs" Link="ViewModels\GeneratorViewModel.cs" />
     <Compile Include="..\..\src\App\ViewModels\DevicesViewModel.cs" Link="ViewModels\DevicesViewModel.cs" />
     <Compile Include="..\..\src\App\Services\PasskeyOriginDisplay.cs" Link="Services\PasskeyOriginDisplay.cs" />
+    <Compile Include="..\..\src\App\Services\PasskeyApprovalThrottle.cs" Link="Linked\PasskeyApprovalThrottle.cs" />
   </ItemGroup>
 </Project>
