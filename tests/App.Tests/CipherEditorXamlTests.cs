@@ -89,9 +89,10 @@ public class CipherEditorXamlTests
         var removeButton = RequireByName(document, "RemoveCustomFieldButton");
         var customFields = RequireByName(document, "CustomFieldsEditorItems");
 
+        // AddCustomFieldButton uses x:Bind Command (non-template, AOT-safe)
         Assert.True(addButton.Attribute("Click") is not null || addButton.Attribute("Command") is not null);
-        Assert.Contains("RemoveCustomFieldCommand", removeButton.Attribute("Command")?.Value);
-        Assert.Equal("{x:Bind}", removeButton.Attribute("CommandParameter")?.Value);
+        // RemoveCustomFieldButton uses Click handler (inside DataTemplate, AOT-safe)
+        Assert.NotNull(removeButton.Attribute("Click"));
         Assert.Contains("EditorDraft.CustomFields", customFields.Attribute("ItemsSource")?.Value);
 
         var textBoxes = customFields.Descendants(Xaml + "TextBox").ToArray();
@@ -183,18 +184,20 @@ public class CipherEditorXamlTests
     }
 
     [Fact]
-    public void VaultPage_CustomFieldButtons_UseCommandsNotClickHandlers()
+    public void VaultPage_CustomFieldButtons_AreAotSafe()
     {
         var document = LoadVaultPageXaml();
         var addButton = RequireByName(document, "AddCustomFieldButton");
         var removeButton = RequireByName(document, "RemoveCustomFieldButton");
 
+        // AddCustomFieldButton is outside a DataTemplate — uses x:Bind Command directly (AOT-safe).
         Assert.Null(addButton.Attribute("Click"));
         Assert.Contains("AddCustomFieldCommand", addButton.Attribute("Command")?.Value);
 
-        Assert.Null(removeButton.Attribute("Click"));
-        Assert.Contains("RemoveCustomFieldCommand", removeButton.Attribute("Command")?.Value);
-        Assert.Equal("{x:Bind}", removeButton.Attribute("CommandParameter")?.Value);
+        // RemoveCustomFieldButton is inside a DataTemplate — uses Click handler (AOT-safe; was {Binding ElementName=Root}).
+        Assert.Null(removeButton.Attribute("Command"));
+        Assert.NotNull(removeButton.Attribute("Click"));
+        Assert.Null(removeButton.Attribute("CommandParameter"));
     }
 
     [Fact]

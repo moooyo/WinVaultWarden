@@ -50,6 +50,18 @@ public sealed partial class VaultPage : Page
     private static CipherListItem? RowItem(object sender) =>
         (sender as FrameworkElement)?.DataContext as CipherListItem;
 
+    private void OnRowCopyPrimaryClick(object sender, RoutedEventArgs e)
+    {
+        if (RowItem(sender) is { } item)
+            ViewModel.CopyPrimaryCommand.Execute(item.Id);
+    }
+
+    private void OnRemoveCustomFieldClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is App.ViewModels.Models.CustomFieldEditorDraft field)
+            ViewModel.RemoveCustomFieldCommand.Execute(field);
+    }
+
     private void OnRowEditClick(object sender, RoutedEventArgs e)
     {
         if (RowItem(sender) is { } item)

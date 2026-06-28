@@ -266,8 +266,7 @@
                                         AutomationProperties.Name="复制"
                                         AutomationProperties.AutomationId="VaultRowCopyButton"
                                         ToolTipService.ToolTip="复制主值"
-                                        Command="{Binding ElementName=Root, Path=ViewModel.CopyPrimaryCommand}"
-                                        CommandParameter="{x:Bind Id}">
+                                        Click="OnRowCopyPrimaryClick">
                                     <FontIcon Glyph="&#xE8C8;" FontSize="14" />
                                 </Button>
                                 <Button Style="{StaticResource IconButtonStyle}"
@@ -592,8 +591,7 @@
                                                         Style="{StaticResource IconButtonStyle}"
                                                         AutomationProperties.Name="删除字段"
                                                         ToolTipService.ToolTip="删除字段"
-                                                        Command="{Binding ElementName=Root, Path=ViewModel.RemoveCustomFieldCommand}"
-                                                        CommandParameter="{x:Bind}">
+                                                        Click="OnRemoveCustomFieldClick">
                                                     <FontIcon Glyph="&#xE74D;" FontSize="14" />
                                                 </Button>
                                             </Grid>
@@ -603,7 +601,7 @@
                                 <Button x:Name="AddCustomFieldButton"
                                         Content="添加字段"
                                         HorizontalAlignment="Left"
-                                        Command="{Binding ElementName=Root, Path=ViewModel.AddCustomFieldCommand}" />
+                                        Command="{x:Bind ViewModel.AddCustomFieldCommand}" />
                             </StackPanel>
                         </controls:DetailCard.CardContent>
                     </controls:DetailCard>
