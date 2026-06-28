@@ -215,4 +215,31 @@ public class GeneratorViewModelTests
         Assert.Empty(vm.History);
         Assert.Equal(string.Empty, vm.GeneratedPassword);
     }
+
+    [Fact]
+    public void PassphraseWordCountValue_ClampsToRange_SingleSource()
+    {
+        var vm = new GeneratorViewModel { Mode = GeneratorMode.Passphrase };
+
+        vm.PassphraseWordCountValue = 99;   // above max
+        Assert.Equal(20, vm.PassphraseWordCount);
+
+        vm.PassphraseWordCountValue = 1;    // below min
+        Assert.Equal(3, vm.PassphraseWordCount);
+
+        vm.PassphraseWordCountValue = 8;    // in range
+        Assert.Equal(8, vm.PassphraseWordCount);
+        Assert.Equal(8, vm.GeneratedPassword.Split('-').Length);
+    }
+
+    [Fact]
+    public void PassphraseWordCount_Change_Regenerates_WithoutSelfReassign()
+    {
+        var vm = new GeneratorViewModel { Mode = GeneratorMode.Passphrase };
+
+        vm.PassphraseWordCount = 5;
+
+        Assert.Equal(5, vm.PassphraseWordCount);            // no clamp-driven mutation
+        Assert.Equal(5, vm.GeneratedPassword.Split('-').Length);
+    }
 }

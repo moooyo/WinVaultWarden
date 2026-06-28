@@ -254,7 +254,6 @@ public partial class GeneratorViewModel : ObservableObject
     partial void OnModeChanged(GeneratorMode value) => Regenerate();
     partial void OnPassphraseWordCountChanged(int value)
     {
-        PassphraseWordCount = Math.Clamp(value, 3, 20);
         OnPropertyChanged(nameof(PassphraseWordCountValue));
         Regenerate();
     }
