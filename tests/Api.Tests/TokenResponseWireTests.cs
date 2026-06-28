@@ -27,6 +27,20 @@ public class TokenResponseWireTests
     }
 
     [Fact]
+    public void Deserializes_argon2id_kdf_memory_and_parallelism_pascalcase()
+    {
+        const string json = """
+        {"access_token":"at","refresh_token":"rt","expires_in":3600,"token_type":"Bearer",
+         "scope":"api offline_access","Key":"2.abc","PrivateKey":"2.def","Kdf":1,"KdfIterations":3,
+         "KdfMemory":65536,"KdfParallelism":4}
+        """;
+        var token = JsonSerializer.Deserialize<TokenResponse>(json, Web)!;
+        Assert.Equal(KdfType.Argon2id, token.Kdf);
+        Assert.Equal(65536, token.KdfMemory);
+        Assert.Equal(4, token.KdfParallelism);
+    }
+
+    [Fact]
     public void TwoFactor_error_reads_providers_from_string_numbers()
     {
         const string json = """{"error":"invalid_grant","error_description":"Two factor required.","TwoFactorProviders":["0"]}""";
