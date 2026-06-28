@@ -246,8 +246,8 @@
                             </Border>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                 <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" />
-                                <TextBlock Text="{x:Bind Subtitle}" FontSize="12"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Text="{x:Bind Subtitle}"
+                                           Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
                             </StackPanel>
                             <FontIcon Grid.Column="2"
                                       Glyph="&#xE735;"
@@ -636,7 +636,7 @@
                     <!-- 备注 -->
                     <StackPanel Spacing="4"
                                 Visibility="{x:Bind ViewModel.Detail.Notes, Mode=OneWay, Converter={StaticResource EmptyToCollapsed}}">
-                        <TextBlock Text="备注" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="备注" Style="{StaticResource SectionHeaderTextBlockStyle}" />
                         <TextBlock Text="{x:Bind ViewModel.Detail.Notes, Mode=OneWay}" TextWrapping="Wrap" />
                     </StackPanel>
                     <!-- 自定义字段 -->
@@ -649,8 +649,8 @@
                     </ItemsControl>
                     <!-- 历史 -->
                     <StackPanel Spacing="2">
-                        <TextBlock Text="项目历史" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        <TextBlock Text="项目历史" Style="{StaticResource SectionHeaderTextBlockStyle}" />
+                        <TextBlock Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                                    Text="{x:Bind ViewModel.Detail.HistoryText, Mode=OneWay}" />
                     </StackPanel>
                     <!-- 操作错误条 -->
