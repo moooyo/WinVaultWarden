@@ -38,8 +38,8 @@
                            TextAlignment="Center"
                            HorizontalAlignment="Center" />
             </StackPanel>
-            <ItemsControl ItemsSource="{x:Bind ViewModel.Devices}">
-                <ItemsControl.ItemTemplate>
+            <ItemsRepeater ItemsSource="{x:Bind ViewModel.Devices}">
+                <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="models:DeviceItem">
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderThickness="1" CornerRadius="{StaticResource CardCornerRadius}" Padding="16" Margin="0,0,0,8"
@@ -72,8 +72,8 @@
                             </Grid>
                         </Border>
                     </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
         </StackPanel>
     </ScrollViewer>
 </Page>
