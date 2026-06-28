@@ -79,6 +79,34 @@ WinUI 3 + Windows App SDK 项目通常需要 Visual Studio 2022/2026（含“Win
 
 > 安全要点：主密码与主密钥**绝不**离开客户端内存边界，更不可落盘明文或写入日志。
 
+## 测试环境（实测 Vaultwarden 服务端）
+
+用于把客户端代码跑在真实 Bitwarden 兼容服务端上做端到端验证。**该测试账户与服务端均为一次性测试用途，凭据可明文记录于此。**
+
+### 服务器与登录
+
+- **SSH 登录**：`ssh test-env`（已在 dotssh 配置 `D:\Code\dotssh\config.d/hosts` 定义 → `root@10.0.1.20:22`，认证走 Bitwarden SSH Agent 命名管道）。
+  - ⚠️ **必须用 Windows 原生 ssh.exe**（`$env:WINDIR\System32\OpenSSH\ssh.exe`，经 PowerShell 调用）。Git Bash 自带的 ssh 会因 `~/.ssh/config` 开头的 UTF-8 BOM 报 `Bad configuration option: \357\273\277include` 而失败，且其无法访问 Windows 命名管道里的 agent 私钥。
+  - 远程命令避免在 PowerShell 单引号里带 `()`（bash 会当语法）；多行命令用 PowerShell here-string `@' ... '@` 传给 ssh.exe。
+- **服务器**：test-env = Debian 13 (trixie) x86_64，对外 IP `10.0.1.20`，当前网络可直连。
+- **Vaultwarden**：docker 容器 `vaultwarden`（镜像 `vaultwarden/server:latest`，服务端 version `2025.12.0`），数据卷 `/opt/vaultwarden/data`，端口映射 `8080:80`。
+  - 启动参数：`DOMAIN=http://10.0.1.20:8080`、`SIGNUPS_ALLOWED=true`、`WEBSOCKET_ENABLED=true`、`ADMIN_TOKEN=testadmintoken123`。
+  - **客户端服务端 URL**：`http://10.0.1.20:8080`（客户端接受 http，无需 HTTPS）。
+  - 健康检查：`curl http://10.0.1.20:8080/alive`；管理后台：`http://10.0.1.20:8080/admin`（token `testadmintoken123`）。
+- **测试账户**：邮箱 `test@winvaultwarden.local` / 主密码 `Test-Master-Password-1!`（KDF = PBKDF2-SHA256，600000 次）。
+
+### 运行端到端冒烟测试
+
+`tests/LiveSmoke`（控制台 Exe，**不**随 `dotnet test` 跑，需手动指向 live 服务端）覆盖：config → 注册（幂等）→ 登录 → 同步 → 建文件夹/Login 条目 → 往返解密校验 → 更新 → 软删/恢复 → 硬删清理。全程走我们自己的 `Crypto`/`Api`/`Vault` 代码。
+
+```bash
+# 默认即指向上面的测试服务端与账户
+dotnet run --project tests/LiveSmoke -- http://10.0.1.20:8080
+# 或自定义: dotnet run --project tests/LiveSmoke -- <serverUrl> <email> <password>
+```
+
+> 客户端本身未实现自助注册（注册仅 Web 端）；冒烟测试用我方 Crypto 按 Vaultwarden `RegisterData` 契约（`src/api/core/accounts.rs`）自行构造注册体来准备账户，账户已存在时自动复用。
+
 ## 给未来实例的工作提示
 
 - 新增/修改任何 API 调用前，**先 grep Vaultwarden 源码**确认真实契约：路由用 `#[get/post/put/delete(...)]` 宏标注，请求体看 `data` 参数的结构体（`#[derive(Deserialize)]` + `#[serde(rename_all = "camelCase")]`），响应体看对应 model 的 `to_json()`。

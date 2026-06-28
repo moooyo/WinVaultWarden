@@ -159,6 +159,24 @@ public class ApiClientTests
     }
 
     [Fact]
+    public async Task GetConfig_ReadsServerObjectAndVersion()
+    {
+        // 真实 /api/config 把 server 作为对象返回(name/url),曾被误建模为 string。
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
+            """{"version":"2025.12.0","gitHash":"f21a3ada","object":"config","server":{"name":"Vaultwarden","url":"https://github.com/dani-garcia/vaultwarden"},"settings":{"disableUserRegistration":false},"environment":{"vault":"http://localhost"}}"""));
+        var client = new ApiClient(new HttpClient(handler));
+        client.SetBaseAddress("https://vault.example");
+
+        var config = await client.GetConfigAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal("/api/config", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Equal("2025.12.0", config.Version);
+        Assert.Equal("Vaultwarden", config.Server!.Name);
+        Assert.Equal("https://github.com/dani-garcia/vaultwarden", config.Server.Url);
+    }
+
+    [Fact]
     public async Task GetDevices_ReadsListResponse()
     {
         var handler = new FakeHttpMessageHandler();
