@@ -38,12 +38,37 @@ public class SendEditorDialogXamlTests
             .Descendants()
             .Where(element => element.Name == Xaml + "TextBox"
                 || element.Name == Xaml + "ComboBox"
-                || element.Name == Xaml + "NumberBox")
+                || element.Name == Xaml + "NumberBox"
+                || element.Name == Xaml + "PasswordBox")
             .Select(element => element.Attribute("HorizontalAlignment")?.Value)
             .ToArray();
 
         Assert.NotEmpty(inputNames);
         Assert.All(inputNames, alignment => Assert.Equal("Stretch", alignment));
+    }
+
+    [Fact]
+    public void Dialog_HasPasswordBox_BoundToDraftPassword()
+    {
+        var doc = LoadDialogXaml();
+        var pw = doc.Descendants(Xaml + "PasswordBox").Single();
+        Assert.Contains("Draft.Password", pw.Attribute("Password")?.Value);
+    }
+
+    [Fact]
+    public void Dialog_HasDisabledToggle_BoundToDraftDisabled()
+    {
+        var doc = LoadDialogXaml();
+        var toggle = doc.Descendants(Xaml + "ToggleSwitch").Single();
+        Assert.Contains("Draft.Disabled", toggle.Attribute("IsOn")?.Value);
+    }
+
+    [Fact]
+    public void Dialog_DeletionCombo_IncludesCustomOption()
+    {
+        var doc = LoadDialogXaml();
+        var strings = doc.Descendants(X + "String").Select(e => e.Value).ToList();
+        Assert.Contains("自定义", strings);
     }
 
     private static XDocument LoadDialogXaml()

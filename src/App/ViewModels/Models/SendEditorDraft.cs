@@ -49,6 +49,28 @@ public sealed partial class SendEditorDraft : ObservableObject
     public bool IsText => Type == SendType.Text;
     public bool IsFile => Type == SendType.File;
 
+    // 选中文件的明文字节(由文件选择器读入)。非绑定属性,故用普通自动属性,避免进入 x:Bind。
+    public byte[]? FileBytes { get; set; }
+
+    // 相对删除标签 → 绝对删除时间(服务端要求 <=31 天)。"自定义" 用 DeletionDate(为空则回退 7 天)。
+    public DateTimeOffset ToDeletionDate()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var days = DeletionDateLabel switch
+        {
+            "1 天" => 1,
+            "7 天" => 7,
+            "30 天" => 30,
+            _ => -1,
+        };
+        if (days >= 0)
+            return now.AddDays(days);
+
+        var picked = DeletionDate ?? now.AddDays(7);
+        var max = now.AddDays(31);
+        return picked > max ? max : picked;
+    }
+
     public static SendEditorDraft CreateDefault(SendType type) => new() { Type = type };
 
     public static SendEditorDraft FromExisting(SendListItem item) => new()

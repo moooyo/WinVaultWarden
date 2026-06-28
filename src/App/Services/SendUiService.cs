@@ -110,31 +110,11 @@ public sealed class SendUiService : ISendUiService
         FileName = draft.Type == AppSendType.File ? NullIfBlank(draft.FileName) : null,
         MaxAccessCount = draft.MaxAccessCount,
         ExpirationDate = draft.ExpirationDate,
-        DeletionDate = ResolveDeletionDate(draft.DeletionDateLabel, draft.DeletionDate),
+        DeletionDate = draft.ToDeletionDate(),
         Disabled = draft.Disabled,
         HideEmail = draft.HideEmail,
         Password = NullIfBlank(draft.Password),
     };
-
-    // 相对标签 → 绝对时间(<=31 天);"自定义" 用 draft.DeletionDate(若已设置)。
-    internal static DateTimeOffset ResolveDeletionDate(string? label, DateTimeOffset? custom)
-    {
-        var now = DateTimeOffset.UtcNow;
-        var days = label switch
-        {
-            "1 天" => 1,
-            "7 天" => 7,
-            "30 天" => 30,
-            _ => -1,
-        };
-        if (days < 0)
-        {
-            var picked = custom ?? now.AddDays(7);
-            var max = now.AddDays(31);
-            return picked > max ? max : picked;
-        }
-        return now.AddDays(days);
-    }
 
     private static AppSendType MapType(CoreSendType type) => type == CoreSendType.File ? AppSendType.File : AppSendType.Text;
     private static CoreSendType MapType(AppSendType type) => type == AppSendType.File ? CoreSendType.File : CoreSendType.Text;
