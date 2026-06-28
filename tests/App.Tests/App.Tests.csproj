@@ -48,6 +48,8 @@
     <Compile Include="..\..\src\App\Services\ISendUiService.cs" Link="Services\ISendUiService.cs" />
     <Compile Include="..\..\src\App\ViewModels\SendViewModel.cs" Link="ViewModels\SendViewModel.cs" />
     <Compile Include="..\..\src\App\Services\SendUiService.cs" Link="Services\SendUiService.cs" />
+    <Compile Include="..\..\src\App\Services\IAttachmentUiService.cs" Link="Services\IAttachmentUiService.cs" />
+    <Compile Include="..\..\src\App\Services\AttachmentUiService.cs" Link="Services\AttachmentUiService.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\GeneratorHistoryItem.cs" Link="Models\GeneratorHistoryItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\GeneratorViewModel.cs" Link="ViewModels\GeneratorViewModel.cs" />
     <Compile Include="..\..\src\App\ViewModels\DevicesViewModel.cs" Link="ViewModels\DevicesViewModel.cs" />

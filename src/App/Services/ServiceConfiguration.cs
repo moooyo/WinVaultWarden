@@ -62,6 +62,8 @@ public static class ServiceConfiguration
             sp.GetRequiredService<ISendWriteService>(),
             sp.GetRequiredService<ISendAccessService>(),
             sp.GetRequiredService<VaultSession>().Account?.ServerUrl ?? string.Empty));
+        services.AddSingleton<IAttachmentUiService>(sp =>
+            new AttachmentUiService(sp.GetRequiredService<IAttachmentService>()));
         services.AddTransient<IDeviceUiService>(sp =>
         {
             var vault = sp.GetRequiredService<IVaultService>();
