@@ -87,3 +87,11 @@ public sealed record SendAccessResponseDto(
     [property: JsonPropertyName("expirationDate")] DateTimeOffset? ExpirationDate,
     [property: JsonPropertyName("creatorIdentifier")] string? CreatorIdentifier,
     [property: JsonPropertyName("object")] string? Object);
+
+// POST /sends/{sendId}/access/file/{fileId} 响应(sends.rs:post_access_file)。
+// Vaultwarden 返回 { object:"send-fileDownload", id:fileId, url:signedUrl }。
+// url 是带 JWT token 的临时下载地址,需 GET 拿到原始加密字节。
+public sealed record SendFileDownloadResponse(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("url")] string Url,
+    [property: JsonPropertyName("object")] string? Object);

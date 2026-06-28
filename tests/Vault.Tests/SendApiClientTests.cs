@@ -109,7 +109,9 @@ public class SendApiClientTests
 
         var req = handler.Requests[0];
         Assert.Equal(HttpMethod.Post, req.Method);
-        Assert.Equal("/sends/s1/file/file-1", req.RequestUri!.AbsolutePath);
+        // Vaultwarden v2 upload URL "/sends/{id}/file/{fid}" は /api 前缀なし。
+        // ApiClient.NormalizeServerPath が自動補完して "/api/sends/..." になる。
+        Assert.Equal("/api/sends/s1/file/file-1", req.RequestUri!.AbsolutePath);
         Assert.StartsWith("multipart/form-data", req.Content!.Headers.ContentType!.MediaType is { } m ? req.Content.Headers.ContentType.ToString() : "");
         // body contains the multipart "data" part whose filename == encrypted file name
         Assert.Contains("name=data", handler.Bodies[0].Replace("\"", ""));

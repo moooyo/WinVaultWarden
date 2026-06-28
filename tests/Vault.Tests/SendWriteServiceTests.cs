@@ -108,7 +108,7 @@ public class SendWriteServiceTests
         var (service, api, _, _) = NewService();
         // SendFileUploadV2Response 是位置记录,须用位置构造函数语法。
         var sendResponse = new SendResponseDto(
-            Id: "s-9", AccessId: "acc-9", Type: 2, Name: "", Notes: null,
+            Id: "s-9", AccessId: "acc-9", Type: 1, Name: "", Notes: null,
             Text: null, File: null, Key: null, MaxAccessCount: null, AccessCount: 0,
             Password: null, AuthType: 0, Disabled: false, HideEmail: false,
             RevisionDate: null, ExpirationDate: null,
@@ -167,7 +167,7 @@ public class SendWriteServiceTests
         api.RemovePasswordResult = new SendResponseDto(
             Id: "s-4",
             AccessId: "acc-4",
-            Type: 1,
+            Type: 0,
             Name: crypto.EncryptField("Named", cryptoKey),
             Notes: null,
             Text: new SendTextDto(Text: crypto.EncryptField("body", cryptoKey), Hidden: false),

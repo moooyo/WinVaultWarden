@@ -19,6 +19,8 @@ public sealed class FakeSendApiClient : ISendApiClient
     public string? LastAccessId { get; private set; }
     public string? LastAccessPasswordProof { get; private set; }
     public string? LastDownloadUrl { get; private set; }
+    public string? LastAccessFileSendId { get; private set; }
+    public string? LastAccessFileFileId { get; private set; }
 
     private static SendResponseDto EmptyDto() => new(
         Id: "", AccessId: "", Type: 0, Name: "", Notes: null, Text: null, File: null,
@@ -39,6 +41,7 @@ public sealed class FakeSendApiClient : ISendApiClient
     public SendResponseDto UpdateResult { get; set; } = EmptyDto();
     public SendResponseDto RemovePasswordResult { get; set; } = EmptyDto();
     public SendAccessResponseDto AccessResult { get; set; } = EmptyAccessDto();
+    public SendFileDownloadResponse AccessFileResult { get; set; } = new(Id: "", Url: "", Object: null);
     public byte[] DownloadBytes { get; set; } = Array.Empty<byte>();
     public Exception? AccessException { get; set; }
 
@@ -70,6 +73,12 @@ public sealed class FakeSendApiClient : ISendApiClient
         Calls.Add("access"); LastAccessId = accessId; LastAccessPasswordProof = passwordProof;
         if (AccessException is not null) return Task.FromException<SendAccessResponseDto>(AccessException);
         return Task.FromResult(AccessResult);
+    }
+
+    public Task<SendFileDownloadResponse> AccessSendFileAsync(string sendId, string fileId, string? passwordProof, CancellationToken ct = default)
+    {
+        Calls.Add("access-file"); LastAccessFileSendId = sendId; LastAccessFileFileId = fileId;
+        return Task.FromResult(AccessFileResult);
     }
 
     public Task<byte[]> DownloadSendFileBytesAsync(string downloadUrl, CancellationToken ct = default)

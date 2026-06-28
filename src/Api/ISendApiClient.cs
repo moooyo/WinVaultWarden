@@ -15,5 +15,7 @@ public interface ISendApiClient
     Task DeleteSendAsync(string sendId, CancellationToken ct = default);
     Task<SendResponseDto> RemoveSendPasswordAsync(string sendId, CancellationToken ct = default);
     Task<SendAccessResponseDto> AccessSendAsync(string accessId, string? passwordProof, CancellationToken ct = default);
+    // 访问文件型 Send 的下载 URL。先用此端点换取带 JWT 的实际下载地址,再 GET 下载。
+    Task<SendFileDownloadResponse> AccessSendFileAsync(string sendId, string fileId, string? passwordProof, CancellationToken ct = default);
     Task<byte[]> DownloadSendFileBytesAsync(string downloadUrl, CancellationToken ct = default);
 }

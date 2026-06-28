@@ -9,8 +9,9 @@ public class SendDomainTests
     [Fact]
     public void SendType_HasBitwardenWireValues()
     {
-        Assert.Equal(1, (int)SendType.Text);
-        Assert.Equal(2, (int)SendType.File);
+        // Vaultwarden 协议 (db/models/send.rs): Text=0, File=1
+        Assert.Equal(0, (int)SendType.Text);
+        Assert.Equal(1, (int)SendType.File);
     }
 
     [Fact]

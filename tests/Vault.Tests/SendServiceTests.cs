@@ -57,7 +57,7 @@ public class SendServiceTests
     {
         var (service, api, crypto, userKey) = NewService();
         api.ListResult = new SendListResponse(
-            Data: new[] { BuildEncryptedDto(crypto, userKey, 1, "My Text Send", "a note", "secret body", null) },
+            Data: new[] { BuildEncryptedDto(crypto, userKey, 0, "My Text Send", "a note", "secret body", null) },
             Object: "list");
 
         var sends = await service.GetSendsAsync(TestContext.Current.CancellationToken);
@@ -83,7 +83,7 @@ public class SendServiceTests
     {
         var (service, api, crypto, userKey) = NewService();
         api.ListResult = new SendListResponse(
-            Data: new[] { BuildEncryptedDto(crypto, userKey, 2, "My File Send", null, null, "report.pdf") },
+            Data: new[] { BuildEncryptedDto(crypto, userKey, 1, "My File Send", null, null, "report.pdf") },
             Object: "list");
 
         var sends = await service.GetSendsAsync(TestContext.Current.CancellationToken);

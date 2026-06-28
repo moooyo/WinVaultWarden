@@ -150,6 +150,12 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
             HttpMethod.Post, $"api/sends/access/{accessId}", new SendAccessRequest(passwordProof),
             ApiJsonContext.Default.SendAccessRequest, ApiJsonContext.Default.SendAccessResponseDto, ct);
 
+    public Task<SendFileDownloadResponse> AccessSendFileAsync(
+        string sendId, string fileId, string? passwordProof, CancellationToken ct = default)
+        => SendWriteReadAsync(
+            HttpMethod.Post, $"api/sends/{sendId}/access/file/{fileId}", new SendAccessRequest(passwordProof),
+            ApiJsonContext.Default.SendAccessRequest, ApiJsonContext.Default.SendFileDownloadResponse, ct);
+
     public async Task<byte[]> DownloadSendFileBytesAsync(string downloadUrl, CancellationToken ct = default)
     {
         var response = await _http.GetAsync(Url(NormalizeServerPath(downloadUrl)), ct);
@@ -157,10 +163,20 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
-    // 服务端给出的 url 可能是绝对地址,也可能是以 "/" 开头的相对路径(如 /sends/{id}/file/{fid})。
+    // 服务端给出的 url 可能是绝对地址,也可能是以 "/" 开头的相对路径。
     // 绝对地址原样返回;相对路径去掉前导 "/" 交给 Url() 拼到 baseAddress。
-    private static string NormalizeServerPath(string url) =>
-        Uri.TryCreate(url, UriKind.Absolute, out _) ? url : url.TrimStart('/');
+    // Vaultwarden post_send_file_v2 返回的上传 URL 为 "/sends/{id}/file/{fid}"
+    // (不含 /api 前缀),需自动补齐 "api/" 前缀。
+    private static string NormalizeServerPath(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out _))
+            return url;   // 绝对地址直接用
+        var path = url.TrimStart('/');
+        // Vaultwarden v2 文件上传 URL 格式: "sends/{id}/file/{fid}" — 补 api/ 前缀。
+        if (path.StartsWith("sends/", StringComparison.OrdinalIgnoreCase))
+            return "api/" + path;
+        return path;
+    }
 
     private async Task<TResult> SendWriteReadAsync<TBody, TResult>(
         HttpMethod method, string path, TBody body,

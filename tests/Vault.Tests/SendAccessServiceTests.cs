@@ -25,7 +25,7 @@ public class SendAccessServiceTests
         var url = crypto.BuildShareUrl("https://vault.example", "acc-1", seed);
         api.AccessResult = new SendAccessResponseDto(
             Id: "s-1",
-            Type: 1,
+            Type: 0,
             Name: crypto.EncryptField("Shared Note", cryptoKey),
             Text: new SendTextDto(Text: crypto.EncryptField("hello world", cryptoKey), Hidden: false),
             File: null,
@@ -53,7 +53,7 @@ public class SendAccessServiceTests
         var url = crypto.BuildShareUrl("https://vault.example", "acc-2", seed);
         api.AccessResult = new SendAccessResponseDto(
             Id: "s-2",
-            Type: 1,
+            Type: 0,
             Name: crypto.EncryptField("n", cryptoKey),
             Text: new SendTextDto(Text: crypto.EncryptField("t", cryptoKey), Hidden: false),
             File: null,
@@ -78,7 +78,7 @@ public class SendAccessServiceTests
         var url = crypto.BuildShareUrl("https://vault.example", "acc-3", seed);
         api.AccessResult = new SendAccessResponseDto(
             Id: "s-3",
-            Type: 2,
+            Type: 1,
             Name: crypto.EncryptField("File Send", cryptoKey),
             Text: null,
             File: new SendFileDto(Id: "f-3", FileName: crypto.EncryptField("data.bin", cryptoKey), Size: 999L, SizeName: "999 Bytes"),
@@ -91,7 +91,9 @@ public class SendAccessServiceTests
         Assert.Equal(SendType.File, result.Type);
         Assert.Equal("File Send", result.Name);
         Assert.Equal("data.bin", result.FileName);
-        Assert.NotNull(result.FileDownloadUrl);
+        // 下载信息由 SendId+FileId 提供(真实服务端两步协议);FileDownloadUrl 置空。
+        Assert.Equal("s-3", result.SendId);
+        Assert.Equal("f-3", result.FileId);
         Assert.Equal(seed, result.Seed);
     }
 

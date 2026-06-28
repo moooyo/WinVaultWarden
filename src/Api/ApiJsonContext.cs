@@ -25,4 +25,5 @@ namespace Api;
 [JsonSerializable(typeof(SendFileUploadV2Response))]
 [JsonSerializable(typeof(SendAccessRequest))]
 [JsonSerializable(typeof(SendAccessResponseDto))]
+[JsonSerializable(typeof(SendFileDownloadResponse))]
 public partial class ApiJsonContext : JsonSerializerContext;
