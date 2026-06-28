@@ -20,10 +20,13 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <IsAotCompatible>true</IsAotCompatible>
     <EnableUnsafeBlocks>true</EnableUnsafeBlocks>
-    <!-- Stage 2 AOT: 全量 Native AOT(隐含 trimming + single-file)。 -->
+  </PropertyGroup>
+  <!-- Stage 2 Native AOT: 仅 Release 发布开启,保护 Debug 内循环不受自包含/AOT 影响。
+       全量 Native AOT(隐含 trimming + single-file);自包含为 trimming 所必需(NETSDK1102)。
+       ILC 接在 MSIX 包生成里:VS msbuild -t:Build -p:GenerateAppxPackageOnBuild=true,且 vswhere.exe 须在 PATH。 -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <PublishAot>true</PublishAot>
     <VerifyReferenceAotCompatibility>true</VerifyReferenceAotCompatibility>
-    <!-- trimming/AOT 要求自包含发布(NETSDK1102);WindowsAppSDK 自包含。 -->
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
   </PropertyGroup>
