@@ -33,4 +33,15 @@ public class NativeWireCharacterizationTests
         Assert.Equal("https://e.com", payload.Origin);
         Assert.Equal("required", payload.UserVerification);
     }
+
+    [Fact]
+    public void Ping_response_payload_is_concrete_hostinfo_via_context()
+    {
+        var info = new HostInfo("WinVaultWarden.NativeHost", "0.1.0");
+        var element = JsonSerializer.SerializeToElement(info, NativeMessageJsonContext.Default.HostInfo);
+        var resp = new NativeResponse("id1", "pong", true, element);
+        var json = JsonSerializer.Serialize(resp, NativeMessageJsonContext.Default.NativeResponse);
+        Assert.Contains("\"name\":\"WinVaultWarden.NativeHost\"", json);
+        Assert.Contains("\"version\":\"0.1.0\"", json);
+    }
 }

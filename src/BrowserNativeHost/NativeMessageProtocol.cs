@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace BrowserNativeHost;
 
@@ -8,13 +8,7 @@ public static class NativeMessageProtocol
 {
     public const int MaxMessageBytes = 1024 * 1024;
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        PropertyNameCaseInsensitive = true,
-    };
-
-    public static async Task<T?> ReadAsync<T>(Stream input, CancellationToken ct = default)
+    public static async Task<T?> ReadAsync<T>(Stream input, JsonTypeInfo<T> typeInfo, CancellationToken ct = default)
     {
         var lengthBytes = new byte[4];
         var read = await ReadExactOrEndAsync(input, lengthBytes, lengthBytes.Length, ct);
@@ -27,12 +21,12 @@ public static class NativeMessageProtocol
 
         var payload = new byte[length];
         await ReadExactOrEndAsync(input, payload, payload.Length, ct);
-        return JsonSerializer.Deserialize<T>(payload, JsonOptions);
+        return JsonSerializer.Deserialize(payload, typeInfo);
     }
 
-    public static async Task WriteAsync<T>(Stream output, T message, CancellationToken ct = default)
+    public static async Task WriteAsync<T>(Stream output, T message, JsonTypeInfo<T> typeInfo, CancellationToken ct = default)
     {
-        var payload = JsonSerializer.SerializeToUtf8Bytes(message, JsonOptions);
+        var payload = JsonSerializer.SerializeToUtf8Bytes(message, typeInfo);
         if (payload.Length > MaxMessageBytes)
             throw new InvalidDataException($"Native message is too large: {payload.Length} bytes.");
 
