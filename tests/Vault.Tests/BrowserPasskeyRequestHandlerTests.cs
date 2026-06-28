@@ -50,7 +50,8 @@ public class BrowserPasskeyRequestHandlerTests
 
         Assert.True(response.Ok);
         Assert.Equal("passkey.get", response.Type);
-        var assertion = Assert.IsType<PasskeyGetAssertionPayload>(response.Payload);
+        Assert.NotNull(response.Payload);
+        var assertion = response.Payload.Value.Deserialize(PasskeyJsonContext.Default.PasskeyGetAssertionPayload)!;
         Assert.Equal(credentialId, assertion.CredentialId);
         Assert.False(string.IsNullOrWhiteSpace(assertion.AuthenticatorData));
         Assert.False(string.IsNullOrWhiteSpace(assertion.ClientDataJson));

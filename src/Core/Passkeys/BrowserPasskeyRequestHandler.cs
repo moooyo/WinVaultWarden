@@ -3,6 +3,7 @@ using Core.Models;
 using Core.Services;
 using Core.Session;
 using System.Security.Cryptography;
+using System.Text.Json;
 
 namespace Core.Passkeys;
 
@@ -78,12 +79,14 @@ public sealed class BrowserPasskeyRequestHandler
                 requestId,
                 "passkey.get",
                 true,
-                new PasskeyGetAssertionPayload(
-                    assertion.CredentialId,
-                    assertion.AuthenticatorData,
-                    assertion.ClientDataJson,
-                    assertion.Signature,
-                    assertion.UserHandle));
+                JsonSerializer.SerializeToElement(
+                    new PasskeyGetAssertionPayload(
+                        assertion.CredentialId,
+                        assertion.AuthenticatorData,
+                        assertion.ClientDataJson,
+                        assertion.Signature,
+                        assertion.UserHandle),
+                    PasskeyJsonContext.Default.PasskeyGetAssertionPayload));
         }
         catch (Exception ex) when (ex is FormatException or InvalidOperationException or OverflowException or CryptographicException)
         {

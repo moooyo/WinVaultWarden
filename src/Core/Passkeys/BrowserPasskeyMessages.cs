@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace Core.Passkeys;
 
@@ -19,7 +20,7 @@ public sealed record BrowserPasskeyResponse(
     string? Id,
     string Type,
     bool Ok,
-    object? Payload = null,
+    JsonElement? Payload = null,
     BrowserPasskeyError? Error = null);
 
 public sealed record BrowserPasskeyError(string Code, string Message);
@@ -65,12 +66,6 @@ public sealed record PasskeyGetAssertionPayload(
 
 public static class PasskeyRequestParser
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        PropertyNameCaseInsensitive = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
     public static bool TryParse(
         BrowserPasskeyRequest request,
         out ParsedPasskeyRequest? parsed,
@@ -112,7 +107,7 @@ public static class PasskeyRequestParser
         out ParsedPasskeyRequest? parsed,
         out BrowserPasskeyError? error)
     {
-        var payload = request.Payload!.Value.Deserialize<PasskeyCreatePayload>(JsonOptions);
+        var payload = request.Payload!.Value.Deserialize(PasskeyJsonContext.Default.PasskeyCreatePayload);
         if (payload is null)
             return Fail("invalid_request", "Passkey create payload is required.", out parsed, out error);
 
@@ -149,7 +144,7 @@ public static class PasskeyRequestParser
         out ParsedPasskeyRequest? parsed,
         out BrowserPasskeyError? error)
     {
-        var payload = request.Payload!.Value.Deserialize<PasskeyGetPayload>(JsonOptions);
+        var payload = request.Payload!.Value.Deserialize(PasskeyJsonContext.Default.PasskeyGetPayload);
         if (payload is null)
             return Fail("invalid_request", "Passkey get payload is required.", out parsed, out error);
 
@@ -229,13 +224,7 @@ public static class PasskeyRequestParser
 
 public static class BrowserPasskeyMessageProtocol
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        PropertyNameCaseInsensitive = true,
-    };
-
-    public static async Task<T?> ReadAsync<T>(Stream input, CancellationToken ct = default)
+    public static async Task<T?> ReadAsync<T>(Stream input, JsonTypeInfo<T> typeInfo, CancellationToken ct = default)
     {
         var lengthBytes = new byte[4];
         var read = await ReadExactOrEndAsync(input, lengthBytes, lengthBytes.Length, ct);
@@ -248,12 +237,12 @@ public static class BrowserPasskeyMessageProtocol
 
         var payload = new byte[length];
         await ReadExactOrEndAsync(input, payload, payload.Length, ct);
-        return JsonSerializer.Deserialize<T>(payload, JsonOptions);
+        return JsonSerializer.Deserialize(payload, typeInfo);
     }
 
-    public static async Task WriteAsync<T>(Stream output, T message, CancellationToken ct = default)
+    public static async Task WriteAsync<T>(Stream output, T message, JsonTypeInfo<T> typeInfo, CancellationToken ct = default)
     {
-        var payload = JsonSerializer.SerializeToUtf8Bytes(message, JsonOptions);
+        var payload = JsonSerializer.SerializeToUtf8Bytes(message, typeInfo);
         if (payload.Length > BrowserPasskeyBridge.MaxMessageBytes)
             throw new InvalidDataException($"Passkey bridge message is too large: {payload.Length} bytes.");
 
