@@ -32,7 +32,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="{x:Bind ViewModel.GeneratedPassword, Mode=OneWay}"
-                                           FontFamily="Consolas"
+                                           FontFamily="{StaticResource MonospaceFontFamily}"
                                            FontSize="22"
                                            TextWrapping="Wrap"
                                            VerticalAlignment="Center" />
@@ -152,7 +152,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="{x:Bind ViewModel.GeneratedPassword, Mode=OneWay}"
-                                           FontFamily="Consolas"
+                                           FontFamily="{StaticResource MonospaceFontFamily}"
                                            FontSize="20"
                                            TextWrapping="Wrap"
                                            VerticalAlignment="Center" />
@@ -214,7 +214,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="{x:Bind ViewModel.GeneratedPassword, Mode=OneWay}"
-                                           FontFamily="Consolas"
+                                           FontFamily="{StaticResource MonospaceFontFamily}"
                                            FontSize="20"
                                            TextWrapping="Wrap"
                                            VerticalAlignment="Center" />
