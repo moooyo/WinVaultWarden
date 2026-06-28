@@ -81,7 +81,10 @@ public sealed partial class SendPage : Page
     private static void SetRowActionsOpacity(object sender, double opacity)
     {
         if (sender is Grid root && root.FindName("RowActions") is FrameworkElement panel)
+        {
             panel.Opacity = opacity;
+            panel.IsHitTestVisible = opacity > 0;
+        }
     }
 
     private void OnRowPointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e) => SetRowActionsOpacity(sender, 1);
