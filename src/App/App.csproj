@@ -9,6 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
+    <PublishProfile>Properties\PublishProfiles\win10-$(Platform).pubxml</PublishProfile>
     <Version>0.1.0</Version>
     <AssemblyVersion>0.1.0.0</AssemblyVersion>
     <Platforms>x64;arm64</Platforms>
@@ -19,6 +20,15 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <IsAotCompatible>true</IsAotCompatible>
     <EnableUnsafeBlocks>true</EnableUnsafeBlocks>
+  </PropertyGroup>
+  <!-- Stage 2 Native AOT: 仅 Release 发布开启,保护 Debug 内循环不受自包含/AOT 影响。
+       全量 Native AOT(隐含 trimming + single-file);自包含为 trimming 所必需(NETSDK1102)。
+       ILC 接在 MSIX 包生成里:VS msbuild -t:Build -p:GenerateAppxPackageOnBuild=true,且 vswhere.exe 须在 PATH。 -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PublishAot>true</PublishAot>
+    <VerifyReferenceAotCompatibility>true</VerifyReferenceAotCompatibility>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
