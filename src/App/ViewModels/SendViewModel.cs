@@ -27,29 +27,62 @@ public partial class SendViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasError))]
     public partial string? Error { get; set; }
 
+    [ObservableProperty]
+    public partial string ReceivedLinkUrl { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string ReceivedLinkPassword { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasReceivedText))]
+    public partial string? ReceivedText { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasReceivedFile))]
+    public partial string? ReceivedFileName { get; set; }
+
+    [ObservableProperty]
+    public partial bool ReceivedWrongPassword { get; set; }
+
+    [ObservableProperty]
+    public partial SendReceivedResult? LastReceived { get; set; }
+
     public bool HasError => !string.IsNullOrEmpty(Error);
     public bool HasItems => FilteredItems.Count > 0;
     public bool NoItems => !HasItems;
+    public bool HasReceivedText => !string.IsNullOrEmpty(ReceivedText);
+    public bool HasReceivedFile => !string.IsNullOrEmpty(ReceivedFileName);
 
-    // Task 9 最小适配:构造函数不再同步拉取列表;调用方在 Task 11 改为 await LoadAsync()。
     public SendViewModel(ISendUiService service, IClipboardService? clipboard = null)
     {
         _service = service;
         _clipboard = clipboard;
-        // 旧同步 GetSends() 已从接口移除;Task 11 重写为 await LoadAsync()。
-        // 此处若 service 是 MockSendUiService,可通过向下转型维持现有 SendViewModelTests。
-        if (service is MockSendUiService mock)
+    }
+
+    public async Task LoadAsync(CancellationToken ct = default)
+    {
+        IsBusy = true;
+        Error = null;
+        try
         {
-            foreach (var send in mock.GetSends()) Items.Add(send);
+            var sends = await _service.GetSendsAsync(ct);
+            Items.Clear();
+            foreach (var send in sends) Items.Add(send);
+            ApplyFilter();
         }
-        ApplyFilter();
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     public void SelectFilterByTag(string? tag)
     {
-        SelectedFilterTag = tag is "send:text" or "send:file" or "send:all"
-            ? tag
-            : "send:all";
+        SelectedFilterTag = tag is "send:text" or "send:file" or "send:all" ? tag : "send:all";
     }
 
     partial void OnSelectedFilterTagChanged(string value) => ApplyFilter();
@@ -57,94 +90,91 @@ public partial class SendViewModel : ObservableObject
     private void ApplyFilter()
     {
         FilteredItems.Clear();
-
         IEnumerable<SendListItem> source = SelectedFilterTag switch
         {
             "send:text" => Items.Where(i => i.Type == SendType.Text),
             "send:file" => Items.Where(i => i.Type == SendType.File),
             _ => Items,
         };
-
         foreach (var item in source) FilteredItems.Add(item);
-
         OnPropertyChanged(nameof(HasItems));
         OnPropertyChanged(nameof(NoItems));
     }
 
-    // Task 9 最小适配:改为 async 但保留同名方法签名供旧测试调用(Task 11 完整重写)。
-    public bool CreateSend(SendEditorDraft draft)
+    public async Task<bool> CreateSendAsync(SendEditorDraft draft, byte[]? fileBytes, CancellationToken ct = default)
     {
         if (!draft.HasRequiredData())
             return false;
-
-        if (_service is MockSendUiService mock)
+        IsBusy = true;
+        Error = null;
+        try
         {
-            var item = mock.CreateSend(draft);
+            var item = await _service.CreateSendAsync(draft, fileBytes, ct);
             Items.Add(item);
             ApplyFilter();
             return true;
         }
-
-        // 非 mock 情形:触发异步创建但不等待;Task 11 完整重写为 async。
-        _ = Task.Run(async () =>
+        catch (Exception ex)
         {
-            var item = await _service.CreateSendAsync(draft, null);
-            Items.Add(item);
-            ApplyFilter();
-        });
-        return true;
+            Error = ex.Message;
+            return false;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
-    [RelayCommand]
-    private void DeleteSend(SendListItem? item)
-    {
-        if (item is null)
-            return;
-
-        if (_service is MockSendUiService mock)
-        {
-            mock.DeleteSend(item.Id);
-        }
-        else
-        {
-            _ = _service.DeleteSendAsync(item.Id);
-        }
-
-        var existing = Items.FirstOrDefault(s => s.Id == item.Id);
-        if (existing is not null)
-            Items.Remove(existing);
-
-        ApplyFilter();
-    }
-
-    public bool UpdateSendFromDraft(SendListItem item, SendEditorDraft draft)
+    public async Task<bool> UpdateSendFromDraftAsync(SendListItem item, SendEditorDraft draft, byte[]? fileBytes, CancellationToken ct = default)
     {
         if (!draft.HasRequiredData())
             return false;
-
-        if (_service is MockSendUiService mock)
+        IsBusy = true;
+        Error = null;
+        try
         {
-            var updated = mock.UpdateSend(item.Id, draft);
-            if (updated is null)
-                return false;
-
-            var index = Items.IndexOf(item);
-            if (index < 0)
-            {
-                var existing = Items.FirstOrDefault(s => s.Id == item.Id);
-                index = existing is null ? -1 : Items.IndexOf(existing);
-            }
-
+            var updated = await _service.UpdateSendAsync(item.Id, draft, fileBytes, ct);
+            var existing = Items.FirstOrDefault(s => s.Id == item.Id);
+            var index = existing is null ? -1 : Items.IndexOf(existing);
             if (index < 0)
                 return false;
-
             Items[index] = updated;
             ApplyFilter();
             return true;
         }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+            return false;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
-        // 非 mock 情形(Task 11 完整重写)
-        return false;
+    [RelayCommand]
+    private async Task DeleteSendAsync(SendListItem? item)
+    {
+        if (item is null)
+            return;
+        IsBusy = true;
+        Error = null;
+        try
+        {
+            await _service.DeleteSendAsync(item.Id);
+            var existing = Items.FirstOrDefault(s => s.Id == item.Id);
+            if (existing is not null) Items.Remove(existing);
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     public void MarkMoreMenuOpened(SendListItem? item) => SelectedMenuItem = item;
@@ -152,8 +182,54 @@ public partial class SendViewModel : ObservableObject
     [RelayCommand]
     private void CopyLink(SendListItem? item)
     {
-        if (!string.IsNullOrWhiteSpace(item?.Link))
-            _clipboard?.SetSecretText(item.Link);
+        if (item is null)
+            return;
+        var link = _service.CopyShareLink(item);
+        if (!string.IsNullOrWhiteSpace(link))
+            _clipboard?.SetSecretText(link);
+    }
+
+    [RelayCommand]
+    private async Task OpenReceivedLinkAsync()
+    {
+        ReceivedText = null;
+        ReceivedFileName = null;
+        ReceivedWrongPassword = false;
+        LastReceived = null;
+        Error = null;
+
+        if (string.IsNullOrWhiteSpace(ReceivedLinkUrl))
+            return;
+
+        IsBusy = true;
+        try
+        {
+            var password = string.IsNullOrEmpty(ReceivedLinkPassword) ? null : ReceivedLinkPassword;
+            var result = await _service.OpenReceivedLinkAsync(ReceivedLinkUrl.Trim(), password);
+            LastReceived = result;
+            if (result.WrongPassword)
+            {
+                ReceivedWrongPassword = true;
+                return;
+            }
+            if (!result.Ok)
+            {
+                Error = result.Error ?? "无法打开该 Send 链接。";
+                return;
+            }
+            if (result.Type == SendType.File)
+                ReceivedFileName = result.FileName;
+            else
+                ReceivedText = result.TextContent;
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
@@ -162,8 +238,5 @@ public partial class SendViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void More(SendListItem? item)
-    {
-        MarkMoreMenuOpened(item);
-    }
+    private void More(SendListItem? item) => MarkMoreMenuOpened(item);
 }

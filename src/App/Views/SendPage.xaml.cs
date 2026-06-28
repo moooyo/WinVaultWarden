@@ -22,6 +22,7 @@ public sealed partial class SendPage : Page
         base.OnNavigatedTo(e);
         if (e.Parameter is string tag)
             ViewModel.SelectFilterByTag(tag);
+        _ = ViewModel.LoadAsync();
     }
 
     private static SendListItem? ItemFromSender(object sender) =>
@@ -33,7 +34,7 @@ public sealed partial class SendPage : Page
         var dialog = new SendEditorDialog { XamlRoot = root };
         await dialog.ShowAsync();
         if (dialog.Saved)
-            ViewModel.CreateSend(dialog.Draft);
+            await ViewModel.CreateSendAsync(dialog.Draft, dialog.Draft.FileBytes);
     }
 
     private void OnCopyLinkClick(object sender, RoutedEventArgs e)
@@ -64,7 +65,7 @@ public sealed partial class SendPage : Page
         var dialog = new SendEditorDialog(item) { XamlRoot = root };
         await dialog.ShowAsync();
         if (dialog.Saved)
-            ViewModel.UpdateSendFromDraft(item, dialog.Draft);
+            await ViewModel.UpdateSendFromDraftAsync(item, dialog.Draft, dialog.Draft.FileBytes);
     }
 
     private async void OnDeleteSendClick(object sender, RoutedEventArgs e)
@@ -74,8 +75,32 @@ public sealed partial class SendPage : Page
             return;
 
         var root = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot;
-        if (await DialogHelper.ConfirmAsync(root, "删除 Send", $"确定要删除“{item.Name}”吗?此操作无法撤销。", "删除"))
+        if (await DialogHelper.ConfirmAsync(root, "删除 Send", $"确定要删除"{item.Name}"吗？此操作无法撤销。", "删除"))
             ViewModel.DeleteSendCommand.Execute(item);
+    }
+
+    private async void OnSaveReceivedFileClick(object sender, RoutedEventArgs e)
+    {
+        var received = ViewModel.LastReceived;
+        if (received?.Accessed is not Core.Models.SendAccessResult accessed)
+            return;
+
+        var picker = new Windows.Storage.Pickers.FileSavePicker
+        {
+            SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DownloadsFolder,
+            SuggestedFileName = received.FileName ?? "send-file",
+        };
+        picker.FileTypeChoices.Add("文件", new System.Collections.Generic.List<string> { "." });
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        var file = await picker.PickSaveFileAsync();
+        if (file is null)
+            return;
+
+        var access = global::App.App.Services.GetRequiredService<Core.Services.ISendAccessService>();
+        var bytes = await access.DownloadFileAsync(accessed);
+        await Windows.Storage.FileIO.WriteBytesAsync(file, bytes);
     }
 
     private static void SetRowActionsOpacity(object sender, double opacity)

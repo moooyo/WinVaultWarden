@@ -2,33 +2,7 @@ using App.ViewModels.Models;
 
 namespace App.Services;
 
-public interface ISendUiService
-{
-    Task<IReadOnlyList<SendListItem>> GetSendsAsync(CancellationToken ct = default);
-    Task<SendListItem> CreateSendAsync(SendEditorDraft draft, byte[]? fileBytes, CancellationToken ct = default);
-    Task<SendListItem> UpdateSendAsync(string id, SendEditorDraft draft, byte[]? fileBytes, CancellationToken ct = default);
-    Task DeleteSendAsync(string id, CancellationToken ct = default);
-    string? CopyShareLink(SendListItem item);
-    Task<SendReceivedResult> OpenReceivedLinkAsync(string url, string? password, CancellationToken ct = default);
-}
-
-public sealed record SendReceivedResult(
-    bool Ok,
-    bool WrongPassword,
-    SendType Type,
-    string Name,
-    string? TextContent,
-    string? FileName,
-    string? Error,
-    object? Accessed)
-{
-    public static SendReceivedResult Failure(string error) =>
-        new(false, false, SendType.Text, "", null, null, error, null);
-    public static SendReceivedResult Wrong() =>
-        new(false, true, SendType.Text, "", null, null, null, null);
-}
-
-// 内存替身:设计期 / SendViewModel 单测使用。不触网。
+// 内存替身:设计期使用。不触网。Task 12 重写后测试改用 FakeSendUiService。
 public sealed class MockSendUiService : ISendUiService
 {
     private readonly List<SendListItem> _sends = new()
@@ -38,7 +12,6 @@ public sealed class MockSendUiService : ISendUiService
         new("s3", "设计稿打包.zip", SendType.File, "无截止日期", "https://vault.example/#/send/s3/seed3"),
     };
 
-    // 旧同步方法:供现有 SendViewModelTests 直接访问(不通过接口)。Task 12 重写后移除。
     public IReadOnlyList<SendListItem> GetSends() => _sends.ToList();
 
     public bool DeleteSend(string id)

@@ -44,7 +44,7 @@
     <Compile Include="..\..\src\App\ViewModels\Models\SendListItem.cs" Link="Models\SendListItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\SendEditorDraft.cs" Link="Models\SendEditorDraft.cs" />
     <Compile Include="..\..\src\App\Views\SendEditorDialogLifecycle.cs" Link="Views\SendEditorDialogLifecycle.cs" />
-    <Compile Include="..\..\src\App\Services\MockSendUiService.cs" Link="Services\MockSendUiService.cs" />
+    <Compile Include="..\..\src\App\Services\ISendUiService.cs" Link="Services\ISendUiService.cs" />
     <Compile Include="..\..\src\App\ViewModels\SendViewModel.cs" Link="ViewModels\SendViewModel.cs" />
     <Compile Include="..\..\src\App\Services\SendUiService.cs" Link="Services\SendUiService.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\GeneratorHistoryItem.cs" Link="Models\GeneratorHistoryItem.cs" />

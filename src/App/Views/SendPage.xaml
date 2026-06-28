@@ -15,6 +15,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -51,7 +52,34 @@
             </Button>
         </Grid>
 
-        <Grid Grid.Row="2" MinHeight="36" Padding="12,0"
+        <Expander Grid.Row="2"
+                  HorizontalAlignment="Stretch"
+                  HorizontalContentAlignment="Stretch"
+                  Header="打开收到的 Send 链接">
+            <StackPanel Spacing="10">
+                <TextBox Header="Send 链接"
+                         PlaceholderText="https://vault.example/#/send/&lt;accessId&gt;/&lt;seed&gt;"
+                         Text="{x:Bind ViewModel.ReceivedLinkUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <PasswordBox Header="访问密码（如有）"
+                             Password="{x:Bind ViewModel.ReceivedLinkPassword, Mode=TwoWay}" />
+                <Button Content="打开"
+                        Style="{ThemeResource AccentButtonStyle}"
+                        Command="{x:Bind ViewModel.OpenReceivedLinkCommand}" />
+                <InfoBar IsOpen="{x:Bind ViewModel.ReceivedWrongPassword, Mode=OneWay}"
+                         IsClosable="False"
+                         Severity="Warning"
+                         Message="密码不正确，请重试。" />
+                <TextBlock Text="{x:Bind ViewModel.ReceivedText, Mode=OneWay}"
+                           TextWrapping="Wrap"
+                           IsTextSelectionEnabled="True"
+                           Visibility="{x:Bind ViewModel.HasReceivedText, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                <Button Content="保存收到的文件"
+                        Click="OnSaveReceivedFileClick"
+                        Visibility="{x:Bind ViewModel.HasReceivedFile, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+            </StackPanel>
+        </Expander>
+
+        <Grid Grid.Row="3" MinHeight="36" Padding="12,0"
               BorderThickness="0,0,0,1"
               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
             <Grid.ColumnDefinitions>
@@ -67,7 +95,7 @@
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         </Grid>
 
-        <StackPanel Grid.Row="3"
+        <StackPanel Grid.Row="4"
                     HorizontalAlignment="Center"
                     Spacing="{StaticResource SpacingMedium}"
                     Margin="0,72,0,0"
@@ -84,7 +112,7 @@
                        HorizontalAlignment="Center" />
         </StackPanel>
 
-        <ListView Grid.Row="3"
+        <ListView Grid.Row="4"
                   ItemsSource="{x:Bind ViewModel.FilteredItems}"
                   SelectionMode="None"
                   Visibility="{x:Bind ViewModel.HasItems, Mode=OneWay, Converter={StaticResource BoolToVis}}">
