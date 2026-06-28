@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Api</RootNamespace>
     <AssemblyName>Api</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Core\Core.csproj" />

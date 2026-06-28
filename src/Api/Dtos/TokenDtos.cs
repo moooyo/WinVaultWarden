@@ -73,5 +73,4 @@ public sealed record ConnectTokenErrorResponse(
     [property: JsonPropertyName("error")] string? Error,
     [property: JsonPropertyName("error_description")] string? ErrorDescription,
     [property: JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
-    [property: JsonPropertyName("TwoFactorProviders")] int[]? TwoFactorProviders,
-    [property: JsonPropertyName("TwoFactorProviders2")] Dictionary<string, object>? TwoFactorProviders2);
+    [property: JsonPropertyName("TwoFactorProviders")] int[]? TwoFactorProviders);
