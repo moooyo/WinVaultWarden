@@ -8,7 +8,7 @@ using Core.Abstractions;
 
 namespace Api;
 
-public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiClient, ISendApiClient
+public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiClient, ISendApiClient, IAttachmentApiClient
 {
     private readonly HttpClient _http;
     private Uri? _baseAddress;
@@ -163,17 +163,60 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
+    // ===== Attachments =====
+
+    public async Task<CipherDto> GetCipherAsync(string cipherId, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync(Url($"api/ciphers/{cipherId}"), ct);
+        response.EnsureSuccessStatusCode();
+        return await ReadJson(response, ApiJsonContext.Default.CipherDto, ct);
+    }
+
+    public Task<AttachmentUploadV2Response> CreateAttachmentV2Async(
+        string cipherId, AttachmentUploadRequest request, CancellationToken ct = default)
+        => SendWriteReadAsync(
+            HttpMethod.Post, $"api/ciphers/{cipherId}/attachment/v2", request,
+            ApiJsonContext.Default.AttachmentUploadRequest, ApiJsonContext.Default.AttachmentUploadV2Response, ct);
+
+    public async Task UploadAttachmentDataAsync(
+        string uploadUrl, string encryptedFileName, byte[] encryptedBuffer, CancellationToken ct = default)
+    {
+        var content = new MultipartFormDataContent();
+        var part = new ByteArrayContent(encryptedBuffer);
+        part.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        // 字段名固定 "data";文件名必须等于加密后的 fileName(服务端逐字节比对)。
+        content.Add(part, "data", encryptedFileName);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, Url(NormalizeServerPath(uploadUrl)))
+        {
+            Content = content,
+        };
+        await SendWriteCore(request, ct);
+    }
+
+    public async Task DeleteAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default)
+        => await SendWriteAsync(HttpMethod.Delete, $"api/ciphers/{cipherId}/attachment/{attachmentId}", ct);
+
+    public async Task<byte[]> DownloadAttachmentBytesAsync(string downloadUrl, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync(Url(NormalizeServerPath(downloadUrl)), ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
     // 服务端给出的 url 可能是绝对地址,也可能是以 "/" 开头的相对路径。
     // 绝对地址原样返回;相对路径去掉前导 "/" 交给 Url() 拼到 baseAddress。
-    // Vaultwarden post_send_file_v2 返回的上传 URL 为 "/sends/{id}/file/{fid}"
-    // (不含 /api 前缀),需自动补齐 "api/" 前缀。
+    // Vaultwarden post_send_file_v2 / post_attachment_v2 返回的上传 URL 不含 /api 前缀,需自动补齐。
     private static string NormalizeServerPath(string url)
     {
         if (Uri.TryCreate(url, UriKind.Absolute, out _))
             return url;   // 绝对地址直接用
         var path = url.TrimStart('/');
-        // Vaultwarden v2 文件上传 URL 格式: "sends/{id}/file/{fid}" — 补 api/ 前缀。
+        // Vaultwarden v2 文件上传 URL: "sends/{id}/file/{fid}" — 补 api/ 前缀。
         if (path.StartsWith("sends/", StringComparison.OrdinalIgnoreCase))
+            return "api/" + path;
+        // Vaultwarden v2 附件上传 URL: "ciphers/{id}/attachment/{attId}" — 补 api/ 前缀。
+        if (path.StartsWith("ciphers/", StringComparison.OrdinalIgnoreCase))
             return "api/" + path;
         return path;
     }
