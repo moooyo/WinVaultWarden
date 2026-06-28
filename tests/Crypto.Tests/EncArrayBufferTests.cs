@@ -58,6 +58,45 @@ public class EncArrayBufferTests
     }
 
     [Fact]
+    public void Pack_Type2WithNullMac_Throws()
+    {
+        // type=2 但 mac=null:绕过 type 守卫,直接命中 mac-null 分支。
+        var enc = new EncString(
+            EncryptionType.AesCbc256_HmacSha256_B64,
+            RandomNumberGenerator.GetBytes(16),
+            RandomNumberGenerator.GetBytes(48),
+            mac: null);
+
+        Assert.Throws<CryptographicException>(() => EncArrayBuffer.Pack(enc));
+    }
+
+    [Fact]
+    public void Pack_WrongIvLength_Throws()
+    {
+        // 畸形 iv(非 16 字节):必须 fail-fast,否则会生成错帧缓冲区。
+        var enc = new EncString(
+            EncryptionType.AesCbc256_HmacSha256_B64,
+            RandomNumberGenerator.GetBytes(12),
+            RandomNumberGenerator.GetBytes(48),
+            RandomNumberGenerator.GetBytes(32));
+
+        Assert.Throws<CryptographicException>(() => EncArrayBuffer.Pack(enc));
+    }
+
+    [Fact]
+    public void Pack_WrongMacLength_Throws()
+    {
+        // 畸形 mac(非 32 字节):必须 fail-fast,否则会生成错帧缓冲区。
+        var enc = new EncString(
+            EncryptionType.AesCbc256_HmacSha256_B64,
+            RandomNumberGenerator.GetBytes(16),
+            RandomNumberGenerator.GetBytes(48),
+            RandomNumberGenerator.GetBytes(20));
+
+        Assert.Throws<CryptographicException>(() => EncArrayBuffer.Pack(enc));
+    }
+
+    [Fact]
     public void Unpack_TooShort_Throws()
     {
         var buffer = new byte[48];

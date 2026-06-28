@@ -19,8 +19,12 @@ public static class EncArrayBuffer
             throw new CryptographicException($"EncArrayBuffer 仅支持 encType 2,实际 {(int)enc.Type}");
         if (enc.Mac is null)
             throw new CryptographicException("EncArrayBuffer 需要带 MAC 的密钥");
+        if (enc.Iv.Length != IvLength)
+            throw new CryptographicException($"EncArrayBuffer iv 长度须为 {IvLength},实际 {enc.Iv.Length}");
+        if (enc.Mac.Length != MacLength)
+            throw new CryptographicException($"EncArrayBuffer mac 长度须为 {MacLength},实际 {enc.Mac.Length}");
 
-        var buffer = new byte[HeaderLength + enc.Iv.Length + enc.Mac.Length + enc.Ct.Length];
+        var buffer = new byte[HeaderLength + IvLength + MacLength + enc.Ct.Length];
         buffer[0] = (byte)EncryptionType.AesCbc256_HmacSha256_B64; // 2
         var offset = HeaderLength;
         Buffer.BlockCopy(enc.Iv, 0, buffer, offset, enc.Iv.Length);
