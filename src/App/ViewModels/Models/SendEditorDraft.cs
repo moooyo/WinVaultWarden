@@ -34,6 +34,18 @@ public sealed partial class SendEditorDraft : ObservableObject
     [ObservableProperty]
     public partial string Notes { get; set; } = string.Empty;
 
+    [ObservableProperty]
+    public partial bool Disabled { get; set; }
+
+    [ObservableProperty]
+    public partial string Password { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial DateTimeOffset? ExpirationDate { get; set; }
+
+    [ObservableProperty]
+    public partial DateTimeOffset? DeletionDate { get; set; }
+
     public bool IsText => Type == SendType.Text;
     public bool IsFile => Type == SendType.File;
 

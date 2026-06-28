@@ -54,7 +54,11 @@ public static class ServiceConfiguration
         services.AddSingleton<BrowserPasskeyRequestHandler>();
         services.AddSingleton<PasskeyBridgeServer>();
         services.AddSingleton<IVaultUiService, VaultUiService>();
-        services.AddSingleton<ISendUiService, MockSendUiService>();
+        services.AddSingleton<ISendUiService>(sp => new SendUiService(
+            sp.GetRequiredService<ISendService>(),
+            sp.GetRequiredService<ISendWriteService>(),
+            sp.GetRequiredService<ISendAccessService>(),
+            sp.GetRequiredService<VaultSession>().Account?.ServerUrl ?? string.Empty));
         services.AddTransient<IDeviceUiService>(sp =>
         {
             var vault = sp.GetRequiredService<IVaultService>();

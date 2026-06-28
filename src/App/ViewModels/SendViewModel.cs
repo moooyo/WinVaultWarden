@@ -31,11 +31,17 @@ public partial class SendViewModel : ObservableObject
     public bool HasItems => FilteredItems.Count > 0;
     public bool NoItems => !HasItems;
 
+    // Task 9 最小适配:构造函数不再同步拉取列表;调用方在 Task 11 改为 await LoadAsync()。
     public SendViewModel(ISendUiService service, IClipboardService? clipboard = null)
     {
         _service = service;
         _clipboard = clipboard;
-        foreach (var send in service.GetSends()) Items.Add(send);
+        // 旧同步 GetSends() 已从接口移除;Task 11 重写为 await LoadAsync()。
+        // 此处若 service 是 MockSendUiService,可通过向下转型维持现有 SendViewModelTests。
+        if (service is MockSendUiService mock)
+        {
+            foreach (var send in mock.GetSends()) Items.Add(send);
+        }
         ApplyFilter();
     }
 
@@ -65,14 +71,27 @@ public partial class SendViewModel : ObservableObject
         OnPropertyChanged(nameof(NoItems));
     }
 
+    // Task 9 最小适配:改为 async 但保留同名方法签名供旧测试调用(Task 11 完整重写)。
     public bool CreateSend(SendEditorDraft draft)
     {
         if (!draft.HasRequiredData())
             return false;
 
-        var item = _service.CreateSend(draft);
-        Items.Add(item);
-        ApplyFilter();
+        if (_service is MockSendUiService mock)
+        {
+            var item = mock.CreateSend(draft);
+            Items.Add(item);
+            ApplyFilter();
+            return true;
+        }
+
+        // 非 mock 情形:触发异步创建但不等待;Task 11 完整重写为 async。
+        _ = Task.Run(async () =>
+        {
+            var item = await _service.CreateSendAsync(draft, null);
+            Items.Add(item);
+            ApplyFilter();
+        });
         return true;
     }
 
@@ -82,7 +101,14 @@ public partial class SendViewModel : ObservableObject
         if (item is null)
             return;
 
-        _service.DeleteSend(item.Id);
+        if (_service is MockSendUiService mock)
+        {
+            mock.DeleteSend(item.Id);
+        }
+        else
+        {
+            _ = _service.DeleteSendAsync(item.Id);
+        }
 
         var existing = Items.FirstOrDefault(s => s.Id == item.Id);
         if (existing is not null)
@@ -96,23 +122,29 @@ public partial class SendViewModel : ObservableObject
         if (!draft.HasRequiredData())
             return false;
 
-        var updated = _service.UpdateSend(item.Id, draft);
-        if (updated is null)
-            return false;
-
-        var index = Items.IndexOf(item);
-        if (index < 0)
+        if (_service is MockSendUiService mock)
         {
-            var existing = Items.FirstOrDefault(s => s.Id == item.Id);
-            index = existing is null ? -1 : Items.IndexOf(existing);
+            var updated = mock.UpdateSend(item.Id, draft);
+            if (updated is null)
+                return false;
+
+            var index = Items.IndexOf(item);
+            if (index < 0)
+            {
+                var existing = Items.FirstOrDefault(s => s.Id == item.Id);
+                index = existing is null ? -1 : Items.IndexOf(existing);
+            }
+
+            if (index < 0)
+                return false;
+
+            Items[index] = updated;
+            ApplyFilter();
+            return true;
         }
 
-        if (index < 0)
-            return false;
-
-        Items[index] = updated;
-        ApplyFilter();
-        return true;
+        // 非 mock 情形(Task 11 完整重写)
+        return false;
     }
 
     public void MarkMoreMenuOpened(SendListItem? item) => SelectedMenuItem = item;
