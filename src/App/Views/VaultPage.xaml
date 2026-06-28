@@ -589,12 +589,12 @@
                                                 </StackPanel>
                                                 <Button x:Name="RemoveCustomFieldButton"
                                                         Grid.Column="1"
-                                                        Tag="{Binding}"
                                                         VerticalAlignment="Top"
                                                         Style="{StaticResource IconButtonStyle}"
                                                         AutomationProperties.Name="删除字段"
                                                         ToolTipService.ToolTip="删除字段"
-                                                        Click="OnRemoveCustomFieldClick">
+                                                        Command="{Binding ElementName=Root, Path=ViewModel.RemoveCustomFieldCommand}"
+                                                        CommandParameter="{Binding}">
                                                     <FontIcon Glyph="&#xE74D;" FontSize="14" />
                                                 </Button>
                                             </Grid>
@@ -604,7 +604,7 @@
                                 <Button x:Name="AddCustomFieldButton"
                                         Content="添加字段"
                                         HorizontalAlignment="Left"
-                                        Click="OnAddCustomFieldClick" />
+                                        Command="{Binding ElementName=Root, Path=ViewModel.AddCustomFieldCommand}" />
                             </StackPanel>
                         </controls:DetailCard.CardContent>
                     </controls:DetailCard>

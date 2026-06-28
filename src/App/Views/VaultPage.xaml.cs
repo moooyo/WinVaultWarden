@@ -133,27 +133,6 @@ public sealed partial class VaultPage : Page
         }
     }
 
-    private void OnAddCustomFieldClick(object sender, RoutedEventArgs e)
-    {
-        var draft = ViewModel.EditorDraft;
-        if (draft is null)
-            return;
-
-        draft.CustomFields.Add(new CustomFieldEditorDraft
-        {
-            Name = $"字段 {draft.CustomFields.Count + 1}",
-        });
-    }
-
-    private void OnRemoveCustomFieldClick(object sender, RoutedEventArgs e)
-    {
-        if (ViewModel.EditorDraft is null)
-            return;
-
-        if (sender is FrameworkElement { Tag: CustomFieldEditorDraft field })
-            ViewModel.EditorDraft.CustomFields.Remove(field);
-    }
-
     private void SyncEditorTypeSelection()
     {
         if (ViewModel.EditorDraft is null)
