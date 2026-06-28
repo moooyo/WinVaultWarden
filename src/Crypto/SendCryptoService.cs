@@ -56,36 +56,11 @@ public sealed class SendCryptoService
 
     // 文件体 = Bitwarden EncArrayBuffer 二进制:concat[ (byte)2, iv(16), mac(32), ct ]。
     public byte[] EncryptToBuffer(byte[] plaintext, SymmetricCryptoKey cryptoKey)
-    {
-        var enc = _crypto.Encrypt(plaintext, cryptoKey);
-        if (enc.Mac is null)
-            throw new CryptographicException("EncArrayBuffer 需要带 MAC 的密钥");
-
-        var buffer = new byte[1 + enc.Iv.Length + enc.Mac.Length + enc.Ct.Length];
-        buffer[0] = (byte)EncryptionType.AesCbc256_HmacSha256_B64; // 2
-        var offset = 1;
-        Buffer.BlockCopy(enc.Iv, 0, buffer, offset, enc.Iv.Length);
-        offset += enc.Iv.Length;
-        Buffer.BlockCopy(enc.Mac, 0, buffer, offset, enc.Mac.Length);
-        offset += enc.Mac.Length;
-        Buffer.BlockCopy(enc.Ct, 0, buffer, offset, enc.Ct.Length);
-        return buffer;
-    }
+        => EncArrayBuffer.Pack(_crypto.Encrypt(plaintext, cryptoKey));
 
     // 解析 EncArrayBuffer:byte0(=2),iv=[1..17],mac=[17..49],ct=[49..]。
     public byte[] DecryptBuffer(byte[] buffer, SymmetricCryptoKey cryptoKey)
-    {
-        if (buffer.Length < 1 + 16 + 32)
-            throw new CryptographicException("EncArrayBuffer 长度不足");
-        if (buffer[0] != (byte)EncryptionType.AesCbc256_HmacSha256_B64)
-            throw new CryptographicException($"非预期 EncArrayBuffer encType: {buffer[0]}");
-
-        var iv = buffer[1..17];
-        var mac = buffer[17..49];
-        var ct = buffer[49..];
-        var enc = new EncString(EncryptionType.AesCbc256_HmacSha256_B64, iv, ct, mac);
-        return _crypto.Decrypt(enc, cryptoKey);
-    }
+        => _crypto.Decrypt(EncArrayBuffer.Unpack(buffer), cryptoKey);
 
     // 密码证明 = base64( PBKDF2-SHA256(pw, salt=seed, iter=100000, 32B) )。发往服务端,非明文。
     public string ComputePasswordProof(string password, byte[] seed)
