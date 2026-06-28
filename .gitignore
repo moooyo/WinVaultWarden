@@ -100,3 +100,6 @@ docs/superpowers/
 
 # UI preview mockup - local scratch, not shipped
 docs/preview/
+
+# Local code-signing material (private key — never commit)
+.secrets/
