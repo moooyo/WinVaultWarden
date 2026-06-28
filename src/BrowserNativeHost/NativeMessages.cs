@@ -11,7 +11,9 @@ public sealed record NativeResponse(
     string? Id,
     string Type,
     bool Ok,
-    object? Payload = null,
+    JsonElement? Payload = null,
     NativeError? Error = null);
 
 public sealed record NativeError(string Code, string Message);
+
+public sealed record HostInfo(string Name, string Version);

@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml.Data;
 namespace App.Converters;
 
 // bool → Visibility,反向:true=Collapsed,false=Visible。
-public sealed class InverseBoolToVisibilityConverter : IValueConverter
+public sealed partial class InverseBoolToVisibilityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
         => value is true ? Visibility.Collapsed : Visibility.Visible;

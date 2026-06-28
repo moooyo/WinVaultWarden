@@ -47,4 +47,8 @@
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="*|arm64" Project="arm64" />
   </Project>
+  <Project Path="tests/Api.Tests/Api.Tests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|arm64" Project="arm64" />
+  </Project>
 </Solution>

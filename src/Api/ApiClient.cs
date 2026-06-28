@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Api.Dtos;
 using Core.Abstractions;
 
@@ -8,7 +9,6 @@ namespace Api;
 
 public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiClient
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HttpClient _http;
     private Uri? _baseAddress;
 
@@ -20,23 +20,25 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
     {
         var response = await _http.GetAsync(Url("api/config"), ct);
         response.EnsureSuccessStatusCode();
-        return await ReadJson<ConfigResponse>(response, ct);
+        return await ReadJson(response, ApiJsonContext.Default.ConfigResponse, ct);
     }
 
     public async Task<PreloginResponse> PreloginAsync(string email, CancellationToken ct = default)
     {
-        var response = await _http.PostAsJsonAsync(Url("identity/accounts/prelogin"), new PreloginRequest(email), JsonOptions, ct);
+        var response = await _http.PostAsJsonAsync(
+            Url("identity/accounts/prelogin"), new PreloginRequest(email),
+            ApiJsonContext.Default.PreloginRequest, ct);
         response.EnsureSuccessStatusCode();
-        return await ReadJson<PreloginResponse>(response, ct);
+        return await ReadJson(response, ApiJsonContext.Default.PreloginResponse, ct);
     }
 
     public async Task<ConnectTokenResult> ConnectTokenAsync(ConnectTokenRequest request, CancellationToken ct = default)
     {
         var response = await _http.PostAsync(Url("identity/connect/token"), new FormUrlEncodedContent(ToForm(request)), ct);
         if (response.IsSuccessStatusCode)
-            return new ConnectTokenResult.Success(await ReadJson<TokenResponse>(response, ct));
+            return new ConnectTokenResult.Success(await ReadJson(response, ApiJsonContext.Default.TokenResponse, ct));
 
-        var error = await ReadJsonOrNull<ConnectTokenErrorResponse>(response, ct);
+        var error = await ReadJsonOrNull(response, ApiJsonContext.Default.ConnectTokenErrorResponse, ct);
         if (response.StatusCode == HttpStatusCode.BadRequest
             && string.Equals(error?.ErrorDescription, "Two factor required.", StringComparison.Ordinal))
         {
@@ -58,21 +60,21 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
     {
         var response = await _http.GetAsync(Url("api/sync?excludeDomains=true"), ct);
         response.EnsureSuccessStatusCode();
-        return await ReadJson<SyncResponse>(response, ct);
+        return await ReadJson(response, ApiJsonContext.Default.SyncResponse, ct);
     }
 
     public async Task<ListResponse<DeviceDto>> GetDevicesAsync(CancellationToken ct = default)
     {
         var response = await _http.GetAsync(Url("api/devices"), ct);
         response.EnsureSuccessStatusCode();
-        return await ReadJson<ListResponse<DeviceDto>>(response, ct);
+        return await ReadJson(response, ApiJsonContext.Default.ListResponseDeviceDto, ct);
     }
 
     public async Task CreateCipherAsync(CipherRequest request, CancellationToken ct = default)
-        => await SendWriteAsync(HttpMethod.Post, "api/ciphers", request, ct);
+        => await SendWriteAsync(HttpMethod.Post, "api/ciphers", request, ApiJsonContext.Default.CipherRequest, ct);
 
     public async Task UpdateCipherAsync(string cipherId, CipherRequest request, CancellationToken ct = default)
-        => await SendWriteAsync(HttpMethod.Put, $"api/ciphers/{cipherId}", request, ct);
+        => await SendWriteAsync(HttpMethod.Put, $"api/ciphers/{cipherId}", request, ApiJsonContext.Default.CipherRequest, ct);
 
     public async Task SoftDeleteCipherAsync(string cipherId, CancellationToken ct = default)
         => await SendWriteAsync(HttpMethod.Put, $"api/ciphers/{cipherId}/delete", ct);
@@ -84,19 +86,20 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
         => await SendWriteAsync(HttpMethod.Put, $"api/ciphers/{cipherId}/restore", ct);
 
     public async Task CreateFolderAsync(FolderRequest request, CancellationToken ct = default)
-        => await SendWriteAsync(HttpMethod.Post, "api/folders", request, ct);
+        => await SendWriteAsync(HttpMethod.Post, "api/folders", request, ApiJsonContext.Default.FolderRequest, ct);
 
     public async Task UpdateFolderAsync(string folderId, FolderRequest request, CancellationToken ct = default)
-        => await SendWriteAsync(HttpMethod.Put, $"api/folders/{folderId}", request, ct);
+        => await SendWriteAsync(HttpMethod.Put, $"api/folders/{folderId}", request, ApiJsonContext.Default.FolderRequest, ct);
 
     public async Task DeleteFolderAsync(string folderId, CancellationToken ct = default)
         => await SendWriteAsync(HttpMethod.Delete, $"api/folders/{folderId}", ct);
 
-    private async Task SendWriteAsync<TBody>(HttpMethod method, string path, TBody body, CancellationToken ct)
+    private async Task SendWriteAsync<TBody>(
+        HttpMethod method, string path, TBody body, JsonTypeInfo<TBody> typeInfo, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(method, Url(path))
         {
-            Content = JsonContent.Create(body, options: JsonOptions),
+            Content = JsonContent.Create(body, typeInfo),
         };
         await SendWriteCore(request, ct);
     }
@@ -113,7 +116,7 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
         if (response.IsSuccessStatusCode)
             return;
 
-        var error = await ReadJsonOrNull<WriteErrorResponse>(response, ct);
+        var error = await ReadJsonOrNull(response, ApiJsonContext.Default.WriteErrorResponse, ct);
         var message = string.IsNullOrWhiteSpace(error?.Message)
             ? response.ReasonPhrase ?? "Vault write failed."
             : error.Message;
@@ -148,15 +151,15 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
         }
     }
 
-    private static async Task<T> ReadJson<T>(HttpResponseMessage response, CancellationToken ct)
-        => await response.Content.ReadFromJsonAsync<T>(JsonOptions, ct)
-            ?? throw new JsonException($"Response body is not {typeof(T).Name}.");
+    private static async Task<T> ReadJson<T>(HttpResponseMessage response, JsonTypeInfo<T> typeInfo, CancellationToken ct)
+        => await response.Content.ReadFromJsonAsync(typeInfo, ct)
+            ?? throw new JsonException($"Response body is not {typeInfo.Type.Name}.");
 
-    private static async Task<T?> ReadJsonOrNull<T>(HttpResponseMessage response, CancellationToken ct)
+    private static async Task<T?> ReadJsonOrNull<T>(HttpResponseMessage response, JsonTypeInfo<T> typeInfo, CancellationToken ct)
     {
         try
         {
-            return await response.Content.ReadFromJsonAsync<T>(JsonOptions, ct);
+            return await response.Content.ReadFromJsonAsync(typeInfo, ct);
         }
         catch (JsonException)
         {

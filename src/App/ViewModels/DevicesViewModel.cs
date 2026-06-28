@@ -10,11 +10,11 @@ public partial class DevicesViewModel : ObservableObject
 {
     public ObservableCollection<DeviceItem> Devices { get; } = new();
 
-    [ObservableProperty] private bool _isBusy;
+    [ObservableProperty] public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
-    private string? _error;
+    public partial string? Error { get; set; }
 
     public bool HasError => !string.IsNullOrEmpty(Error);
     public bool HasNoDevices => Devices.Count == 0;

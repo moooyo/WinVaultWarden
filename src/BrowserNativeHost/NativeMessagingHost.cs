@@ -21,12 +21,12 @@ public static class NativeMessagingHost
         {
             while (!ct.IsCancellationRequested)
             {
-                var request = await NativeMessageProtocol.ReadAsync<NativeRequest>(input, ct);
+                var request = await NativeMessageProtocol.ReadAsync(input, NativeMessageJsonContext.Default.NativeRequest, ct);
                 if (request is null)
                     return 0;
 
                 var response = await HandleAsync(request, appBridge, ct);
-                await NativeMessageProtocol.WriteAsync(output, response, ct);
+                await NativeMessageProtocol.WriteAsync(output, response, NativeMessageJsonContext.Default.NativeResponse, ct);
             }
 
             return 0;
@@ -56,11 +56,9 @@ public static class NativeMessagingHost
                 request.Id,
                 "pong",
                 true,
-                new
-                {
-                    name = HostName,
-                    version = HostVersion,
-                })),
+                JsonSerializer.SerializeToElement(
+                    new HostInfo(HostName, HostVersion),
+                    NativeMessageJsonContext.Default.HostInfo))),
             "passkey.create" or "passkey.get" => HandlePasskeyRequestAsync(
                 request,
                 appBridge ?? new NamedPipeAppPasskeyBridgeClient(),

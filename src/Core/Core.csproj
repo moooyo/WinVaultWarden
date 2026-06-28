@@ -6,5 +6,6 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Core</RootNamespace>
     <AssemblyName>Core</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 </Project>

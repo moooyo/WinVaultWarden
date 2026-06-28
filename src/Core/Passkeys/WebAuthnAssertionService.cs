@@ -4,6 +4,12 @@ using Core.Models;
 
 namespace Core.Passkeys;
 
+public sealed record ClientDataJson(
+    [property: JsonPropertyName("type")] string Type,
+    [property: JsonPropertyName("challenge")] string Challenge,
+    [property: JsonPropertyName("origin")] string Origin,
+    [property: JsonPropertyName("crossOrigin")] bool CrossOrigin);
+
 public sealed record WebAuthnGetAssertionRequest(
     string Origin,
     string Challenge,
@@ -21,11 +27,6 @@ public sealed record WebAuthnAssertionResult(
 
 public static class WebAuthnAssertionService
 {
-    private static readonly JsonSerializerOptions ClientDataJsonOptions = new()
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
     public static WebAuthnAssertionResult CreateAssertion(
         CipherFido2Credential credential,
         WebAuthnGetAssertionRequest request)
@@ -69,11 +70,9 @@ public static class WebAuthnAssertionService
     }
 
     private static byte[] BuildClientDataJson(WebAuthnGetAssertionRequest request) =>
-        JsonSerializer.SerializeToUtf8Bytes(new ClientDataJson(
-            "webauthn.get",
-            request.Challenge,
-            request.Origin,
-            false), ClientDataJsonOptions);
+        JsonSerializer.SerializeToUtf8Bytes(
+            new ClientDataJson("webauthn.get", request.Challenge, request.Origin, false),
+            PasskeyJsonContext.Default.ClientDataJson);
 
     private static string HostFromOrigin(string origin)
     {
@@ -94,10 +93,4 @@ public static class WebAuthnAssertionService
         string.IsNullOrWhiteSpace(value)
             ? throw new InvalidOperationException($"Passkey credential {name} is required.")
             : value;
-
-    private sealed record ClientDataJson(
-        [property: JsonPropertyName("type")] string Type,
-        [property: JsonPropertyName("challenge")] string Challenge,
-        [property: JsonPropertyName("origin")] string Origin,
-        [property: JsonPropertyName("crossOrigin")] bool CrossOrigin);
 }

@@ -1,28 +1,36 @@
 using System.Buffers.Binary;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using BrowserNativeHost;
 using Core.Passkeys;
 using Xunit;
 
 namespace BrowserNativeHost.Tests;
 
+[JsonSourceGenerationOptions(
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    PropertyNameCaseInsensitive = true,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(NativeMessageProtocolTests.SampleMessage))]
+internal partial class TestJsonContext : JsonSerializerContext;
+
 public class NativeMessageProtocolTests
 {
-    private sealed record SampleMessage(string Type, string Value);
+    public sealed record SampleMessage(string Type, string Value);
 
     [Fact]
     public async Task WriteRead_RoundTripsLengthPrefixedJson()
     {
         var stream = new MemoryStream();
 
-        await NativeMessageProtocol.WriteAsync(stream, new SampleMessage("ping", "hello"), TestContext.Current.CancellationToken);
+        await NativeMessageProtocol.WriteAsync(stream, new SampleMessage("ping", "hello"), TestJsonContext.Default.SampleMessage, TestContext.Current.CancellationToken);
 
         var bytes = stream.ToArray();
         var payloadLength = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(0, 4));
         Assert.Equal((uint)(bytes.Length - 4), payloadLength);
 
         stream.Position = 0;
-        var read = await NativeMessageProtocol.ReadAsync<SampleMessage>(stream, TestContext.Current.CancellationToken);
+        var read = await NativeMessageProtocol.ReadAsync(stream, TestJsonContext.Default.SampleMessage, TestContext.Current.CancellationToken);
 
         Assert.NotNull(read);
         Assert.Equal("ping", read!.Type);
@@ -33,7 +41,7 @@ public class NativeMessageProtocolTests
     public async Task RunAsync_Ping_ReturnsPong()
     {
         var input = new MemoryStream();
-        await NativeMessageProtocol.WriteAsync(input, new NativeRequest("req-1", "ping"), TestContext.Current.CancellationToken);
+        await NativeMessageProtocol.WriteAsync(input, new NativeRequest("req-1", "ping"), NativeMessageJsonContext.Default.NativeRequest, TestContext.Current.CancellationToken);
         input.Position = 0;
         var output = new MemoryStream();
 
@@ -41,7 +49,7 @@ public class NativeMessageProtocolTests
 
         Assert.Equal(0, exitCode);
         output.Position = 0;
-        var response = await NativeMessageProtocol.ReadAsync<NativeResponse>(output, TestContext.Current.CancellationToken);
+        var response = await NativeMessageProtocol.ReadAsync(output, NativeMessageJsonContext.Default.NativeResponse, TestContext.Current.CancellationToken);
         Assert.NotNull(response);
         Assert.Equal("req-1", response!.Id);
         Assert.Equal("pong", response.Type);
@@ -53,13 +61,14 @@ public class NativeMessageProtocolTests
     [Fact]
     public async Task HandleAsync_PasskeyGet_ForwardsToAppBridge()
     {
+        var assertionPayload = new PasskeyGetAssertionPayload("AQID", "auth", "client", "sig", "BQYH");
         var bridge = new FakeAppPasskeyBridgeClient
         {
             Response = new BrowserPasskeyResponse(
                 "req-2",
                 "passkey.get",
                 true,
-                new PasskeyGetAssertionPayload("AQID", "auth", "client", "sig", "BQYH")),
+                JsonSerializer.SerializeToElement(assertionPayload, PasskeyJsonContext.Default.PasskeyGetAssertionPayload)),
         };
 
         var response = await NativeMessagingHost.HandleAsync(new NativeRequest("req-2", "passkey.get", JsonDocument.Parse(

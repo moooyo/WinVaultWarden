@@ -81,12 +81,12 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
 
             try
             {
-                request = await BrowserPasskeyMessageProtocol.ReadAsync<BrowserPasskeyRequest>(pipe, ct);
+                request = await BrowserPasskeyMessageProtocol.ReadAsync(pipe, PasskeyJsonContext.Default.BrowserPasskeyRequest, ct);
                 if (request is null)
                     return;
 
                 var response = await _handler.HandleAsync(request, ct);
-                await BrowserPasskeyMessageProtocol.WriteAsync(pipe, response, ct);
+                await BrowserPasskeyMessageProtocol.WriteAsync(pipe, response, PasskeyJsonContext.Default.BrowserPasskeyResponse, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -97,7 +97,7 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
                         "error",
                         false,
                         Error: new BrowserPasskeyError("bridge_error", ex.Message));
-                    await BrowserPasskeyMessageProtocol.WriteAsync(pipe, response, CancellationToken.None);
+                    await BrowserPasskeyMessageProtocol.WriteAsync(pipe, response, PasskeyJsonContext.Default.BrowserPasskeyResponse, CancellationToken.None);
                 }
             }
         }

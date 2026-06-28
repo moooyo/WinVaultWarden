@@ -7,6 +7,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>BrowserNativeHost</RootNamespace>
     <AssemblyName>BrowserNativeHost</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <StripSymbols>true</StripSymbols>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Core\Core.csproj" />

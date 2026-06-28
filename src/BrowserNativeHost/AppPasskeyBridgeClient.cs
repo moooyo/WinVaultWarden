@@ -32,8 +32,8 @@ public sealed class NamedPipeAppPasskeyBridgeClient : IAppPasskeyBridgeClient
             throw new TimeoutException("Timed out connecting to the WinVaultWarden passkey bridge.");
         }
 
-        await BrowserPasskeyMessageProtocol.WriteAsync(pipe, request, ct);
-        return await BrowserPasskeyMessageProtocol.ReadAsync<BrowserPasskeyResponse>(pipe, ct)
+        await BrowserPasskeyMessageProtocol.WriteAsync(pipe, request, PasskeyJsonContext.Default.BrowserPasskeyRequest, ct);
+        return await BrowserPasskeyMessageProtocol.ReadAsync(pipe, PasskeyJsonContext.Default.BrowserPasskeyResponse, ct)
             ?? new BrowserPasskeyResponse(
                 request.Id,
                 "error",
