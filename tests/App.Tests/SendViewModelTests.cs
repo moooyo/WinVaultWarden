@@ -156,6 +156,36 @@ public class SendViewModelTests
     }
 
     [Fact]
+    public async Task UpdateSendFromDraftAsync_InvalidDraft_ReturnsFalse_AndDoesNotCallService()
+    {
+        var svc = new FakeSendUiService();
+        var vm = await LoadedVmAsync(svc);
+        var item = vm.Items.First(s => s.Type == SendType.Text);
+        var draft = SendEditorDraft.CreateDefault(SendType.Text); // empty name/text
+
+        var ok = await vm.UpdateSendFromDraftAsync(item, draft, null, CancellationToken.None);
+
+        Assert.False(ok);
+        Assert.Null(svc.LastUpdateDraft);
+    }
+
+    [Fact]
+    public async Task UpdateSendFromDraftAsync_ItemNotInCollection_ReturnsFalse()
+    {
+        var svc = new FakeSendUiService();
+        var vm = await LoadedVmAsync(svc);
+        // Build a ghost item whose Id is not in vm.Items
+        var ghost = new SendListItem("nonexistent-id", "幽灵", SendType.Text, "无", "https://vault.example/#/send/ghost/seed");
+        var draft = SendEditorDraft.CreateDefault(SendType.Text);
+        draft.Name = "改名";
+        draft.Text = "内容";
+
+        var ok = await vm.UpdateSendFromDraftAsync(ghost, draft, null, CancellationToken.None);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
     public async Task UpdateSendFromDraftAsync_ReplacesItem_AndPassesId()
     {
         var svc = new FakeSendUiService();

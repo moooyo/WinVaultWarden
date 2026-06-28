@@ -190,7 +190,7 @@ public partial class SendViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task OpenReceivedLinkAsync()
+    private async Task OpenReceivedLinkAsync(CancellationToken ct = default)
     {
         ReceivedText = null;
         ReceivedFileName = null;
@@ -205,7 +205,7 @@ public partial class SendViewModel : ObservableObject
         try
         {
             var password = string.IsNullOrEmpty(ReceivedLinkPassword) ? null : ReceivedLinkPassword;
-            var result = await _service.OpenReceivedLinkAsync(ReceivedLinkUrl.Trim(), password);
+            var result = await _service.OpenReceivedLinkAsync(ReceivedLinkUrl.Trim(), password, ct);
             LastReceived = result;
             if (result.WrongPassword)
             {
