@@ -38,7 +38,8 @@ public sealed record CipherDto(
     [property: JsonPropertyName("fields")] FieldDto[]? Fields,
     [property: JsonPropertyName("creationDate")] DateTimeOffset? CreationDate,
     [property: JsonPropertyName("revisionDate")] DateTimeOffset? RevisionDate,
-    [property: JsonPropertyName("deletedDate")] DateTimeOffset? DeletedDate);
+    [property: JsonPropertyName("deletedDate")] DateTimeOffset? DeletedDate,
+    [property: JsonPropertyName("attachments")] CipherAttachmentDto[]? Attachments = null);
 
 public sealed record LoginDto(
     [property: JsonPropertyName("username")] string? Username,
@@ -105,3 +106,28 @@ public sealed record FieldDto(
     [property: JsonPropertyName("type")] int Type,
     [property: JsonPropertyName("name")] string? Name,
     [property: JsonPropertyName("value")] string? Value);
+
+// Vaultwarden Attachment.to_json(db/models/attachment.rs)。size 以 JSON 字符串下发(mobile 兼容),
+// 故 Size 用 string?,数值转换交给 Vault 层 long.TryParse。
+// 旧格式附件 key 为 null:fileName 与文件体直接用条目密钥加解密(无独立附件密钥)。
+public sealed record CipherAttachmentDto(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("fileName")] string? FileName,
+    [property: JsonPropertyName("key")] string? Key,
+    [property: JsonPropertyName("size")] string? Size,
+    [property: JsonPropertyName("sizeName")] string? SizeName,
+    [property: JsonPropertyName("url")] string? Url);
+
+// POST /api/ciphers/{cipherId}/attachment/v2 请求体(camelCase JSON)。
+// key = Encrypt(attKey.FullKey, itemKey) 的 EncString;fileSize = 加密后 buffer 字节数。
+public sealed record AttachmentUploadRequest(
+    [property: JsonPropertyName("key")] string Key,
+    [property: JsonPropertyName("fileName")] string FileName,
+    [property: JsonPropertyName("fileSize")] long FileSize);
+
+// POST /api/ciphers/{cipherId}/attachment/v2 响应。url 为相对路径 "/ciphers/...";
+// 忽略服务端附带的 cipherResponse 字段(不声明即丢弃)。
+public sealed record AttachmentUploadV2Response(
+    [property: JsonPropertyName("attachmentId")] string AttachmentId,
+    [property: JsonPropertyName("url")] string Url,
+    [property: JsonPropertyName("fileUploadType")] int FileUploadType);
