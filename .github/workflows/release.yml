@@ -1,0 +1,205 @@
+name: Release MSIX
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Dry-run version (artifacts only, no Release upload)"
+        required: false
+        default: "0.0.0"
+
+permissions:
+  contents: write
+
+env:
+  PROJECT: src/App/App.csproj
+  PACKAGE_NAME: WinVaultWarden
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Run test suites (pure libs + linked-source App tests)
+        shell: pwsh
+        run: |
+          Get-ChildItem tests -Recurse -Filter *.Tests.csproj | ForEach-Object {
+            Write-Host "==> $($_.Name)" -ForegroundColor Cyan
+            dotnet test $_.FullName -c Debug --nologo
+            if ($LASTEXITCODE -ne 0) { throw "tests failed: $($_.Name)" }
+          }
+
+  build:
+    needs: test
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = "${{ github.event.release.tag_name }}"
+          if (-not $v) { $v = "${{ github.event.inputs.version }}" }
+          if (-not $v) { $v = "0.0.0" }
+          $v = $v -replace '^v',''
+          $core = ($v -split '-')[0]
+          if ($core -notmatch '^\d+\.\d+\.\d+$') { throw "Bad version: '$v'" }
+          "version=$v"        >> $env:GITHUB_OUTPUT
+          "core=$core"        >> $env:GITHUB_OUTPUT
+          "manifest=$core.0"  >> $env:GITHUB_OUTPUT
+          Write-Host "version=$v core=$core manifest=$core.0"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Add VS MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Ensure vswhere on PATH (ILC native link shells out to it)
+        shell: pwsh
+        run: Add-Content $env:GITHUB_PATH "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+
+      - name: Install ARM64 C++ build tools
+        if: matrix.arch == 'arm64'
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = (& $vswhere -latest -property installationPath).Trim()
+          $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          Write-Host "Adding VC.Tools.ARM64 to $install"
+          $p = Start-Process -FilePath $setup -Wait -PassThru -ArgumentList @(
+            'modify','--installPath',"`"$install`"",
+            '--add','Microsoft.VisualStudio.Component.VC.Tools.ARM64',
+            '--quiet','--norestart','--force')
+          Write-Host "installer exit: $($p.ExitCode)"
+
+      - name: Patch manifest version
+        shell: pwsh
+        run: |
+          $m = "src/App/Package.appxmanifest"
+          $x = Get-Content $m -Raw
+          $x = $x -replace 'Version="\d+\.\d+\.\d+\.\d+"', 'Version="${{ steps.ver.outputs.manifest }}"'
+          Set-Content $m $x -NoNewline
+          Write-Host "manifest version -> ${{ steps.ver.outputs.manifest }}"
+
+      - name: Build MSIX (Native AOT, self-contained)
+        shell: pwsh
+        run: |
+          $out = "$PWD\artifacts\msix"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          msbuild $env:PROJECT -t:Restore,Build `
+            -p:Configuration=Release `
+            -p:Platform=${{ matrix.arch }} `
+            -p:Version=${{ steps.ver.outputs.core }} `
+            -p:GenerateAppxPackageOnBuild=true `
+            -p:AppxPackageSigningEnabled=false `
+            -p:UapAppxPackageBuildMode=SideloadOnly `
+            -p:AppxBundle=Never `
+            -p:AppxPackageDir="$out\" `
+            -nologo -m
+          if ($LASTEXITCODE -ne 0) { throw "MSBuild failed ($LASTEXITCODE)" }
+
+      - name: Locate and rename MSIX
+        id: pkg
+        shell: pwsh
+        run: |
+          $msix = Get-ChildItem artifacts\msix -Recurse -Filter *.msix |
+            Where-Object { $_.Name -notmatch '\.appxsym$' } | Select-Object -First 1
+          if (-not $msix) { throw "No .msix produced under artifacts\msix" }
+          New-Item -ItemType Directory -Force artifacts\out | Out-Null
+          $final = "artifacts\out\$env:PACKAGE_NAME-${{ steps.ver.outputs.version }}-${{ matrix.arch }}.msix"
+          Copy-Item $msix.FullName $final -Force
+          "path=$final" >> $env:GITHUB_OUTPUT
+          Write-Host "packaged: $final"
+
+      - name: Decode signing certificate
+        shell: pwsh
+        run: |
+          if (-not "${{ secrets.SIGNING_PFX_BASE64 }}") { throw "Secret SIGNING_PFX_BASE64 not set" }
+          [IO.File]::WriteAllBytes("$PWD\cert.pfx",
+            [Convert]::FromBase64String("${{ secrets.SIGNING_PFX_BASE64 }}"))
+
+      - name: Sign and verify MSIX
+        shell: pwsh
+        env:
+          SIGNING_PFX_PASSWORD: ${{ secrets.SIGNING_PFX_PASSWORD }}
+        run: |
+          $kits = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+          $signtool = Get-ChildItem $kits -Recurse -Filter signtool.exe |
+            Where-Object FullName -match '\\x64\\' |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw "signtool.exe not found under $kits" }
+          & $signtool.FullName sign /fd SHA256 /f "$PWD\cert.pfx" `
+            /p $env:SIGNING_PFX_PASSWORD "${{ steps.pkg.outputs.path }}"
+          if ($LASTEXITCODE -ne 0) { throw "signtool sign failed" }
+          # Trust the self-signed cert on this ephemeral runner so verify /pa can
+          # validate the chain (a self-signed cert is its own root).
+          $pfx = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
+            "$PWD\cert.pfx", $env:SIGNING_PFX_PASSWORD)
+          $pub = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($pfx.Export('Cert'))
+          foreach ($name in @('Root','TrustedPeople')) {
+            $store = [System.Security.Cryptography.X509Certificates.X509Store]::new(
+              $name, 'LocalMachine')
+            $store.Open('ReadWrite'); $store.Add($pub); $store.Close()
+          }
+          & $signtool.FullName verify /pa "${{ steps.pkg.outputs.path }}"
+          if ($LASTEXITCODE -ne 0) { throw "signtool verify failed" }
+
+      - name: Export public certificate (.cer, x64 leg only)
+        if: matrix.arch == 'x64'
+        shell: pwsh
+        env:
+          SIGNING_PFX_PASSWORD: ${{ secrets.SIGNING_PFX_PASSWORD }}
+        run: |
+          $c = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
+            "$PWD\cert.pfx", $env:SIGNING_PFX_PASSWORD)
+          [IO.File]::WriteAllBytes(
+            "artifacts\out\$env:PACKAGE_NAME-${{ steps.ver.outputs.version }}.cer",
+            $c.Export('Cert'))
+
+      - name: Remove decoded pfx
+        if: always()
+        shell: pwsh
+        run: Remove-Item "$PWD\cert.pfx" -Force -ErrorAction SilentlyContinue
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msix-${{ matrix.arch }}
+          path: artifacts/out/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dl
+      - name: Stage release assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force assets | Out-Null
+          Get-ChildItem dl -Recurse -Include *.msix,*.cer |
+            ForEach-Object { Copy-Item $_.FullName assets -Force }
+          Copy-Item docs/INSTALL.md assets/INSTALL.md -Force
+          Get-ChildItem assets | Format-Table Name,Length
+      - name: Upload assets to Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = Get-ChildItem assets | ForEach-Object { $_.FullName }
+          gh release upload "${{ github.event.release.tag_name }}" @files --clobber
