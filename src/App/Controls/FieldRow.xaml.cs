@@ -66,6 +66,8 @@ public sealed partial class FieldRow : UserControl
         RevealButton.Visibility = IsSecret ? Visibility.Visible : Visibility.Collapsed;
         _revealed = false;
         RevealIcon.Glyph = GlyphView;
+        AutomationProperties.SetName(RevealButton, "显示");
+        ToolTipService.SetToolTip(RevealButton, "显示");
         Render();
     }
 
@@ -87,6 +89,9 @@ public sealed partial class FieldRow : UserControl
     {
         _revealed = !_revealed;
         RevealIcon.Glyph = _revealed ? GlyphHide : GlyphView;
+        var label = _revealed ? "隐藏" : "显示";
+        AutomationProperties.SetName(RevealButton, label);
+        ToolTipService.SetToolTip(RevealButton, label);
         Render();
     }
 
