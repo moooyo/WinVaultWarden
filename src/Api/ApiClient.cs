@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -7,7 +8,7 @@ using Core.Abstractions;
 
 namespace Api;
 
-public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiClient
+public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiClient, ISendApiClient
 {
     private readonly HttpClient _http;
     private Uri? _baseAddress;
@@ -93,6 +94,98 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
 
     public async Task DeleteFolderAsync(string folderId, CancellationToken ct = default)
         => await SendWriteAsync(HttpMethod.Delete, $"api/folders/{folderId}", ct);
+
+    // ===== Send =====
+
+    public async Task<SendListResponse> GetSendsAsync(CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync(Url("api/sends"), ct);
+        response.EnsureSuccessStatusCode();
+        return await ReadJson(response, ApiJsonContext.Default.SendListResponse, ct);
+    }
+
+    public Task<SendResponseDto> CreateTextSendAsync(SendRequest request, CancellationToken ct = default)
+        => SendWriteReadAsync(
+            HttpMethod.Post, "api/sends", request,
+            ApiJsonContext.Default.SendRequest, ApiJsonContext.Default.SendResponseDto, ct);
+
+    public Task<SendFileUploadV2Response> CreateFileSendV2Async(SendRequest request, CancellationToken ct = default)
+        => SendWriteReadAsync(
+            HttpMethod.Post, "api/sends/file/v2", request,
+            ApiJsonContext.Default.SendRequest, ApiJsonContext.Default.SendFileUploadV2Response, ct);
+
+    public async Task UploadSendFileAsync(
+        string uploadUrl, string encryptedFileName, byte[] encryptedBuffer, CancellationToken ct = default)
+    {
+        var content = new MultipartFormDataContent();
+        var part = new ByteArrayContent(encryptedBuffer);
+        part.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        // 字段名固定 "data";文件名必须等于加密后的 fileName(服务端会逐字节比对)。
+        content.Add(part, "data", encryptedFileName);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, Url(NormalizeServerPath(uploadUrl)))
+        {
+            Content = content,
+        };
+        await SendWriteCore(request, ct);
+    }
+
+    public Task<SendResponseDto> UpdateSendAsync(string sendId, SendRequest request, CancellationToken ct = default)
+        => SendWriteReadAsync(
+            HttpMethod.Put, $"api/sends/{sendId}", request,
+            ApiJsonContext.Default.SendRequest, ApiJsonContext.Default.SendResponseDto, ct);
+
+    public async Task DeleteSendAsync(string sendId, CancellationToken ct = default)
+        => await SendWriteAsync(HttpMethod.Delete, $"api/sends/{sendId}", ct);
+
+    public async Task<SendResponseDto> RemoveSendPasswordAsync(string sendId, CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Put, Url($"api/sends/{sendId}/remove-password"));
+        return await SendWriteCoreRead(request, ApiJsonContext.Default.SendResponseDto, ct);
+    }
+
+    public Task<SendAccessResponseDto> AccessSendAsync(
+        string accessId, string? passwordProof, CancellationToken ct = default)
+        => SendWriteReadAsync(
+            HttpMethod.Post, $"api/sends/access/{accessId}", new SendAccessRequest(passwordProof),
+            ApiJsonContext.Default.SendAccessRequest, ApiJsonContext.Default.SendAccessResponseDto, ct);
+
+    public async Task<byte[]> DownloadSendFileBytesAsync(string downloadUrl, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync(Url(NormalizeServerPath(downloadUrl)), ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
+    // 服务端给出的 url 可能是绝对地址,也可能是以 "/" 开头的相对路径(如 /sends/{id}/file/{fid})。
+    // 绝对地址原样返回;相对路径去掉前导 "/" 交给 Url() 拼到 baseAddress。
+    private static string NormalizeServerPath(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out _) ? url : url.TrimStart('/');
+
+    private async Task<TResult> SendWriteReadAsync<TBody, TResult>(
+        HttpMethod method, string path, TBody body,
+        JsonTypeInfo<TBody> bodyTypeInfo, JsonTypeInfo<TResult> resultTypeInfo, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(method, Url(path))
+        {
+            Content = JsonContent.Create(body, bodyTypeInfo),
+        };
+        return await SendWriteCoreRead(request, resultTypeInfo, ct);
+    }
+
+    private async Task<TResult> SendWriteCoreRead<TResult>(
+        HttpRequestMessage request, JsonTypeInfo<TResult> resultTypeInfo, CancellationToken ct)
+    {
+        using var response = await _http.SendAsync(request, ct);
+        if (response.IsSuccessStatusCode)
+            return await ReadJson(response, resultTypeInfo, ct);
+
+        var error = await ReadJsonOrNull(response, ApiJsonContext.Default.WriteErrorResponse, ct);
+        var message = string.IsNullOrWhiteSpace(error?.Message)
+            ? response.ReasonPhrase ?? "Vault write failed."
+            : error.Message;
+        throw new VaultWriteException(message);
+    }
 
     private async Task SendWriteAsync<TBody>(
         HttpMethod method, string path, TBody body, JsonTypeInfo<TBody> typeInfo, CancellationToken ct)
