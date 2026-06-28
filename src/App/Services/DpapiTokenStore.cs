@@ -7,7 +7,6 @@ namespace App.Services;
 
 public sealed class DpapiTokenStore : ITokenStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly string _path;
 
     public DpapiTokenStore()
@@ -34,7 +33,7 @@ public sealed class DpapiTokenStore : ITokenStore
 
             var protectedBytes = File.ReadAllBytes(_path);
             jsonBytes = ProtectedData.Unprotect(protectedBytes, null, DataProtectionScope.CurrentUser);
-            var loaded = JsonSerializer.Deserialize<PersistedSession>(jsonBytes, JsonOptions);
+            var loaded = JsonSerializer.Deserialize(jsonBytes, AppJsonContext.Default.PersistedSession);
             if (loaded is null)
                 return false;
 
@@ -65,7 +64,7 @@ public sealed class DpapiTokenStore : ITokenStore
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("DPAPI token storage is only supported on Windows.");
 
-        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(session, JsonOptions);
+        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(session, AppJsonContext.Default.PersistedSession);
         var protectedBytes = ProtectedData.Protect(jsonBytes, null, DataProtectionScope.CurrentUser);
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
         File.WriteAllBytes(_path, protectedBytes);

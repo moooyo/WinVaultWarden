@@ -33,6 +33,8 @@
     <Compile Include="..\..\src\App\Services\DeviceUiService.cs" Link="Services\DeviceUiService.cs" />
     <Compile Include="..\..\src\App\Services\AccountUiService.cs" Link="Services\AccountUiService.cs" />
     <Compile Include="..\..\src\App\Services\DpapiTokenStore.cs" Link="Services\DpapiTokenStore.cs" />
+    <Compile Include="..\..\src\App\Services\AppJsonContext.cs" Link="Services\AppJsonContext.cs" />
+    <Compile Include="..\..\src\App\Services\AppPreferences.cs" Link="Services\AppPreferences.cs" />
     <Compile Include="..\..\src\App\Services\DemoVaultSessionService.cs" Link="Services\DemoVaultSessionService.cs" />
     <Compile Include="..\..\src\App\Services\CipherDraftMapper.cs" Link="Services\CipherDraftMapper.cs" />
     <Compile Include="..\..\src\App\ViewModels\LoginViewModel.cs" Link="ViewModels\LoginViewModel.cs" />

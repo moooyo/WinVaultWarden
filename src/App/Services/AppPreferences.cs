@@ -14,11 +14,6 @@ public static class AppPreferences
         "WinVaultWarden",
         "preferences.json");
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = true,
-    };
-
     private static AppPreferencesData? _data;
 
     public static AppPreferencesData Current => _data ??= Load();
@@ -30,7 +25,7 @@ public static class AppPreferences
             if (File.Exists(FilePath))
             {
                 var json = File.ReadAllText(FilePath);
-                var loaded = JsonSerializer.Deserialize<AppPreferencesData>(json, JsonOptions);
+                var loaded = JsonSerializer.Deserialize(json, AppJsonContext.Default.AppPreferencesData);
                 if (loaded is not null)
                     return loaded;
             }
@@ -47,7 +42,7 @@ public static class AppPreferences
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(Current, JsonOptions));
+            File.WriteAllText(FilePath, JsonSerializer.Serialize(Current, AppJsonContext.Default.AppPreferencesData));
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
