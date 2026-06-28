@@ -312,7 +312,7 @@
             </ListView>
 
             <InfoBar x:Name="VaultErrorInfoBar"
-                     Grid.Row="3"
+                     Grid.Row="4"
                      VerticalAlignment="Top"
                      IsClosable="True"
                      Severity="Error"
@@ -320,7 +320,7 @@
                      Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" />
 
             <StackPanel x:Name="VaultEmptyPanel"
-                        Grid.Row="3"
+                        Grid.Row="4"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Center"
                         Spacing="{StaticResource SpacingMedium}"
@@ -338,7 +338,7 @@
             </StackPanel>
 
             <StackPanel x:Name="VaultNoResultsPanel"
-                        Grid.Row="3"
+                        Grid.Row="4"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Center"
                         Spacing="{StaticResource SpacingMedium}"
