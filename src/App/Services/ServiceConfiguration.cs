@@ -39,6 +39,7 @@ public static class ServiceConfiguration
         services.AddSingleton<CipherEncryptor>();
         services.AddSingleton<IVaultWriteService, Vault.VaultWriteService>();
         services.AddSingleton<VaultDecryptor>();
+        services.AddSingleton<AttachmentCryptoService>();
         services.AddSingleton<VaultBootstrapper>();
 #if DEBUG
         services.AddSingleton<IDemoVaultSessionService, DemoVaultSessionService>();
@@ -51,6 +52,7 @@ public static class ServiceConfiguration
         services.AddSingleton<ISendService, Vault.SendService>();
         services.AddSingleton<ISendWriteService, Vault.SendWriteService>();
         services.AddSingleton<ISendAccessService, Vault.SendAccessService>();
+        services.AddSingleton<IAttachmentService, Vault.AttachmentService>();
         services.AddSingleton<IPasskeyApprovalService, PasskeyApprovalDialogService>();
         services.AddSingleton<BrowserPasskeyRequestHandler>();
         services.AddSingleton<PasskeyBridgeServer>();
