@@ -470,6 +470,28 @@ public partial class VaultViewModel : ObservableObject
     public Task MoveSelectedToFolderAsync(string? folderId) => MoveSelectedToFolder(folderId);
 
     [RelayCommand]
+    private void AddCustomField()
+    {
+        var draft = EditorDraft;
+        if (draft is null)
+            return;
+
+        draft.CustomFields.Add(new CustomFieldEditorDraft
+        {
+            Name = $"字段 {draft.CustomFields.Count + 1}",
+        });
+    }
+
+    [RelayCommand]
+    private void RemoveCustomField(CustomFieldEditorDraft? field)
+    {
+        if (EditorDraft is null || field is null)
+            return;
+
+        EditorDraft.CustomFields.Remove(field);
+    }
+
+    [RelayCommand]
     private void Copy(string? value)
     {
         if (!string.IsNullOrEmpty(value)) _clipboard?.SetText(value);

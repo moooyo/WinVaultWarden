@@ -854,4 +854,42 @@ public class VaultSelectionTests
         Assert.Equal(0, vm.SelectedCount);
         Assert.Contains(vm.Items, i => i.Id == "2" && i.FolderId == "f1");
     }
+
+    [Fact]
+    public void AddCustomFieldCommand_AppendsNamedField()
+    {
+        var vm = new VaultViewModel(new MockVaultUiService());
+        vm.BeginAdd(VaultItemKind.Login);
+
+        vm.AddCustomFieldCommand.Execute(null);
+        vm.AddCustomFieldCommand.Execute(null);
+
+        Assert.Equal(2, vm.EditorDraft!.CustomFields.Count);
+        Assert.Equal("字段 1", vm.EditorDraft.CustomFields[0].Name);
+        Assert.Equal("字段 2", vm.EditorDraft.CustomFields[1].Name);
+    }
+
+    [Fact]
+    public void RemoveCustomFieldCommand_RemovesGivenField()
+    {
+        var vm = new VaultViewModel(new MockVaultUiService());
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.AddCustomFieldCommand.Execute(null);
+        var field = vm.EditorDraft!.CustomFields[0];
+
+        vm.RemoveCustomFieldCommand.Execute(field);
+
+        Assert.Empty(vm.EditorDraft.CustomFields);
+    }
+
+    [Fact]
+    public void AddRemoveCustomField_NoDraft_DoesNotThrow()
+    {
+        var vm = new VaultViewModel(new MockVaultUiService());
+
+        vm.AddCustomFieldCommand.Execute(null);
+        vm.RemoveCustomFieldCommand.Execute(new CustomFieldEditorDraft());
+
+        Assert.Null(vm.EditorDraft);
+    }
 }
