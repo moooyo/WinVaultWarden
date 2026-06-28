@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
+using System.Runtime.InteropServices.WindowsRuntime;
 
 namespace App.Views;
 
@@ -260,5 +261,65 @@ public sealed partial class VaultPage : Page
             XamlRoot = XamlRoot,
         };
         return await dialog.ShowAsync() == ContentDialogResult.Primary ? input.Text : null;
+    }
+
+    private async void OnAddAttachmentClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedItem is not { } item)
+            return;
+
+        var picker = new Windows.Storage.Pickers.FileOpenPicker
+        {
+            ViewMode = Windows.Storage.Pickers.PickerViewMode.List,
+            SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary,
+        };
+        picker.FileTypeFilter.Add("*");
+
+        // WinUI 3 桌面应用:必须把 picker 关联到本窗口的 HWND。
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        var file = await picker.PickSingleFileAsync();
+        if (file is null)
+            return;
+
+        var buffer = await Windows.Storage.FileIO.ReadBufferAsync(file);
+        await ViewModel.AddAttachmentAsync(item.Id, buffer.ToArray(), file.Name);
+    }
+
+    private async void OnDownloadAttachmentClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedItem is not { } item
+            || (sender as FrameworkElement)?.DataContext is not AttachmentItem attachment)
+            return;
+
+        var picker = new Windows.Storage.Pickers.FileSavePicker
+        {
+            SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads,
+            SuggestedFileName = attachment.FileName,
+        };
+        picker.FileTypeChoices.Add("文件", new System.Collections.Generic.List<string> { "." });
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        var file = await picker.PickSaveFileAsync();
+        if (file is null)
+            return;
+
+        var bytes = await ViewModel.DownloadAttachmentAsync(item.Id, attachment.Id);
+        if (bytes is null)
+            return;
+
+        await Windows.Storage.FileIO.WriteBytesAsync(file, bytes);
+    }
+
+    private async void OnDeleteAttachmentClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedItem is not { } item
+            || (sender as FrameworkElement)?.DataContext is not AttachmentItem attachment)
+            return;
+
+        if (await ConfirmAsync("删除附件", $"确定要删除附件“{attachment.FileName}”吗?此操作无法撤销。", "删除"))
+            await ViewModel.DeleteAttachmentAsync(item.Id, attachment.Id);
     }
 }

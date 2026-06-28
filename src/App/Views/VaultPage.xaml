@@ -636,6 +636,57 @@
                         <TextBlock Text="备注" Style="{StaticResource SectionHeaderTextBlockStyle}" />
                         <TextBlock Text="{x:Bind ViewModel.Detail.Notes, Mode=OneWay}" TextWrapping="Wrap" />
                     </StackPanel>
+                    <!-- 附件 -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="附件" Style="{StaticResource SectionHeaderTextBlockStyle}" />
+                        <ItemsControl x:Name="AttachmentsItems"
+                                      ItemsSource="{x:Bind ViewModel.Detail.Attachments, Mode=OneWay}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:AttachmentItem">
+                                    <Grid ColumnSpacing="8" Padding="0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon Glyph="&#xE723;" FontSize="16"
+                                                  VerticalAlignment="Center"
+                                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{x:Bind FileName}"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{x:Bind SizeName}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,4,0"
+                                                   Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                                        <Button Grid.Column="3"
+                                                Style="{StaticResource IconButtonStyle}"
+                                                AutomationProperties.Name="下载附件"
+                                                ToolTipService.ToolTip="下载"
+                                                Click="OnDownloadAttachmentClick">
+                                            <FontIcon Glyph="&#xE896;" FontSize="14" />
+                                        </Button>
+                                        <Button Grid.Column="4"
+                                                Style="{StaticResource IconButtonStyle}"
+                                                AutomationProperties.Name="删除附件"
+                                                ToolTipService.ToolTip="删除"
+                                                Click="OnDeleteAttachmentClick">
+                                            <FontIcon Glyph="&#xE74D;" FontSize="14"
+                                                      Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button x:Name="AddAttachmentButton"
+                                Content="添加附件"
+                                HorizontalAlignment="Left"
+                                Click="OnAddAttachmentClick" />
+                    </StackPanel>
                     <!-- 自定义字段 -->
                     <ItemsControl ItemsSource="{x:Bind ViewModel.Detail.CustomFields, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>

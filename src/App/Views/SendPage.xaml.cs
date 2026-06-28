@@ -75,7 +75,7 @@ public sealed partial class SendPage : Page
             return;
 
         var root = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot;
-        if (await DialogHelper.ConfirmAsync(root, "删除 Send", $"确定要删除"{item.Name}"吗？此操作无法撤销。", "删除"))
+        if (await DialogHelper.ConfirmAsync(root, "删除 Send", $"确定要删除“{item.Name}”吗？此操作无法撤销。", "删除"))
             ViewModel.DeleteSendCommand.Execute(item);
     }
 
@@ -87,7 +87,7 @@ public sealed partial class SendPage : Page
 
         var picker = new Windows.Storage.Pickers.FileSavePicker
         {
-            SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DownloadsFolder,
+            SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads,
             SuggestedFileName = received.FileName ?? "send-file",
         };
         picker.FileTypeChoices.Add("文件", new System.Collections.Generic.List<string> { "." });
