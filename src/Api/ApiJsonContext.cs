@@ -19,4 +19,10 @@ namespace Api;
 [JsonSerializable(typeof(WriteErrorResponse))]
 [JsonSerializable(typeof(CipherRequest))]
 [JsonSerializable(typeof(FolderRequest))]
+[JsonSerializable(typeof(SendListResponse))]
+[JsonSerializable(typeof(SendResponseDto))]
+[JsonSerializable(typeof(SendRequest))]
+[JsonSerializable(typeof(SendFileUploadV2Response))]
+[JsonSerializable(typeof(SendAccessRequest))]
+[JsonSerializable(typeof(SendAccessResponseDto))]
 public partial class ApiJsonContext : JsonSerializerContext;
