@@ -26,7 +26,7 @@ public class SendApiClientTests
 
     private static SendRequest SampleText() => new()
     {
-        Type = 1,
+        Type = 0,
         Key = "2.k",
         Name = "2.n",
         DeletionDate = "2026-07-10T00:00:00Z",
@@ -69,7 +69,7 @@ public class SendApiClientTests
 
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
         Assert.Equal("/api/sends", handler.Requests[0].RequestUri!.AbsolutePath);
-        Assert.Contains("\"type\":1", handler.Bodies[0]);
+        Assert.Contains("\"type\":0", handler.Bodies[0]);
         Assert.Contains("\"name\":\"2.n\"", handler.Bodies[0]);
         Assert.Contains("\"text\":{", handler.Bodies[0]);
         Assert.Equal("s1", created.Id);

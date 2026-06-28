@@ -19,6 +19,8 @@ public sealed class Send
     public bool Disabled { get; init; }
     public bool HideEmail { get; init; }
     public bool HasPassword { get; init; }
+    // 完整分享 URL（含 seed 片段），仅存于内存，不可落盘或发往服务端。
+    public string ShareUrl { get; init; } = "";
 }
 
 public sealed record SendText(string? Content, bool Hidden);

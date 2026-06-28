@@ -100,6 +100,32 @@ public class RealSendUiServiceTests
     }
 
     [Fact]
+    public async Task GetSendsAsync_LinkUsesSendShareUrl_NotSeedlessFallback()
+    {
+        // C1 回归：UI 层 Link 必须使用 Send.ShareUrl（含 seed），而非无 seed 的拼接值。
+        const string expectedShareUrl = "https://vault.example/#/send/acc-s1/AQIDBA";
+        var coreRead = new FakeSendService(
+            new Send
+            {
+                Id = "s1",
+                AccessId = "acc-s1",
+                Type = CoreSendType.Text,
+                Name = "Test",
+                DeletionDate = DateTimeOffset.Parse("2026-07-10T00:00:00Z"),
+                ShareUrl = expectedShareUrl,
+            });
+        var svc = new SendUiService(coreRead, new FakeSendWriteService(), new FakeSendAccessService(),
+            serverUrl: "https://vault.example");
+
+        var items = await svc.GetSendsAsync(CancellationToken.None);
+
+        var item = Assert.Single(items);
+        Assert.Equal(expectedShareUrl, item.Link);
+        // 明确断言 Link 不是无 seed 的拼接值（防回归）。
+        Assert.NotEqual("https://vault.example/#/send/acc-s1", item.Link);
+    }
+
+    [Fact]
     public void CopyShareLink_ReturnsItemLink()
     {
         var svc = new SendUiService(new FakeSendService(), new FakeSendWriteService(), new FakeSendAccessService(), "https://vault.example");

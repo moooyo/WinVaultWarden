@@ -95,8 +95,7 @@ public sealed class SendUiService : ISendUiService
     private SendListItem ToListItem(Send send)
     {
         var deletion = send.DeletionDate.LocalDateTime.ToString("yyyy/M/d HH:mm");
-        var link = _serverUrl.TrimEnd('/') + "/#/send/" + send.AccessId;
-        return new SendListItem(send.Id, send.Name, MapType(send.Type), $"{deletion} 截止", link);
+        return new SendListItem(send.Id, send.Name, MapType(send.Type), $"{deletion} 截止", send.ShareUrl);
     }
 
     private SendDraftModel ToDraftModel(SendEditorDraft draft, string? id) => new()

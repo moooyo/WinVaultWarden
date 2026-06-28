@@ -10,11 +10,13 @@ public class SendServiceTests
 {
     private static readonly byte[] UserKeyBytes = Enumerable.Range(0, 64).Select(i => (byte)(i + 1)).ToArray();
 
-    private static (SendService service, FakeSendApiClient api, SendCryptoService crypto, SymmetricCryptoKey userKey) NewService()
+    private static (SendService service, FakeSendApiClient api, SendCryptoService crypto, SymmetricCryptoKey userKey) NewService(
+        string serverUrl = "https://vault.test")
     {
         var userKey = new SymmetricCryptoKey(UserKeyBytes);
         var session = new VaultSession();
         session.SetUnlockedKey(userKey);
+        session.SetAccount(new Core.Models.AccountInfo("test@test.com", serverUrl, "T", "PBKDF2"));
         var crypto = new SendCryptoService(new CryptoService());
         var api = new FakeSendApiClient();
         return (new SendService(api, crypto, session), api, crypto, userKey);
@@ -26,6 +28,13 @@ public class SendServiceTests
         string name, string? notes, string? text, string? fileName)
     {
         var seed = crypto.GenerateSeed();
+        return BuildEncryptedDtoWithSeed(crypto, userKey, type, name, notes, text, fileName, seed);
+    }
+
+    private static SendResponseDto BuildEncryptedDtoWithSeed(
+        SendCryptoService crypto, SymmetricCryptoKey userKey, int type,
+        string name, string? notes, string? text, string? fileName, byte[] seed)
+    {
         var cryptoKey = crypto.DeriveCryptoKey(seed);
         return new SendResponseDto(
             Id: "s-1",
@@ -119,5 +128,25 @@ public class SendServiceTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.GetSendsAsync(TestContext.Current.CancellationToken));
+    }
+
+    // C1 回归：ShareUrl 必须包含 seed；TryParseShareUrl 能恢复原始 accessId 和 seed。
+    [Fact]
+    public async Task GetSends_ShareUrl_ContainsSeedAndRoundTrips()
+    {
+        var (service, api, crypto, userKey) = NewService("https://vault.test");
+        var knownSeed = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+        var dto = BuildEncryptedDtoWithSeed(crypto, userKey, 0, "Share Test", null, "body", null, knownSeed);
+        api.ListResult = new SendListResponse(Data: new[] { dto }, Object: "list");
+
+        var sends = await service.GetSendsAsync(TestContext.Current.CancellationToken);
+
+        var send = Assert.Single(sends);
+        Assert.False(string.IsNullOrEmpty(send.ShareUrl), "ShareUrl must not be empty");
+        Assert.True(
+            crypto.TryParseShareUrl(send.ShareUrl, out var parsedAccessId, out var parsedSeed),
+            $"TryParseShareUrl failed on: {send.ShareUrl}");
+        Assert.Equal("acc-1", parsedAccessId);
+        Assert.Equal(knownSeed, parsedSeed);
     }
 }

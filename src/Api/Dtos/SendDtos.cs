@@ -42,7 +42,7 @@ public sealed record SendFileDto(
     [property: JsonPropertyName("sizeName")] string? SizeName);
 
 // 写请求体,镜像 Vaultwarden SendData(src/api/core/sends.rs:72)。
-// type=1 仅带 text;type=2 仅带 file + fileLength。deletionDate 必填且 <=31 天。
+// type=0 仅带 text；type=1 仅带 file + fileLength。deletionDate 必填且 <=31 天。
 public sealed class SendRequest
 {
     public int Type { get; init; }

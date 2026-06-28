@@ -52,6 +52,8 @@ public sealed class SendService : ISendService
             file = new SendFile(fileName, size, dto.File.SizeName, dto.File.Id);
         }
 
+        var shareUrl = _crypto.BuildShareUrl(_session.Account.ServerUrl, dto.AccessId, seed);
+
         return new Send
         {
             Id = dto.Id,
@@ -68,6 +70,7 @@ public sealed class SendService : ISendService
             Disabled = dto.Disabled,
             HideEmail = dto.HideEmail,
             HasPassword = !string.IsNullOrEmpty(dto.Password),
+            ShareUrl = shareUrl,
         };
     }
 }
