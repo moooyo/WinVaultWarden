@@ -16,12 +16,14 @@ public static class AboutInfo
         get
         {
             // 打包运行时优先用包版本；非打包/取不到时回退到编译期常量。
+            // 非打包进程访问 Package.Current 会抛异常(CsWinRT 投影下类型不定),
+            // 故宽松兜底：任何失败都回退,绝不让"关于"页取版本时崩溃。
             try
             {
                 var v = Windows.ApplicationModel.Package.Current.Id.Version;
                 return $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
             }
-            catch (InvalidOperationException)
+            catch (Exception)
             {
                 return FallbackVersion;
             }

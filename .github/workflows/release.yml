@@ -177,6 +177,33 @@ jobs:
         shell: pwsh
         run: Remove-Item "$PWD\cert.pfx" -Force -ErrorAction SilentlyContinue
 
+      - name: Publish unpackaged self-contained (portable, AOT)
+        shell: pwsh
+        run: |
+          $pub = "$PWD\artifacts\portable\${{ matrix.arch }}"
+          New-Item -ItemType Directory -Force $pub | Out-Null
+          # Unpackaged (WindowsPackageType=None): runs from a folder, no MSIX,
+          # no signing/trust needed. Self-contained + AOT, same toolchain as MSIX.
+          msbuild $env:PROJECT -restore -t:Publish `
+            -p:Configuration=Release `
+            -p:Platform=${{ matrix.arch }} `
+            -p:RuntimeIdentifier=win-${{ matrix.arch }} `
+            -p:Version=${{ steps.ver.outputs.core }} `
+            -p:WindowsPackageType=None `
+            -p:SelfContained=true `
+            -p:WindowsAppSDKSelfContained=true `
+            -p:PublishDir="$pub\" `
+            -nologo -m
+          if ($LASTEXITCODE -ne 0) { throw "unpackaged publish failed ($LASTEXITCODE)" }
+
+      - name: Zip portable build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts\out | Out-Null
+          $zip = "artifacts\out\$env:PACKAGE_NAME-${{ steps.ver.outputs.version }}-${{ matrix.arch }}-portable.zip"
+          Compress-Archive -Path "artifacts\portable\${{ matrix.arch }}\*" -DestinationPath $zip -Force
+          Write-Host "zipped: $zip"
+
       - uses: actions/upload-artifact@v4
         with:
           name: msix-${{ matrix.arch }}
@@ -196,7 +223,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force assets | Out-Null
-          Get-ChildItem dl -Recurse -Include *.msix,*.cer |
+          Get-ChildItem dl -Recurse -Include *.msix,*.cer,*.zip |
             ForEach-Object { Copy-Item $_.FullName assets -Force }
           Copy-Item docs/INSTALL.md assets/INSTALL.md -Force
           Get-ChildItem assets | Format-Table Name,Length
