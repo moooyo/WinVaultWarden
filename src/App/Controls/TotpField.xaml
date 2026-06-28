@@ -13,7 +13,7 @@
         <TextBlock Text="TOTP" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
         <TextBlock x:Name="CodeText"
                    Grid.Column="1"
-                   FontFamily="Consolas"
+                   FontFamily="{StaticResource MonospaceFontFamily}"
                    FontSize="16"
                    VerticalAlignment="Center" />
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
