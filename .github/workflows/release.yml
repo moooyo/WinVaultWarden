@@ -98,7 +98,11 @@ jobs:
         run: |
           $out = "$PWD\artifacts\msix"
           New-Item -ItemType Directory -Force $out | Out-Null
-          msbuild $env:PROJECT -t:Restore,Build `
+          # -restore (separate first pass) NOT -t:Restore,Build: a combined
+          # Restore+Build in one evaluation leaves NuGet-imported WinUI XAML
+          # targets unavailable, skipping XAML codegen (CS5001 / missing
+          # InitializeComponent). -restore re-evaluates before Build.
+          msbuild $env:PROJECT -restore -t:Build `
             -p:Configuration=Release `
             -p:Platform=${{ matrix.arch }} `
             -p:Version=${{ steps.ver.outputs.core }} `
