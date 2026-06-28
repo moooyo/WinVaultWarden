@@ -9,6 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
+    <PublishProfile>Properties\PublishProfiles\win10-$(Platform).pubxml</PublishProfile>
     <Version>0.1.0</Version>
     <AssemblyVersion>0.1.0.0</AssemblyVersion>
     <Platforms>x64;arm64</Platforms>
@@ -19,6 +20,12 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <IsAotCompatible>true</IsAotCompatible>
     <EnableUnsafeBlocks>true</EnableUnsafeBlocks>
+    <!-- Stage 2 AOT: 全量 Native AOT(隐含 trimming + single-file)。 -->
+    <PublishAot>true</PublishAot>
+    <VerifyReferenceAotCompatibility>true</VerifyReferenceAotCompatibility>
+    <!-- trimming/AOT 要求自包含发布(NETSDK1102);WindowsAppSDK 自包含。 -->
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />

@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Vault</RootNamespace>
     <AssemblyName>Vault</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>
