@@ -23,6 +23,7 @@
     <Compile Include="..\..\src\App\ViewModels\Models\CipherListItem.cs" Link="Models\CipherListItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\VaultListGroup.cs" Link="Models\VaultListGroup.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\CipherDetail.cs" Link="Models\CipherDetail.cs" />
+    <Compile Include="..\..\src\App\ViewModels\Models\AttachmentItem.cs" Link="Models\AttachmentItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\CipherEditorDraft.cs" Link="Models\CipherEditorDraft.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\FilterNode.cs" Link="Models\FilterNode.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\DeviceItem.cs" Link="Models\DeviceItem.cs" />

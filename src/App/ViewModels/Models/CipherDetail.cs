@@ -31,6 +31,7 @@ public abstract class CipherDetail
     public bool IsDeleted { get; init; }
     public bool Favorite { get; init; }
     public bool Reprompt { get; init; }
+    public IReadOnlyList<AttachmentItem> Attachments { get; init; } = Array.Empty<AttachmentItem>();
 
     public string HistoryText =>
         $"最后编辑:{Edited.LocalDateTime:yyyy/M/d HH:mm:ss}　创建于:{Created.LocalDateTime:yyyy/M/d HH:mm:ss}";

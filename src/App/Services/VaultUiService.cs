@@ -117,6 +117,7 @@ public sealed class VaultUiService : IVaultUiService
     {
         var commonFields = MapFields(cipher.Fields);
         var folderName = FolderNameFor(cipher.FolderId);
+        var attachments = MapAttachments(cipher.Attachments);
 
         return cipher.Type switch
         {
@@ -132,6 +133,7 @@ public sealed class VaultUiService : IVaultUiService
                 IsDeleted = cipher.IsDeleted,
                 Favorite = cipher.Favorite,
                 Reprompt = cipher.Reprompt,
+                Attachments = attachments,
                 Username = cipher.Login?.Username,
                 Password = cipher.Login?.Password,
                 TotpSecret = cipher.Login?.Totp,
@@ -150,6 +152,7 @@ public sealed class VaultUiService : IVaultUiService
                 IsDeleted = cipher.IsDeleted,
                 Favorite = cipher.Favorite,
                 Reprompt = cipher.Reprompt,
+                Attachments = attachments,
                 Cardholder = cipher.Card?.CardholderName,
                 Number = cipher.Card?.Number,
                 Expiry = JoinExpiry(cipher.Card?.ExpMonth, cipher.Card?.ExpYear),
@@ -168,6 +171,7 @@ public sealed class VaultUiService : IVaultUiService
                 IsDeleted = cipher.IsDeleted,
                 Favorite = cipher.Favorite,
                 Reprompt = cipher.Reprompt,
+                Attachments = attachments,
                 FullName = JoinNonEmpty(" ", cipher.Identity?.FirstName, cipher.Identity?.MiddleName, cipher.Identity?.LastName),
                 Username = cipher.Identity?.Username,
                 Company = cipher.Identity?.Company,
@@ -189,6 +193,7 @@ public sealed class VaultUiService : IVaultUiService
                 IsDeleted = cipher.IsDeleted,
                 Favorite = cipher.Favorite,
                 Reprompt = cipher.Reprompt,
+                Attachments = attachments,
                 Content = cipher.Notes,
             },
             CipherType.SshKey => new SshDetail
@@ -203,6 +208,7 @@ public sealed class VaultUiService : IVaultUiService
                 IsDeleted = cipher.IsDeleted,
                 Favorite = cipher.Favorite,
                 Reprompt = cipher.Reprompt,
+                Attachments = attachments,
                 PublicKey = cipher.Ssh?.PublicKey,
                 PrivateKey = cipher.Ssh?.PrivateKey,
                 Fingerprint = cipher.Ssh?.Fingerprint,
@@ -233,6 +239,9 @@ public sealed class VaultUiService : IVaultUiService
                 credential.Discoverable,
                 credential.CreationDate))
             .ToArray();
+
+    private static IReadOnlyList<AttachmentItem> MapAttachments(IReadOnlyList<CipherAttachment> attachments) =>
+        attachments.Select(a => new AttachmentItem(a.Id, a.FileName, a.SizeName)).ToArray();
 
     private static VaultItemKind KindFor(CipherType type) => type switch
     {
