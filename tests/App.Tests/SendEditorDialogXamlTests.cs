@@ -71,6 +71,16 @@ public class SendEditorDialogXamlTests
         Assert.Contains("自定义", strings);
     }
 
+    [Fact]
+    public void Dialog_HasCalendarDatePicker_BoundToDraftDeletionDate()
+    {
+        var doc = LoadDialogXaml();
+        var picker = doc.Descendants(Xaml + "CalendarDatePicker").SingleOrDefault();
+        Assert.NotNull(picker);
+        Assert.Contains("Draft.DeletionDate", picker!.Attribute("Date")?.Value ?? string.Empty);
+        Assert.Contains("ShowCustomDeletionPicker", picker.Attribute("Visibility")?.Value ?? string.Empty);
+    }
+
     private static XDocument LoadDialogXaml()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

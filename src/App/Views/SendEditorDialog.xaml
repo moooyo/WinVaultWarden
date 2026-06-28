@@ -78,12 +78,20 @@
 
                 <ComboBox Header="删除日期（必填）"
                           HorizontalAlignment="Stretch"
-                          SelectedItem="{x:Bind Draft.DeletionDateLabel, Mode=TwoWay}">
+                          SelectedItem="{x:Bind Draft.DeletionDateLabel, Mode=TwoWay}"
+                          SelectionChanged="OnDeletionLabelChanged">
                     <x:String>1 天</x:String>
                     <x:String>7 天</x:String>
                     <x:String>30 天</x:String>
                     <x:String>自定义</x:String>
                 </ComboBox>
+
+                <CalendarDatePicker Header="自定义删除日期"
+                                    HorizontalAlignment="Stretch"
+                                    Date="{x:Bind Draft.DeletionDate, Mode=TwoWay}"
+                                    MinDate="{x:Bind CustomDeletionMinDate, Mode=OneWay}"
+                                    MaxDate="{x:Bind CustomDeletionMaxDate, Mode=OneWay}"
+                                    Visibility="{x:Bind ShowCustomDeletionPicker, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
                 <TextBlock Text="此 Send 将在此日期后被永久删除。"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />

@@ -24,6 +24,11 @@ public sealed partial class SendEditorDialog : ContentDialog
         set => Draft.MaxAccessCount = value <= 0 ? null : (int)Math.Round(value);
     }
 
+    public bool ShowCustomDeletionPicker => Draft.DeletionDateLabel == "自定义";
+
+    public DateTimeOffset CustomDeletionMinDate => DateTimeOffset.Now;
+    public DateTimeOffset CustomDeletionMaxDate => DateTimeOffset.Now.AddDays(31);
+
     public SendEditorDialog()
     {
         Draft = SendEditorDraft.CreateDefault(SendType.Text);
@@ -58,6 +63,12 @@ public sealed partial class SendEditorDialog : ContentDialog
             type,
             _canUpdateBindings,
             Bindings is null ? null : Bindings.Update);
+    }
+
+    private void OnDeletionLabelChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_canUpdateBindings)
+            Bindings?.Update();
     }
 
     // 过期时间相对标签 ⇄ Draft.ExpirationDate(可空)。

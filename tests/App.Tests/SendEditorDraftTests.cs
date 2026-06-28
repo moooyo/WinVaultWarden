@@ -27,9 +27,25 @@ public class SendEditorDraftTests
         draft.DeletionDateLabel = "自定义";
         draft.DeletionDate = DateTimeOffset.UtcNow.AddDays(90);
 
+        var now = DateTimeOffset.UtcNow;
         var resolved = draft.ToDeletionDate();
 
-        Assert.True(resolved <= DateTimeOffset.UtcNow.AddDays(31).AddMinutes(1));
+        Assert.True(resolved <= now.AddDays(31).AddSeconds(5));
+    }
+
+    [Fact]
+    public void ToDeletionDate_Custom_WithDateIn20Days_ReturnsNear20Days()
+    {
+        var draft = SendEditorDraft.CreateDefault(SendType.Text);
+        draft.DeletionDateLabel = "自定义";
+        draft.DeletionDate = DateTimeOffset.UtcNow.AddDays(20);
+
+        var now = DateTimeOffset.UtcNow;
+        var resolved = draft.ToDeletionDate();
+
+        // Should be ~now+20, not the 7-day fallback.
+        Assert.True(resolved > now.AddDays(19), "Expected ~now+20 days, not 7-day fallback");
+        Assert.True(resolved <= now.AddDays(20).AddSeconds(5));
     }
 
     [Fact]
