@@ -47,6 +47,7 @@ public class VaultViewModelAttachmentTests
         public string? LastAttachmentId { get; private set; }
         public bool ThrowOnAdd { get; set; }
         public bool ThrowOnDownload { get; set; }
+        public bool ThrowOnDelete { get; set; }
 
         public IReadOnlyList<AttachmentItem> AddResult { get; set; } = Array.Empty<AttachmentItem>();
         public byte[] DownloadResult { get; set; } = Array.Empty<byte>();
@@ -73,6 +74,8 @@ public class VaultViewModelAttachmentTests
 
         public Task<IReadOnlyList<AttachmentItem>> DeleteAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default)
         {
+            if (ThrowOnDelete)
+                throw new InvalidOperationException("delete failed");
             LastCipherId = cipherId;
             LastAttachmentId = attachmentId;
             return Task.FromResult(DeleteResult);
@@ -177,6 +180,18 @@ public class VaultViewModelAttachmentTests
     }
 
     [Fact]
+    public async Task DeleteAttachmentAsync_WhenServiceThrows_SetsOperationErrorAndClearsBusy()
+    {
+        var att = new FakeAttachmentUiService { ThrowOnDelete = true };
+        var vm = Vm(new AttachmentVaultUiService(), att);
+
+        await vm.DeleteAttachmentAsync("c1", "a1", CancellationToken.None);
+
+        Assert.Equal("delete failed", vm.OperationError);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
     public async Task AttachmentMethods_NoAttachmentService_NoOpWithoutThrowing()
     {
         // 未注入附件服务(可选依赖为 null)时,方法应安全短路,不抛异常。
@@ -188,5 +203,6 @@ public class VaultViewModelAttachmentTests
 
         Assert.Null(bytes);
         Assert.False(vm.IsBusy);
+        Assert.Equal(string.Empty, vm.OperationError);
     }
 }
