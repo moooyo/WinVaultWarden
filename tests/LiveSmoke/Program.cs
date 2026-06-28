@@ -68,6 +68,10 @@ var sendService = new SendService(sendApi, sendCrypto, session);
 var sendWriteService = new SendWriteService(sendApi, sendCrypto, session);
 var sendAccessService = new SendAccessService(sendApi, sendCrypto);
 
+var attachmentCrypto = new AttachmentCryptoService(crypto);
+IAttachmentApiClient attachmentApi = api;
+var attachmentService = new AttachmentService(attachmentApi, attachmentCrypto, decryptor, session, sync);
+
 try
 {
     api.SetBaseAddress(serverUrl);
@@ -363,6 +367,61 @@ try
         await sendWriteService.DeleteSendAsync(fileSend.Id);
         var fileGone = (await sendService.GetSendsAsync()).All(s => s.Id != fileSend.Id);
         Step("send: file deleted", fileGone);
+    }
+
+    // ── 14. Attachment: create cipher → upload (中文 name) → sync → name decrypts
+    //        → download byte-for-byte → delete → cleanup ───────────────────────
+    Console.WriteLine("[14] Attachment (file)");
+    var attCipherName = $"WVW-Att-{run}";
+    var attCipher = new Cipher
+    {
+        Type = CipherType.Login,
+        Name = attCipherName,
+        Login = new CipherLogin($"att-user-{run}", $"att-pass-{run}!", null,
+            new[] { new CipherLoginUri("https://attachments.example.com", null) }),
+    };
+    await writeService.SaveCipherAsync(attCipher);
+
+    var attHost = (await sync.SyncAsync()).FirstOrDefault(c => c.Name == attCipherName);
+    Step("attachment: host cipher created", attHost is not null, attHost?.Id);
+
+    if (attHost is not null)
+    {
+        var attFileName = $"附件-测试-{run}.bin";
+        var attPayload = RandomNumberGenerator.GetBytes(4096);
+
+        var afterUpload = await attachmentService.UploadAsync(attHost.Id, attFileName, attPayload);
+        var uploaded = afterUpload.FirstOrDefault(a => a.FileName == attFileName);
+        Step("attachment: upload + list shows it", uploaded is not null,
+            $"{afterUpload.Count} attachment(s), id={uploaded?.Id}");
+
+        // Re-sync整库,确认附件随 GET /api/sync 回到 session,且文件名解密一致。
+        var resynced = (await sync.SyncAsync()).FirstOrDefault(c => c.Id == attHost.Id);
+        var synced = resynced?.Attachments.FirstOrDefault(a => a.Id == uploaded?.Id);
+        Step("attachment: present after full re-sync", synced is not null,
+            $"{resynced?.Attachments.Count ?? 0} on cipher");
+        Step("attachment: filename decrypts round-trip (中文)", synced?.FileName == attFileName,
+            synced?.FileName);
+        Step("attachment: size > 0", synced is not null && synced.Size > 0, synced?.Size.ToString());
+
+        if (uploaded is not null)
+        {
+            // Download → must equal the original plaintext byte-for-byte.
+            var downloaded = await attachmentService.DownloadAsync(attHost.Id, uploaded.Id);
+            Step("attachment: download byte-for-byte equal",
+                downloaded.AsSpan().SequenceEqual(attPayload),
+                $"{downloaded.Length} bytes vs {attPayload.Length}");
+
+            // Delete the attachment → it disappears from the cipher.
+            var afterDelete = await attachmentService.DeleteAsync(attHost.Id, uploaded.Id);
+            Step("attachment: deleted (not listed)", afterDelete.All(a => a.Id != uploaded.Id),
+                $"{afterDelete.Count} remaining");
+        }
+
+        // Cleanup: hard-delete the host cipher.
+        await writeService.DeleteCipherAsync(attHost.Id, permanent: true);
+        var hostGone = (await sync.SyncAsync()).All(c => c.Id != attHost.Id);
+        Step("attachment: host cipher hard-deleted", hostGone);
     }
 }
 catch (Exception ex)
