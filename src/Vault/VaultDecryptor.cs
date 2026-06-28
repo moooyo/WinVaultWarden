@@ -51,9 +51,7 @@ public sealed class VaultDecryptor
 
     private Cipher DecryptCipher(CipherDto dto, SymmetricCryptoKey userKey)
     {
-        var key = string.IsNullOrWhiteSpace(dto.Key)
-            ? userKey
-            : _crypto.DecryptItemKey(dto.Key, userKey);
+        var key = ResolveItemKey(dto, userKey);
         var type = (CipherType)dto.Type;
 
         return new Cipher
@@ -75,7 +73,43 @@ public sealed class VaultDecryptor
             SecureNote = dto.SecureNote is null ? null : new CipherSecureNote(dto.SecureNote.Type),
             Ssh = dto.SshKey is null ? null : DecryptSsh(dto.SshKey, key),
             Fields = DecryptFields(dto.Fields, key),
+            Attachments = DecryptAttachments(dto.Attachments, key),
         };
+    }
+
+    // 解析条目有效密钥:dto.Key 为空则用 userKey,否则解出条目级密钥。
+    public SymmetricCryptoKey ResolveItemKey(CipherDto dto, SymmetricCryptoKey userKey) =>
+        string.IsNullOrWhiteSpace(dto.Key)
+            ? userKey
+            : _crypto.DecryptItemKey(dto.Key, userKey);
+
+    // 解密附件元数据。新格式:附件独立密钥 attKey = DecryptItemKey(d.Key, itemKey);
+    // 旧格式(d.Key 为空):直接用 itemKey 解 fileName。单附件失败只跳过自身,不连累整条目。
+    public IReadOnlyList<CipherAttachment> DecryptAttachments(CipherAttachmentDto[]? dtos, SymmetricCryptoKey itemKey)
+    {
+        if (dtos is null || dtos.Length == 0)
+            return Array.Empty<CipherAttachment>();
+
+        var result = new List<CipherAttachment>(dtos.Length);
+        foreach (var d in dtos)
+        {
+            try
+            {
+                var attKey = string.IsNullOrEmpty(d.Key)
+                    ? itemKey
+                    : _crypto.DecryptItemKey(d.Key, itemKey);
+                var fileName = _crypto.DecryptToString(d.FileName, attKey) ?? string.Empty;
+                var size = long.TryParse(d.Size, out var s) ? s : 0L;
+                var sizeName = d.SizeName ?? string.Empty;
+                result.Add(new CipherAttachment(d.Id, fileName, size, sizeName));
+            }
+            catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException)
+            {
+                // 跳过坏附件,保留同条目其余附件。
+            }
+        }
+
+        return result;
     }
 
     private CipherLogin DecryptLogin(LoginDto login, SymmetricCryptoKey key) => new(
