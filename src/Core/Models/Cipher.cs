@@ -23,6 +23,7 @@ public sealed class Cipher
     public CipherSecureNote? SecureNote { get; init; }
     public CipherSsh? Ssh { get; init; }
     public IReadOnlyList<CipherField> Fields { get; init; } = Array.Empty<CipherField>();
+    public IReadOnlyList<CipherAttachment> Attachments { get; init; } = Array.Empty<CipherAttachment>();
 }
 
 public sealed record CipherLogin(string? Username, string? Password, string? Totp, IReadOnlyList<CipherLoginUri> Uris)
