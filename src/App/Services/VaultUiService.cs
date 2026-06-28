@@ -69,6 +69,9 @@ public sealed class VaultUiService : IVaultUiService
 
     public Task SyncAsync(CancellationToken ct = default) => _sync.SyncAsync(ct);
 
+    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) =>
+        throw new NotImplementedException("移动到文件夹功能尚未接入。");
+
     public IReadOnlyList<FilterNode> GetFilters()
     {
         var items = GetItems();

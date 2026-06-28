@@ -21,7 +21,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="{x:Bind Value}"
-                                   FontFamily="Consolas"
+                                   FontFamily="{StaticResource MonospaceFontFamily}"
                                    TextWrapping="Wrap" />
                         <TextBlock Text="{x:Bind CreatedAtText}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"

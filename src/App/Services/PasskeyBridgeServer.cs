@@ -1,4 +1,6 @@
 using System.IO.Pipes;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Core.Passkeys;
 
 namespace App.Services;
@@ -23,12 +25,7 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
     {
         while (!ct.IsCancellationRequested)
         {
-            var pipe = new NamedPipeServerStream(
-                BrowserPasskeyBridge.PipeName,
-                PipeDirection.InOut,
-                NamedPipeServerStream.MaxAllowedServerInstances,
-                PipeTransmissionMode.Byte,
-                PipeOptions.Asynchronous);
+            var pipe = CreateSecuredPipe();
 
             try
             {
@@ -45,6 +42,35 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
                 await pipe.DisposeAsync();
             }
         }
+    }
+
+    private static NamedPipeServerStream CreateSecuredPipe()
+    {
+        var currentUser = WindowsIdentity.GetCurrent().User
+            ?? throw new InvalidOperationException("Unable to resolve the current Windows user SID.");
+
+        var security = new PipeSecurity();
+        // Grant the interactive owner full duplex access to the bridge.
+        security.AddAccessRule(new PipeAccessRule(
+            currentUser,
+            PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance,
+            AccessControlType.Allow));
+        // Explicitly deny anything arriving over the network (defence in depth;
+        // named pipes are local but a remote SID must never reach this bridge).
+        security.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier(WellKnownSidType.NetworkSid, null),
+            PipeAccessRights.FullControl,
+            AccessControlType.Deny));
+
+        return NamedPipeServerStreamAcl.Create(
+            BrowserPasskeyBridge.PipeName,
+            PipeDirection.InOut,
+            NamedPipeServerStream.MaxAllowedServerInstances,
+            PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous,
+            inBufferSize: 0,
+            outBufferSize: 0,
+            pipeSecurity: security);
     }
 
     private async Task HandleConnectionAsync(NamedPipeServerStream pipe, CancellationToken ct)

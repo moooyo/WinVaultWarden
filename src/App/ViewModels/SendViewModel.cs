@@ -14,9 +14,20 @@ public partial class SendViewModel : ObservableObject
     public ObservableCollection<SendListItem> Items { get; } = new();
     public ObservableCollection<SendListItem> FilteredItems { get; } = new();
 
-    [ObservableProperty] private string _selectedFilterTag = "send:all";
-    [ObservableProperty] private SendListItem? _selectedMenuItem;
+    [ObservableProperty]
+    public partial string SelectedFilterTag { get; set; } = "send:all";
 
+    [ObservableProperty]
+    public partial SendListItem? SelectedMenuItem { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsBusy { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    public partial string? Error { get; set; }
+
+    public bool HasError => !string.IsNullOrEmpty(Error);
     public bool HasItems => FilteredItems.Count > 0;
     public bool NoItems => !HasItems;
 
@@ -61,6 +72,45 @@ public partial class SendViewModel : ObservableObject
 
         var item = _service.CreateSend(draft);
         Items.Add(item);
+        ApplyFilter();
+        return true;
+    }
+
+    [RelayCommand]
+    private void DeleteSend(SendListItem? item)
+    {
+        if (item is null)
+            return;
+
+        _service.DeleteSend(item.Id);
+
+        var existing = Items.FirstOrDefault(s => s.Id == item.Id);
+        if (existing is not null)
+            Items.Remove(existing);
+
+        ApplyFilter();
+    }
+
+    public bool UpdateSendFromDraft(SendListItem item, SendEditorDraft draft)
+    {
+        if (!draft.HasRequiredData())
+            return false;
+
+        var updated = _service.UpdateSend(item.Id, draft);
+        if (updated is null)
+            return false;
+
+        var index = Items.IndexOf(item);
+        if (index < 0)
+        {
+            var existing = Items.FirstOrDefault(s => s.Id == item.Id);
+            index = existing is null ? -1 : Items.IndexOf(existing);
+        }
+
+        if (index < 0)
+            return false;
+
+        Items[index] = updated;
         ApplyFilter();
         return true;
     }

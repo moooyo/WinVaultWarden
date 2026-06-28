@@ -92,6 +92,18 @@ public sealed partial class LoginEditorDraft : ObservableObject
     {
         new LoginUriEditorDraft(),
     };
+
+    public string PrimaryUri
+    {
+        get => Uris.Count > 0 ? Uris[0].Uri : string.Empty;
+        set
+        {
+            if (Uris.Count == 0)
+                Uris.Add(new LoginUriEditorDraft());
+            Uris[0].Uri = value;
+            OnPropertyChanged(nameof(PrimaryUri));
+        }
+    }
 }
 
 public sealed partial class LoginUriEditorDraft : ObservableObject

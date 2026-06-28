@@ -11,6 +11,7 @@ public partial class VaultViewModel : ObservableObject
     private readonly IVaultUiService _service;
     private readonly IClipboardService? _clipboard;
     private string? _editingId;
+    private readonly HashSet<string> _selectedIds = new(StringComparer.Ordinal);
 
     public ObservableCollection<CipherListItem> Items { get; } = new();
     public ObservableCollection<FilterNode> Filters { get; } = new();
@@ -18,10 +19,24 @@ public partial class VaultViewModel : ObservableObject
     public ObservableCollection<VaultListGroup> GroupedItems { get; } = new();
     public IEnumerable<FilterNode> FolderFilters => Filters.Where(f => f.Kind == FilterKind.Folder);
 
-    [ObservableProperty] private CipherListItem? _selectedItem;
-    [ObservableProperty] private CipherDetail? _detail;
-    [ObservableProperty] private string _searchText = string.Empty;
-    [ObservableProperty] private FilterNode? _selectedFilter;
+    [ObservableProperty]
+    public partial bool IsSelectionMode { get; set; }
+
+    public int SelectedCount => _selectedIds.Count;
+    public IReadOnlyCollection<string> SelectedIds => _selectedIds;
+    public bool HasSelectionForMove => IsSelectionMode && _selectedIds.Count > 0;
+
+    [ObservableProperty]
+    public partial CipherListItem? SelectedItem { get; set; }
+
+    [ObservableProperty]
+    public partial CipherDetail? Detail { get; set; }
+
+    [ObservableProperty]
+    public partial string SearchText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial FilterNode? SelectedFilter { get; set; }
 
     [ObservableProperty]
     public partial bool IsEditing { get; set; }
@@ -36,13 +51,22 @@ public partial class VaultViewModel : ObservableObject
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOperationError))]
     public partial string OperationError { get; set; } = string.Empty;
+
+    // InfoBar.IsOpen 需要 bool;OperationError 是 string,直接用转换器会因返回 Visibility 而绑定失败。
+    public bool HasOperationError => !string.IsNullOrEmpty(OperationError);
 
     public bool HasSelection => Detail is not null;
     public bool NoSelection => Detail is null;
     public string? SelectedFilterTag => TagForFilter(SelectedFilter);
     public bool IsSelectedItemDeleted => SelectedItem?.IsDeleted == true;
     public bool IsFolderFilterSelected => SelectedFilter?.Kind == FilterKind.Folder;
+
+    // 保险库内一条(未删除)记录都没有 → 空库引导。
+    public bool HasNoItems => Items.All(i => i.IsDeleted);
+    // 库里有记录,但当前搜索/筛选结果为空 → 无结果提示。
+    public bool NoResults => !HasNoItems && FilteredItems.Count == 0;
 
     public event EventHandler? FoldersChanged;
 
@@ -143,6 +167,8 @@ public partial class VaultViewModel : ObservableObject
 
         foreach (var i in source) FilteredItems.Add(i);
         RebuildGroups();
+        OnPropertyChanged(nameof(HasNoItems));
+        OnPropertyChanged(nameof(NoResults));
     }
 
     private static readonly VaultItemKind[] TypeOrder =
@@ -390,6 +416,80 @@ public partial class VaultViewModel : ObservableObject
 
     [RelayCommand]
     private void Add() => BeginAdd(VaultItemKind.Login);
+
+    public void ToggleSelection(string id)
+    {
+        if (!_selectedIds.Remove(id))
+            _selectedIds.Add(id);
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(HasSelectionForMove));
+    }
+
+    public bool IsSelected(string id) => _selectedIds.Contains(id);
+
+    private void ClearSelection()
+    {
+        _selectedIds.Clear();
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(HasSelectionForMove));
+    }
+
+    partial void OnIsSelectionModeChanged(bool value)
+    {
+        if (!value)
+            ClearSelection(); // ClearSelection 已通知 HasSelectionForMove
+        else
+            OnPropertyChanged(nameof(HasSelectionForMove));
+    }
+
+    [RelayCommand]
+    private void ToggleSelectionMode() => IsSelectionMode = !IsSelectionMode;
+
+    [RelayCommand]
+    private void SelectAll()
+    {
+        if (!IsSelectionMode)
+            return;
+        foreach (var item in FilteredItems)
+            _selectedIds.Add(item.Id);
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(HasSelectionForMove));
+    }
+
+    [RelayCommand]
+    private async Task MoveSelectedToFolder(string? folderId)
+    {
+        if (_selectedIds.Count == 0)
+            return;
+        var ids = _selectedIds.ToArray();
+        var ok = await RunWriteAsync(() => _service.MoveCiphersAsync(ids, folderId), selectId: null);
+        if (ok)
+            IsSelectionMode = false; // OnIsSelectionModeChanged clears selection
+    }
+
+    public Task MoveSelectedToFolderAsync(string? folderId) => MoveSelectedToFolder(folderId);
+
+    [RelayCommand]
+    private void AddCustomField()
+    {
+        var draft = EditorDraft;
+        if (draft is null)
+            return;
+
+        draft.CustomFields.Add(new CustomFieldEditorDraft
+        {
+            Name = $"字段 {draft.CustomFields.Count + 1}",
+        });
+    }
+
+    [RelayCommand]
+    private void RemoveCustomField(CustomFieldEditorDraft? field)
+    {
+        if (EditorDraft is null || field is null)
+            return;
+
+        EditorDraft.CustomFields.Remove(field);
+    }
 
     [RelayCommand]
     private void Copy(string? value)

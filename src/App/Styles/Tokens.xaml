@@ -13,7 +13,11 @@
     <!-- ============ 圆角 / 内边距 ============ -->
     <CornerRadius x:Key="CardCornerRadius">8</CornerRadius>
     <Thickness x:Key="CardContentPadding">16</Thickness>
+    <Thickness x:Key="CardContentPaddingCompact">12</Thickness>
     <Thickness x:Key="PageContentPadding">24</Thickness>
+
+    <!-- ============ 字体 ============ -->
+    <FontFamily x:Key="MonospaceFontFamily">Cascadia Mono, Consolas, Courier New</FontFamily>
 
     <!-- ============ 文本层级 ============ -->
     <!-- 章节标题:取代各页手写的 12px 灰字,建立真正的层级 -->
@@ -46,6 +50,14 @@
         <Setter Property="Padding" Value="6" />
         <Setter Property="MinWidth" Value="0" />
         <Setter Property="MinHeight" Value="0" />
+    </Style>
+
+    <!-- ============ 卡片容器(取代逐处内联的 Border 三件套) ============ -->
+    <Style x:Key="CardBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource CardCornerRadius}" />
     </Style>
 
 </ResourceDictionary>

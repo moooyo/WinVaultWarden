@@ -30,10 +30,16 @@ public sealed partial class VaultPage : Page
 
     public static Visibility VisibleIfFalse(bool value) => value ? Visibility.Collapsed : Visibility.Visible;
 
+    public static ListViewSelectionMode SelectionModeFromBool(bool isSelectionMode) =>
+        isSelectionMode ? ListViewSelectionMode.Multiple : ListViewSelectionMode.Single;
+
     private static void SetRowActionsOpacity(object sender, double opacity)
     {
         if (sender is Grid root && root.FindName("RowActions") is FrameworkElement panel)
+        {
             panel.Opacity = opacity;
+            panel.IsHitTestVisible = opacity > 0;
+        }
     }
 
     private void OnRowPointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e) => SetRowActionsOpacity(sender, 1);
@@ -125,27 +131,6 @@ public sealed partial class VaultPage : Page
         {
             ViewModel.ChangeEditorType(kind);
         }
-    }
-
-    private void OnAddCustomFieldClick(object sender, RoutedEventArgs e)
-    {
-        var draft = ViewModel.EditorDraft;
-        if (draft is null)
-            return;
-
-        draft.CustomFields.Add(new CustomFieldEditorDraft
-        {
-            Name = $"字段 {draft.CustomFields.Count + 1}",
-        });
-    }
-
-    private void OnRemoveCustomFieldClick(object sender, RoutedEventArgs e)
-    {
-        if (ViewModel.EditorDraft is null)
-            return;
-
-        if (sender is FrameworkElement { Tag: CustomFieldEditorDraft field })
-            ViewModel.EditorDraft.CustomFields.Remove(field);
     }
 
     private void SyncEditorTypeSelection()

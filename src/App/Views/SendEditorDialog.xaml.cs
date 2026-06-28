@@ -10,7 +10,12 @@ public sealed partial class SendEditorDialog : ContentDialog
 
     public SendEditorDraft Draft { get; }
     public bool Saved { get; private set; }
-    public string DialogTitle => Draft.Type == SendType.File ? "新增文件 Send" : "新增文本 Send";
+    public bool IsEditMode { get; }
+    private readonly SendListItem? _existing;
+
+    public string DialogTitle => IsEditMode
+        ? "编辑 Send"
+        : (Draft.Type == SendType.File ? "新增文件 Send" : "新增文本 Send");
 
     public double MaxAccessCountValue
     {
@@ -24,6 +29,22 @@ public sealed partial class SendEditorDialog : ContentDialog
         InitializeComponent();
         Loaded += (_, _) => _canUpdateBindings = true;
     }
+
+    public SendEditorDialog(SendListItem existing)
+    {
+        _existing = existing;
+        IsEditMode = true;
+        Draft = SendEditorDraft.FromExisting(existing);
+        InitializeComponent();
+        PrimaryButtonText = "保存";
+        Loaded += (_, _) =>
+        {
+            _canUpdateBindings = true;
+            Bindings?.Update();
+        };
+    }
+
+    public SendListItem? Existing => _existing;
 
     private void OnTextChecked(object sender, RoutedEventArgs e) => SetType(SendType.Text);
 

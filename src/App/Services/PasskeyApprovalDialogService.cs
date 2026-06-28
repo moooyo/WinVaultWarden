@@ -7,6 +7,7 @@ namespace App.Services;
 public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
 {
     private readonly SemaphoreSlim _dialogGate = new(1, 1);
+    private readonly PasskeyApprovalThrottle _throttle = new(TimeSpan.FromSeconds(2));
 
     public async Task<bool> ConfirmUseAsync(PasskeyApprovalRequest request, CancellationToken ct = default)
     {
@@ -14,6 +15,9 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
 
         try
         {
+            if (!_throttle.TryBegin(request.Origin))
+                return false;
+
             var window = global::App.App.MainWindow;
             if (window is null)
                 return false;
@@ -82,7 +86,18 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         });
         panel.Children.Add(CreateDetailLine("项目", request.CipherName));
         panel.Children.Add(CreateDetailLine("账户", DisplayAccount(request)));
-        panel.Children.Add(CreateDetailLine("来源", request.Origin));
+        var origin = PasskeyOriginDisplay.Parse(request.Origin);
+        panel.Children.Add(CreateDetailLine("来源", origin.Display));
+
+        if (!origin.IsSecure)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "⚠ 此来源不是安全的 HTTPS 连接。",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = Application.Current.Resources["SystemFillColorCautionBrush"] as Microsoft.UI.Xaml.Media.Brush,
+            });
+        }
 
         return panel;
     }

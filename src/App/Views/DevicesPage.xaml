@@ -13,11 +13,36 @@
     <ScrollViewer Padding="{StaticResource PageContentPadding}">
         <StackPanel Spacing="16" MaxWidth="640" HorizontalAlignment="Left">
             <TextBlock Text="设备管理" Style="{ThemeResource TitleTextBlockStyle}" />
-            <ItemsControl ItemsSource="{x:Bind ViewModel.Devices}">
-                <ItemsControl.ItemTemplate>
+            <InfoBar x:Name="DevicesErrorInfoBar"
+                     IsClosable="True"
+                     Severity="Error"
+                     IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
+                     Message="{x:Bind ViewModel.Error, Mode=OneWay}" />
+            <ProgressRing x:Name="DevicesBusyRing"
+                          Width="24" Height="24"
+                          HorizontalAlignment="Left"
+                          IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
+            <StackPanel x:Name="DevicesEmptyPanel"
+                        HorizontalAlignment="Center"
+                        Spacing="{StaticResource SpacingMedium}"
+                        Margin="0,40,0,0"
+                        Visibility="{x:Bind ViewModel.HasNoDevices, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <FontIcon Glyph="&#xE8EA;" FontSize="44"
+                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                          HorizontalAlignment="Center" />
+                <TextBlock Text="没有已登记的设备"
+                           Style="{ThemeResource SubtitleTextBlockStyle}"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="在此账户上登录后，设备会显示在这里。"
+                           Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                           TextAlignment="Center"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+            <ItemsRepeater ItemsSource="{x:Bind ViewModel.Devices}">
+                <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="models:DeviceItem">
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderThickness="1" CornerRadius="{StaticResource CardCornerRadius}" Padding="16" Margin="0,0,0,8"
+                                BorderThickness="1" CornerRadius="{StaticResource CardCornerRadius}" Padding="{StaticResource CardContentPadding}" Margin="0,0,0,8"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
                             <Grid ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
@@ -32,11 +57,11 @@
                                         <Border Background="{ThemeResource AccentFillColorDefaultBrush}"
                                                 CornerRadius="4" Padding="6,1"
                                                 Visibility="{x:Bind IsCurrent, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock Text="当前设备" FontSize="11" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                                            <TextBlock Text="当前设备" FontSize="12" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
                                         </Border>
                                     </StackPanel>
-                                    <TextBlock Text="{x:Bind LastActive}" FontSize="12"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Text="{x:Bind LastActive}"
+                                               Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
                                 </StackPanel>
                                 <Button Grid.Column="2" VerticalAlignment="Center"
                                         Visibility="{x:Bind IsCurrent, Converter={StaticResource InverseBoolToVis}}"
@@ -47,8 +72,8 @@
                             </Grid>
                         </Border>
                     </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
         </StackPanel>
     </ScrollViewer>
 </Page>

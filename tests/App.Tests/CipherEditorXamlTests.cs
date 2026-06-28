@@ -74,7 +74,7 @@ public class CipherEditorXamlTests
         var document = LoadVaultPageXaml();
         var folderBox = RequireByName(document, "CipherEditorFolderBox");
 
-        Assert.Equal("{Binding FolderFilters}", folderBox.Attribute("ItemsSource")?.Value);
+        Assert.Contains("FolderFilters", folderBox.Attribute("ItemsSource")?.Value);
         Assert.Equal("Label", folderBox.Attribute("DisplayMemberPath")?.Value);
         Assert.Equal("FolderId", folderBox.Attribute("SelectedValuePath")?.Value);
         Assert.Contains("EditorDraft.FolderId", folderBox.Attribute("SelectedValue")?.Value);
@@ -90,8 +90,8 @@ public class CipherEditorXamlTests
         var customFields = RequireByName(document, "CustomFieldsEditorItems");
 
         Assert.True(addButton.Attribute("Click") is not null || addButton.Attribute("Command") is not null);
-        Assert.Equal("OnRemoveCustomFieldClick", removeButton.Attribute("Click")?.Value);
-        Assert.Equal("{Binding}", removeButton.Attribute("Tag")?.Value);
+        Assert.Contains("RemoveCustomFieldCommand", removeButton.Attribute("Command")?.Value);
+        Assert.Equal("{x:Bind}", removeButton.Attribute("CommandParameter")?.Value);
         Assert.Contains("EditorDraft.CustomFields", customFields.Attribute("ItemsSource")?.Value);
 
         var textBoxes = customFields.Descendants(Xaml + "TextBox").ToArray();
@@ -180,5 +180,59 @@ public class CipherEditorXamlTests
     {
         var document = LoadVaultPageXaml();
         Assert.Equal("OnSaveCipherEditorClick", RequireByName(document, "SaveCipherEditorButton").Attribute("Click")?.Value);
+    }
+
+    [Fact]
+    public void VaultPage_CustomFieldButtons_UseCommandsNotClickHandlers()
+    {
+        var document = LoadVaultPageXaml();
+        var addButton = RequireByName(document, "AddCustomFieldButton");
+        var removeButton = RequireByName(document, "RemoveCustomFieldButton");
+
+        Assert.Null(addButton.Attribute("Click"));
+        Assert.Contains("AddCustomFieldCommand", addButton.Attribute("Command")?.Value);
+
+        Assert.Null(removeButton.Attribute("Click"));
+        Assert.Contains("RemoveCustomFieldCommand", removeButton.Attribute("Command")?.Value);
+        Assert.Equal("{x:Bind}", removeButton.Attribute("CommandParameter")?.Value);
+    }
+
+    [Fact]
+    public void VaultPage_EditorPanel_UsesXBindNotClassicBinding()
+    {
+        var document = LoadVaultPageXaml();
+        var panel = RequireByName(document, "CipherEditorPanel");
+
+        // No DataContext shim on the panel anymore.
+        Assert.Null(panel.Attribute("DataContext"));
+
+        // Editable fields bind via x:Bind to ViewModel.EditorDraft.
+        var nameBox = panel.Descendants(Xaml + "TextBox")
+            .First(tb => tb.Attribute("Header")?.Value == "项目名称（必填）");
+        Assert.Contains("x:Bind", nameBox.Attribute("Text")?.Value);
+        Assert.Contains("ViewModel.EditorDraft.Name", nameBox.Attribute("Text")?.Value);
+        Assert.Contains("TwoWay", nameBox.Attribute("Text")?.Value);
+    }
+
+    [Fact]
+    public void VaultPage_LoginUri_BindsToPrimaryUriProxy()
+    {
+        var document = LoadVaultPageXaml();
+        var panel = RequireByName(document, "CipherEditorPanel");
+
+        var uriBox = panel.Descendants(Xaml + "TextBox")
+            .First(tb => tb.Attribute("Header")?.Value == "网站（URI）");
+        Assert.Contains("ViewModel.EditorDraft.Login.PrimaryUri", uriBox.Attribute("Text")?.Value);
+        Assert.DoesNotContain("Uris[0]", uriBox.Attribute("Text")?.Value);
+    }
+
+    [Fact]
+    public void VaultPage_CustomFieldTemplate_HasXDataType()
+    {
+        var document = LoadVaultPageXaml();
+        var items = RequireByName(document, "CustomFieldsEditorItems");
+        var template = items.Descendants(Xaml + "DataTemplate").First();
+
+        Assert.Contains("CustomFieldEditorDraft", template.Attribute(X + "DataType")?.Value);
     }
 }

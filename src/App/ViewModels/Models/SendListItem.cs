@@ -11,6 +11,8 @@ public sealed record SendListItem(
 {
     public string TypeLabel => Type == SendType.File ? "文件" : "文本";
 
+    public string DeleteDateAccessibleLabel => $"删除日期 {DeleteDate}";
+
     public string Glyph => Type switch
     {
         SendType.Text => "\uE8D2",

@@ -25,6 +25,16 @@ public class TotpFieldXamlTests
         Assert.True(Array.IndexOf(siblings, secondsText) < Array.IndexOf(siblings, copyButton));
     }
 
+    [Fact]
+    public void CodeText_UsesMonospaceFontResource_NotInlineConsolas()
+    {
+        var document = LoadTotpFieldXaml();
+        var codeText = RequireByName(document, "CodeText");
+        Assert.Equal("{StaticResource MonospaceFontFamily}", codeText.Attribute("FontFamily")?.Value);
+        Assert.DoesNotContain(document.Descendants(),
+            e => e.Attribute("FontFamily")?.Value == "Consolas");
+    }
+
     private static XElement RequireByName(XDocument document, string name)
     {
         var element = document.Descendants().FirstOrDefault(element => element.Attribute(X + "Name")?.Value == name);

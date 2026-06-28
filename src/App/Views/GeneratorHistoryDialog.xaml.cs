@@ -21,8 +21,27 @@ public sealed partial class GeneratorHistoryDialog : ContentDialog
             ViewModel.CopyHistoryItemCommand.Execute(item);
     }
 
-    private void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+    private async void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
-        ViewModel.ClearHistoryCommand.Execute(null);
+        var deferral = args.GetDeferral();
+        try
+        {
+            var confirmed = await DialogHelper.ConfirmAsync(
+                XamlRoot,
+                "清除历史记录",
+                "确定要清除全部生成历史吗?此操作无法撤销。",
+                "清除");
+            if (!confirmed)
+            {
+                args.Cancel = true;
+                return;
+            }
+
+            ViewModel.ClearHistoryCommand.Execute(null);
+        }
+        finally
+        {
+            deferral.Complete();
+        }
     }
 }

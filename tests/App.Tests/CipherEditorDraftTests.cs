@@ -139,4 +139,50 @@ public class CipherEditorDraftTests
         Assert.Equal(CipherEditorFieldType.Hidden, draft.CustomFields[0].Type);
         Assert.Equal("secret", draft.CustomFields[0].Value);
     }
+
+    [Fact]
+    public void PrimaryUri_Get_ReturnsFirstUri()
+    {
+        var login = new LoginEditorDraft();
+        login.Uris[0].Uri = "https://example.com";
+
+        Assert.Equal("https://example.com", login.PrimaryUri);
+    }
+
+    [Fact]
+    public void PrimaryUri_Set_WritesFirstUri_AndRaisesChange()
+    {
+        var login = new LoginEditorDraft();
+        var raised = new List<string?>();
+        login.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        login.PrimaryUri = "https://set.example";
+
+        Assert.Equal("https://set.example", login.Uris[0].Uri);
+        Assert.Single(login.Uris);
+        Assert.Contains(nameof(LoginEditorDraft.PrimaryUri), raised);
+    }
+
+    [Fact]
+    public void PrimaryUri_Set_WhenUrisEmpty_SeedsOneEntry()
+    {
+        var login = new LoginEditorDraft();
+        login.Uris.Clear();
+
+        login.PrimaryUri = "https://seeded";
+
+        Assert.Single(login.Uris);
+        Assert.Equal("https://seeded", login.Uris[0].Uri);
+        Assert.Equal("https://seeded", login.PrimaryUri);
+    }
+
+    [Fact]
+    public void PrimaryUri_Get_WhenUrisEmpty_ReturnsEmpty_WithoutMutating()
+    {
+        var login = new LoginEditorDraft();
+        login.Uris.Clear();
+
+        Assert.Equal(string.Empty, login.PrimaryUri);
+        Assert.Empty(login.Uris);
+    }
 }

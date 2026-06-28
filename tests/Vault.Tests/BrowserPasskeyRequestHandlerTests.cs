@@ -120,7 +120,73 @@ public class BrowserPasskeyRequestHandlerTests
             TestContext.Current.CancellationToken);
 
         Assert.False(response.Ok);
-        Assert.Equal("user_cancelled", response.Error?.Code);
+        Assert.Equal("no_credential_or_cancelled", response.Error?.Code);
+    }
+
+    [Fact]
+    public async Task HandleAsync_GetAssertion_WhenNoCredential_ReturnsGenericError()
+    {
+        var approval = new CapturingApprovalService(approve: true);
+        var handler = new BrowserPasskeyRequestHandler(
+            new FakeVaultService(VaultState.Unlocked, []),
+            approval);
+
+        using var payload = JsonDocument.Parse(
+            """
+            {
+              "origin": "https://github.com",
+              "rpId": "github.com",
+              "challenge": "AQIDBA",
+              "allowCredentials": []
+            }
+            """);
+
+        var response = await handler.HandleAsync(
+            new BrowserPasskeyRequest("req-nc", "passkey.get", payload.RootElement),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(response.Ok);
+        Assert.Equal("no_credential_or_cancelled", response.Error?.Code);
+        // The approval prompt must NOT have run for a missing credential.
+        Assert.Null(approval.Request);
+    }
+
+    [Fact]
+    public async Task HandleAsync_GetAssertion_PresentButDeclined_ReturnsSameGenericError()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var credential = Credential(key, WebAuthnCrypto.EncodeBase64Url([1, 2, 3, 4]));
+        var cipher = new Cipher
+        {
+            Id = "cipher-1",
+            Type = CipherType.Login,
+            Name = "GitHub",
+            Login = new CipherLogin("octo@example.com", null, null, [])
+            {
+                Fido2Credentials = [credential],
+            },
+        };
+        var handler = new BrowserPasskeyRequestHandler(
+            new FakeVaultService(VaultState.Unlocked, [cipher]),
+            new CapturingApprovalService(approve: false));
+
+        using var payload = JsonDocument.Parse(
+            """
+            {
+              "origin": "https://github.com",
+              "rpId": "github.com",
+              "challenge": "AQIDBA",
+              "allowCredentials": []
+            }
+            """);
+
+        var response = await handler.HandleAsync(
+            new BrowserPasskeyRequest("req-decl", "passkey.get", payload.RootElement),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(response.Ok);
+        // Same code as the no-credential case: error code alone reveals nothing.
+        Assert.Equal("no_credential_or_cancelled", response.Error?.Code);
     }
 
     private static CipherFido2Credential Credential(ECDsa key, string credentialId) => new(

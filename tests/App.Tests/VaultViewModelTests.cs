@@ -730,6 +730,53 @@ public class VaultViewModelTests
         Assert.False(result);
         Assert.Equal(string.Empty, vm.OperationError);
     }
+
+    [Fact]
+    public void NoResults_True_WhenSearchMatchesNothingButVaultNotEmpty()
+    {
+        var vm = NewVm();
+        vm.SearchText = "zzz-no-such-item";
+
+        Assert.Empty(vm.FilteredItems);
+        Assert.True(vm.NoResults);
+        Assert.False(vm.HasNoItems);
+    }
+
+    [Fact]
+    public void NoResults_False_WhenItemsPresent()
+    {
+        var vm = NewVm();
+
+        Assert.NotEmpty(vm.FilteredItems);
+        Assert.False(vm.NoResults);
+        Assert.False(vm.HasNoItems);
+    }
+
+    [Fact]
+    public void HasNoItems_True_WhenVaultHasNoNonDeletedItems()
+    {
+        var vm = new VaultViewModel(new EmptyVaultUiService());
+
+        Assert.True(vm.HasNoItems);
+        Assert.False(vm.NoResults);
+    }
+
+    [Fact]
+    public void HasOperationError_TrueWhenErrorSet_FalseWhenCleared()
+    {
+        var vm = NewVm();
+        var notified = new List<string?>();
+        vm.PropertyChanged += (_, e) => notified.Add(e.PropertyName);
+
+        Assert.False(vm.HasOperationError); // 初始为空 → false
+
+        vm.OperationError = "boom";
+        Assert.True(vm.HasOperationError);
+        Assert.Contains(nameof(VaultViewModel.HasOperationError), notified);
+
+        vm.OperationError = string.Empty;
+        Assert.False(vm.HasOperationError);
+    }
 }
 
 public sealed class ThrowingVaultUiService : IVaultUiService
@@ -745,4 +792,104 @@ public sealed class ThrowingVaultUiService : IVaultUiService
     public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => throw new InvalidOperationException("boom");
     public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => throw new InvalidOperationException("boom");
     public Task SyncAsync(CancellationToken ct = default) => throw new InvalidOperationException("boom");
+    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => throw new InvalidOperationException("boom");
+}
+
+public sealed class EmptyVaultUiService : IVaultUiService
+{
+    private readonly MockVaultUiService _inner = new();
+    public IReadOnlyList<CipherListItem> GetItems() => Array.Empty<CipherListItem>();
+    public CipherDetail GetDetail(string id) => _inner.GetDetail(id);
+    public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
+    public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
+    public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => Task.FromResult("x");
+    public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => Task.CompletedTask;
+    public Task RestoreCipherAsync(string id, CancellationToken ct = default) => Task.CompletedTask;
+    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => Task.CompletedTask;
+    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => Task.CompletedTask;
+    public Task SyncAsync(CancellationToken ct = default) => Task.CompletedTask;
+    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => Task.CompletedTask;
+}
+
+public class VaultSelectionTests
+{
+    [Fact]
+    public void ToggleSelectionMode_TogglesAndClearsSelectionOnExit()
+    {
+        var vm = new VaultViewModel(new MockVaultUiService());
+        Assert.False(vm.IsSelectionMode);
+
+        vm.ToggleSelectionModeCommand.Execute(null);
+        Assert.True(vm.IsSelectionMode);
+
+        vm.ToggleSelection("1");
+        Assert.Equal(1, vm.SelectedCount);
+
+        vm.ToggleSelectionModeCommand.Execute(null);
+        Assert.False(vm.IsSelectionMode);
+        Assert.Equal(0, vm.SelectedCount);
+    }
+
+    [Fact]
+    public void SelectAll_SelectsAllVisibleItems()
+    {
+        var vm = new VaultViewModel(new MockVaultUiService());
+        vm.ToggleSelectionModeCommand.Execute(null);
+
+        vm.SelectAllCommand.Execute(null);
+
+        Assert.Equal(vm.FilteredItems.Count, vm.SelectedCount);
+    }
+
+    [Fact]
+    public async Task MoveSelectedToFolder_MovesAndExitsSelectionMode()
+    {
+        var vm = new VaultViewModel(new MockVaultUiService());
+        vm.ToggleSelectionModeCommand.Execute(null);
+        vm.ToggleSelection("2"); // 招商银行, no folder
+
+        await vm.MoveSelectedToFolderAsync("f1");
+
+        Assert.False(vm.IsSelectionMode);
+        Assert.Equal(0, vm.SelectedCount);
+        Assert.Contains(vm.Items, i => i.Id == "2" && i.FolderId == "f1");
+    }
+
+    [Fact]
+    public void AddCustomFieldCommand_AppendsNamedField()
+    {
+        var vm = new VaultViewModel(new MockVaultUiService());
+        vm.BeginAdd(VaultItemKind.Login);
+
+        vm.AddCustomFieldCommand.Execute(null);
+        vm.AddCustomFieldCommand.Execute(null);
+
+        Assert.Equal(2, vm.EditorDraft!.CustomFields.Count);
+        Assert.Equal("字段 1", vm.EditorDraft.CustomFields[0].Name);
+        Assert.Equal("字段 2", vm.EditorDraft.CustomFields[1].Name);
+    }
+
+    [Fact]
+    public void RemoveCustomFieldCommand_RemovesGivenField()
+    {
+        var vm = new VaultViewModel(new MockVaultUiService());
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.AddCustomFieldCommand.Execute(null);
+        var field = vm.EditorDraft!.CustomFields[0];
+
+        vm.RemoveCustomFieldCommand.Execute(field);
+
+        Assert.Empty(vm.EditorDraft.CustomFields);
+    }
+
+    [Fact]
+    public void AddRemoveCustomField_NoDraft_DoesNotThrow()
+    {
+        var vm = new VaultViewModel(new MockVaultUiService());
+
+        vm.AddCustomFieldCommand.Execute(null);
+        vm.RemoveCustomFieldCommand.Execute(new CustomFieldEditorDraft());
+
+        Assert.Null(vm.EditorDraft);
+    }
 }

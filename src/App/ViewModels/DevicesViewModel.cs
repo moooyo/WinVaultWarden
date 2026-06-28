@@ -10,6 +10,15 @@ public partial class DevicesViewModel : ObservableObject
 {
     public ObservableCollection<DeviceItem> Devices { get; } = new();
 
+    [ObservableProperty] private bool _isBusy;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    private string? _error;
+
+    public bool HasError => !string.IsNullOrEmpty(Error);
+    public bool HasNoDevices => Devices.Count == 0;
+
     public DevicesViewModel(IDeviceUiService service)
     {
         foreach (var d in service.GetDevices()) Devices.Add(d);
@@ -19,6 +28,7 @@ public partial class DevicesViewModel : ObservableObject
     [RelayCommand]
     private void Revoke(DeviceItem? device)
     {
-        if (device is { IsCurrent: false }) Devices.Remove(device);
+        if (device is { IsCurrent: false } && Devices.Remove(device))
+            OnPropertyChanged(nameof(HasNoDevices));
     }
 }
