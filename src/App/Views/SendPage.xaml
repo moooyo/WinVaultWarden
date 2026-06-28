@@ -119,6 +119,7 @@
                         </Grid>
                         <TextBlock Grid.Column="1"
                                    Text="{x:Bind DeleteDate}"
+                                   AutomationProperties.Name="{x:Bind DeleteDateAccessibleLabel}"
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"
                                    MaxLines="1"
