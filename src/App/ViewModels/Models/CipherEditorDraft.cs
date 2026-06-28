@@ -95,12 +95,7 @@ public sealed partial class LoginEditorDraft : ObservableObject
 
     public string PrimaryUri
     {
-        get
-        {
-            if (Uris.Count == 0)
-                Uris.Add(new LoginUriEditorDraft());
-            return Uris[0].Uri;
-        }
+        get => Uris.Count > 0 ? Uris[0].Uri : string.Empty;
         set
         {
             if (Uris.Count == 0)

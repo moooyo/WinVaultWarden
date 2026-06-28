@@ -177,12 +177,12 @@ public class CipherEditorDraftTests
     }
 
     [Fact]
-    public void PrimaryUri_Get_WhenUrisEmpty_SeedsAndReturnsEmpty()
+    public void PrimaryUri_Get_WhenUrisEmpty_ReturnsEmpty_WithoutMutating()
     {
         var login = new LoginEditorDraft();
         login.Uris.Clear();
 
         Assert.Equal(string.Empty, login.PrimaryUri);
-        Assert.Single(login.Uris);
+        Assert.Empty(login.Uris);
     }
 }
