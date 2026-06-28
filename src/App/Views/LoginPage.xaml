@@ -55,24 +55,22 @@
                 </Grid>
 
                 <TextBlock Text="{x:Bind ViewModel.FormTitle, Mode=OneWay}"
-                           Margin="0,18,0,0"
-                           FontSize="28"
-                           FontWeight="SemiBold"
+                           Margin="0,16,0,0"
+                           Style="{ThemeResource TitleTextBlockStyle}"
                            HorizontalAlignment="Center"
                            TextAlignment="Center" />
 
                 <TextBlock Text="{x:Bind ViewModel.FormSubtitle, Mode=OneWay}"
                            Margin="0,4,0,0"
-                           FontSize="13"
+                           FontSize="14"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            HorizontalAlignment="Center"
                            TextAlignment="Center"
                            TextWrapping="Wrap" />
 
                 <TextBlock Text="{x:Bind ViewModel.StepText, Mode=OneWay}"
-                           Margin="0,18,0,0"
-                           FontSize="12"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Margin="0,16,0,0"
+                           Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                            HorizontalAlignment="Center" />
 
                 <InfoBar x:Name="LoginStatusInfoBar"
@@ -139,8 +137,7 @@
                                            FontWeight="SemiBold"
                                            TextTrimming="CharacterEllipsis" />
                                 <TextBlock Text="{x:Bind ViewModel.ServerSummary, Mode=OneWay}"
-                                           FontSize="12"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                                            TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </Grid>
@@ -191,8 +188,7 @@
                                            FontWeight="SemiBold"
                                            TextTrimming="CharacterEllipsis" />
                                 <TextBlock Text="{x:Bind ViewModel.ServerSummary, Mode=OneWay}"
-                                           FontSize="12"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                                            TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </Grid>
