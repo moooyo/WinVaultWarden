@@ -58,7 +58,7 @@ public sealed partial class VaultPage : Page
 
     private void OnRemoveCustomFieldClick(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is App.ViewModels.Models.CustomFieldEditorDraft field)
+        if ((sender as FrameworkElement)?.DataContext is CustomFieldEditorDraft field)
             ViewModel.RemoveCustomFieldCommand.Execute(field);
     }
 
