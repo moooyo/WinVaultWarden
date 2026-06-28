@@ -10,6 +10,7 @@ public partial class VaultViewModel : ObservableObject
 {
     private readonly IVaultUiService _service;
     private readonly IClipboardService? _clipboard;
+    private readonly IAttachmentUiService? _attachments;
     private string? _editingId;
     private readonly HashSet<string> _selectedIds = new(StringComparer.Ordinal);
 
@@ -80,10 +81,11 @@ public partial class VaultViewModel : ObservableObject
         _ => string.Empty,
     };
 
-    public VaultViewModel(IVaultUiService service, IClipboardService? clipboard = null)
+    public VaultViewModel(IVaultUiService service, IClipboardService? clipboard = null, IAttachmentUiService? attachments = null)
     {
         _service = service;
         _clipboard = clipboard;
+        _attachments = attachments;
         foreach (var it in service.GetItems()) Items.Add(it);
         foreach (var f in service.GetFilters()) Filters.Add(f);
         SelectedFilter = Filters.FirstOrDefault();
@@ -524,4 +526,124 @@ public partial class VaultViewModel : ObservableObject
             draft.Favorite = !draft.Favorite;
             await _service.SaveCipherAsync(draft, id);
         }, selectId: id);
+
+    public async Task AddAttachmentAsync(string cipherId, byte[] fileBytes, string fileName, CancellationToken ct = default)
+    {
+        if (_attachments is null || IsBusy)
+            return;
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            var attachments = await _attachments.AddAttachmentAsync(cipherId, fileBytes, fileName, ct);
+            RefreshDetailAttachments(cipherId, attachments);
+        }
+        catch (Exception ex)
+        {
+            OperationError = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task<byte[]?> DownloadAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default)
+    {
+        if (_attachments is null || IsBusy)
+            return null;
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            return await _attachments.DownloadAttachmentAsync(cipherId, attachmentId, ct);
+        }
+        catch (Exception ex)
+        {
+            OperationError = ex.Message;
+            return null;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task DeleteAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default)
+    {
+        if (_attachments is null || IsBusy)
+            return;
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            var attachments = await _attachments.DeleteAttachmentAsync(cipherId, attachmentId, ct);
+            RefreshDetailAttachments(cipherId, attachments);
+        }
+        catch (Exception ex)
+        {
+            OperationError = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    // 当前选中详情就是被改动的条目时,用最新附件列表重投影 Detail。
+    // CipherDetail.Attachments 是 init-only,故用 _service.GetDetail 重建详情(re-sync 后快照已含新附件),
+    // 再以服务刚返回的 attachments 覆盖,避免快照/服务返回不一致时显示陈旧数据。
+    private void RefreshDetailAttachments(string cipherId, IReadOnlyList<AttachmentItem> attachments)
+    {
+        if (Detail is null || Detail.Id != cipherId)
+            return;
+
+        Detail = _service.GetDetail(cipherId) is { } refreshed && refreshed.Id == cipherId
+            ? CloneDetailWithAttachments(refreshed, attachments)
+            : Detail;
+    }
+
+    private static CipherDetail CloneDetailWithAttachments(CipherDetail detail, IReadOnlyList<AttachmentItem> attachments) => detail switch
+    {
+        LoginDetail l => new LoginDetail
+        {
+            Id = l.Id, Name = l.Name, FolderName = l.FolderName, Notes = l.Notes, CustomFields = l.CustomFields,
+            Created = l.Created, Edited = l.Edited, IsDeleted = l.IsDeleted, Favorite = l.Favorite, Reprompt = l.Reprompt,
+            Username = l.Username, Password = l.Password, TotpSecret = l.TotpSecret, Uri = l.Uri, Passkeys = l.Passkeys,
+            Attachments = attachments,
+        },
+        CardDetail c => new CardDetail
+        {
+            Id = c.Id, Name = c.Name, FolderName = c.FolderName, Notes = c.Notes, CustomFields = c.CustomFields,
+            Created = c.Created, Edited = c.Edited, IsDeleted = c.IsDeleted, Favorite = c.Favorite, Reprompt = c.Reprompt,
+            Cardholder = c.Cardholder, Number = c.Number, Expiry = c.Expiry, Brand = c.Brand, Cvv = c.Cvv,
+            Attachments = attachments,
+        },
+        IdentityDetail i => new IdentityDetail
+        {
+            Id = i.Id, Name = i.Name, FolderName = i.FolderName, Notes = i.Notes, CustomFields = i.CustomFields,
+            Created = i.Created, Edited = i.Edited, IsDeleted = i.IsDeleted, Favorite = i.Favorite, Reprompt = i.Reprompt,
+            FullName = i.FullName, Username = i.Username, Company = i.Company, Email = i.Email, Phone = i.Phone,
+            IdNumber = i.IdNumber, Address = i.Address,
+            Attachments = attachments,
+        },
+        NoteDetail n => new NoteDetail
+        {
+            Id = n.Id, Name = n.Name, FolderName = n.FolderName, Notes = n.Notes, CustomFields = n.CustomFields,
+            Created = n.Created, Edited = n.Edited, IsDeleted = n.IsDeleted, Favorite = n.Favorite, Reprompt = n.Reprompt,
+            Content = n.Content,
+            Attachments = attachments,
+        },
+        SshDetail s => new SshDetail
+        {
+            Id = s.Id, Name = s.Name, FolderName = s.FolderName, Notes = s.Notes, CustomFields = s.CustomFields,
+            Created = s.Created, Edited = s.Edited, IsDeleted = s.IsDeleted, Favorite = s.Favorite, Reprompt = s.Reprompt,
+            PublicKey = s.PublicKey, PrivateKey = s.PrivateKey, Fingerprint = s.Fingerprint,
+            Attachments = attachments,
+        },
+        _ => detail,
+    };
 }
