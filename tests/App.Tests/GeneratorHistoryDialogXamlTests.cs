@@ -15,6 +15,16 @@ public class GeneratorHistoryDialogXamlTests
         Assert.Equal("OnPrimaryButtonClick", root.Attribute("PrimaryButtonClick")?.Value);
     }
 
+    [Fact]
+    public void ValueText_UsesMonospaceResource_NoInlineConsolas()
+    {
+        var doc = LoadXaml();
+        Assert.DoesNotContain(doc.Descendants(),
+            e => e.Attribute("FontFamily")?.Value == "Consolas");
+        Assert.Contains(doc.Descendants(),
+            e => e.Attribute("FontFamily")?.Value == "{StaticResource MonospaceFontFamily}");
+    }
+
     private static XDocument LoadXaml()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
