@@ -38,6 +38,7 @@ public static class ServiceConfiguration
         services.AddSingleton<IAttachmentApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<IAccountApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<ITwoFactorApiClient>(sp => sp.GetRequiredService<ApiClient>());
+        services.AddSingleton<IAuthRequestApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<CipherEncryptor>();
         services.AddSingleton<IVaultWriteService, Vault.VaultWriteService>();
         services.AddSingleton<VaultDecryptor>();
@@ -57,8 +58,11 @@ public static class ServiceConfiguration
         services.AddSingleton<IAttachmentService, Vault.AttachmentService>();
         services.AddSingleton<IAccountService, Vault.AccountService>();
         services.AddSingleton<ITwoFactorService, Vault.TwoFactorService>();
+        services.AddSingleton<IAuthRequestService, Vault.AuthRequestService>();
         services.AddSingleton<ITwoFactorUiService>(sp =>
             new TwoFactorUiService(sp.GetRequiredService<ITwoFactorService>()));
+        services.AddSingleton<IAuthRequestUiService>(sp =>
+            new AuthRequestUiService(sp.GetRequiredService<IAuthRequestService>()));
         services.AddSingleton<IPasskeyApprovalService, PasskeyApprovalDialogService>();
         services.AddSingleton<BrowserPasskeyRequestHandler>();
         services.AddSingleton<PasskeyBridgeServer>();
@@ -89,7 +93,10 @@ public static class ServiceConfiguration
             new SettingsViewModel(
                 sp.GetRequiredService<IAccountUiService>(),
                 sp.GetRequiredService<ITwoFactorUiService>()));
-        services.AddTransient<DevicesViewModel>();
+        services.AddTransient<DevicesViewModel>(sp =>
+            new DevicesViewModel(
+                sp.GetRequiredService<IDeviceUiService>(),
+                sp.GetRequiredService<IAuthRequestUiService>()));
 
         return services.BuildServiceProvider();
     }
