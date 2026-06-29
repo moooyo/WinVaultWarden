@@ -36,6 +36,7 @@ public static class ServiceConfiguration
         services.AddSingleton<IVaultWriteApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<ISendApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<IAttachmentApiClient>(sp => sp.GetRequiredService<ApiClient>());
+        services.AddSingleton<IAccountApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<CipherEncryptor>();
         services.AddSingleton<IVaultWriteService, Vault.VaultWriteService>();
         services.AddSingleton<VaultDecryptor>();
@@ -53,6 +54,7 @@ public static class ServiceConfiguration
         services.AddSingleton<ISendWriteService, Vault.SendWriteService>();
         services.AddSingleton<ISendAccessService, Vault.SendAccessService>();
         services.AddSingleton<IAttachmentService, Vault.AttachmentService>();
+        services.AddSingleton<IAccountService, Vault.AccountService>();
         services.AddSingleton<IPasskeyApprovalService, PasskeyApprovalDialogService>();
         services.AddSingleton<BrowserPasskeyRequestHandler>();
         services.AddSingleton<PasskeyBridgeServer>();
