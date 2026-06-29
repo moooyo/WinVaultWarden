@@ -67,6 +67,82 @@ public sealed class VaultSession : IVaultSnapshot
         }
     }
 
+    public void UpsertCipher(Cipher c)
+    {
+        lock (_gate)
+        {
+            var list = new List<Cipher>(_ciphers.Count + 1);
+            var replaced = false;
+            foreach (var existing in _ciphers)
+            {
+                if (existing.Id == c.Id)
+                {
+                    list.Add(c);
+                    replaced = true;
+                }
+                else
+                {
+                    list.Add(existing);
+                }
+            }
+            if (!replaced)
+                list.Add(c);
+            _ciphers = list;
+        }
+    }
+
+    public void RemoveCipher(string id)
+    {
+        lock (_gate)
+        {
+            var list = new List<Cipher>(_ciphers.Count);
+            foreach (var existing in _ciphers)
+            {
+                if (existing.Id != id)
+                    list.Add(existing);
+            }
+            _ciphers = list;
+        }
+    }
+
+    public void UpsertFolder(Folder f)
+    {
+        lock (_gate)
+        {
+            var list = new List<Folder>(_folders.Count + 1);
+            var replaced = false;
+            foreach (var existing in _folders)
+            {
+                if (existing.Id == f.Id)
+                {
+                    list.Add(f);
+                    replaced = true;
+                }
+                else
+                {
+                    list.Add(existing);
+                }
+            }
+            if (!replaced)
+                list.Add(f);
+            _folders = list;
+        }
+    }
+
+    public void RemoveFolder(string id)
+    {
+        lock (_gate)
+        {
+            var list = new List<Folder>(_folders.Count);
+            foreach (var existing in _folders)
+            {
+                if (existing.Id != id)
+                    list.Add(existing);
+            }
+            _folders = list;
+        }
+    }
+
     public void SetDevices(IReadOnlyList<DeviceInfo> devices)
     {
         lock (_gate)

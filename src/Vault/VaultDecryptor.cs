@@ -42,14 +42,14 @@ public sealed class VaultDecryptor
         return new DecryptedVault(account, folders, ciphers, skipped);
     }
 
-    private Folder DecryptFolder(FolderDto folder, SymmetricCryptoKey userKey) => new()
+    public Folder DecryptFolder(FolderDto folder, SymmetricCryptoKey userKey) => new()
     {
         Id = folder.Id,
         Name = Dec(folder.Name, userKey) ?? string.Empty,
         RevisionDate = folder.RevisionDate ?? DateTimeOffset.MinValue,
     };
 
-    private Cipher DecryptCipher(CipherDto dto, SymmetricCryptoKey userKey)
+    public Cipher DecryptCipher(CipherDto dto, SymmetricCryptoKey userKey)
     {
         var key = ResolveItemKey(dto, userKey);
         var type = (CipherType)dto.Type;
