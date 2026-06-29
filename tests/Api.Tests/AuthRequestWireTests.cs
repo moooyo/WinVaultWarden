@@ -74,7 +74,7 @@ public class AuthRequestWireTests
         var resp = new AuthRequestResponse(
             "id-001",
             "pub-key",
-            1,
+            "Windows",
             "192.168.1.1",
             "enc-key",
             "hash-abc",
@@ -83,7 +83,7 @@ public class AuthRequestWireTests
             true,
             "https://app.bitwarden.com");
         var json = JsonSerializer.Serialize(resp, Web);
-        Assert.Contains("\"requestDeviceType\":1", json);
+        Assert.Contains("\"requestDeviceType\":\"Windows\"", json);
         Assert.Contains("\"requestIpAddress\":\"192.168.1.1\"", json);
         Assert.Contains("\"requestApproved\":true", json);
         Assert.Contains("\"creationDate\":\"2025-01-01T00:00:00Z\"", json);
@@ -95,7 +95,7 @@ public class AuthRequestWireTests
         var resp = new AuthRequestResponse(
             "id-001",
             "pub-key",
-            0,
+            "Unknown",
             "10.0.0.1",
             null,
             null,
@@ -111,6 +111,25 @@ public class AuthRequestWireTests
         Assert.Contains("\"origin\":null", json);
     }
 
+    [Fact]
+    public void AuthRequestResponse_context_matches_reflection()
+    {
+        var resp = new AuthRequestResponse(
+            "id-001",
+            "pub-key",
+            "Windows",
+            "192.168.1.1",
+            "enc-key",
+            "hash-abc",
+            "2025-01-01T00:00:00Z",
+            "2025-01-01T00:01:00Z",
+            true,
+            "https://app.bitwarden.com");
+        Assert.Equal(
+            JsonSerializer.Serialize(resp, Web),
+            JsonSerializer.Serialize(resp, ApiJsonContext.Default.AuthRequestResponse));
+    }
+
     // ── AuthRequestListResponse ─────────────────────────────────────────────
 
     [Fact]
@@ -121,7 +140,7 @@ public class AuthRequestWireTests
             new AuthRequestResponse(
                 "id-001",
                 "pk1",
-                1,
+                "Windows",
                 "127.0.0.1",
                 null,
                 null,
@@ -143,7 +162,7 @@ public class AuthRequestWireTests
             new AuthRequestResponse(
                 "id-001",
                 "pk1",
-                0,
+                "Unknown",
                 "127.0.0.1",
                 null,
                 null,

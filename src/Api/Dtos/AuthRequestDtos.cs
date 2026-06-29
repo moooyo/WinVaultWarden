@@ -11,7 +11,7 @@ namespace Api.Dtos;
 public sealed record AuthRequestResponse(
     [property: JsonPropertyName("id")]                  string Id,
     [property: JsonPropertyName("publicKey")]           string PublicKey,
-    [property: JsonPropertyName("requestDeviceType")]   int RequestDeviceType,
+    [property: JsonPropertyName("requestDeviceType")]   string RequestDeviceType,
     [property: JsonPropertyName("requestIpAddress")]    string RequestIpAddress,
     [property: JsonPropertyName("key")]                 string? Key,
     [property: JsonPropertyName("masterPasswordHash")]  string? MasterPasswordHash,
