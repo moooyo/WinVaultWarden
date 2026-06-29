@@ -2,16 +2,39 @@ using App.Services;
 using App.ViewModels;
 using Core.Models;
 using Core.Services;
+using Core.Session;
 using Xunit;
 
 namespace App.Tests;
 
 /// <summary>
 /// TDD: SettingsViewModel 的账户操作命令测试（Task 6）。
-/// 验证范围：confirm 校验 → 错误，成功时清空错误，命令委托到 IAccountUiService。
+/// 验证范围：confirm 校验 → 错误，成功时清空错误，命令委托到 IAccountService。
+/// 链：VM → AccountUiService（真实）→ FakeAccountService
 /// </summary>
 public class SettingsViewModelTests
 {
+    // -----------------------------------------------------------------------
+    // FakeVaultSnapshot / FakeVaultService
+    // -----------------------------------------------------------------------
+    private sealed class FakeVaultSnapshot : IVaultSnapshot
+    {
+        public VaultState State => VaultState.Unlocked;
+        public IReadOnlyList<Cipher> Ciphers => [];
+        public IReadOnlyList<Folder> Folders => [];
+        public IReadOnlyList<DeviceInfo> Devices => [];
+        public AccountInfo Account { get; } =
+            new("test@example.com", "https://vault.example.com", "T", "PBKDF2 · 600000");
+    }
+
+    private sealed class FakeVaultService : IVaultService
+    {
+        public IVaultSnapshot Snapshot { get; } = new FakeVaultSnapshot();
+        public IReadOnlyList<Cipher> GetCiphers() => [];
+        public IReadOnlyList<Folder> GetFolders() => [];
+        public IReadOnlyList<DeviceInfo> GetDevices() => [];
+    }
+
     // -----------------------------------------------------------------------
     // FakeAccountService：记录调用并可控抛出
     // -----------------------------------------------------------------------
@@ -23,6 +46,7 @@ public class SettingsViewModelTests
         public bool ThrowOnRename { get; set; }
         public bool ThrowOnChangePassword { get; set; }
         public bool ThrowOnChangeKdf { get; set; }
+        public bool ThrowCancelOnChangePassword { get; set; }
 
         public Task UpdateNameAsync(string name, CancellationToken ct = default)
         {
@@ -34,6 +58,8 @@ public class SettingsViewModelTests
 
         public Task ChangePasswordAsync(string currentPassword, string newPassword, string? hint, CancellationToken ct = default)
         {
+            if (ThrowCancelOnChangePassword)
+                throw new OperationCanceledException("user cancelled");
             if (ThrowOnChangePassword)
                 throw new AccountOperationException("change password failed");
             LastChangePassword = (currentPassword, newPassword, hint);
@@ -50,33 +76,7 @@ public class SettingsViewModelTests
     }
 
     // -----------------------------------------------------------------------
-    // FakeAccountUiService：包装 FakeAccountService，满足 IAccountUiService
-    // -----------------------------------------------------------------------
-    private sealed class FakeAccountUiService : IAccountUiService
-    {
-        private readonly FakeAccountService _inner;
-
-        public FakeAccountUiService(FakeAccountService inner) => _inner = inner;
-
-        public AccountInfo GetAccount() => new("test@example.com", "https://vault.example.com", "T", "PBKDF2 · 600000");
-
-        public Task RenameAsync(string name, CancellationToken ct = default) => _inner.UpdateNameAsync(name, ct);
-
-        public Task ChangePasswordAsync(string current, string next, string confirm, string? hint, CancellationToken ct = default)
-        {
-            if (string.IsNullOrEmpty(next))
-                throw new AccountOperationException("新密码不能为空");
-            if (next != confirm)
-                throw new AccountOperationException("两次输入的新密码不一致");
-            return _inner.ChangePasswordAsync(current, next, hint, ct);
-        }
-
-        public Task ChangeIterationsAsync(string current, int iterations, CancellationToken ct = default) =>
-            _inner.ChangeKdfAsync(current, iterations, ct);
-    }
-
-    // -----------------------------------------------------------------------
-    // 辅助工厂
+    // 辅助工厂：VM → AccountUiService（真实）→ FakeAccountService
     // -----------------------------------------------------------------------
     private static (SettingsViewModel vm, FakeAccountService svc) Build(
         bool throwOnRename = false,
@@ -89,7 +89,8 @@ public class SettingsViewModelTests
             ThrowOnChangePassword = throwOnChangePwd,
             ThrowOnChangeKdf = throwOnChangeKdf,
         };
-        var ui = new FakeAccountUiService(svc);
+        var vault = new FakeVaultService();
+        var ui = new AccountUiService(vault, svc);
         return (new SettingsViewModel(ui), svc);
     }
 
@@ -115,6 +116,7 @@ public class SettingsViewModelTests
 
     // -----------------------------------------------------------------------
     // ChangePassword: confirm 与 new 不匹配时写 OperationError
+    // （校验由真实 AccountUiService 执行）
     // -----------------------------------------------------------------------
     [Fact]
     public async Task ChangePassword_ConfirmMismatch_SetsOperationError()
@@ -129,6 +131,7 @@ public class SettingsViewModelTests
 
     // -----------------------------------------------------------------------
     // ChangePassword: new 为空时写 OperationError
+    // （校验由真实 AccountUiService 执行）
     // -----------------------------------------------------------------------
     [Fact]
     public async Task ChangePassword_EmptyNewPassword_SetsOperationError()
@@ -142,7 +145,7 @@ public class SettingsViewModelTests
     }
 
     // -----------------------------------------------------------------------
-    // ChangePassword: 成功时清空 OperationError
+    // ChangePassword: 成功时清空 OperationError，委托到 FakeAccountService
     // -----------------------------------------------------------------------
     [Fact]
     public async Task ChangePassword_Success_ClearsOperationError()
@@ -174,7 +177,7 @@ public class SettingsViewModelTests
     }
 
     // -----------------------------------------------------------------------
-    // Rename: 成功时清空 OperationError，委托到服务
+    // Rename: 成功时清空 OperationError，委托到 FakeAccountService
     // -----------------------------------------------------------------------
     [Fact]
     public async Task Rename_Success_ClearsOperationErrorAndDelegatesToService()
@@ -204,7 +207,7 @@ public class SettingsViewModelTests
     }
 
     // -----------------------------------------------------------------------
-    // ChangeIterations: 成功时清空 OperationError，委托到服务
+    // ChangeIterations: 成功时清空 OperationError，委托到 FakeAccountService
     // -----------------------------------------------------------------------
     [Fact]
     public async Task ChangeIterations_Success_ClearsOperationErrorAndDelegatesToService()
@@ -231,6 +234,56 @@ public class SettingsViewModelTests
         await vm.ChangeIterationsAsync("current", 600000);
 
         Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+    }
+
+    // -----------------------------------------------------------------------
+    // _accountUi 为 null 时各路径应设 OperationError（而非静默返回）
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task ChangePassword_NullAccountUi_SetsOperationError()
+    {
+        var vm = new SettingsViewModel(); // 无参构造，_accountUi == null
+
+        await vm.ChangePasswordAsync("current", "newPwd", "newPwd", null);
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+    }
+
+    [Fact]
+    public async Task Rename_NullAccountUi_SetsOperationError()
+    {
+        var vm = new SettingsViewModel();
+
+        await vm.RenameAsync("Alice");
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+    }
+
+    [Fact]
+    public async Task ChangeIterations_NullAccountUi_SetsOperationError()
+    {
+        var vm = new SettingsViewModel();
+
+        await vm.ChangeIterationsAsync("current", 600000);
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+    }
+
+    // -----------------------------------------------------------------------
+    // OperationCanceledException 不应设 OperationError
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task ChangePassword_Cancelled_DoesNotSetOperationError()
+    {
+        var svc = new FakeAccountService { ThrowCancelOnChangePassword = true };
+        var vault = new FakeVaultService();
+        var ui = new AccountUiService(vault, svc);
+        var vm = new SettingsViewModel(ui);
+
+        await vm.ChangePasswordAsync("current", "newPwd", "newPwd", null);
+
+        Assert.Equal(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
     }
 }

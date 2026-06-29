@@ -1,6 +1,7 @@
+using App.Services;
+using Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using App.Services;
 
 namespace App.ViewModels;
 
@@ -91,7 +92,12 @@ public partial class SettingsViewModel : ObservableObject
 
     public async Task ChangePasswordAsync(string current, string next, string confirm, string? hint, CancellationToken ct = default)
     {
-        if (_accountUi is null || IsBusy)
+        if (_accountUi is null)
+        {
+            OperationError = "账户服务不可用";
+            return;
+        }
+        if (IsBusy)
             return;
 
         IsBusy = true;
@@ -100,9 +106,17 @@ public partial class SettingsViewModel : ObservableObject
         {
             await _accountUi.ChangePasswordAsync(current, next, confirm, hint, ct);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
+        {
+            // 用户取消，不设错误
+        }
+        catch (AccountOperationException ex)
         {
             OperationError = ex.Message;
+        }
+        catch
+        {
+            OperationError = "操作失败，请稍后重试";
         }
         finally
         {
@@ -112,7 +126,12 @@ public partial class SettingsViewModel : ObservableObject
 
     public async Task RenameAsync(string name, CancellationToken ct = default)
     {
-        if (_accountUi is null || IsBusy)
+        if (_accountUi is null)
+        {
+            OperationError = "账户服务不可用";
+            return;
+        }
+        if (IsBusy)
             return;
 
         IsBusy = true;
@@ -121,9 +140,17 @@ public partial class SettingsViewModel : ObservableObject
         {
             await _accountUi.RenameAsync(name, ct);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
+        {
+            // 用户取消，不设错误
+        }
+        catch (AccountOperationException ex)
         {
             OperationError = ex.Message;
+        }
+        catch
+        {
+            OperationError = "操作失败，请稍后重试";
         }
         finally
         {
@@ -133,7 +160,12 @@ public partial class SettingsViewModel : ObservableObject
 
     public async Task ChangeIterationsAsync(string current, int iterations, CancellationToken ct = default)
     {
-        if (_accountUi is null || IsBusy)
+        if (_accountUi is null)
+        {
+            OperationError = "账户服务不可用";
+            return;
+        }
+        if (IsBusy)
             return;
 
         IsBusy = true;
@@ -142,9 +174,17 @@ public partial class SettingsViewModel : ObservableObject
         {
             await _accountUi.ChangeIterationsAsync(current, iterations, ct);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
+        {
+            // 用户取消，不设错误
+        }
+        catch (AccountOperationException ex)
         {
             OperationError = ex.Message;
+        }
+        catch
+        {
+            OperationError = "操作失败，请稍后重试";
         }
         finally
         {
@@ -152,16 +192,10 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    // RelayCommand 包装（供 XAML 绑定；参数通过 CommandParameter 或 code-behind 传递）
-    [RelayCommand]
-    private async Task ChangePassword((string Current, string Next, string Confirm, string? Hint) args) =>
-        await ChangePasswordAsync(args.Current, args.Next, args.Confirm, args.Hint);
-
+    // RenameCommand 供 XAML 绑定（string 参数可正常传递）
+    // ChangePassword/ChangeIterations 的 tuple 版本不能被 XAML CommandParameter 绑定，
+    // 由 code-behind 直接 await 公开的 async 方法即可。
     [RelayCommand]
     private async Task Rename(string name) =>
         await RenameAsync(name);
-
-    [RelayCommand]
-    private async Task ChangeIterations((string Current, int Iterations) args) =>
-        await ChangeIterationsAsync(args.Current, args.Iterations);
 }
