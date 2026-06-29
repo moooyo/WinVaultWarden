@@ -7,7 +7,7 @@ namespace App.Services;
 /// 通过外部注入的 Action 回调将事件桥接到 UI 线程（DispatcherQueue 由 App.xaml.cs 侧封装后传入）。
 /// 保持纯 C# 可测试——不直接引用 DispatcherQueue 或任何 WinUI 类型。
 /// </summary>
-public sealed class NotificationsHost
+public sealed class NotificationsHost : IAsyncDisposable
 {
     private readonly INotificationsService _service;
 
@@ -25,10 +25,10 @@ public sealed class NotificationsHost
     {
         _service = service;
 
-        _service.VaultChanged        += () => onVaultChanged();
-        _service.SendsChanged        += () => onSendsChanged();
-        _service.AuthRequestsChanged += () => onAuthRequestsChanged();
-        _service.LoggedOut           += () => onLoggedOut();
+        _service.VaultChanged        += () => { try { onVaultChanged(); }        catch { } };
+        _service.SendsChanged        += () => { try { onSendsChanged(); }        catch { } };
+        _service.AuthRequestsChanged += () => { try { onAuthRequestsChanged(); } catch { } };
+        _service.LoggedOut           += () => { try { onLoggedOut(); }           catch { } };
     }
 
     /// <summary>启动 WebSocket 推送连接（最佳努力，异常不冒泡）。</summary>
@@ -56,4 +56,7 @@ public sealed class NotificationsHost
             // 同上
         }
     }
+
+    /// <inheritdoc/>
+    public async ValueTask DisposeAsync() => await StopAsync();
 }

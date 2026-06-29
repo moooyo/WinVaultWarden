@@ -237,8 +237,8 @@ public sealed partial class MainWindow : Window
                 ContentFrame.Navigate(typeof(DevicesPage));
                 break;
             case "lock":
+                await global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
                 await global::App.App.Services.GetRequiredService<IAuthService>().LockAsync();
-                _ = global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
                 ShowLogin();
                 break;
             case "logout":

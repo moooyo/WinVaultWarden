@@ -165,6 +165,34 @@ public class NotificationsHostTests
         await host.StopAsync();
     }
 
+    [Fact]
+    public async Task DisposeAsync_CallsStopAsync()
+    {
+        var (host, svc, _) = Build();
+
+        await host.DisposeAsync();
+
+        Assert.True(svc.StopCalled);
+    }
+
+    // ── 抛异常的回调不应逃逸 ──────────────────────────────────────────────────
+
+    [Fact]
+    public void ThrowingOnVaultChanged_DoesNotPropagateOutOfEventRaise()
+    {
+        var svc = new FakeNotificationsService();
+        var host = new NotificationsHost(
+            svc,
+            onVaultChanged:        () => throw new InvalidOperationException("boom"),
+            onSendsChanged:        () => { },
+            onAuthRequestsChanged: () => { },
+            onLoggedOut:           () => { });
+
+        // 不应抛出
+        var ex = Record.Exception(() => svc.RaiseVaultChanged());
+        Assert.Null(ex);
+    }
+
     // ── 抛异常的假服务 ────────────────────────────────────────────────────────
 
     private sealed class ThrowingNotificationsService : INotificationsService

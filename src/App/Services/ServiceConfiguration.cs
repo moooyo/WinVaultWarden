@@ -118,11 +118,11 @@ public static class ServiceConfiguration
         {
             var svc = sp.GetRequiredService<INotificationsService>();
 
-            void Dispatch(Action action)
+            void Dispatch(Microsoft.UI.Dispatching.DispatcherQueueHandler handler)
             {
                 var dq = global::App.App.MainWindow?.DispatcherQueue;
                 if (dq is not null)
-                    dq.TryEnqueue(new Microsoft.UI.Dispatching.DispatcherQueueHandler(action));
+                    dq.TryEnqueue(handler);
             }
 
             return new NotificationsHost(
@@ -133,14 +133,10 @@ public static class ServiceConfiguration
                     global::App.App.MainWindow?.RefreshSendList()),
                 onAuthRequestsChanged: () => Dispatch(() =>
                     global::App.App.MainWindow?.RefreshRequestsList()),
-                onLoggedOut: () => Dispatch(() =>
+                onLoggedOut: () => Dispatch(async () =>
                 {
-                    _ = global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync()
-                        .ContinueWith(_ =>
-                            global::App.App.MainWindow?.DispatcherQueue.TryEnqueue(
-                                new Microsoft.UI.Dispatching.DispatcherQueueHandler(() =>
-                                    global::App.App.MainWindow?.ShowLogin())),
-                            System.Threading.Tasks.TaskScheduler.Default);
+                    await global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync();
+                    global::App.App.MainWindow?.ShowLogin();
                 }));
         });
 
