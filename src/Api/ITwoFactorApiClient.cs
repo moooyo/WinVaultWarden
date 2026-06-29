@@ -29,7 +29,7 @@ public interface ITwoFactorApiClient
     // POST api/two-factor/send-email — 发送验证码到指定邮箱。
     Task SendEmailAsync(SendEmailRequest request, CancellationToken ct = default);
 
-    // POST api/two-factor/email — 验证邮箱验证码并启用邮箱两步验证，返回更新后的状态。
+    // PUT api/two-factor/email — 验证邮箱验证码并启用邮箱两步验证，返回更新后的状态。
     Task<EmailStatusResponse> EnableEmailAsync(EmailVerifyRequest request, CancellationToken ct = default);
 
     // POST api/two-factor/get-recover — 获取恢复码，需主密码哈希。
