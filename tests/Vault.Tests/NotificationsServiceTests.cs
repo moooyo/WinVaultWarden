@@ -3,6 +3,7 @@ using Core.Abstractions;
 using Core.Enums;
 using Core.Models;
 using Core.Services;
+using System.Threading;
 using Vault;
 using Xunit;
 
@@ -135,8 +136,13 @@ public class NotificationsServiceTests
 
         // Act
         await svc.StartAsync();
-        // 让连接循环跑一小会儿
-        await Task.Delay(50);
+
+        // 等待后台循环真正 Connect（有界超时），确保测试验证的是真实运行的循环
+        using var waitCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (conn.ConnectCallCount == 0 && !waitCts.Token.IsCancellationRequested)
+            await Task.Delay(5);
+
+        Assert.True(conn.ConnectCallCount > 0, "loop never connected before StopAsync");
         var countBeforeStop = dispatcher.Dispatched.Count;
 
         await svc.StopAsync();
@@ -267,31 +273,50 @@ public class NotificationsServiceTests
 
     /// <summary>
     /// StartAsync 多次调用是幂等的（不会启动多个循环）。
+    ///
+    /// 策略：让 ConnectAsync 挂起直到取消，这样如果存在两个后台循环，
+    /// 它们会同时阻塞在 ConnectAsync，ConnectCallCount 会立刻变成 2。
+    /// 两次 StartAsync 后短暂等待，断言 ConnectCallCount == 1：
+    /// 设计保证第二次 StartAsync 看到已在运行的 _loopTask，直接返回，
+    /// 不会启动第二个循环，也不会触发第二次 ConnectAsync。
     /// </summary>
     [Fact]
     public async Task StartAsync_CalledTwice_IsIdempotent()
     {
-        // Arrange
-        var conn = new FakeNotificationsConnection { Messages = new() };
+        // Arrange：ConnectAsync 挂起等待取消——只要有几何个循环，就会有几何个 Connect 调用
+        var connectCount = 0;
+        var connectTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        INotificationsConnection ConnFactory()
+        {
+            return new BlockingFakeConnection(
+                onConnect: () => Interlocked.Increment(ref connectCount),
+                blockUntil: connectTcs.Task);
+        }
+
         var dispatcher = new FakeNotificationDispatcher();
         var session = MakeSession();
-        var svc = MakeService(() => conn, dispatcher, session,
+        var svc = MakeService(ConnFactory, dispatcher, session,
             baseBackoff: TimeSpan.FromMilliseconds(5));
 
-        // Act — 连续两次 StartAsync
+        // Act — 连续两次 StartAsync；第一次启动后台循环，第二次应被幂等拦截
         await svc.StartAsync();
+
+        // 等待第一个循环真正进入 ConnectAsync
+        using var waitCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (Volatile.Read(ref connectCount) == 0 && !waitCts.Token.IsCancellationRequested)
+            await Task.Delay(5);
+
+        // 此时循环正在 ConnectAsync 里挂起；再 Start 一次，不应触发第二次 Connect
         await svc.StartAsync();
-        await Task.Delay(50);
+        await Task.Delay(50); // 给第二个循环（若有）足够时间进入 ConnectAsync
 
-        // 每次 ReadAsync 结束后 loop 会重连；但只有一个循环在运行
-        // 断言：第一次 StartAsync 已经连接，第二次不应重复启动新循环
-        var connectCountAfterBothStarts = conn.ConnectCallCount;
+        // Assert：仍然只有 1 次 Connect，证明只有一个循环在运行
+        Assert.Equal(1, Volatile.Read(ref connectCount));
 
+        // 释放挂起的 ConnectAsync，再 Stop
+        connectTcs.TrySetResult(true);
         await svc.StopAsync();
-
-        // 不断言具体次数（取决于 backoff 内触发了几次重连），
-        // 主要断言 StopAsync 不会挂死（如果有两个 Task.Run 会互相竞争 CTS）
-        Assert.True(true, "StopAsync completed without hanging");
     }
 
     // ─────────────────────────── 场景 7 ───────────────────────────

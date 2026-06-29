@@ -164,6 +164,40 @@ public sealed class FakeNotificationDispatcher : Vault.INotificationDispatcher
 }
 
 /// <summary>
+/// INotificationsConnection 的辅助替身：ConnectAsync 先执行 onConnect 回调，
+/// 然后挂起等待 blockUntil 完成（或取消）。用于幂等测试，精确计数并发 Connect 调用。
+/// </summary>
+public sealed class BlockingFakeConnection : INotificationsConnection
+{
+    private readonly Action _onConnect;
+    private readonly Task _blockUntil;
+
+    public BlockingFakeConnection(Action onConnect, Task blockUntil)
+    {
+        _onConnect  = onConnect;
+        _blockUntil = blockUntil;
+    }
+
+    public async Task ConnectAsync(string serverUrl, string accessToken, CancellationToken ct)
+    {
+        _onConnect();
+        // 挂起：等 blockUntil 完成，或外部取消
+        await Task.WhenAny(_blockUntil, Task.Delay(Timeout.Infinite, ct)).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+    }
+
+    public async IAsyncEnumerable<NotificationMessage> ReadAsync(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        // 不产生消息，挂起等取消
+        await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+        yield break;
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
+/// <summary>
 /// ITokenRefresher 的最小化测试替身：始终返回指定结果（默认 true）。
 /// </summary>
 public sealed class FakeTokenRefresher : Core.Services.ITokenRefresher

@@ -79,8 +79,22 @@ public sealed class NotificationsService : INotificationsService
                 return Task.CompletedTask; // 已在运行
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            var token = _cts.Token;
-            _loopTask = Task.Run(() => RunLoopAsync(token), token);
+            var cts   = _cts;
+            var token = cts.Token;
+            _loopTask = Task.Run(async () =>
+            {
+                try
+                {
+                    await RunLoopAsync(token).ConfigureAwait(false);
+                }
+                finally
+                {
+                    // caller 的 CancellationToken 直接取消时，StopAsync 未必被调用；
+                    // 在此确保 linked CTS 得到 dispose，避免资源泄露。
+                    // CancellationTokenSource.Dispose 是幂等的，StopAsync 也调用 dispose 无妨。
+                    cts.Dispose();
+                }
+            }, token);
         }
 
         return Task.CompletedTask;
