@@ -26,6 +26,9 @@ public sealed partial class DevicesPage : Page
         _ = ViewModel.RefreshRequestsAsync();
     }
 
+    /// <summary>供 NotificationsHost 在收到 AuthRequestsChanged 推送后从 UI 线程调用。</summary>
+    public void RefreshRequestsList() => _ = ViewModel.RefreshRequestsAsync();
+
     private async void OnApproveRequestClick(object sender, RoutedEventArgs e)
     {
         var item = (sender as FrameworkElement)?.Tag as AuthRequestItem

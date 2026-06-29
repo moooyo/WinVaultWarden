@@ -19,6 +19,7 @@ namespace Api;
 [JsonSerializable(typeof(WriteErrorResponse))]
 [JsonSerializable(typeof(CipherRequest))]
 [JsonSerializable(typeof(FolderRequest))]
+[JsonSerializable(typeof(FolderDto))]
 [JsonSerializable(typeof(SendListResponse))]
 [JsonSerializable(typeof(SendResponseDto))]
 [JsonSerializable(typeof(SendRequest))]

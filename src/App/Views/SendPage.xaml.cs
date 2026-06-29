@@ -25,6 +25,9 @@ public sealed partial class SendPage : Page
         _ = ViewModel.LoadAsync();
     }
 
+    /// <summary>供 NotificationsHost 在收到 SendsChanged 推送后从 UI 线程调用，重新加载 Send 列表。</summary>
+    public void RefreshSendList() => _ = ViewModel.LoadAsync();
+
     private static SendListItem? ItemFromSender(object sender) =>
         sender is FrameworkElement { DataContext: SendListItem item } ? item : null;
 

@@ -95,6 +95,13 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
     public async Task DeleteFolderAsync(string folderId, CancellationToken ct = default)
         => await SendWriteAsync(HttpMethod.Delete, $"api/folders/{folderId}", ct);
 
+    public async Task<FolderDto> GetFolderAsync(string folderId, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync(Url($"api/folders/{folderId}"), ct);
+        response.EnsureSuccessStatusCode();
+        return await ReadJson(response, ApiJsonContext.Default.FolderDto, ct);
+    }
+
     // ===== Send =====
 
     public async Task<SendListResponse> GetSendsAsync(CancellationToken ct = default)
@@ -102,6 +109,13 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
         var response = await _http.GetAsync(Url("api/sends"), ct);
         response.EnsureSuccessStatusCode();
         return await ReadJson(response, ApiJsonContext.Default.SendListResponse, ct);
+    }
+
+    public async Task<SendResponseDto> GetSendAsync(string sendId, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync(Url($"api/sends/{sendId}"), ct);
+        response.EnsureSuccessStatusCode();
+        return await ReadJson(response, ApiJsonContext.Default.SendResponseDto, ct);
     }
 
     public Task<SendResponseDto> CreateTextSendAsync(SendRequest request, CancellationToken ct = default)

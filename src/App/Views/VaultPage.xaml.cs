@@ -27,6 +27,9 @@ public sealed partial class VaultPage : Page
         UpdateDetailTemplate();
     }
 
+    /// <summary>供 NotificationsHost 在收到 VaultChanged 推送后从 UI 线程调用，刷新列表快照。</summary>
+    public void RefreshVaultList() => ViewModel.RefreshFromSnapshot();
+
     public static Visibility VisibleIfTrue(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
 
     public static Visibility VisibleIfFalse(bool value) => value ? Visibility.Collapsed : Visibility.Visible;

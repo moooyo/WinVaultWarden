@@ -416,6 +416,17 @@ public partial class VaultViewModel : ObservableObject
         await RunWriteAsync(() => _service.SyncAsync(), selectId: SelectedItem?.Id);
     }
 
+    /// <summary>
+    /// 从服务快照刷新列表（不发起网络请求），供 WebSocket 推送后 UI 增量刷新使用。
+    /// </summary>
+    public void RefreshFromSnapshot()
+    {
+        ReloadItems();
+        ReloadFilters();
+        // 保持当前选中项（若已被删除则自动清空）
+        SelectById(SelectedItem?.Id);
+    }
+
     [RelayCommand]
     private void Add() => BeginAdd(VaultItemKind.Login);
 

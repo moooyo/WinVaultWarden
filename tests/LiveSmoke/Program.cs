@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using Api;
 using Core.Abstractions;
 using Core.Enums;
@@ -452,6 +453,10 @@ try
     // ── 19. Auth-request: RSA round-trip ────────────────────────────────────
     Console.WriteLine("[19] Auth-request: RSA round-trip");
     await AuthRequestRoundTripAsync();
+
+    // ── 20. Notifications: WebSocket push round-trip ─────────────────────────
+    Console.WriteLine("[20] Notifications: WebSocket push round-trip");
+    await NotificationsPushRoundTripAsync();
 }
 catch (Exception ex)
 {
@@ -801,5 +806,147 @@ async Task AuthRequestRoundTripAsync()
     catch (Exception ex)
     {
         Step("auth-request: round-trip", false, $"{ex.GetType().Name}: {ex.Message}");
+    }
+}
+
+// ── Notifications: WebSocket push round-trip ─────────────────────────────────
+//    1. 连接到 WS 通知 hub，断言握手成功（{}{0x1e}）。
+//    2. 启动后台读取任务，把收到的消息写入 Channel，超时 12s。
+//    3. 通过 VaultWriteService 创建文件夹（触发服务端推送）。
+//    4. 等待最多 10s，收到 Type==7 (SyncFolderCreate) 且 EntityId == 新文件夹 id 的消息。
+//    5. 从 session 中先移除该文件夹（使断言有意义），再调用 NotificationDispatcher.DispatchAsync，
+//       断言 session.Folders 现在包含该文件夹 id（由 dispatcher 触发 GET /api/folders/{id} 补回）。
+//    6. 清理：删除文件夹；优雅关闭 WebSocket。
+async Task NotificationsPushRoundTripAsync()
+{
+    var conn = new NotificationsConnection();
+    var wsFolderName = $"WVW-WS-{run}";
+    string? wsFolderId = null;
+
+    bool handshakeOk = false;
+    string? handshakeError = null;
+    try
+    {
+        // Step 1: 连接并断言握手（非空洞式：捕获异常并 Step false）
+        try
+        {
+            await conn.ConnectAsync(serverUrl, session.AccessToken!, CancellationToken.None);
+            handshakeOk = true;
+        }
+        catch (Exception ex)
+        {
+            handshakeError = $"{ex.GetType().Name}: {ex.Message}";
+        }
+        Step("ws handshake ok", handshakeOk, handshakeOk ? null : handshakeError);
+
+        if (!handshakeOk)
+        {
+            Step("ws push SyncFolderCreate received", false, "skipped (handshake failed)");
+            Step("ws: folder removed before dispatch", false, "skipped (handshake failed)");
+            Step("ws dispatcher re-adds folder", false, "skipped (handshake failed)");
+            return;
+        }
+
+        // Step 2: 后台读取任务，把消息写入 Channel
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+        var channel = System.Threading.Channels.Channel.CreateUnbounded<NotificationMessage>();
+
+        var readTask = Task.Run(async () =>
+        {
+            try
+            {
+                await foreach (var m in conn.ReadAsync(cts.Token))
+                    channel.Writer.TryWrite(m);
+            }
+            catch (OperationCanceledException) { /* 超时，正常结束 */ }
+            finally
+            {
+                channel.Writer.TryComplete();
+            }
+        });
+
+        // Step 3: 创建文件夹（服务端将推送 SyncFolderCreate Type=7）
+        await writeService.SaveFolderAsync(null, wsFolderName);
+        wsFolderId = session.Folders.FirstOrDefault(x => x.Name == wsFolderName)?.Id;
+        Step("ws: folder created for push test", wsFolderId is not null, wsFolderId);
+
+        if (wsFolderId is null)
+        {
+            Step("ws push SyncFolderCreate received", false, "folder id unknown, cannot match push");
+            Step("ws dispatcher re-adds folder", false, "skipped");
+        }
+        else
+        {
+            // Step 4: 等待最多 10s 收到匹配的推送消息
+            NotificationMessage? received = null;
+            using var waitCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            try
+            {
+                await foreach (var msg in channel.Reader.ReadAllAsync(waitCts.Token))
+                {
+                    if (msg.Type == (int)Core.Enums.UpdateType.SyncFolderCreate && msg.EntityId == wsFolderId)
+                    {
+                        received = msg;
+                        break;
+                    }
+                }
+            }
+            catch (OperationCanceledException) { /* 10s 超时 */ }
+
+            Step("ws push SyncFolderCreate received", received is not null,
+                received is null ? "timeout / not received" : $"type=7 id={received.EntityId}");
+
+            // Step 5: 先从 session 移除该文件夹，断言已缺失，再通过 dispatcher 触发 GET 补回
+            if (received is not null)
+            {
+                session.RemoveFolder(wsFolderId);
+                var beforeDispatch = session.Folders.Any(x => x.Id == wsFolderId);
+                Step("ws: folder removed before dispatch", !beforeDispatch,
+                    beforeDispatch ? "RemoveFolder had no effect" : "confirmed absent");
+
+                var dispatcher = new NotificationDispatcher(
+                    cipherApi: attachmentApi,
+                    readApi: api,
+                    decryptor: decryptor,
+                    session: session,
+                    sync: sync);
+
+                await dispatcher.DispatchAsync(received, CancellationToken.None);
+
+                var afterDispatch = session.Folders.Any(x => x.Id == wsFolderId);
+                Step("ws dispatcher re-adds folder", afterDispatch,
+                    afterDispatch ? $"id={wsFolderId} present" : "not found after dispatch");
+            }
+            else
+            {
+                Step("ws dispatcher re-adds folder", false, "skipped (no push received)");
+            }
+        }
+
+        // 停止后台读取
+        cts.Cancel();
+        try { await readTask.WaitAsync(TimeSpan.FromSeconds(3)); } catch { /* ignore */ }
+    }
+    catch (Exception ex)
+    {
+        Step("ws: notifications round-trip", false, $"{ex.GetType().Name}: {ex.Message}");
+    }
+    finally
+    {
+        // Step 6: 清理文件夹 + 优雅关闭 WS
+        if (wsFolderId is not null)
+        {
+            try
+            {
+                await writeService.DeleteFolderAsync(wsFolderId);
+                var wsGone = session.Folders.All(x => x.Id != wsFolderId);
+                Step("ws: folder cleaned up", wsGone);
+            }
+            catch (Exception ex)
+            {
+                Step("ws: folder cleaned up", false, $"{ex.GetType().Name}: {ex.Message}");
+            }
+        }
+        await conn.DisposeAsync();
     }
 }
