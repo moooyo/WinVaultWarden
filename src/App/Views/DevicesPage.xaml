@@ -8,7 +8,6 @@
     xmlns:models="using:App.ViewModels.Models">
     <Page.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
-        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
     </Page.Resources>
     <ScrollViewer Padding="{StaticResource PageContentPadding}">
         <StackPanel Spacing="16" MaxWidth="640" HorizontalAlignment="Left">
@@ -48,7 +47,6 @@
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <FontIcon Glyph="{x:Bind Glyph}" FontSize="24" VerticalAlignment="Center" />
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -63,12 +61,6 @@
                                     <TextBlock Text="{x:Bind LastActive}"
                                                Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
                                 </StackPanel>
-                                <Button Grid.Column="2" VerticalAlignment="Center"
-                                        Visibility="{x:Bind IsCurrent, Converter={StaticResource InverseBoolToVis}}"
-                                        Tag="{x:Bind}"
-                                        Click="OnRevokeClick">
-                                    <TextBlock Text="撤销" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
-                                </Button>
                             </Grid>
                         </Border>
                     </DataTemplate>

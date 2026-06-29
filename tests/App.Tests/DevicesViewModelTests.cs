@@ -305,12 +305,12 @@ public class DevicesViewModelTests
         public ThrowingAuthRequestService(string message) => _message = message;
 
         public Task<IReadOnlyList<PendingAuthRequest>> ListPendingAsync(CancellationToken ct = default) =>
-            throw new AuthRequestOperationException(_message);
+            Task.FromException<IReadOnlyList<PendingAuthRequest>>(new AuthRequestOperationException(_message));
 
         public Task ApproveAsync(string id, string publicKey, CancellationToken ct = default) =>
-            throw new AuthRequestOperationException(_message);
+            Task.FromException(new AuthRequestOperationException(_message));
 
         public Task DenyAsync(string id, CancellationToken ct = default) =>
-            throw new AuthRequestOperationException(_message);
+            Task.FromException(new AuthRequestOperationException(_message));
     }
 }
