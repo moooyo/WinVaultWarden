@@ -78,6 +78,9 @@ var accountService = new AccountService(crypto, accountApi, session, tokenStore,
 ITwoFactorApiClient twoFactorApi = api;
 var twoFactorService = new TwoFactorService(crypto, twoFactorApi, tokenStore);
 
+IAuthRequestApiClient authRequestApi = api;
+var authRequestService = new AuthRequestService(authRequestApi, crypto, session, tokenStore);
+
 try
 {
     api.SetBaseAddress(serverUrl);
@@ -445,6 +448,10 @@ try
     // ── 18. Two-Factor: TOTP enable → verify → disable (account stays clean) ─
     Console.WriteLine("[18] Two-Factor: TOTP enable → verify → disable");
     await TwoFactorTotpRoundTripAsync();
+
+    // ── 19. Auth-request: RSA round-trip ────────────────────────────────────
+    Console.WriteLine("[19] Auth-request: RSA round-trip");
+    await AuthRequestRoundTripAsync();
 }
 catch (Exception ex)
 {
@@ -728,5 +735,71 @@ async Task TwoFactorTotpRoundTripAsync()
                 Console.WriteLine($"  [WARN] 2fa: could not disable TOTP in cleanup: {cleanupEx.Message}");
             }
         }
+    }
+}
+
+// ── Auth-request: RSA round-trip
+//    1. 生成 RSA-2048 密钥对；用公钥 + 随机 accessCode 创建 auth-request。
+//    2. 调用 ListPendingAsync 断言新 id 在列表中。
+//    3. 调用 ApproveAsync(id, pubKey) → 用私钥解密返回的 EncString Key。
+//    4. 断言解密结果等于会话 UserKey.FullKey（64 字节）。
+//    5. 再次 ListPendingAsync 断言 id 已不在列表中（已批准，移出 pending）。
+async Task AuthRequestRoundTripAsync()
+{
+    // 取持久化设备标识符（登录时保存的那个）
+    if (!tokenStore.TryLoad(out var persisted))
+    {
+        Step("auth-request: load persisted session", false, "TryLoad returned false");
+        return;
+    }
+
+    string createdId;
+    try
+    {
+        using var rsa = RSA.Create(2048);
+        var pub = Convert.ToBase64String(rsa.ExportSubjectPublicKeyInfo());
+        var accessCode = Convert.ToBase64String(RandomNumberGenerator.GetBytes(25));
+
+        // 1. 创建 auth-request
+        var resp = await authRequestApi.CreateAsync(new Api.Dtos.AuthRequestRequest(
+            AccessCode: accessCode,
+            DeviceIdentifier: persisted.DeviceIdentifier,
+            Email: email,
+            PublicKey: pub));
+        createdId = resp.Id;
+        Step("auth-request: create", !string.IsNullOrEmpty(createdId), createdId);
+
+        // 2. 列出 pending，断言 id 在其中
+        var pending = await authRequestService.ListPendingAsync();
+        var found = pending.Any(r => r.Id == createdId);
+        Step("auth-request: id present in ListPending", found, $"{pending.Count} pending");
+
+        // 3. 批准（用发起方公钥加密会话 UserKey）
+        await authRequestService.ApproveAsync(createdId, pub);
+        Step("auth-request: ApproveAsync succeeded", true);
+
+        // 4. 发起方轮询响应，解密 Key，与会话 UserKey 比对
+        var getResp = await authRequestApi.GetResponseAsync(createdId, accessCode);
+        Step("auth-request: GetResponse key non-null", getResp.Key is not null, getResp.Key?[..Math.Min(20, getResp.Key?.Length ?? 0)]);
+        if (getResp.Key is not null)
+        {
+            var decrypted = crypto.DecryptRsa(
+                EncString.Parse(getResp.Key),
+                rsa.ExportPkcs8PrivateKey());
+            var sessionKey = session.UserKey!.FullKey;
+            var match = decrypted.AsSpan().SequenceEqual(sessionKey);
+            Step("auth-request: decrypted key equals session UserKey", match,
+                $"decrypted={decrypted.Length}B vs session={sessionKey.Length}B");
+        }
+
+        // 5. 再次 ListPending，断言 id 已不在（approved → 移出 pending）
+        var pendingAfter = await authRequestService.ListPendingAsync();
+        var stillPending = pendingAfter.Any(r => r.Id == createdId);
+        Step("auth-request: no longer in ListPending after approval", !stillPending,
+            $"{pendingAfter.Count} pending remaining");
+    }
+    catch (Exception ex)
+    {
+        Step("auth-request: round-trip", false, $"{ex.GetType().Name}: {ex.Message}");
     }
 }

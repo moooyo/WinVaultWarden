@@ -51,6 +51,8 @@
     <Compile Include="..\..\src\App\Services\IAttachmentUiService.cs" Link="Services\IAttachmentUiService.cs" />
     <Compile Include="..\..\src\App\Services\AttachmentUiService.cs" Link="Services\AttachmentUiService.cs" />
     <Compile Include="..\..\src\App\Services\TwoFactorUiService.cs" Link="Services\TwoFactorUiService.cs" />
+    <Compile Include="..\..\src\App\Services\AuthRequestUiService.cs" Link="Services\AuthRequestUiService.cs" />
+    <Compile Include="..\..\src\App\ViewModels\Models\AuthRequestItem.cs" Link="Models\AuthRequestItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\GeneratorHistoryItem.cs" Link="Models\GeneratorHistoryItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\GeneratorViewModel.cs" Link="ViewModels\GeneratorViewModel.cs" />
     <Compile Include="..\..\src\App\ViewModels\DevicesViewModel.cs" Link="ViewModels\DevicesViewModel.cs" />

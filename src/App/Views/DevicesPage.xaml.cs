@@ -16,14 +16,31 @@ public sealed partial class DevicesPage : Page
         InitializeComponent();
     }
 
-    private async void OnRevokeClick(object sender, RoutedEventArgs e)
+    private void OnPageLoaded(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: DeviceItem device })
+        _ = ViewModel.RefreshRequestsAsync();
+    }
+
+    private void OnRefreshRequestsClick(object sender, RoutedEventArgs e)
+    {
+        _ = ViewModel.RefreshRequestsAsync();
+    }
+
+    private async void OnApproveRequestClick(object sender, RoutedEventArgs e)
+    {
+        var item = (sender as FrameworkElement)?.Tag as AuthRequestItem
+                ?? (sender as FrameworkElement)?.DataContext as AuthRequestItem;
+        if (item is null)
             return;
-        if (await DialogHelper.ConfirmAsync(
-                XamlRoot, "撤销设备", $"确定要撤销“{device.Name}”吗?该设备的会话将被终止。", "撤销"))
-        {
-            ViewModel.RevokeCommand.Execute(device);
-        }
+        await ViewModel.ApproveAsync(item);
+    }
+
+    private async void OnDenyRequestClick(object sender, RoutedEventArgs e)
+    {
+        var item = (sender as FrameworkElement)?.Tag as AuthRequestItem
+                ?? (sender as FrameworkElement)?.DataContext as AuthRequestItem;
+        if (item is null)
+            return;
+        await ViewModel.DenyAsync(item);
     }
 }

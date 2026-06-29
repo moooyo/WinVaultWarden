@@ -8,7 +8,7 @@ using Core.Abstractions;
 
 namespace Api;
 
-public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiClient, ISendApiClient, IAttachmentApiClient, IAccountApiClient, ITwoFactorApiClient
+public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiClient, ISendApiClient, IAttachmentApiClient, IAccountApiClient, ITwoFactorApiClient, IAuthRequestApiClient
 {
     private readonly HttpClient _http;
     private Uri? _baseAddress;
@@ -257,6 +257,32 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
 
     public Task DisableAsync(DisableTwoFactorRequest request, CancellationToken ct = default)
         => SendWriteAsync(HttpMethod.Post, "api/two-factor/disable", request, ApiJsonContext.Default.DisableTwoFactorRequest, ct);
+
+    // ===== Auth Requests =====
+
+    public async Task<AuthRequestListResponse> GetPendingAsync(CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync(Url("api/auth-requests/pending"), ct);
+        response.EnsureSuccessStatusCode();
+        return await ReadJson(response, ApiJsonContext.Default.AuthRequestListResponse, ct);
+    }
+
+    public Task<AuthRequestResponse> ApproveAsync(string id, AuthResponseRequest request, CancellationToken ct = default)
+        => SendWriteReadAsync(
+            HttpMethod.Put, $"api/auth-requests/{id}", request,
+            ApiJsonContext.Default.AuthResponseRequest, ApiJsonContext.Default.AuthRequestResponse, ct);
+
+    public Task<AuthRequestResponse> CreateAsync(AuthRequestRequest request, CancellationToken ct = default)
+        => SendWriteReadAsync(
+            HttpMethod.Post, "api/auth-requests", request,
+            ApiJsonContext.Default.AuthRequestRequest, ApiJsonContext.Default.AuthRequestResponse, ct);
+
+    public async Task<AuthRequestResponse> GetResponseAsync(string id, string code, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync(Url($"api/auth-requests/{id}/response?code={Uri.EscapeDataString(code)}"), ct);
+        response.EnsureSuccessStatusCode();
+        return await ReadJson(response, ApiJsonContext.Default.AuthRequestResponse, ct);
+    }
 
     // 服务端给出的 url 可能是绝对地址,也可能是以 "/" 开头的相对路径。
     // 绝对地址原样返回;相对路径去掉前导 "/" 交给 Url() 拼到 baseAddress。
