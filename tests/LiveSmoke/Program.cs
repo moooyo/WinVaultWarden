@@ -75,6 +75,9 @@ var attachmentService = new AttachmentService(attachmentApi, attachmentCrypto, d
 IAccountApiClient accountApi = api;
 var accountService = new AccountService(crypto, accountApi, session, tokenStore, auth);
 
+ITwoFactorApiClient twoFactorApi = api;
+var twoFactorService = new TwoFactorService(crypto, twoFactorApi, tokenStore);
+
 try
 {
     api.SetBaseAddress(serverUrl);
@@ -438,6 +441,10 @@ try
     // ── 17. Account: change KDF iterations 600000→700000 → re-login → revert ─
     Console.WriteLine("[17] Account: change KDF iterations → revert");
     await AccountChangeKdfAndRevertAsync();
+
+    // ── 18. Two-Factor: TOTP enable → verify → disable (account stays clean) ─
+    Console.WriteLine("[18] Two-Factor: TOTP enable → verify → disable");
+    await TwoFactorTotpRoundTripAsync();
 }
 catch (Exception ex)
 {
@@ -656,4 +663,70 @@ string BuildShareUrlFromSession(
     var dto = raw.Data.First(d => d.Id == send.Id);
     var seed = sc.UnwrapSeed(dto.Key!, sess.UserKey!);
     return sc.BuildShareUrl(serverBase, send.AccessId, seed);
+}
+
+// ── Two-Factor: TOTP setup → enable → verify providers list → disable → clean ─
+// Account must be left without TOTP so subsequent test runs start clean.
+async Task TwoFactorTotpRoundTripAsync()
+{
+    bool totpEnabled = false;
+    try
+    {
+        // Step 1: Begin TOTP setup — get secret from server
+        var (secret, otpauth) = await twoFactorService.BeginTotpSetupAsync(password);
+        Step("2fa: begin TOTP setup returns secret", !string.IsNullOrEmpty(secret),
+            $"secret len={secret.Length}");
+        Step("2fa: otpauth URI contains secret", otpauth.Contains(secret, StringComparison.Ordinal),
+            otpauth.Length > 20 ? otpauth[..40] + "…" : otpauth);
+
+        // Step 2: Generate a valid TOTP code using the secret
+        var unixSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var code = TotpGenerator.Generate(secret, unixSeconds);
+        Step("2fa: TotpGenerator produces 6-digit code",
+            code.Length == 6 && code.All(char.IsDigit), code);
+
+        // Step 3: Enable TOTP — sends secret + code + masterPasswordHash to server
+        var recoveryCode = await twoFactorService.EnableTotpAsync(password, secret, code);
+        totpEnabled = true;
+        Step("2fa: enable TOTP succeeds", true);
+        Step("2fa: recovery code non-empty", !string.IsNullOrEmpty(recoveryCode),
+            recoveryCode.Length > 0 ? recoveryCode[..Math.Min(8, recoveryCode.Length)] + "…" : "(empty)");
+
+        // Step 4: List providers — type 0 (Authenticator) must be enabled
+        var providers = await twoFactorService.ListProvidersAsync();
+        var totp = providers.FirstOrDefault(p => p.Type == 0);
+        Step("2fa: list providers contains type 0 (TOTP)", totp is not null,
+            $"{providers.Count} provider(s)");
+        Step("2fa: type 0 is enabled", totp?.Enabled == true,
+            totp is null ? "not found" : $"enabled={totp.Enabled}");
+
+        // Step 5: Disable TOTP — account must end clean
+        await twoFactorService.DisableAsync(password, 0);
+        totpEnabled = false;
+        Step("2fa: disable TOTP succeeds", true);
+
+        // Step 6: List providers again — type 0 must be gone or disabled
+        var afterDisable = await twoFactorService.ListProvidersAsync();
+        var totpAfter = afterDisable.FirstOrDefault(p => p.Type == 0);
+        var isGone = totpAfter is null || !totpAfter.Enabled;
+        Step("2fa: type 0 not enabled after disable", isGone,
+            totpAfter is null ? "not in list" : $"enabled={totpAfter.Enabled}");
+    }
+    catch (Exception ex)
+    {
+        Step("2fa: TOTP round-trip", false, $"{ex.GetType().Name}: {ex.Message}");
+        // Best-effort cleanup: if TOTP was enabled, try to disable
+        if (totpEnabled)
+        {
+            try
+            {
+                await twoFactorService.DisableAsync(password, 0);
+                Console.WriteLine("  [INFO] 2fa: TOTP disabled in cleanup after failure");
+            }
+            catch (Exception cleanupEx)
+            {
+                Console.WriteLine($"  [WARN] 2fa: could not disable TOTP in cleanup: {cleanupEx.Message}");
+            }
+        }
+    }
 }
