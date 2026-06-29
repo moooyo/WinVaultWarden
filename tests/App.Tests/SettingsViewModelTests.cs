@@ -7,6 +7,383 @@ using Xunit;
 
 namespace App.Tests;
 
+// ============================================================================
+// 2FA SettingsViewModel 测试（Task 6 TDD RED 先写）
+// ============================================================================
+
+/// <summary>
+/// TDD: SettingsViewModel 的 2FA 命令测试。
+/// 链：VM → TwoFactorUiService（真实）→ FakeTwoFactorService
+/// </summary>
+public class SettingsViewModelTwoFactorTests
+{
+    // -----------------------------------------------------------------------
+    // FakeTwoFactorService：记录调用并可控抛出
+    // -----------------------------------------------------------------------
+    private sealed class FakeTwoFactorService : ITwoFactorService
+    {
+        public bool ThrowOnList { get; set; }
+        public bool ThrowOnBeginTotp { get; set; }
+        public bool ThrowOnEnableTotp { get; set; }
+        public bool ThrowOnBeginEmail { get; set; }
+        public bool ThrowOnSendEmail { get; set; }
+        public bool ThrowOnEnableEmail { get; set; }
+        public bool ThrowOnDisable { get; set; }
+        public bool ThrowCancelOnDisable { get; set; }
+
+        public string? LastPw { get; private set; }
+        public (string pw, string secret, string code)? LastEnableTotp { get; private set; }
+        public (string pw, string email, string token)? LastEnableEmail { get; private set; }
+        public (string pw, int type)? LastDisable { get; private set; }
+
+        public Task<IReadOnlyList<TwoFactorProvider>> ListProvidersAsync(CancellationToken ct = default)
+        {
+            if (ThrowOnList) throw new TwoFactorOperationException("list failed");
+            return Task.FromResult<IReadOnlyList<TwoFactorProvider>>(
+                [new TwoFactorProvider(0, true), new TwoFactorProvider(1, false)]);
+        }
+
+        public Task<(string secret, string otpauth)> BeginTotpSetupAsync(string pw, CancellationToken ct = default)
+        {
+            if (ThrowOnBeginTotp) throw new TwoFactorOperationException("begin totp failed");
+            LastPw = pw;
+            return Task.FromResult(("TOTPSECRET", "otpauth://totp/test"));
+        }
+
+        public Task<string> EnableTotpAsync(string pw, string secret, string code, CancellationToken ct = default)
+        {
+            if (ThrowOnEnableTotp) throw new TwoFactorOperationException("enable totp failed");
+            LastEnableTotp = (pw, secret, code);
+            return Task.FromResult("RECOVERY-CODE-123");
+        }
+
+        public Task<string?> BeginEmailSetupAsync(string pw, CancellationToken ct = default)
+        {
+            if (ThrowOnBeginEmail) throw new TwoFactorOperationException("begin email failed");
+            LastPw = pw;
+            return Task.FromResult<string?>("t***@example.com");
+        }
+
+        public Task SendEmailAsync(string pw, string email, CancellationToken ct = default)
+        {
+            if (ThrowOnSendEmail) throw new TwoFactorOperationException("send email failed");
+            LastPw = pw;
+            return Task.CompletedTask;
+        }
+
+        public Task EnableEmailAsync(string pw, string email, string token, CancellationToken ct = default)
+        {
+            if (ThrowOnEnableEmail) throw new TwoFactorOperationException("enable email failed");
+            LastEnableEmail = (pw, email, token);
+            return Task.CompletedTask;
+        }
+
+        public Task DisableAsync(string pw, int type, CancellationToken ct = default)
+        {
+            if (ThrowCancelOnDisable) throw new OperationCanceledException("user cancelled");
+            if (ThrowOnDisable) throw new TwoFactorOperationException("disable failed");
+            LastDisable = (pw, type);
+            return Task.CompletedTask;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // 辅助工厂：VM → TwoFactorUiService（真实）→ FakeTwoFactorService
+    // -----------------------------------------------------------------------
+    private static (SettingsViewModel vm, FakeTwoFactorService svc) Build2Fa(
+        bool throwOnList = false,
+        bool throwOnBeginTotp = false,
+        bool throwOnEnableTotp = false,
+        bool throwOnBeginEmail = false,
+        bool throwOnSendEmail = false,
+        bool throwOnEnableEmail = false,
+        bool throwOnDisable = false)
+    {
+        var svc = new FakeTwoFactorService
+        {
+            ThrowOnList = throwOnList,
+            ThrowOnBeginTotp = throwOnBeginTotp,
+            ThrowOnEnableTotp = throwOnEnableTotp,
+            ThrowOnBeginEmail = throwOnBeginEmail,
+            ThrowOnSendEmail = throwOnSendEmail,
+            ThrowOnEnableEmail = throwOnEnableEmail,
+            ThrowOnDisable = throwOnDisable,
+        };
+        var ui = new TwoFactorUiService(svc);
+        return (new SettingsViewModel(twoFactorUi: ui), svc);
+    }
+
+    // -----------------------------------------------------------------------
+    // ListProvidersAsync: 成功返回提供者列表，清空 OperationError
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task ListProviders_Success_ReturnsListAndClearsError()
+    {
+        var (vm, _) = Build2Fa();
+        vm.OperationError = "stale";
+
+        var result = await vm.ListProvidersAsync();
+
+        Assert.Equal(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+        Assert.Equal(2, result.Count);
+        Assert.True(result[0].Enabled);
+    }
+
+    // -----------------------------------------------------------------------
+    // ListProvidersAsync: 服务抛出时写 OperationError，返回空列表
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task ListProviders_ServiceThrows_SetsOperationError()
+    {
+        var (vm, _) = Build2Fa(throwOnList: true);
+
+        var result = await vm.ListProvidersAsync();
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+        Assert.Empty(result);
+    }
+
+    // -----------------------------------------------------------------------
+    // BeginTotpSetupAsync: 成功返回 (secret, otpauth)，清空 OperationError
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task BeginTotpSetup_Success_ReturnsSecretAndClearsError()
+    {
+        var (vm, _) = Build2Fa();
+        vm.OperationError = "stale";
+
+        var result = await vm.BeginTotpSetupAsync("master-pw");
+
+        Assert.Equal(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+        Assert.Equal("TOTPSECRET", result.secret);
+        Assert.Equal("otpauth://totp/test", result.otpauth);
+    }
+
+    // -----------------------------------------------------------------------
+    // BeginTotpSetupAsync: 服务抛出时写 OperationError，返回默认 tuple
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task BeginTotpSetup_ServiceThrows_SetsOperationError()
+    {
+        var (vm, _) = Build2Fa(throwOnBeginTotp: true);
+
+        var result = await vm.BeginTotpSetupAsync("master-pw");
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+        Assert.Equal(string.Empty, result.secret);
+    }
+
+    // -----------------------------------------------------------------------
+    // EnableTotpAsync: 成功返回 RecoveryCode，清空 OperationError
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task EnableTotp_Success_ReturnsRecoveryCode()
+    {
+        var (vm, svc) = Build2Fa();
+        vm.OperationError = "stale";
+
+        var recovery = await vm.EnableTotpAsync("pw", "TOTPSECRET", "123456");
+
+        Assert.Equal(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+        Assert.Equal("RECOVERY-CODE-123", recovery);
+        Assert.Equal(("pw", "TOTPSECRET", "123456"), svc.LastEnableTotp);
+    }
+
+    // -----------------------------------------------------------------------
+    // EnableTotpAsync: 服务抛出时写 OperationError，返回空字符串
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task EnableTotp_ServiceThrows_SetsOperationError()
+    {
+        var (vm, _) = Build2Fa(throwOnEnableTotp: true);
+
+        var recovery = await vm.EnableTotpAsync("pw", "secret", "code");
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+        Assert.Equal(string.Empty, recovery);
+    }
+
+    // -----------------------------------------------------------------------
+    // SendEmailAsync: 成功时清空 OperationError
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task SendEmail_Success_ClearsOperationError()
+    {
+        var (vm, svc) = Build2Fa();
+        vm.OperationError = "stale";
+
+        await vm.SendEmailAsync("pw", "user@example.com");
+
+        Assert.Equal(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+        Assert.Equal("pw", svc.LastPw);
+    }
+
+    // -----------------------------------------------------------------------
+    // SendEmailAsync: 服务抛出时写 OperationError
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task SendEmail_ServiceThrows_SetsOperationError()
+    {
+        var (vm, _) = Build2Fa(throwOnSendEmail: true);
+
+        await vm.SendEmailAsync("pw", "user@example.com");
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+    }
+
+    // -----------------------------------------------------------------------
+    // EnableEmailAsync: 成功时清空 OperationError，委托到服务
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task EnableEmail_Success_ClearsOperationError()
+    {
+        var (vm, svc) = Build2Fa();
+        vm.OperationError = "stale";
+
+        await vm.EnableEmailAsync("pw", "user@example.com", "TOKEN123");
+
+        Assert.Equal(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+        Assert.Equal(("pw", "user@example.com", "TOKEN123"), svc.LastEnableEmail);
+    }
+
+    // -----------------------------------------------------------------------
+    // EnableEmailAsync: 服务抛出时写 OperationError
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task EnableEmail_ServiceThrows_SetsOperationError()
+    {
+        var (vm, _) = Build2Fa(throwOnEnableEmail: true);
+
+        await vm.EnableEmailAsync("pw", "user@example.com", "TOKEN");
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+    }
+
+    // -----------------------------------------------------------------------
+    // DisableTwoFactorAsync: 成功时清空 OperationError，委托到服务
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task DisableTwoFactor_Success_ClearsOperationError()
+    {
+        var (vm, svc) = Build2Fa();
+        vm.OperationError = "stale";
+
+        await vm.DisableTwoFactorAsync("pw", 0);
+
+        Assert.Equal(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+        Assert.Equal(("pw", 0), svc.LastDisable);
+    }
+
+    // -----------------------------------------------------------------------
+    // DisableTwoFactorAsync: 服务抛出时写 OperationError
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task DisableTwoFactor_ServiceThrows_SetsOperationError()
+    {
+        var (vm, _) = Build2Fa(throwOnDisable: true);
+
+        await vm.DisableTwoFactorAsync("pw", 0);
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+    }
+
+    // -----------------------------------------------------------------------
+    // DisableTwoFactorAsync: OperationCanceledException 不设 OperationError
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task DisableTwoFactor_Cancelled_DoesNotSetOperationError()
+    {
+        var svc = new FakeTwoFactorService { ThrowCancelOnDisable = true };
+        var ui = new TwoFactorUiService(svc);
+        var vm = new SettingsViewModel(twoFactorUi: ui);
+
+        await vm.DisableTwoFactorAsync("pw", 0);
+
+        Assert.Equal(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+    }
+
+    // -----------------------------------------------------------------------
+    // 无参构造（null _twoFactorUi）：各方法应设 OperationError
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task ListProviders_NullService_SetsOperationError()
+    {
+        var vm = new SettingsViewModel();
+
+        var result = await vm.ListProvidersAsync();
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task BeginTotpSetup_NullService_SetsOperationError()
+    {
+        var vm = new SettingsViewModel();
+
+        var result = await vm.BeginTotpSetupAsync("pw");
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.Equal(string.Empty, result.secret);
+    }
+
+    [Fact]
+    public async Task EnableTotp_NullService_SetsOperationError()
+    {
+        var vm = new SettingsViewModel();
+
+        var result = await vm.EnableTotpAsync("pw", "secret", "code");
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.Equal(string.Empty, result);
+    }
+
+    [Fact]
+    public async Task DisableTwoFactor_NullService_SetsOperationError()
+    {
+        var vm = new SettingsViewModel();
+
+        await vm.DisableTwoFactorAsync("pw", 0);
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+    }
+
+    [Fact]
+    public async Task SendEmail_NullService_SetsOperationError()
+    {
+        var vm = new SettingsViewModel();
+
+        await vm.SendEmailAsync("pw", "user@example.com");
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task EnableEmail_NullService_SetsOperationError()
+    {
+        var vm = new SettingsViewModel();
+
+        await vm.EnableEmailAsync("pw", "user@example.com", "TOKEN");
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+    }
+}
+
 /// <summary>
 /// TDD: SettingsViewModel 的账户操作命令测试（Task 6）。
 /// 验证范围：confirm 校验 → 错误，成功时清空错误，命令委托到 IAccountService。

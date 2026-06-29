@@ -1,4 +1,5 @@
 using App.Services;
+using Core.Models;
 using Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -12,6 +13,7 @@ namespace App.ViewModels;
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly IAccountUiService? _accountUi;
+    private readonly ITwoFactorUiService? _twoFactorUi;
 
     [ObservableProperty]
     public partial int SelectedSessionTimeoutIndex { get; set; }
@@ -80,6 +82,14 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     public SettingsViewModel(IAccountUiService accountUi) => _accountUi = accountUi;
+
+    public SettingsViewModel(ITwoFactorUiService twoFactorUi) => _twoFactorUi = twoFactorUi;
+
+    public SettingsViewModel(IAccountUiService accountUi, ITwoFactorUiService twoFactorUi)
+    {
+        _accountUi = accountUi;
+        _twoFactorUi = twoFactorUi;
+    }
 
     public string AccountEmail => _accountUi?.GetAccount().Email ?? string.Empty;
     public string AccountServer => _accountUi?.GetAccount().ServerUrl ?? string.Empty;
@@ -198,4 +208,216 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private async Task Rename(string name) =>
         await RenameAsync(name);
+
+    // ── 两步验证操作 ──────────────────────────────────────────────────────────
+
+    public async Task<IReadOnlyList<TwoFactorProvider>> ListProvidersAsync(CancellationToken ct = default)
+    {
+        if (_twoFactorUi is null)
+        {
+            OperationError = "两步验证服务不可用";
+            return [];
+        }
+        if (IsBusy)
+            return [];
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            return await _twoFactorUi.ListProvidersAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return [];
+        }
+        catch (TwoFactorOperationException ex)
+        {
+            OperationError = ex.Message;
+            return [];
+        }
+        catch
+        {
+            OperationError = "操作失败，请稍后重试";
+            return [];
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task<(string secret, string otpauth)> BeginTotpSetupAsync(string pw, CancellationToken ct = default)
+    {
+        if (_twoFactorUi is null)
+        {
+            OperationError = "两步验证服务不可用";
+            return (string.Empty, string.Empty);
+        }
+        if (IsBusy)
+            return (string.Empty, string.Empty);
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            return await _twoFactorUi.BeginTotpSetupAsync(pw, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return (string.Empty, string.Empty);
+        }
+        catch (TwoFactorOperationException ex)
+        {
+            OperationError = ex.Message;
+            return (string.Empty, string.Empty);
+        }
+        catch
+        {
+            OperationError = "操作失败，请稍后重试";
+            return (string.Empty, string.Empty);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task<string> EnableTotpAsync(string pw, string secret, string code, CancellationToken ct = default)
+    {
+        if (_twoFactorUi is null)
+        {
+            OperationError = "两步验证服务不可用";
+            return string.Empty;
+        }
+        if (IsBusy)
+            return string.Empty;
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            return await _twoFactorUi.EnableTotpAsync(pw, secret, code, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return string.Empty;
+        }
+        catch (TwoFactorOperationException ex)
+        {
+            OperationError = ex.Message;
+            return string.Empty;
+        }
+        catch
+        {
+            OperationError = "操作失败，请稍后重试";
+            return string.Empty;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task SendEmailAsync(string pw, string email, CancellationToken ct = default)
+    {
+        if (_twoFactorUi is null)
+        {
+            OperationError = "两步验证服务不可用";
+            return;
+        }
+        if (IsBusy)
+            return;
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            await _twoFactorUi.SendEmailAsync(pw, email, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户取消，不设错误
+        }
+        catch (TwoFactorOperationException ex)
+        {
+            OperationError = ex.Message;
+        }
+        catch
+        {
+            OperationError = "操作失败，请稍后重试";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task EnableEmailAsync(string pw, string email, string token, CancellationToken ct = default)
+    {
+        if (_twoFactorUi is null)
+        {
+            OperationError = "两步验证服务不可用";
+            return;
+        }
+        if (IsBusy)
+            return;
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            await _twoFactorUi.EnableEmailAsync(pw, email, token, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户取消，不设错误
+        }
+        catch (TwoFactorOperationException ex)
+        {
+            OperationError = ex.Message;
+        }
+        catch
+        {
+            OperationError = "操作失败，请稍后重试";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task DisableTwoFactorAsync(string pw, int type, CancellationToken ct = default)
+    {
+        if (_twoFactorUi is null)
+        {
+            OperationError = "两步验证服务不可用";
+            return;
+        }
+        if (IsBusy)
+            return;
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            await _twoFactorUi.DisableAsync(pw, type, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户取消，不设错误
+        }
+        catch (TwoFactorOperationException ex)
+        {
+            OperationError = ex.Message;
+        }
+        catch
+        {
+            OperationError = "操作失败，请稍后重试";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 }

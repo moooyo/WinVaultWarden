@@ -8,7 +8,7 @@ using Core.Abstractions;
 
 namespace Api;
 
-public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiClient, ISendApiClient, IAttachmentApiClient, IAccountApiClient
+public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiClient, ISendApiClient, IAttachmentApiClient, IAccountApiClient, ITwoFactorApiClient
 {
     private readonly HttpClient _http;
     private Uri? _baseAddress;
@@ -214,6 +214,49 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
 
     public Task ChangeKdfAsync(ChangeKdfRequest request, CancellationToken ct = default)
         => SendWriteAsync(HttpMethod.Post, "api/accounts/kdf", request, ApiJsonContext.Default.ChangeKdfRequest, ct);
+
+    // ===== Two-Factor =====
+
+    public async Task<TwoFactorProvidersResponse> GetProvidersAsync(CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync(Url("api/two-factor"), ct);
+        response.EnsureSuccessStatusCode();
+        return await ReadJson(response, ApiJsonContext.Default.TwoFactorProvidersResponse, ct);
+    }
+
+    public Task<AuthenticatorResponse> GetAuthenticatorAsync(PasswordVerifyRequest request, CancellationToken ct = default)
+        => SendWriteReadAsync(
+            HttpMethod.Post, "api/two-factor/get-authenticator", request,
+            ApiJsonContext.Default.PasswordVerifyRequest, ApiJsonContext.Default.AuthenticatorResponse, ct);
+
+    public Task<AuthenticatorResponse> EnableAuthenticatorAsync(EnableAuthenticatorRequest request, CancellationToken ct = default)
+        => SendWriteReadAsync(
+            HttpMethod.Post, "api/two-factor/authenticator", request,
+            ApiJsonContext.Default.EnableAuthenticatorRequest, ApiJsonContext.Default.AuthenticatorResponse, ct);
+
+    public Task DisableAuthenticatorAsync(DisableAuthenticatorRequest request, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Delete, "api/two-factor/authenticator", request, ApiJsonContext.Default.DisableAuthenticatorRequest, ct);
+
+    public Task<EmailStatusResponse> GetEmailAsync(PasswordVerifyRequest request, CancellationToken ct = default)
+        => SendWriteReadAsync(
+            HttpMethod.Post, "api/two-factor/get-email", request,
+            ApiJsonContext.Default.PasswordVerifyRequest, ApiJsonContext.Default.EmailStatusResponse, ct);
+
+    public Task SendEmailAsync(SendEmailRequest request, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Post, "api/two-factor/send-email", request, ApiJsonContext.Default.SendEmailRequest, ct);
+
+    public Task<EmailStatusResponse> EnableEmailAsync(EmailVerifyRequest request, CancellationToken ct = default)
+        => SendWriteReadAsync(
+            HttpMethod.Put, "api/two-factor/email", request,
+            ApiJsonContext.Default.EmailVerifyRequest, ApiJsonContext.Default.EmailStatusResponse, ct);
+
+    public Task<RecoverResponse> GetRecoverAsync(PasswordVerifyRequest request, CancellationToken ct = default)
+        => SendWriteReadAsync(
+            HttpMethod.Post, "api/two-factor/get-recover", request,
+            ApiJsonContext.Default.PasswordVerifyRequest, ApiJsonContext.Default.RecoverResponse, ct);
+
+    public Task DisableAsync(DisableTwoFactorRequest request, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Post, "api/two-factor/disable", request, ApiJsonContext.Default.DisableTwoFactorRequest, ct);
 
     // 服务端给出的 url 可能是绝对地址,也可能是以 "/" 开头的相对路径。
     // 绝对地址原样返回;相对路径去掉前导 "/" 交给 Url() 拼到 baseAddress。
