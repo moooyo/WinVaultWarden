@@ -360,6 +360,28 @@ public class SettingsViewModelTwoFactorTests
 
         Assert.NotEqual(string.Empty, vm.OperationError);
     }
+
+    [Fact]
+    public async Task SendEmail_NullService_SetsOperationError()
+    {
+        var vm = new SettingsViewModel();
+
+        await vm.SendEmailAsync("pw", "user@example.com");
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task EnableEmail_NullService_SetsOperationError()
+    {
+        var vm = new SettingsViewModel();
+
+        await vm.EnableEmailAsync("pw", "user@example.com", "TOKEN");
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+    }
 }
 
 /// <summary>
