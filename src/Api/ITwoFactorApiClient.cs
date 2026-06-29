@@ -20,7 +20,8 @@ public interface ITwoFactorApiClient
     Task<AuthenticatorResponse> EnableAuthenticatorAsync(EnableAuthenticatorRequest request, CancellationToken ct = default);
 
     // DELETE api/two-factor/authenticator（含请求体）— 禁用 TOTP 身份验证器。
-    Task DisableAuthenticatorAsync(DisableTwoFactorRequest request, CancellationToken ct = default);
+    // 服务端要求 {key, masterPasswordHash, type}，需专用请求体。
+    Task DisableAuthenticatorAsync(DisableAuthenticatorRequest request, CancellationToken ct = default);
 
     // POST api/two-factor/get-email — 获取邮箱两步验证的状态，需主密码哈希。
     Task<EmailStatusResponse> GetEmailAsync(PasswordVerifyRequest request, CancellationToken ct = default);
@@ -28,7 +29,7 @@ public interface ITwoFactorApiClient
     // POST api/two-factor/send-email — 发送验证码到指定邮箱。
     Task SendEmailAsync(SendEmailRequest request, CancellationToken ct = default);
 
-    // PUT api/two-factor/email — 验证邮箱验证码并启用邮箱两步验证，返回更新后的状态。
+    // POST api/two-factor/email — 验证邮箱验证码并启用邮箱两步验证，返回更新后的状态。
     Task<EmailStatusResponse> EnableEmailAsync(EmailVerifyRequest request, CancellationToken ct = default);
 
     // POST api/two-factor/get-recover — 获取恢复码，需主密码哈希。

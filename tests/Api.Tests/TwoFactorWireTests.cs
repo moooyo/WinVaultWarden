@@ -56,6 +56,27 @@ public class TwoFactorWireTests
         Assert.Contains("\"type\":0", json);
     }
 
+    // ── DisableAuthenticatorRequest ──────────────────────────────────────────
+
+    [Fact]
+    public void DisableAuthenticatorRequest_serialises_key_masterPasswordHash_type()
+    {
+        var req = new DisableAuthenticatorRequest("SECRETKEY", "hash-abc", 0);
+        var json = JsonSerializer.Serialize(req, Web);
+        Assert.Contains("\"key\":\"SECRETKEY\"", json);
+        Assert.Contains("\"masterPasswordHash\":\"hash-abc\"", json);
+        Assert.Contains("\"type\":0", json);
+    }
+
+    [Fact]
+    public void DisableAuthenticatorRequest_context_matches_reflection()
+    {
+        var req = new DisableAuthenticatorRequest("SECRETKEY", "hash-abc", 0);
+        Assert.Equal(
+            JsonSerializer.Serialize(req, Web),
+            JsonSerializer.Serialize(req, ApiJsonContext.Default.DisableAuthenticatorRequest));
+    }
+
     // ── EmailStatusResponse ──────────────────────────────────────────────────
 
     [Fact]

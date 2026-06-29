@@ -234,8 +234,8 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
             HttpMethod.Post, "api/two-factor/authenticator", request,
             ApiJsonContext.Default.EnableAuthenticatorRequest, ApiJsonContext.Default.AuthenticatorResponse, ct);
 
-    public Task DisableAuthenticatorAsync(DisableTwoFactorRequest request, CancellationToken ct = default)
-        => SendWriteAsync(HttpMethod.Delete, "api/two-factor/authenticator", request, ApiJsonContext.Default.DisableTwoFactorRequest, ct);
+    public Task DisableAuthenticatorAsync(DisableAuthenticatorRequest request, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Delete, "api/two-factor/authenticator", request, ApiJsonContext.Default.DisableAuthenticatorRequest, ct);
 
     public Task<EmailStatusResponse> GetEmailAsync(PasswordVerifyRequest request, CancellationToken ct = default)
         => SendWriteReadAsync(

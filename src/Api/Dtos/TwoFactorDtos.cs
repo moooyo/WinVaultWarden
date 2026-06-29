@@ -37,6 +37,16 @@ public sealed record DisableTwoFactorRequest(
     [property: JsonPropertyName("type")] int Type);
 
 /// <summary>
+/// 专用于 DELETE /api/two-factor/authenticator 的请求体。
+/// 服务端要求 {key, masterPasswordHash, type}，比通用 disable 多一个 key 字段。
+/// type: TwoFactorProviderType 整数值（0=Authenticator）。
+/// </summary>
+public sealed record DisableAuthenticatorRequest(
+    [property: JsonPropertyName("key")] string Key,
+    [property: JsonPropertyName("masterPasswordHash")] string MasterPasswordHash,
+    [property: JsonPropertyName("type")] int Type);
+
+/// <summary>
 /// 邮箱两步验证的启用状态。
 /// GET /api/two-factor/get-email 响应体。
 /// </summary>
@@ -47,10 +57,12 @@ public sealed record EmailStatusResponse(
 /// <summary>
 /// 请求发送验证码到指定邮箱。
 /// POST /api/two-factor/send-email-login 或 /api/two-factor/send-email。
+/// otp: 可选，仅 send-email-login 端点在已有 OTP 时使用；普通 send-email 省略。
 /// </summary>
 public sealed record SendEmailRequest(
     [property: JsonPropertyName("email")] string Email,
-    [property: JsonPropertyName("masterPasswordHash")] string MasterPasswordHash);
+    [property: JsonPropertyName("masterPasswordHash")] string MasterPasswordHash,
+    [property: JsonPropertyName("otp")] string? Otp = null);
 
 /// <summary>
 /// 验证邮箱验证码并启用邮箱两步验证。

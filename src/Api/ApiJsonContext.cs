@@ -37,6 +37,7 @@ namespace Api;
 [JsonSerializable(typeof(AuthenticatorResponse))]
 [JsonSerializable(typeof(EnableAuthenticatorRequest))]
 [JsonSerializable(typeof(DisableTwoFactorRequest))]
+[JsonSerializable(typeof(DisableAuthenticatorRequest))]
 [JsonSerializable(typeof(EmailStatusResponse))]
 [JsonSerializable(typeof(SendEmailRequest))]
 [JsonSerializable(typeof(EmailVerifyRequest))]
