@@ -80,6 +80,27 @@ public sealed partial class MainWindow : Window
 
     public void RefreshFolderNavigation() => PopulateFolderNavigation();
 
+    /// <summary>供 NotificationsHost 在 VaultChanged 时调用：若当前页面是 VaultPage 则刷新列表。</summary>
+    public void RefreshVaultList()
+    {
+        if (ContentFrame.Content is Views.VaultPage vaultPage)
+            vaultPage.RefreshVaultList();
+    }
+
+    /// <summary>供 NotificationsHost 在 SendsChanged 时调用：若当前页面是 SendPage 则刷新列表。</summary>
+    public void RefreshSendList()
+    {
+        if (ContentFrame.Content is Views.SendPage sendPage)
+            sendPage.RefreshSendList();
+    }
+
+    /// <summary>供 NotificationsHost 在 AuthRequestsChanged 时调用：若当前页面是 DevicesPage 则刷新。</summary>
+    public void RefreshRequestsList()
+    {
+        if (ContentFrame.Content is Views.DevicesPage devicesPage)
+            devicesPage.RefreshRequestsList();
+    }
+
     // 登录前:隐藏导航壳,只显示登录页(占满整窗,标题栏仅保留品牌)。
     public void ShowLogin()
     {
@@ -98,6 +119,8 @@ public sealed partial class MainWindow : Window
         Nav.Visibility = Visibility.Visible;
         Nav.SelectedItem = AllItemsNavItem;
         ContentFrame.Navigate(typeof(VaultPage), "vault:allitems");
+        // 保险库已就绪，启动 WebSocket 推送（最佳努力）。
+        _ = global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StartAsync();
     }
 
     private void ApplyLoginWindowLayout()
@@ -215,12 +238,14 @@ public sealed partial class MainWindow : Window
                 break;
             case "lock":
                 await global::App.App.Services.GetRequiredService<IAuthService>().LockAsync();
+                _ = global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
                 ShowLogin();
                 break;
             case "logout":
                 if (await global::App.Views.DialogHelper.ConfirmAsync(
                         Nav.XamlRoot, "退出登录", "确定退出登录?将清除本地会话,需重新登录。", "退出登录"))
                 {
+                    _ = global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
                     await global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync();
                     ShowLogin();
                 }

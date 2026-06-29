@@ -6,6 +6,7 @@ using Crypto;
 using Vault;
 using Microsoft.Extensions.DependencyInjection;
 using App.ViewModels;
+using Microsoft.UI.Dispatching;
 
 namespace App.Services;
 
@@ -97,6 +98,51 @@ public static class ServiceConfiguration
             new DevicesViewModel(
                 sp.GetRequiredService<IDeviceUiService>(),
                 sp.GetRequiredService<IAuthRequestUiService>()));
+
+        // WebSocket 推送通知
+        services.AddSingleton<INotificationDispatcher>(sp =>
+            new NotificationDispatcher(
+                sp.GetRequiredService<IAttachmentApiClient>(),
+                sp.GetRequiredService<IReadonlyApiClient>(),
+                sp.GetRequiredService<VaultDecryptor>(),
+                sp.GetRequiredService<VaultSession>(),
+                sp.GetRequiredService<ISyncService>()));
+        services.AddSingleton<INotificationsService>(sp =>
+            new NotificationsService(
+                () => new NotificationsConnection(),
+                sp.GetRequiredService<INotificationDispatcher>(),
+                sp.GetRequiredService<VaultSession>(),
+                sp.GetRequiredService<ITokenStore>(),
+                sp.GetRequiredService<ITokenRefresher>()));
+        services.AddSingleton<NotificationsHost>(sp =>
+        {
+            var svc = sp.GetRequiredService<INotificationsService>();
+
+            void Dispatch(Action action)
+            {
+                var dq = global::App.App.MainWindow?.DispatcherQueue;
+                if (dq is not null)
+                    dq.TryEnqueue(new Microsoft.UI.Dispatching.DispatcherQueueHandler(action));
+            }
+
+            return new NotificationsHost(
+                svc,
+                onVaultChanged: () => Dispatch(() =>
+                    global::App.App.MainWindow?.RefreshVaultList()),
+                onSendsChanged: () => Dispatch(() =>
+                    global::App.App.MainWindow?.RefreshSendList()),
+                onAuthRequestsChanged: () => Dispatch(() =>
+                    global::App.App.MainWindow?.RefreshRequestsList()),
+                onLoggedOut: () => Dispatch(() =>
+                {
+                    _ = global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync()
+                        .ContinueWith(_ =>
+                            global::App.App.MainWindow?.DispatcherQueue.TryEnqueue(
+                                new Microsoft.UI.Dispatching.DispatcherQueueHandler(() =>
+                                    global::App.App.MainWindow?.ShowLogin())),
+                            System.Threading.Tasks.TaskScheduler.Default);
+                }));
+        });
 
         return services.BuildServiceProvider();
     }
