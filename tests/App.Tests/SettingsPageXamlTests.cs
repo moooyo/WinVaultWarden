@@ -205,4 +205,168 @@ public class SettingsPageXamlTests
         var src = LoadCodeBehind();
         Assert.Contains("ShowLogin", src, StringComparison.Ordinal);
     }
+
+    // ── Task 7: TwoFactorCard 断言 ────────────────────────────────────────────
+
+    [Fact]
+    public void TwoFactorCard_HasAutomationId()
+    {
+        var doc = LoadXaml();
+        var card = doc.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "SettingsCard"
+                && e.Attributes().Any(a => a.Name.LocalName == "AutomationProperties.AutomationId"
+                    && a.Value == "TwoFactorCard"));
+        Assert.NotNull(card);
+    }
+
+    [Fact]
+    public void TwoFactorCard_HasClickHandler()
+    {
+        var doc = LoadXaml();
+        var card = doc.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "SettingsCard"
+                && (string?)e.Attribute("Click") == "OnTwoFactorCardClick");
+        Assert.NotNull(card);
+    }
+
+    [Fact]
+    public void TwoFactorCard_IsClickEnabled()
+    {
+        var doc = LoadXaml();
+        var card = doc.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "SettingsCard"
+                && e.Attributes().Any(a => a.Name.LocalName == "AutomationProperties.AutomationId"
+                    && a.Value == "TwoFactorCard"));
+        Assert.NotNull(card);
+        Assert.Equal("True", (string?)card.Attribute("IsClickEnabled"));
+    }
+
+    [Fact]
+    public void TwoFactorCard_InSecuritySection()
+    {
+        var doc = LoadXaml();
+        // 安全区 StackPanel 内有一个 TextBlock Text="安全"，且该 StackPanel 中包含 TwoFactorCard
+        var securityPanel = doc.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "StackPanel"
+                && e.Descendants()
+                    .Any(tb => tb.Name.LocalName == "TextBlock"
+                        && (string?)tb.Attribute("Text") == "安全")
+                && e.Descendants()
+                    .Any(sc => sc.Name.LocalName == "SettingsCard"
+                        && sc.Attributes().Any(a => a.Name.LocalName == "AutomationProperties.AutomationId"
+                            && a.Value == "TwoFactorCard")));
+        Assert.NotNull(securityPanel);
+    }
+
+    [Fact]
+    public void TotpSetup_PasswordBoxDeclared()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("TotpSetupPasswordBox", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TotpSetup_SecretTextDeclared()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("TotpSetupSecretText", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TotpSetup_OtpauthTextDeclared()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("TotpSetupOtpauthText", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TotpSetup_CodeBoxDeclared()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("TotpSetupCodeBox", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TotpSetup_RecoveryCodeTextDeclared()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("TotpSetupRecoveryCodeText", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EmailSetup_PasswordBoxDeclared()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("EmailSetupPasswordBox", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EmailSetup_AddressBoxDeclared()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("EmailSetupAddressBox", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EmailSetup_TokenBoxDeclared()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("EmailSetupTokenBox", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DisableTwoFactor_PasswordBoxDeclared()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("DisableTwoFactorPasswordBox", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DisableTwoFactor_ProviderComboDeclared()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("DisableTwoFactorProviderCombo", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OnTwoFactorCardClick_CallsListProvidersAsync()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("ListProvidersAsync", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EnableTotp_CallsBeginTotpSetupAsync()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("BeginTotpSetupAsync", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EnableTotp_CallsEnableTotpAsync()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("EnableTotpAsync", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EnableEmail_CallsSendEmailAsync()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("SendEmailAsync", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EnableEmail_CallsEnableEmailAsync()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("EnableEmailAsync", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DisableTwoFactor_CallsDisableTwoFactorAsync()
+    {
+        var src = LoadCodeBehind();
+        Assert.Contains("DisableTwoFactorAsync", src, StringComparison.Ordinal);
+    }
 }

@@ -84,6 +84,16 @@
                     </tk:SettingsCard.HeaderIcon>
                     <ToggleSwitch IsOn="{x:Bind ViewModel.UsePinUnlock, Mode=TwoWay}" />
                 </tk:SettingsCard>
+
+                <tk:SettingsCard Header="双重验证"
+                                 Description="管理两步验证方式（TOTP、邮箱验证码）"
+                                 IsClickEnabled="True"
+                                 AutomationProperties.AutomationId="TwoFactorCard"
+                                 Click="OnTwoFactorCardClick">
+                    <tk:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE8D7;" />
+                    </tk:SettingsCard.HeaderIcon>
+                </tk:SettingsCard>
             </StackPanel>
 
             <!-- ================= 偏好设置 ================= -->
