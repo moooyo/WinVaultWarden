@@ -30,4 +30,7 @@ namespace Api;
 [JsonSerializable(typeof(CipherAttachmentDto))]
 [JsonSerializable(typeof(AttachmentUploadRequest))]
 [JsonSerializable(typeof(AttachmentUploadV2Response))]
+[JsonSerializable(typeof(ProfileUpdateRequest))]
+[JsonSerializable(typeof(ChangePasswordRequest))]
+[JsonSerializable(typeof(ChangeKdfRequest))]
 public partial class ApiJsonContext : JsonSerializerContext;

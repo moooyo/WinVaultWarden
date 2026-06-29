@@ -1,8 +1,14 @@
-using CommunityToolkit.Mvvm.ComponentModel;
 using App.Services;
+using Core.Services;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace App.ViewModels;
 
+/// <summary>
+/// 设置页 ViewModel 的纯 C# 部分（无 WinUI 依赖）。
+/// WinUI 相关属性（主题切换回调、AboutInfo、ThemeManager）在 SettingsViewModel.WinUI.cs 中定义。
+/// </summary>
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly IAccountUiService? _accountUi;
@@ -53,18 +59,22 @@ public partial class SettingsViewModel : ObservableObject
     public partial bool AllowScreenshots { get; set; } = true;
 
     [ObservableProperty]
-    public partial int SelectedThemeIndex { get; set; } = AppPreferences.Current.ThemeIndex;
-
-    [ObservableProperty]
     public partial int SelectedLanguageIndex { get; set; }
 
-    partial void OnSelectedThemeIndexChanged(int value)
-    {
-        AppPreferences.Current.ThemeIndex = value;
-        AppPreferences.Save();
-        ThemeManager.Apply(value);
-    }
+    // ── 账户操作状态 ──────────────────────────────────────────────────────────
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOperationError))]
+    public partial string OperationError { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsBusy { get; set; }
+
+    public bool HasOperationError => !string.IsNullOrEmpty(OperationError);
+
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // 无参构造器——供 XAML 设计时和 App.Tests 无注入场景使用
     public SettingsViewModel()
     {
     }
@@ -76,9 +86,116 @@ public partial class SettingsViewModel : ObservableObject
     public string AccountInitial => _accountUi?.GetAccount().Initial ?? string.Empty;
     public string KdfSummary => _accountUi?.GetAccount().KdfSummary ?? string.Empty;
 
-    // "关于"区:运行时真实诊断信息。
-    public string AppVersion => AboutInfo.AppVersion;
-    public string WindowsVersion => AboutInfo.WindowsVersion;
-    public string DotNetVersion => AboutInfo.DotNetVersion;
-    public string AppArchitecture => AboutInfo.Architecture;
+    // ── 账户操作 ─────────────────────────────────────────────────────────────
+
+    // 直接可 await 的方法（供 code-behind 调用）；RelayCommand 包装供 XAML 绑定。
+
+    public async Task ChangePasswordAsync(string current, string next, string confirm, string? hint, CancellationToken ct = default)
+    {
+        if (_accountUi is null)
+        {
+            OperationError = "账户服务不可用";
+            return;
+        }
+        if (IsBusy)
+            return;
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            await _accountUi.ChangePasswordAsync(current, next, confirm, hint, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户取消，不设错误
+        }
+        catch (AccountOperationException ex)
+        {
+            OperationError = ex.Message;
+        }
+        catch
+        {
+            OperationError = "操作失败，请稍后重试";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task RenameAsync(string name, CancellationToken ct = default)
+    {
+        if (_accountUi is null)
+        {
+            OperationError = "账户服务不可用";
+            return;
+        }
+        if (IsBusy)
+            return;
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            await _accountUi.RenameAsync(name, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户取消，不设错误
+        }
+        catch (AccountOperationException ex)
+        {
+            OperationError = ex.Message;
+        }
+        catch
+        {
+            OperationError = "操作失败，请稍后重试";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task ChangeIterationsAsync(string current, int iterations, CancellationToken ct = default)
+    {
+        if (_accountUi is null)
+        {
+            OperationError = "账户服务不可用";
+            return;
+        }
+        if (IsBusy)
+            return;
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            await _accountUi.ChangeIterationsAsync(current, iterations, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户取消，不设错误
+        }
+        catch (AccountOperationException ex)
+        {
+            OperationError = ex.Message;
+        }
+        catch
+        {
+            OperationError = "操作失败，请稍后重试";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    // RenameCommand 供 XAML 绑定（string 参数可正常传递）
+    // ChangePassword/ChangeIterations 的 tuple 版本不能被 XAML CommandParameter 绑定，
+    // 由 code-behind 直接 await 公开的 async 方法即可。
+    [RelayCommand]
+    private async Task Rename(string name) =>
+        await RenameAsync(name);
 }

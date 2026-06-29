@@ -42,4 +42,16 @@ public class StretchAndUserKeyTests
         Assert.Equal(32, decrypted.EncKey.Length);
         Assert.Equal(32, decrypted.MacKey!.Length);
     }
+
+    [Fact]
+    public void ProtectUserKey_roundtrips_with_DecryptUserKey()
+    {
+        var svc = new CryptoService();
+        var mk = svc.DeriveMasterKey("pw", "a@b.com", KdfType.Pbkdf2, 600000, null, null);
+        var userKey = new SymmetricCryptoKey(System.Security.Cryptography.RandomNumberGenerator.GetBytes(64));
+        var protectedKey = svc.ProtectUserKey(mk, userKey);
+        var restored = svc.DecryptUserKey(svc.StretchMasterKey(mk), protectedKey);
+        Assert.Equal(userKey.FullKey, restored.FullKey);
+        Assert.Equal(2, (int)protectedKey.Type); // AesCbc256_HmacSha256
+    }
 }

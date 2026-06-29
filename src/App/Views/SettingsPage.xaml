@@ -21,10 +21,15 @@
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE77B;" />
                     </tk:SettingsCard.HeaderIcon>
-                    <Button Content="编辑资料" />
+                    <Button AutomationProperties.AutomationId="EditProfileButton"
+                            Content="编辑资料"
+                            Click="OnEditProfileClick" />
                 </tk:SettingsCard>
 
-                <tk:SettingsCard Header="修改主密码" IsClickEnabled="True">
+                <tk:SettingsCard Header="修改主密码"
+                                 IsClickEnabled="True"
+                                 AutomationProperties.AutomationId="ChangePasswordCard"
+                                 Click="OnChangePasswordCardClick">
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE72E;" />
                     </tk:SettingsCard.HeaderIcon>
@@ -32,7 +37,9 @@
 
                 <tk:SettingsCard Header="加密设置"
                                  Description="{x:Bind ViewModel.KdfSummary}"
-                                 IsClickEnabled="True">
+                                 IsClickEnabled="True"
+                                 AutomationProperties.AutomationId="ChangeKdfCard"
+                                 Click="OnChangeKdfCardClick">
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xEA18;" />
                     </tk:SettingsCard.HeaderIcon>

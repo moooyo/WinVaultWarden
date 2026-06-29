@@ -51,6 +51,20 @@ public sealed class CryptoService : ICryptoService
         return new SymmetricCryptoKey(enc, mac);
     }
 
+    // 用新主密钥拉伸后重新包裹现有 UserKey(type-2),DecryptUserKey 的逆;UserKey 本体不变。
+    // stretched key 仅在此方法内存活，用完立即清零，防止在 GC 之前泄漏到堆上。
+    public EncString ProtectUserKey(byte[] masterKey, SymmetricCryptoKey userKey)
+    {
+        var stretched = StretchMasterKey(masterKey);
+        try { return Encrypt(userKey.FullKey, stretched); }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(stretched.EncKey);
+            if (stretched.MacKey is not null) System.Security.Cryptography.CryptographicOperations.ZeroMemory(stretched.MacKey);
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(stretched.FullKey);
+        }
+    }
+
     // 用拉伸子钥解开 protected user key,得到真正的 UserKey。
     public SymmetricCryptoKey DecryptUserKey(SymmetricCryptoKey stretchedKey, EncString protectedUserKey)
     {

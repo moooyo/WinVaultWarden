@@ -72,6 +72,9 @@ var attachmentCrypto = new AttachmentCryptoService(crypto);
 IAttachmentApiClient attachmentApi = api;
 var attachmentService = new AttachmentService(attachmentApi, attachmentCrypto, decryptor, session, sync);
 
+IAccountApiClient accountApi = api;
+var accountService = new AccountService(crypto, accountApi, session, tokenStore, auth);
+
 try
 {
     api.SetBaseAddress(serverUrl);
@@ -423,6 +426,18 @@ try
         var hostGone = (await sync.SyncAsync()).All(c => c.Id != attHost.Id);
         Step("attachment: host cipher hard-deleted", hostGone);
     }
+
+    // ── 15. Account: rename → revert ─────────────────────────────────────────
+    Console.WriteLine("[15] Account: rename → revert");
+    await AccountRenameAndRevertAsync();
+
+    // ── 16. Account: change password → re-login → change back → re-login ─────
+    Console.WriteLine("[16] Account: change password → revert");
+    await AccountChangePasswordAndRevertAsync();
+
+    // ── 17. Account: change KDF iterations 600000→700000 → re-login → revert ─
+    Console.WriteLine("[17] Account: change KDF iterations → revert");
+    await AccountChangeKdfAndRevertAsync();
 }
 catch (Exception ex)
 {
@@ -497,6 +512,136 @@ async Task RegisterAsync()
         Step("account already exists (reuse)", true, $"{(int)resp.StatusCode}");
     else
         Step("account registered", false, $"{(int)resp.StatusCode}: {body}");
+}
+
+// ── Account: rename to "WinVault SmokeTest" then revert to a stable name. ───
+async Task AccountRenameAndRevertAsync()
+{
+    const string stableName = "WVW Smoke";
+    const string tempName = "WinVault SmokeTest";
+    try
+    {
+        await accountService.UpdateNameAsync(tempName);
+        Step("account: rename to temp name", true, tempName);
+        await accountService.UpdateNameAsync(stableName);
+        Step("account: revert to stable name", true, stableName);
+    }
+    catch (Exception ex)
+    {
+        Step("account: rename round-trip", false, $"{ex.GetType().Name}: {ex.Message}");
+        // best-effort revert
+        try { await accountService.UpdateNameAsync(stableName); } catch { /* ignore */ }
+    }
+}
+
+// ── Account: change password → re-login with temp → change back → re-login. ─
+// On any failure, always attempt to restore the original password so the account
+// stays reusable for subsequent test runs.
+async Task AccountChangePasswordAndRevertAsync()
+{
+    const string tempPassword = "Temp-Smoke-Password-2!";
+    bool changedToTemp = false;
+    try
+    {
+        // Change to temp password (forces logout)
+        await accountService.ChangePasswordAsync(password, tempPassword, null);
+        changedToTemp = true;
+        Step("account: change to temp password (forced logout)", true);
+
+        // Re-login with temp password
+        var loginTemp = await auth.LoginAsync(serverUrl, email, tempPassword);
+        Step("account: re-login with temp password", loginTemp is AuthResult.Success, loginTemp.GetType().Name);
+        if (loginTemp is not AuthResult.Success)
+            throw new InvalidOperationException("Re-login with temp password failed");
+
+        // Change back to original password (forces logout again)
+        await accountService.ChangePasswordAsync(tempPassword, password, null);
+        changedToTemp = false;
+        Step("account: revert to original password (forced logout)", true);
+
+        // Re-login with original password to confirm
+        var loginOrig = await auth.LoginAsync(serverUrl, email, password);
+        Step("account: re-login with original password", loginOrig is AuthResult.Success, loginOrig.GetType().Name);
+        if (loginOrig is not AuthResult.Success)
+            throw new InvalidOperationException("Re-login with original password failed");
+    }
+    catch (Exception ex)
+    {
+        Step("account: change-password round-trip", false, $"{ex.GetType().Name}: {ex.Message}");
+        // Attempt to restore: if we changed to temp, we need to re-authenticate and change back.
+        if (changedToTemp)
+        {
+            try
+            {
+                var loginTemp2 = await auth.LoginAsync(serverUrl, email, tempPassword);
+                if (loginTemp2 is AuthResult.Success)
+                {
+                    await accountService.ChangePasswordAsync(tempPassword, password, null);
+                    await auth.LoginAsync(serverUrl, email, password);
+                    Console.WriteLine("  [INFO] account: original password restored after failure");
+                }
+            }
+            catch (Exception restoreEx)
+            {
+                Console.WriteLine($"  [WARN] account: could not restore original password: {restoreEx.Message}");
+            }
+        }
+    }
+}
+
+// ── Account: change KDF iterations 600000→700000, re-login, revert to 600000. ─
+async Task AccountChangeKdfAndRevertAsync()
+{
+    const int origIterations = 600_000;
+    const int newIterations = 700_000;
+    bool changedKdf = false;
+    try
+    {
+        // Change KDF to 700000 (forces logout)
+        await accountService.ChangeKdfAsync(password, newIterations);
+        changedKdf = true;
+        Step("account: change KDF iterations to 700000 (forced logout)", true);
+
+        // Re-login with original password (server now uses 700000 iterations for key derivation)
+        var loginNew = await auth.LoginAsync(serverUrl, email, password);
+        Step("account: re-login after KDF change", loginNew is AuthResult.Success, loginNew.GetType().Name);
+        if (loginNew is not AuthResult.Success)
+            throw new InvalidOperationException("Re-login after KDF change failed");
+
+        // Revert KDF to 600000 (forces logout again)
+        await accountService.ChangeKdfAsync(password, origIterations);
+        changedKdf = false;
+        Step("account: revert KDF iterations to 600000 (forced logout)", true);
+
+        // Re-login with original password at original KDF to confirm
+        var loginOrig = await auth.LoginAsync(serverUrl, email, password);
+        Step("account: re-login after KDF revert", loginOrig is AuthResult.Success, loginOrig.GetType().Name);
+        if (loginOrig is not AuthResult.Success)
+            throw new InvalidOperationException("Re-login after KDF revert failed");
+    }
+    catch (Exception ex)
+    {
+        Step("account: change-KDF round-trip", false, $"{ex.GetType().Name}: {ex.Message}");
+        // Attempt to restore KDF if we changed it but failed to revert.
+        if (changedKdf)
+        {
+            try
+            {
+                // Try logging in (KDF is at 700000), then revert
+                var loginNew2 = await auth.LoginAsync(serverUrl, email, password);
+                if (loginNew2 is AuthResult.Success)
+                {
+                    await accountService.ChangeKdfAsync(password, origIterations);
+                    await auth.LoginAsync(serverUrl, email, password);
+                    Console.WriteLine("  [INFO] account: KDF iterations restored after failure");
+                }
+            }
+            catch (Exception restoreEx)
+            {
+                Console.WriteLine($"  [WARN] account: could not restore KDF iterations: {restoreEx.Message}");
+            }
+        }
+    }
 }
 
 // ── Build a canonical Send share URL from a Send the smoke test just created.
