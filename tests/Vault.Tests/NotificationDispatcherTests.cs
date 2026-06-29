@@ -493,6 +493,75 @@ public class NotificationDispatcherTests
         // Assert
         Assert.False(eventFired);
     }
+
+    /// <summary>
+    /// SyncFolderCreate/Update/Delete 推送但 EntityId 为 null：
+    /// 应完全忽略——不调用 GetFolderAsync，不触发任何事件。
+    /// 对称覆盖 CipherCreate_NullEntityId_IsNoOp。
+    /// </summary>
+    [Theory]
+    [InlineData((int)UpdateType.SyncFolderCreate)]
+    [InlineData((int)UpdateType.SyncFolderUpdate)]
+    [InlineData((int)UpdateType.SyncFolderDelete)]
+    public async Task FolderPush_NullEntityId_IsNoOp(int type)
+    {
+        // Arrange
+        var readApi = new FakeNotificationReadonlyApiClient();
+        var session = NewUnlockedSession();
+        var dispatcher = NewDispatcher(session, readApi: readApi);
+
+        var eventFired = false;
+        dispatcher.VaultChanged += () => eventFired = true;
+
+        // Act
+        await dispatcher.DispatchAsync(
+            new NotificationMessage(type, null),
+            CancellationToken.None);
+
+        // Assert — 不应调用 GetFolderAsync
+        Assert.Empty(readApi.Calls);
+
+        // Assert — 无任何事件
+        Assert.False(eventFired);
+    }
+
+    /// <summary>
+    /// 锁定状态（UserKey = null）下的 SyncFolderCreate、SyncSendCreate、SyncCiphers 推送：
+    /// 期望完全忽略——不调用任何 API，不触发任何事件。
+    /// 对称覆盖现有的 CipherCreate_WhenLocked_IsNoOpNoEvent。
+    /// </summary>
+    [Theory]
+    [InlineData((int)UpdateType.SyncFolderCreate)]
+    [InlineData((int)UpdateType.SyncSendCreate)]
+    [InlineData((int)UpdateType.SyncCiphers)]
+    public async Task Push_WhenLocked_IsNoOpNoEvent(int type)
+    {
+        // Arrange — 锁定状态（UserKey = null）
+        var cipherApi = new FakeAttachmentApiClient();
+        var readApi = new FakeNotificationReadonlyApiClient();
+        var sync = new FakeNotificationSyncService();
+        var session = NewLockedSession();
+        var dispatcher = NewDispatcher(session, cipherApi: cipherApi, readApi: readApi, sync: sync);
+
+        var eventFired = false;
+        dispatcher.VaultChanged += () => eventFired = true;
+        dispatcher.SendsChanged += () => eventFired = true;
+        dispatcher.AuthRequestsChanged += () => eventFired = true;
+        dispatcher.LoggedOut += () => eventFired = true;
+
+        // Act
+        await dispatcher.DispatchAsync(
+            new NotificationMessage(type, "some-id"),
+            CancellationToken.None);
+
+        // Assert — 无任何 API 调用
+        Assert.Empty(cipherApi.Calls);
+        Assert.Empty(readApi.Calls);
+        Assert.Equal(0, sync.SyncCalls);
+
+        // Assert — 无任何事件
+        Assert.False(eventFired);
+    }
 }
 
 // ─────────────────────────── 测试专用 Fake 类 ───────────────────────────

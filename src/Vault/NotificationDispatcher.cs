@@ -6,6 +6,27 @@ using Core.Services;
 namespace Vault;
 
 /// <summary>
+/// 将 WebSocket 推送的 <see cref="NotificationMessage"/> 路由到对应的会话补丁或全量同步的服务接缝。
+/// </summary>
+public interface INotificationDispatcher
+{
+    /// <summary>根据消息类型执行对应路由逻辑。</summary>
+    Task DispatchAsync(NotificationMessage msg, CancellationToken ct);
+
+    /// <summary>任何密码库条目或文件夹被修改后触发（包含全量同步完成）。</summary>
+    event Action? VaultChanged;
+
+    /// <summary>Send 列表发生变化时触发。</summary>
+    event Action? SendsChanged;
+
+    /// <summary>收到 AuthRequest 推送时触发。</summary>
+    event Action? AuthRequestsChanged;
+
+    /// <summary>收到 LogOut 推送时触发（即使会话已锁定）。</summary>
+    event Action? LoggedOut;
+}
+
+/// <summary>
 /// 将 WebSocket 推送的 <see cref="NotificationMessage"/> 路由到对应的会话补丁或全量同步。
 /// <para>
 /// 路由逻辑：
@@ -32,7 +53,7 @@ namespace Vault;
 /// 除 <see cref="UpdateType.LogOut"/> 外所有消息均被忽略。
 /// </para>
 /// </summary>
-public sealed class NotificationDispatcher
+public sealed class NotificationDispatcher : INotificationDispatcher
 {
     private readonly IAttachmentApiClient _cipherApi;
     private readonly IReadonlyApiClient _readApi;
