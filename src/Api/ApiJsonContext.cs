@@ -42,5 +42,6 @@ namespace Api;
 [JsonSerializable(typeof(EmailVerifyRequest))]
 [JsonSerializable(typeof(RecoverResponse))]
 [JsonSerializable(typeof(TwoFactorProviderItem))]
+[JsonSerializable(typeof(List<TwoFactorProviderItem>))]
 [JsonSerializable(typeof(TwoFactorProvidersResponse))]
 public partial class ApiJsonContext : JsonSerializerContext;

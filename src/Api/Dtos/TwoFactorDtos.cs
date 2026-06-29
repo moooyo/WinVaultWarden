@@ -66,7 +66,7 @@ public sealed record EmailVerifyRequest(
 /// GET /api/two-factor/get-recover 响应体。
 /// </summary>
 public sealed record RecoverResponse(
-    [property: JsonPropertyName("code")] string Code);
+    [property: JsonPropertyName("code")] string? Code);
 
 /// <summary>
 /// 单个两步验证提供者的类型与启用状态。

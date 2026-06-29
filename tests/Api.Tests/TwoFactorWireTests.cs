@@ -100,6 +100,15 @@ public class TwoFactorWireTests
         Assert.Contains("\"code\":\"ABCD-1234-EFGH-5678\"", json);
     }
 
+    [Fact]
+    public void RecoverResponse_deserialises_null_code_without_throwing()
+    {
+        // 服务端在恢复码尚未生成时返回 {"code":null}，不应抛异常。
+        var resp = JsonSerializer.Deserialize<RecoverResponse>("{\"code\":null}", Web);
+        Assert.NotNull(resp);
+        Assert.Null(resp!.Code);
+    }
+
     // ── TwoFactorProviderItem + TwoFactorProvidersResponse ───────────────────
 
     [Fact]
