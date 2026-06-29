@@ -45,4 +45,9 @@ namespace Api;
 [JsonSerializable(typeof(TwoFactorProviderItem))]
 [JsonSerializable(typeof(List<TwoFactorProviderItem>))]
 [JsonSerializable(typeof(TwoFactorProvidersResponse))]
+[JsonSerializable(typeof(AuthRequestResponse))]
+[JsonSerializable(typeof(List<AuthRequestResponse>))]
+[JsonSerializable(typeof(AuthRequestListResponse))]
+[JsonSerializable(typeof(AuthResponseRequest))]
+[JsonSerializable(typeof(AuthRequestRequest))]
 public partial class ApiJsonContext : JsonSerializerContext;
