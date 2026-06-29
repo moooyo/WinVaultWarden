@@ -1,3 +1,4 @@
+using System;
 using System.Security.Cryptography;
 using Core.Abstractions;
 using Core.Enums;
@@ -95,8 +96,9 @@ public class TwoFactorServiceTests
         // secret 应等于 API 返回的 key
         Assert.Equal(fakeKey, secret);
 
-        // otpauth URI 格式：otpauth://totp/{email}?secret={key}&issuer=WinVaultWarden
-        var expectedUri = $"otpauth://totp/{Email}?secret={fakeKey}&issuer=WinVaultWarden";
+        // otpauth URI 格式：otpauth://totp/{encoded_email}?secret={encoded_key}&issuer=WinVaultWarden
+        // email 中的 '@' 必须被编码为 %40，secret 中的特殊字符也须编码
+        var expectedUri = $"otpauth://totp/{Uri.EscapeDataString(Email)}?secret={Uri.EscapeDataString(fakeKey)}&issuer=WinVaultWarden";
         Assert.Equal(expectedUri, otpauth);
 
         // API 调用时携带了正确的 masterPasswordHash
@@ -277,6 +279,55 @@ public class TwoFactorServiceTests
         Assert.NotNull(api.LastDisable);
         Assert.Equal(EmailType, api.LastDisable!.Type);
         Assert.Equal(mphash, api.LastDisable!.MasterPasswordHash);
+    }
+
+    // ============================================================
+    // Test 12: BeginTotpSetupAsync — 含 '+' 和 '@' 的 email 须被 percent-encode
+    // ============================================================
+
+    [Fact]
+    public async Task BeginTotpSetup_email_with_plus_produces_encoded_label()
+    {
+        // 构建含 '+' 的 email 对应的 store
+        const string PlusEmail = "user+tag@example.com";
+        const string PlusPw = "correct-horse-battery-staple";
+        var mk = _crypto.DeriveMasterKey(PlusPw, PlusEmail, KdfType.Pbkdf2, Iterations, null, null);
+        var mphash = _crypto.ComputeMasterPasswordHash(mk, PlusPw);
+        CryptographicOperations.ZeroMemory(mk);
+
+        var store = new MemoryTokenStore();
+        store.Save(new PersistedSession(
+            "http://localhost:8080",
+            PlusEmail,
+            "device-id",
+            "refresh-token",
+            "placeholder-protected-user-key",
+            KdfType.Pbkdf2,
+            Iterations,
+            null,
+            null));
+
+        const string FakeKey = "JBSWY3DPEHPK3PXP";
+        var api = new FakeTwoFactorApiClient
+        {
+            AuthenticatorResponse = new Api.Dtos.AuthenticatorResponse(Enabled: false, Key: FakeKey)
+        };
+        var svc = BuildService(store, api);
+
+        var (_, otpauth) = await svc.BeginTotpSetupAsync(PlusPw, TestContext.Current.CancellationToken);
+
+        // label 部分（path segment）不允许含裸 '@' 或 '+'
+        var labelPart = new Uri(otpauth).AbsolutePath.TrimStart('/');
+        Assert.DoesNotContain("@", labelPart);
+        Assert.DoesNotContain("+", labelPart);
+
+        // 确认正确的 percent-encoded 内容存在
+        var expectedLabel = Uri.EscapeDataString(PlusEmail);
+        Assert.Contains(expectedLabel, otpauth);
+
+        // secret query 参数也被正确编码
+        var expectedSecret = Uri.EscapeDataString(FakeKey);
+        Assert.Contains($"secret={expectedSecret}", otpauth);
     }
 
     // ============================================================

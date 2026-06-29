@@ -61,7 +61,7 @@ public sealed class TwoFactorService : ITwoFactorService
 
         var secret = response.Key;
         var email = LoadPersisted().Email;
-        var otpauth = $"otpauth://totp/{email}?secret={secret}&issuer=WinVaultWarden";
+        var otpauth = $"otpauth://totp/{Uri.EscapeDataString(email)}?secret={Uri.EscapeDataString(secret)}&issuer=WinVaultWarden";
         return (secret, otpauth);
     }
 
