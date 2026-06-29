@@ -126,6 +126,15 @@ public sealed class CryptoService : ICryptoService
         return new SymmetricCryptoKey(bytes);
     }
 
+    // RSA 加密(OAEP-SHA1, encType 4)。publicKeyDer 为 SubjectPublicKeyInfo DER。DecryptRsa 的逆。
+    public EncString EncryptRsa(byte[] plaintext, byte[] publicKeyDer)
+    {
+        using var rsa = RSA.Create();
+        rsa.ImportSubjectPublicKeyInfo(publicKeyDer, out _);
+        var ct = rsa.Encrypt(plaintext, RSAEncryptionPadding.OaepSHA1);
+        return new EncString(EncryptionType.Rsa2048_OaepSha1_B64, Array.Empty<byte>(), ct, null);
+    }
+
     // RSA 解密(OAEP)。type 3 用 SHA256,type 4 用 SHA1。privateKeyDer 为 PKCS8 DER。
     public byte[] DecryptRsa(EncString data, byte[] privateKeyDer)
     {
