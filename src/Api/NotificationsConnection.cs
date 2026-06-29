@@ -89,19 +89,28 @@ public sealed class NotificationsConnection : INotificationsConnection
             cancellationToken: ct).ConfigureAwait(false);
 
         // Receive the server's handshake acknowledgement.
-        // Expected: exactly {0x7b, 0x7d, 0x1e}  i.e. '{' '}' RS  (empty JSON {}).
-        var ackBuffer = new byte[256];
-        var ackResult = await _ws.ReceiveAsync(new ArraySegment<byte>(ackBuffer), ct)
-            .ConfigureAwait(false);
+        // Expected first 3 bytes: {0x7b, 0x7d, 0x1e}  i.e. '{' '}' RS  (empty JSON {}).
+        // Accumulate all fragments until EndOfMessage so we handle fragmented frames.
+        var ackChunk = new byte[256];
+        var ackStream = new System.IO.MemoryStream();
+        WebSocketReceiveResult ackResult;
+        do
+        {
+            ackResult = await _ws.ReceiveAsync(new ArraySegment<byte>(ackChunk), ct)
+                .ConfigureAwait(false);
 
-        if (ackResult.MessageType == WebSocketMessageType.Close)
-            throw new InvalidOperationException(
-                $"SignalR handshake: server closed the connection unexpectedly ({ackResult.CloseStatus}).");
+            if (ackResult.MessageType == WebSocketMessageType.Close)
+                throw new InvalidOperationException(
+                    $"SignalR handshake: server closed the connection unexpectedly ({ackResult.CloseStatus}).");
 
-        var ack = ackBuffer.AsSpan(0, ackResult.Count);
-        if (ack.Length < 3 || ack[0] != 0x7b || ack[1] != 0x7d || ack[2] != 0x1e)
+            ackStream.Write(ackChunk, 0, ackResult.Count);
+        }
+        while (!ackResult.EndOfMessage);
+
+        var ackBytes = ackStream.ToArray();
+        if (ackBytes.Length < 3 || ackBytes[0] != 0x7b || ackBytes[1] != 0x7d || ackBytes[2] != 0x1e)
             throw new InvalidOperationException(
-                $"SignalR handshake: unexpected ack bytes: [{string.Join(",", ack.ToArray().Take(8).Select(b => $"0x{b:x2}"))}]");
+                $"SignalR handshake: unexpected ack bytes: [{string.Join(",", ackBytes.Take(8).Select(b => $"0x{b:x2}"))}]");
     }
 
     /// <inheritdoc />
@@ -145,6 +154,11 @@ public sealed class NotificationsConnection : INotificationsConnection
                 yield break;
             }
 
+            // Only Binary frames carry SignalR MessagePack protocol messages.
+            // Text frames (e.g. SignalR JSON handshake remnants or keep-alives) are silently skipped.
+            if (result.MessageType != WebSocketMessageType.Binary)
+                continue;
+
             // Try to parse as a SignalR invocation.
             if (accumulated.Length == 0)
                 continue;
@@ -161,7 +175,7 @@ public sealed class NotificationsConnection : INotificationsConnection
     {
         if (_ws is null) return;
 
-        if (_ws.State == WebSocketState.Open)
+        if (_ws.State is WebSocketState.Open or WebSocketState.CloseReceived)
         {
             try
             {
