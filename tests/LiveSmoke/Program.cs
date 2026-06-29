@@ -823,11 +823,29 @@ async Task NotificationsPushRoundTripAsync()
     var wsFolderName = $"WVW-WS-{run}";
     string? wsFolderId = null;
 
+    bool handshakeOk = false;
+    string? handshakeError = null;
     try
     {
-        // Step 1: 连接并断言握手
-        await conn.ConnectAsync(serverUrl, session.AccessToken!, CancellationToken.None);
-        Step("ws handshake ok", true);
+        // Step 1: 连接并断言握手（非空洞式：捕获异常并 Step false）
+        try
+        {
+            await conn.ConnectAsync(serverUrl, session.AccessToken!, CancellationToken.None);
+            handshakeOk = true;
+        }
+        catch (Exception ex)
+        {
+            handshakeError = $"{ex.GetType().Name}: {ex.Message}";
+        }
+        Step("ws handshake ok", handshakeOk, handshakeOk ? null : handshakeError);
+
+        if (!handshakeOk)
+        {
+            Step("ws push SyncFolderCreate received", false, "skipped (handshake failed)");
+            Step("ws: folder removed before dispatch", false, "skipped (handshake failed)");
+            Step("ws dispatcher re-adds folder", false, "skipped (handshake failed)");
+            return;
+        }
 
         // Step 2: 后台读取任务，把消息写入 Channel
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
@@ -878,12 +896,13 @@ async Task NotificationsPushRoundTripAsync()
             Step("ws push SyncFolderCreate received", received is not null,
                 received is null ? "timeout / not received" : $"type=7 id={received.EntityId}");
 
-            // Step 5: 先从 session 移除该文件夹，再通过 dispatcher 触发 GET 补回
+            // Step 5: 先从 session 移除该文件夹，断言已缺失，再通过 dispatcher 触发 GET 补回
             if (received is not null)
             {
                 session.RemoveFolder(wsFolderId);
                 var beforeDispatch = session.Folders.Any(x => x.Id == wsFolderId);
-                // beforeDispatch 应为 false（已移除），下面断言 dispatcher 补回它
+                Step("ws: folder removed before dispatch", !beforeDispatch,
+                    beforeDispatch ? "RemoveFolder had no effect" : "confirmed absent");
 
                 var dispatcher = new NotificationDispatcher(
                     cipherApi: attachmentApi,
