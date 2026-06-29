@@ -144,6 +144,26 @@ public class AccountServiceTests
         Assert.False(auth.LoggedOut);
     }
 
+    // ---- Test 3b: ChangeKdf 旧密码错误时抛出 AccountOperationException，且不发 API ----
+
+    [Fact]
+    public async Task ChangeKdf_wrong_current_password_throws_AccountOperationException()
+    {
+        var (session, store, _, _) = BuildUnlockedSession();
+        var api = new FakeAccountApiClient();
+        var auth = new FakeAuthService(session, store);
+        var svc = BuildService(session, store, api, auth);
+
+        // 传入错误的旧密码
+        await Assert.ThrowsAsync<AccountOperationException>(() =>
+            svc.ChangeKdfAsync("WRONG-PASSWORD", 700_000, TestContext.Current.CancellationToken));
+
+        // 没有发出 API 请求
+        Assert.Null(api.Kdf);
+        // 没有登出
+        Assert.False(auth.LoggedOut);
+    }
+
     // ---- Test 4: ChangeKdf 成功时发送正确请求并登出 ----
 
     [Fact]

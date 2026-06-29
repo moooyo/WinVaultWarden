@@ -76,6 +76,7 @@ public sealed class AccountService : IAccountService
             throw new AccountOperationException("无法加载持久化会话，请重新登录后重试。");
 
         // 验证旧密码：派生旧 masterKey 后尝试解密 UserKey，不匹配则抛异常
+        // oldMasterKey 在 finally 中无条件清零，catch 只负责把密码错误的异常转为业务异常
         byte[] oldMasterKey = _crypto.DeriveMasterKey(
             currentPassword,
             persisted.Email,
@@ -84,20 +85,15 @@ public sealed class AccountService : IAccountService
             persisted.KdfMemory,
             persisted.KdfParallelism);
 
-        try
-        {
-            ValidateCurrentPassword(oldMasterKey, persisted.ProtectedUserKey);
-        }
-        catch (Exception ex) when (ex is CryptographicException or FormatException)
-        {
-            CryptographicOperations.ZeroMemory(oldMasterKey);
-            throw new AccountOperationException("当前密码不正确。");
-        }
-
         string oldHash;
         try
         {
+            ValidateCurrentPassword(oldMasterKey, persisted.ProtectedUserKey);
             oldHash = _crypto.ComputeMasterPasswordHash(oldMasterKey, currentPassword);
+        }
+        catch (Exception ex) when (ex is CryptographicException or FormatException)
+        {
+            throw new AccountOperationException("当前密码不正确。");
         }
         finally
         {
@@ -159,6 +155,7 @@ public sealed class AccountService : IAccountService
             throw new AccountOperationException("无法加载持久化会话，请重新登录后重试。");
 
         // 验证旧密码
+        // oldMasterKey 在 finally 中无条件清零，catch 只负责把密码错误的异常转为业务异常
         byte[] oldMasterKey = _crypto.DeriveMasterKey(
             currentPassword,
             persisted.Email,
@@ -167,20 +164,15 @@ public sealed class AccountService : IAccountService
             persisted.KdfMemory,
             persisted.KdfParallelism);
 
-        try
-        {
-            ValidateCurrentPassword(oldMasterKey, persisted.ProtectedUserKey);
-        }
-        catch (Exception ex) when (ex is CryptographicException or FormatException)
-        {
-            CryptographicOperations.ZeroMemory(oldMasterKey);
-            throw new AccountOperationException("当前密码不正确。");
-        }
-
         string oldHash;
         try
         {
+            ValidateCurrentPassword(oldMasterKey, persisted.ProtectedUserKey);
             oldHash = _crypto.ComputeMasterPasswordHash(oldMasterKey, currentPassword);
+        }
+        catch (Exception ex) when (ex is CryptographicException or FormatException)
+        {
+            throw new AccountOperationException("当前密码不正确。");
         }
         finally
         {
@@ -189,7 +181,7 @@ public sealed class AccountService : IAccountService
 
         // 用旧密码 + 新 KDF 参数派生新 masterKey
         // 注意：ChangeKdf 使用 PBKDF2，memory/parallelism 均为 null
-        const int newKdf = 0; // KdfType.Pbkdf2
+        int newKdf = (int)KdfType.Pbkdf2;
         byte[] newMasterKey = _crypto.DeriveMasterKey(
             currentPassword,
             persisted.Email,
