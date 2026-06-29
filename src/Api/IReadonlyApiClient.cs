@@ -11,4 +11,6 @@ public interface IReadonlyApiClient
     Task<TokenResponse> RefreshTokenAsync(string refreshToken, CancellationToken ct = default);
     Task<SyncResponse> GetSyncAsync(CancellationToken ct = default);
     Task<ListResponse<DeviceDto>> GetDevicesAsync(CancellationToken ct = default);
+    Task<FolderDto> GetFolderAsync(string folderId, CancellationToken ct = default);
+    Task<SendResponseDto> GetSendAsync(string sendId, CancellationToken ct = default);
 }
