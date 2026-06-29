@@ -8,7 +8,7 @@ using Core.Abstractions;
 
 namespace Api;
 
-public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiClient, ISendApiClient, IAttachmentApiClient
+public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiClient, ISendApiClient, IAttachmentApiClient, IAccountApiClient
 {
     private readonly HttpClient _http;
     private Uri? _baseAddress;
@@ -203,6 +203,17 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
+
+    // ===== Account =====
+
+    public Task UpdateProfileAsync(ProfileUpdateRequest request, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Post, "api/accounts/profile", request, ApiJsonContext.Default.ProfileUpdateRequest, ct);
+
+    public Task ChangePasswordAsync(ChangePasswordRequest request, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Post, "api/accounts/password", request, ApiJsonContext.Default.ChangePasswordRequest, ct);
+
+    public Task ChangeKdfAsync(ChangeKdfRequest request, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Post, "api/accounts/kdf", request, ApiJsonContext.Default.ChangeKdfRequest, ct);
 
     // 服务端给出的 url 可能是绝对地址,也可能是以 "/" 开头的相对路径。
     // 绝对地址原样返回;相对路径去掉前导 "/" 交给 Url() 拼到 baseAddress。
