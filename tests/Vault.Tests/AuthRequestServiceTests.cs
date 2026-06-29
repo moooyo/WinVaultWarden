@@ -78,6 +78,7 @@ public class AuthRequestServiceTests
 
         // 断言 API 被调用一次 approve
         var single = Assert.Single(api.Calls, c => c == "approve");
+        Assert.Equal("approve", single);
         Assert.Equal("req-001", api.LastApproveId);
         Assert.True(api.LastApproveRequest!.RequestApproved);
         Assert.Null(api.LastApproveRequest.MasterPasswordHash);
