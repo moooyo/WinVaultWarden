@@ -23,4 +23,12 @@ public class TotpGeneratorTests
         // T = 1111111109 → counter = 1111111109/30 = 37037036 → expected = 081804
         Assert.Equal("081804", TotpGenerator.Generate(Secret20, 1111111109));
     }
+
+    [Fact]
+    public void Generate_throws_FormatException_on_invalid_base32_char()
+    {
+        // '!' is not in the Base32 alphabet; must throw FormatException, not silently corrupt
+        var ex = Assert.Throws<FormatException>(() => TotpGenerator.Generate("AAAA!AAA", 0));
+        Assert.Contains("!", ex.Message);
+    }
 }

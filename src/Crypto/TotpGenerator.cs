@@ -9,6 +9,10 @@ public static class TotpGenerator
 {
     public static string Generate(string base32Secret, long unixSeconds, int digits = 6, int period = 30)
     {
+        ArgumentNullException.ThrowIfNull(base32Secret);
+        if (digits < 1 || digits > 9)
+            throw new ArgumentOutOfRangeException(nameof(digits), digits, "digits must be between 1 and 9.");
+
         var key = Base32Decode(base32Secret);
         var counter = unixSeconds / period;
 
@@ -29,7 +33,12 @@ public static class TotpGenerator
                 | (hash[off + 2] << 8)
                 | hash[off + 3];
 
-        int otp = bin % (int)Math.Pow(10, digits);
+        // Use integer power (loop) to avoid floating-point imprecision from Math.Pow
+        int modulus = 1;
+        for (int i = 0; i < digits; i++)
+            modulus *= 10;
+
+        int otp = bin % modulus;
         return otp.ToString().PadLeft(digits, '0');
     }
 
@@ -42,7 +51,15 @@ public static class TotpGenerator
         var output = new List<byte>();
         foreach (var c in s)
         {
-            val = (val << 5) | Alphabet.IndexOf(c);
+            // Skip whitespace (e.g. user-copied secrets with spaces)
+            if (char.IsWhiteSpace(c))
+                continue;
+
+            int idx = Alphabet.IndexOf(c);
+            if (idx == -1)
+                throw new FormatException($"Invalid Base32 character: '{c}'.");
+
+            val = (val << 5) | idx;
             bits += 5;
             if (bits >= 8)
             {
