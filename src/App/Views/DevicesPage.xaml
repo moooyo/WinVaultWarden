@@ -5,7 +5,8 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:conv="using:App.Converters"
-    xmlns:models="using:App.ViewModels.Models">
+    xmlns:models="using:App.ViewModels.Models"
+    Loaded="OnPageLoaded">
     <Page.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
     </Page.Resources>
@@ -66,6 +67,67 @@
                     </DataTemplate>
                 </ItemsRepeater.ItemTemplate>
             </ItemsRepeater>
+
+            <!-- ── 待批准的登录请求 ─────────────────────────────────── -->
+            <StackPanel Spacing="8" Margin="0,16,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="待批准的登录请求"
+                               Style="{ThemeResource SubtitleTextBlockStyle}"
+                               VerticalAlignment="Center" />
+                    <Button Grid.Column="1"
+                            AutomationProperties.AutomationId="DevicesRefreshRequestsButton"
+                            Content="刷新"
+                            Click="OnRefreshRequestsClick"
+                            Style="{ThemeResource DefaultButtonStyle}" />
+                </Grid>
+
+                <!-- 空状态 -->
+                <TextBlock x:Name="RequestsEmptyText"
+                           Text="当前没有待批准的登录请求。"
+                           Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                           Visibility="{x:Bind ViewModel.HasNoPendingRequests, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+
+                <!-- 请求列表 -->
+                <ItemsRepeater x:Name="PendingRequestsRepeater"
+                               ItemsSource="{x:Bind ViewModel.PendingRequests, Mode=OneWay}">
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="models:AuthRequestItem">
+                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderThickness="1" CornerRadius="{StaticResource CardCornerRadius}" Padding="{StaticResource CardContentPadding}" Margin="0,0,0,8"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock Text="{x:Bind DeviceTypeName}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{x:Bind IpAddress}"
+                                                   Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                                        <TextBlock Text="{x:Bind CreatedLabel}"
+                                                   Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <Button AutomationProperties.AutomationId="DevicesApproveRequestButton"
+                                                Content="批准"
+                                                Tag="{x:Bind}"
+                                                Click="OnApproveRequestClick"
+                                                Style="{ThemeResource AccentButtonStyle}" />
+                                        <Button AutomationProperties.AutomationId="DevicesDenyRequestButton"
+                                                Content="拒绝"
+                                                Tag="{x:Bind}"
+                                                Click="OnDenyRequestClick" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 </Page>

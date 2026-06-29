@@ -21,11 +21,13 @@ public partial class DevicesViewModel : ObservableObject
 
     public bool HasError => !string.IsNullOrEmpty(Error);
     public bool HasNoDevices => Devices.Count == 0;
+    public bool HasNoPendingRequests => PendingRequests.Count == 0;
 
     public DevicesViewModel(IDeviceUiService service, IAuthRequestUiService? authRequests = null)
     {
         _authRequests = authRequests;
         foreach (var d in service.GetDevices()) Devices.Add(d);
+        PendingRequests.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasNoPendingRequests));
     }
 
     // ── 登录授权请求 ──────────────────────────────────────────────────────────
