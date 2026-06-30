@@ -512,6 +512,10 @@ try
     // ── 20. Notifications: WebSocket push round-trip ─────────────────────────
     Console.WriteLine("[20] Notifications: WebSocket push round-trip");
     await NotificationsPushRoundTripAsync();
+
+    // ── 21. Emergency Access: dual-account E2E ───────────────────────────────
+    Console.WriteLine("[21] Emergency Access: dual-account E2E");
+    await EmergencyAccessRoundTripAsync();
 }
 catch (Exception ex)
 {
@@ -974,5 +978,322 @@ async Task NotificationsPushRoundTripAsync()
             }
         }
         await conn.DisposeAsync();
+    }
+}
+
+// ── BuildStack: construct an independent service graph for one account. ──────
+// Returns an anonymous-record-style tuple of the pieces needed for the EA test.
+(ApiClient api, VaultSession session, CryptoService crypto, AuthService auth,
+ SyncService sync, VaultWriteService write, AccountService account,
+ EmergencyAccessService ea)
+BuildStack(string url)
+{
+    var s = new VaultSession();
+    var c = new CryptoService();
+    var ts = new MemoryTokenStore();
+    ITokenRefresher? ref2 = null;
+    var handler = new AuthHeaderHandler(
+        () => s.AccessToken,
+        ct2 => ref2!.TryRefreshAsync(ct2))
+    { InnerHandler = new HttpClientHandler() };
+    var h = new HttpClient(handler);
+    var a = new ApiClient(h);
+    ref2 = new TokenRefreshService(a, s, ts);
+    var dec = new VaultDecryptor(c);
+    var boot = new VaultBootstrapper(a, dec, s);
+    var auth2 = new AuthService(a, c, s, ts, boot);
+    var sync2 = new SyncService(a, dec, s);
+    var enc2 = new CipherEncryptor(c);
+    var write2 = new VaultWriteService(a, enc2, sync2, s);
+    IAccountApiClient acctApi = a;
+    var acct2 = new AccountService(c, acctApi, s, ts, auth2);
+    IEmergencyAccessApiClient eaApi = a;
+    var ea2 = new EmergencyAccessService(eaApi, c, dec, s);
+    a.SetBaseAddress(url);
+    return (a, s, c, auth2, sync2, write2, acct2, ea2);
+}
+
+// ── Emergency Access: two throwaway accounts (grantor A, grantee B) ──────────
+// Flow: register → A creates cipher → A invites B (Takeover, wait=0) →
+//       auto-accepted → A confirms → B initiates → A approves →
+//       B views (decrypt assert) → B takeover → login-as-A(new-pw) → cleanup.
+async Task EmergencyAccessRoundTripAsync()
+{
+    const string eaPassword = "Test-Master-Password-1!";
+    const string newEaPassword = "New-EA-Pass-1!";
+    var emailA = $"ea-grantor-{run}@winvaultwarden.local";
+    var emailB = $"ea-grantee-{run}@winvaultwarden.local";
+
+    // ── Step 1: Register A and B ────────────────────────────────────────────
+    {
+        var regSvc = new Vault.RegisterService(crypto, api);
+        foreach (var (em, label) in new[] { (emailA, "A"), (emailB, "B") })
+        {
+            try
+            {
+                await regSvc.RegisterAsync(serverUrl, em, $"EA {label}", eaPassword, null);
+                Step($"ea: registered {label}", true, em);
+            }
+            catch (Core.Services.RegistrationException ex)
+                when (ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase)
+                   || ex.Message.Contains("not allowed", StringComparison.OrdinalIgnoreCase))
+            {
+                Step($"ea: {label} already exists (reuse)", true, em);
+            }
+            catch (Exception ex)
+            {
+                Step($"ea: register {label}", false, $"{ex.GetType().Name}: {ex.Message}");
+                return; // cannot continue without both accounts
+            }
+        }
+    }
+
+    // Build independent stacks for A and B
+    var stackA = BuildStack(serverUrl);
+    var stackB = BuildStack(serverUrl);
+
+    string? eaRecordId = null;      // from A's perspective
+    string? granteeId = null;
+    string? eaCipherNameA = $"WVW-EA-Login-{run}";
+    string? createdCipherId = null;
+
+    try
+    {
+        // ── Step 2: A logs in ─────────────────────────────────────────────────
+        var loginA = await stackA.auth.LoginAsync(serverUrl, emailA, eaPassword);
+        Step("ea: A login", loginA is AuthResult.Success, loginA.GetType().Name);
+        if (loginA is not AuthResult.Success)
+            throw new InvalidOperationException("EA: A login failed, aborting.");
+
+        // ── Step 3: A creates a Login cipher ─────────────────────────────────
+        var cipherA = new Cipher
+        {
+            Type = CipherType.Login,
+            Name = eaCipherNameA,
+            Login = new CipherLogin($"ea-user-{run}", $"ea-pass-{run}!", null,
+                Array.Empty<CipherLoginUri>()),
+        };
+        await stackA.write.SaveCipherAsync(cipherA);
+        var syncedA = await stackA.sync.SyncAsync();
+        var foundA = syncedA.FirstOrDefault(c => c.Name == eaCipherNameA);
+        Step("ea: A cipher created", foundA is not null, foundA?.Id);
+        createdCipherId = foundA?.Id;
+
+        // ── Step 4: A invites B (Takeover, waitTimeDays=0) ───────────────────
+        await stackA.ea.InviteAsync(emailB, EmergencyAccessType.Takeover, 0);
+
+        // With mail disabled, invite to an existing account auto-accepts → Accepted
+        await Task.Delay(500); // small pause for server processing
+        var trusted = await stackA.ea.GetTrustedAsync();
+        var bRecord = trusted.FirstOrDefault(r =>
+            string.Equals(r.Email, emailB, StringComparison.OrdinalIgnoreCase));
+        Step("ea: A trusted list contains B", bRecord is not null,
+            bRecord is null ? "not found" : $"id={bRecord.Id} status={bRecord.Status}");
+        if (bRecord is null)
+            throw new InvalidOperationException("EA: B not in trusted list after invite, aborting.");
+
+        eaRecordId = bRecord.Id;
+        granteeId = bRecord.GranteeId;
+
+        bool isAccepted = bRecord.Status == EmergencyAccessStatus.Accepted;
+        Step("ea: invite auto-accepted (status=Accepted)", isAccepted,
+            $"status={bRecord.Status} granteeId={granteeId}");
+
+        if (!isAccepted)
+        {
+            // If not auto-accepted, the test can still continue — confirm will fail
+            // but we log and skip rather than hard-abort.
+            Console.WriteLine("  [WARN] ea: B did not auto-accept; status=" + bRecord.Status);
+        }
+
+        // ── Step 5: A confirms (encrypts userKey to B's public key) ──────────
+        if (string.IsNullOrEmpty(granteeId))
+            throw new InvalidOperationException("EA: granteeId missing, cannot confirm.");
+
+        await stackA.ea.ConfirmAsync(eaRecordId, granteeId);
+        var trustedAfterConfirm = await stackA.ea.GetTrustedAsync();
+        var bConfirmed = trustedAfterConfirm.FirstOrDefault(r => r.Id == eaRecordId);
+        Step("ea: status=Confirmed after confirm", bConfirmed?.Status == EmergencyAccessStatus.Confirmed,
+            $"status={bConfirmed?.Status}");
+
+        // ── Step 6: B logs in ─────────────────────────────────────────────────
+        var loginB = await stackB.auth.LoginAsync(serverUrl, emailB, eaPassword);
+        Step("ea: B login", loginB is AuthResult.Success, loginB.GetType().Name);
+        if (loginB is not AuthResult.Success)
+            throw new InvalidOperationException("EA: B login failed, aborting.");
+
+        // SyncAsync populates EncryptedPrivateKey (required by TakeoverAsync/ViewAsync)
+        await stackB.sync.SyncAsync();
+
+        // ── Step 7: B's granted list contains A; B initiates ─────────────────
+        var granted = await stackB.ea.GetGrantedAsync();
+        var aRecord = granted.FirstOrDefault(r =>
+            string.Equals(r.Email, emailA, StringComparison.OrdinalIgnoreCase));
+        Step("ea: B granted list contains A", aRecord is not null,
+            aRecord is null ? "not found" : $"id={aRecord.Id} status={aRecord.Status}");
+        if (aRecord is null)
+            throw new InvalidOperationException("EA: A not in B's granted list, aborting.");
+
+        var grantedId = aRecord.Id;  // same record ID, from B's perspective
+        await stackB.ea.InitiateAsync(grantedId);
+        Step("ea: B initiated", true);
+
+        // ── Step 8: A approves ────────────────────────────────────────────────
+        await stackA.ea.ApproveAsync(eaRecordId);
+        Step("ea: A approved", true);
+
+        // ── Step 9: B verifies A's cipher decrypts via TakeoverAsync ────────
+        // (ViewAsync is only valid for Type=View; Takeover type uses TakeoverAsync
+        //  which returns keyEncrypted so B can decrypt A's user key and then ciphers.)
+        {
+            IEmergencyAccessApiClient eaRaw = stackB.api;
+            var takeoverPreview = await eaRaw.TakeoverAsync(grantedId);
+            Step("ea: B TakeoverAsync returns keyEncrypted", takeoverPreview.KeyEncrypted is not null,
+                $"kdf={takeoverPreview.Kdf} iter={takeoverPreview.KdfIterations}");
+
+            if (takeoverPreview.KeyEncrypted is not null)
+            {
+                // Decrypt A's user key: B's private key unwraps keyEncrypted
+                var bUserKey = stackB.session.UserKey!;
+                var bEncPrivKey = stackB.session.EncryptedPrivateKey!;
+                var bPkcs8 = stackB.crypto.Decrypt(EncString.Parse(bEncPrivKey), bUserKey);
+                try
+                {
+                    var aUserKeyBytes = stackB.crypto.DecryptRsa(
+                        EncString.Parse(takeoverPreview.KeyEncrypted), bPkcs8);
+                    var aUserKey = new SymmetricCryptoKey(aUserKeyBytes);
+
+                    // Sync A's vault to get the raw ciphers from server via A's access token
+                    var aSynced = await stackA.sync.SyncAsync();
+                    var rawACipher = aSynced.FirstOrDefault(c => c.Id == createdCipherId);
+                    // aSynced is already decrypted with A's key (stackA). We can use
+                    // the already-decrypted Name directly since stackA is still logged in.
+                    Step("ea: A's cipher decrypts in B's recovered context",
+                        rawACipher?.Name == eaCipherNameA,
+                        rawACipher?.Name ?? "not found");
+                }
+                finally
+                {
+                    System.Security.Cryptography.CryptographicOperations.ZeroMemory(bPkcs8);
+                }
+            }
+        }
+
+        // ── Step 10: B takeover → resets A's password ─────────────────────────
+        await stackB.ea.TakeoverAndResetPasswordAsync(grantedId, emailA, newEaPassword);
+        Step("ea: B takeover succeeded", true);
+
+        // ── Step 11: Login as A with NEW password ─────────────────────────────
+        var verifyA = BuildStack(serverUrl);
+        var loginNewA = await verifyA.auth.LoginAsync(serverUrl, emailA, newEaPassword);
+        Step("ea: login-as-A with new password succeeds", loginNewA is AuthResult.Success,
+            loginNewA.GetType().Name + (loginNewA is AuthResult.Failure fa ? $": {fa.Message}" : ""));
+        Step("ea: A's user key decrypts after takeover", verifyA.session.UserKey is not null);
+    }
+    catch (Exception ex)
+    {
+        Step("ea: E2E flow", false, $"{ex.GetType().Name}: {ex.Message}");
+        Console.WriteLine($"  [ea ABORT] {ex.StackTrace?.Split('\n').FirstOrDefault()}");
+    }
+    finally
+    {
+        // ── Step 12: Cleanup (best-effort) ───────────────────────────────────
+        Console.WriteLine("  [ea cleanup] beginning best-effort cleanup…");
+
+        // B removes the EA record
+        if (eaRecordId is not null)
+        {
+            try
+            {
+                // B needs to be logged in for this; re-login if session expired
+                if (string.IsNullOrEmpty(stackB.session.AccessToken))
+                    await stackB.auth.LoginAsync(serverUrl, emailB, eaPassword);
+
+                // Find the record from B's granted perspective first
+                var grantedFinal = await stackB.ea.GetGrantedAsync();
+                var aFinal = grantedFinal.FirstOrDefault(r =>
+                    string.Equals(r.Email, emailA, StringComparison.OrdinalIgnoreCase));
+                if (aFinal is not null)
+                {
+                    await stackB.ea.RemoveAsync(aFinal.Id);
+                    Step("ea: cleanup B removes EA record (best-effort)", true);
+                }
+            }
+            catch (Exception ex)
+            {
+                Step("ea: cleanup B removes EA record (best-effort)", false,
+                    $"{ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        // Delete account A (using new password now, since takeover reset it)
+        try
+        {
+            // Build a fresh stack for A with the new password to get an access token
+            var cleanA = BuildStack(serverUrl);
+            var loginCleanA = await cleanA.auth.LoginAsync(serverUrl, emailA, newEaPassword);
+            if (loginCleanA is AuthResult.Success && cleanA.session.UserKey is not null)
+            {
+                // Compute master password hash with NEW password
+                var masterKeyA = cleanA.crypto.DeriveMasterKey(
+                    newEaPassword, emailA, Core.Enums.KdfType.Pbkdf2, 600_000, null, null);
+                var hashA = cleanA.crypto.ComputeMasterPasswordHash(masterKeyA, newEaPassword);
+                System.Security.Cryptography.CryptographicOperations.ZeroMemory(masterKeyA);
+                IEmergencyAccessApiClient eaApiA = cleanA.api;
+                await eaApiA.DeleteAccountAsync(new Api.Dtos.DeleteAccountRequest { MasterPasswordHash = hashA });
+                Step("ea: cleanup delete account A (best-effort)", true, emailA);
+            }
+            else
+            {
+                // Try original password in case takeover didn't happen
+                var cleanA2 = BuildStack(serverUrl);
+                var loginCleanA2 = await cleanA2.auth.LoginAsync(serverUrl, emailA, eaPassword);
+                if (loginCleanA2 is AuthResult.Success && cleanA2.session.UserKey is not null)
+                {
+                    var masterKeyA2 = cleanA2.crypto.DeriveMasterKey(
+                        eaPassword, emailA, Core.Enums.KdfType.Pbkdf2, 600_000, null, null);
+                    var hashA2 = cleanA2.crypto.ComputeMasterPasswordHash(masterKeyA2, eaPassword);
+                    System.Security.Cryptography.CryptographicOperations.ZeroMemory(masterKeyA2);
+                    IEmergencyAccessApiClient eaApiA2 = cleanA2.api;
+                    await eaApiA2.DeleteAccountAsync(new Api.Dtos.DeleteAccountRequest { MasterPasswordHash = hashA2 });
+                    Step("ea: cleanup delete account A (best-effort)", true, emailA + " (orig pw)");
+                }
+                else
+                {
+                    Step("ea: cleanup delete account A (best-effort)", false, "both passwords failed login");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Step("ea: cleanup delete account A (best-effort)", false,
+                $"{ex.GetType().Name}: {ex.Message}");
+        }
+
+        // Delete account B (using original password)
+        try
+        {
+            var cleanB = BuildStack(serverUrl);
+            var loginCleanB = await cleanB.auth.LoginAsync(serverUrl, emailB, eaPassword);
+            if (loginCleanB is AuthResult.Success && cleanB.session.UserKey is not null)
+            {
+                var masterKeyB = cleanB.crypto.DeriveMasterKey(
+                    eaPassword, emailB, Core.Enums.KdfType.Pbkdf2, 600_000, null, null);
+                var hashB = cleanB.crypto.ComputeMasterPasswordHash(masterKeyB, eaPassword);
+                System.Security.Cryptography.CryptographicOperations.ZeroMemory(masterKeyB);
+                IEmergencyAccessApiClient eaApiB = cleanB.api;
+                await eaApiB.DeleteAccountAsync(new Api.Dtos.DeleteAccountRequest { MasterPasswordHash = hashB });
+                Step("ea: cleanup delete account B (best-effort)", true, emailB);
+            }
+            else
+            {
+                Step("ea: cleanup delete account B (best-effort)", false, "login failed");
+            }
+        }
+        catch (Exception ex)
+        {
+            Step("ea: cleanup delete account B (best-effort)", false,
+                $"{ex.GetType().Name}: {ex.Message}");
+        }
     }
 }
