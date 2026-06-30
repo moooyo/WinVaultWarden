@@ -60,5 +60,7 @@
     <Compile Include="..\..\src\App\Services\PasskeyApprovalThrottle.cs" Link="Linked\PasskeyApprovalThrottle.cs" />
     <Compile Include="..\..\src\App\ViewModels\SettingsViewModel.cs" Link="ViewModels\SettingsViewModel.cs" />
     <Compile Include="..\..\src\App\Services\NotificationsHost.cs" Link="Services\NotificationsHost.cs" />
+    <Compile Include="..\..\src\App\Services\RegisterUiService.cs" Link="Services\RegisterUiService.cs" />
+    <Compile Include="..\..\src\App\ViewModels\RegisterViewModel.cs" Link="ViewModels\RegisterViewModel.cs" />
   </ItemGroup>
 </Project>
