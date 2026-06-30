@@ -16,6 +16,7 @@ public sealed class VaultSession : IVaultSnapshot
     public string? AccessToken { get; private set; }
     public string? RefreshToken { get; private set; }
     public SymmetricCryptoKey? UserKey { get; private set; }
+    public string? EncryptedPrivateKey { get; private set; }
     public AccountInfo Account { get; private set; } = AccountInfo.Empty;
 
     public IReadOnlyList<Cipher> Ciphers
@@ -55,6 +56,12 @@ public sealed class VaultSession : IVaultSnapshot
             UserKey = userKey;
             State = VaultState.Unlocked;
         }
+    }
+
+    public void SetEncryptedPrivateKey(string? encryptedPrivateKey)
+    {
+        lock (_gate)
+            EncryptedPrivateKey = encryptedPrivateKey;
     }
 
     public void SetSnapshot(DecryptedVault vault)
@@ -190,5 +197,6 @@ public sealed class VaultSession : IVaultSnapshot
         _ciphers = Array.Empty<Cipher>();
         _folders = Array.Empty<Folder>();
         _devices = Array.Empty<DeviceInfo>();
+        EncryptedPrivateKey = null;
     }
 }

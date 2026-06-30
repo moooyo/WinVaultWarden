@@ -512,6 +512,10 @@ try
     // ── 20. Notifications: WebSocket push round-trip ─────────────────────────
     Console.WriteLine("[20] Notifications: WebSocket push round-trip");
     await NotificationsPushRoundTripAsync();
+
+    // ── 21. Emergency Access: dual-account E2E ───────────────────────────────
+    Console.WriteLine("[21] Emergency Access: dual-account E2E");
+    await EmergencyAccessRoundTripAsync();
 }
 catch (Exception ex)
 {
@@ -974,5 +978,293 @@ async Task NotificationsPushRoundTripAsync()
             }
         }
         await conn.DisposeAsync();
+    }
+}
+
+// ── BuildStack: construct an independent service graph for one account. ──────
+// Returns an anonymous-record-style tuple of the pieces needed for the EA test.
+(ApiClient api, VaultSession session, CryptoService crypto, AuthService auth,
+ SyncService sync, VaultWriteService write, AccountService account,
+ EmergencyAccessService ea)
+BuildStack(string url)
+{
+    var s = new VaultSession();
+    var c = new CryptoService();
+    var ts = new MemoryTokenStore();
+    ITokenRefresher? ref2 = null;
+    var handler = new AuthHeaderHandler(
+        () => s.AccessToken,
+        ct2 => ref2!.TryRefreshAsync(ct2))
+    { InnerHandler = new HttpClientHandler() };
+    var h = new HttpClient(handler);
+    var a = new ApiClient(h);
+    ref2 = new TokenRefreshService(a, s, ts);
+    var dec = new VaultDecryptor(c);
+    var boot = new VaultBootstrapper(a, dec, s);
+    var auth2 = new AuthService(a, c, s, ts, boot);
+    var sync2 = new SyncService(a, dec, s);
+    var enc2 = new CipherEncryptor(c);
+    var write2 = new VaultWriteService(a, enc2, sync2, s);
+    IAccountApiClient acctApi = a;
+    var acct2 = new AccountService(c, acctApi, s, ts, auth2);
+    IEmergencyAccessApiClient eaApi = a;
+    var ea2 = new EmergencyAccessService(eaApi, c, dec, s);
+    a.SetBaseAddress(url);
+    return (a, s, c, auth2, sync2, write2, acct2, ea2);
+}
+
+// ── Emergency Access: two throwaway accounts (grantor A, grantee B) ──────────
+// Flow: register → A creates cipher → A invites B (Takeover, wait=0) →
+//       auto-accepted → A confirms → B initiates → A approves →
+//       B views (decrypt assert) → B takeover → login-as-A(new-pw) → cleanup.
+async Task EmergencyAccessRoundTripAsync()
+{
+    const string eaPassword = "Test-Master-Password-1!";
+    const string newEaPassword = "New-EA-Pass-1!";
+    var emailA = $"ea-grantor-{run}@winvaultwarden.local";
+    var emailB = $"ea-grantee-{run}@winvaultwarden.local";
+
+    // ── Step 1: Register A and B ────────────────────────────────────────────
+    {
+        var regSvc = new Vault.RegisterService(crypto, api);
+        foreach (var (em, label) in new[] { (emailA, "A"), (emailB, "B") })
+        {
+            try
+            {
+                await regSvc.RegisterAsync(serverUrl, em, $"EA {label}", eaPassword, null);
+                Step($"ea: registered {label}", true, em);
+            }
+            catch (Core.Services.RegistrationException ex)
+                when (ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase)
+                   || ex.Message.Contains("not allowed", StringComparison.OrdinalIgnoreCase))
+            {
+                Step($"ea: {label} already exists (reuse)", true, em);
+            }
+            catch (Exception ex)
+            {
+                Step($"ea: register {label}", false, $"{ex.GetType().Name}: {ex.Message}");
+                return; // cannot continue without both accounts
+            }
+        }
+    }
+
+    // Build independent stacks for A and B
+    var stackA = BuildStack(serverUrl);
+    var stackB = BuildStack(serverUrl);
+
+    string eaCipherNameA = $"WVW-EA-Login-{run}";
+
+    try
+    {
+        // ── Step 2: A logs in ─────────────────────────────────────────────────
+        var loginA = await stackA.auth.LoginAsync(serverUrl, emailA, eaPassword);
+        Step("ea: A login", loginA is AuthResult.Success, loginA.GetType().Name);
+        if (loginA is not AuthResult.Success)
+            throw new InvalidOperationException("EA: A login failed, aborting.");
+
+        // ── Step 3: A creates a Login cipher ─────────────────────────────────
+        var cipherA = new Cipher
+        {
+            Type = CipherType.Login,
+            Name = eaCipherNameA,
+            Login = new CipherLogin($"ea-user-{run}", $"ea-pass-{run}!", null,
+                Array.Empty<CipherLoginUri>()),
+        };
+        await stackA.write.SaveCipherAsync(cipherA);
+        var syncedA = await stackA.sync.SyncAsync();
+        var foundA = syncedA.FirstOrDefault(c => c.Name == eaCipherNameA);
+        Step("ea: A cipher created", foundA is not null, foundA?.Id);
+
+        // ── Step 4: B logs in — BootstrapAsync populates EncryptedPrivateKey ──
+        var loginB = await stackB.auth.LoginAsync(serverUrl, emailB, eaPassword);
+        Step("ea: B login", loginB is AuthResult.Success, loginB.GetType().Name);
+        if (loginB is not AuthResult.Success)
+            throw new InvalidOperationException("EA: B login failed, aborting.");
+
+        // Local helper: run a full grant cycle (invite → auto-accept → confirm →
+        // initiate → approve) for a given access type, returning the grant id from
+        // B's (grantee) perspective. Step-asserts the key transitions along the way.
+        async Task<string> RunGrantToRecoveryApprovedAsync(EmergencyAccessType type, string label)
+        {
+            await stackA.ea.InviteAsync(emailB, type, 0);
+            await Task.Delay(500); // small pause for server processing (mail off → auto-accept)
+
+            var trusted = await stackA.ea.GetTrustedAsync();
+            var bRec = trusted.FirstOrDefault(r =>
+                string.Equals(r.Email, emailB, StringComparison.OrdinalIgnoreCase)
+                && r.Type == type);
+            Step($"ea[{label}]: A trusted list contains B (Accepted)",
+                bRec is not null && bRec.Status == EmergencyAccessStatus.Accepted,
+                bRec is null ? "not found" : $"id={bRec.Id} status={bRec.Status} granteeId={bRec.GranteeId}");
+            if (bRec is null || string.IsNullOrEmpty(bRec.GranteeId))
+                throw new InvalidOperationException($"EA[{label}]: B not Accepted with granteeId after invite.");
+
+            var gid = bRec.Id;
+
+            // A confirms (encrypts A's userKey to B's public key)
+            await stackA.ea.ConfirmAsync(gid, bRec.GranteeId);
+            var confirmed = (await stackA.ea.GetTrustedAsync()).FirstOrDefault(r => r.Id == gid);
+            Step($"ea[{label}]: status=Confirmed after confirm",
+                confirmed?.Status == EmergencyAccessStatus.Confirmed, $"status={confirmed?.Status}");
+
+            // B sees the grant in its granted list; B initiates recovery
+            var granted = await stackB.ea.GetGrantedAsync();
+            var aRec = granted.FirstOrDefault(r =>
+                string.Equals(r.Email, emailA, StringComparison.OrdinalIgnoreCase) && r.Id == gid);
+            Step($"ea[{label}]: B granted list contains A",
+                aRec is not null, aRec is null ? "not found" : $"id={aRec.Id} status={aRec.Status}");
+            if (aRec is null)
+                throw new InvalidOperationException($"EA[{label}]: A not in B's granted list.");
+
+            await stackB.ea.InitiateAsync(gid);
+            // A approves (wait=0 → immediately RecoveryApproved)
+            await stackA.ea.ApproveAsync(gid);
+            Step($"ea[{label}]: initiate + approve (RecoveryApproved)", true);
+            return gid;
+        }
+
+        // ── Step 5: View-type grant — exercise the PRODUCTION ViewAsync ──────
+        // This RSA-recovers A's user key inside ViewAsync and decrypts A's ciphers
+        // with that recovered key (NOT A's own session) — the real recovery path.
+        {
+            var viewGrantId = await RunGrantToRecoveryApprovedAsync(EmergencyAccessType.View, "view");
+
+            RecoveredVault recovered = await stackB.ea.ViewAsync(viewGrantId, emailA);
+            Step("ea: ViewAsync returned recovered ciphers", recovered.Ciphers.Count > 0,
+                $"{recovered.Ciphers.Count} cipher(s), grantor={recovered.GrantorEmail}");
+            var recoveredCipher = recovered.Ciphers.FirstOrDefault(c => c.Name == eaCipherNameA);
+            Step("ea: ViewAsync decrypts A's cipher (recovered key)",
+                recoveredCipher is not null, recoveredCipher?.Name ?? "not found");
+
+            // Remove the View grant so the next invite (Takeover) is not rejected as a
+            // duplicate grantor→grantee pair.
+            await stackA.ea.RemoveAsync(viewGrantId);
+            var afterRemove = (await stackA.ea.GetTrustedAsync()).Any(r => r.Id == viewGrantId);
+            Step("ea: View grant removed", !afterRemove, afterRemove ? "still present" : "gone");
+        }
+
+        // ── Step 6: Takeover-type grant — takeover + reset A's password ──────
+        {
+            var takeoverGrantId = await RunGrantToRecoveryApprovedAsync(EmergencyAccessType.Takeover, "takeover");
+
+            await stackB.ea.TakeoverAndResetPasswordAsync(takeoverGrantId, emailA, newEaPassword);
+            Step("ea: takeover + reset A's password", true);
+
+            // Login as A with NEW password (fresh stack → genuine prelogin+token).
+            var verifyA = BuildStack(serverUrl);
+            var loginNewA = await verifyA.auth.LoginAsync(serverUrl, emailA, newEaPassword);
+            Step("ea: login-as-A with new password succeeds", loginNewA is AuthResult.Success,
+                loginNewA.GetType().Name + (loginNewA is AuthResult.Failure fa ? $": {fa.Message}" : ""));
+            Step("ea: A's user key decrypts after takeover", verifyA.session.UserKey is not null);
+        }
+    }
+    catch (Exception ex)
+    {
+        Step("ea: E2E flow", false, $"{ex.GetType().Name}: {ex.Message}");
+        Console.WriteLine($"  [ea ABORT] {ex.StackTrace?.Split('\n').FirstOrDefault()}");
+    }
+    finally
+    {
+        // ── Step 12: Cleanup (best-effort) ───────────────────────────────────
+        Console.WriteLine("  [ea cleanup] beginning best-effort cleanup…");
+
+        // B removes any leftover EA record (best-effort). The View grant is removed
+        // inline mid-flow and the Takeover grant is consumed by takeover, so normally
+        // nothing remains; this catches a grant left dangling by an early abort.
+        try
+        {
+            // B needs to be logged in for this; re-login if session expired
+            if (string.IsNullOrEmpty(stackB.session.AccessToken))
+                await stackB.auth.LoginAsync(serverUrl, emailB, eaPassword);
+
+            // Find any record from B's granted perspective and remove it
+            var grantedFinal = await stackB.ea.GetGrantedAsync();
+            var aFinal = grantedFinal.FirstOrDefault(r =>
+                string.Equals(r.Email, emailA, StringComparison.OrdinalIgnoreCase));
+            if (aFinal is not null)
+            {
+                await stackB.ea.RemoveAsync(aFinal.Id);
+                Step("ea: cleanup B removes leftover EA record (best-effort)", true, aFinal.Id);
+            }
+            else
+            {
+                Step("ea: cleanup no leftover EA record (best-effort)", true, "none");
+            }
+        }
+        catch (Exception ex)
+        {
+            Step("ea: cleanup B removes leftover EA record (best-effort)", false,
+                $"{ex.GetType().Name}: {ex.Message}");
+        }
+
+        // Delete account A (using new password now, since takeover reset it)
+        try
+        {
+            // Build a fresh stack for A with the new password to get an access token
+            var cleanA = BuildStack(serverUrl);
+            var loginCleanA = await cleanA.auth.LoginAsync(serverUrl, emailA, newEaPassword);
+            if (loginCleanA is AuthResult.Success && cleanA.session.UserKey is not null)
+            {
+                // Compute master password hash with NEW password
+                var masterKeyA = cleanA.crypto.DeriveMasterKey(
+                    newEaPassword, emailA, Core.Enums.KdfType.Pbkdf2, 600_000, null, null);
+                var hashA = cleanA.crypto.ComputeMasterPasswordHash(masterKeyA, newEaPassword);
+                System.Security.Cryptography.CryptographicOperations.ZeroMemory(masterKeyA);
+                IEmergencyAccessApiClient eaApiA = cleanA.api;
+                await eaApiA.DeleteAccountAsync(new Api.Dtos.DeleteAccountRequest { MasterPasswordHash = hashA });
+                Step("ea: cleanup delete account A (best-effort)", true, emailA);
+            }
+            else
+            {
+                // Try original password in case takeover didn't happen
+                var cleanA2 = BuildStack(serverUrl);
+                var loginCleanA2 = await cleanA2.auth.LoginAsync(serverUrl, emailA, eaPassword);
+                if (loginCleanA2 is AuthResult.Success && cleanA2.session.UserKey is not null)
+                {
+                    var masterKeyA2 = cleanA2.crypto.DeriveMasterKey(
+                        eaPassword, emailA, Core.Enums.KdfType.Pbkdf2, 600_000, null, null);
+                    var hashA2 = cleanA2.crypto.ComputeMasterPasswordHash(masterKeyA2, eaPassword);
+                    System.Security.Cryptography.CryptographicOperations.ZeroMemory(masterKeyA2);
+                    IEmergencyAccessApiClient eaApiA2 = cleanA2.api;
+                    await eaApiA2.DeleteAccountAsync(new Api.Dtos.DeleteAccountRequest { MasterPasswordHash = hashA2 });
+                    Step("ea: cleanup delete account A (best-effort)", true, emailA + " (orig pw)");
+                }
+                else
+                {
+                    Step("ea: cleanup delete account A (best-effort)", false, "both passwords failed login");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Step("ea: cleanup delete account A (best-effort)", false,
+                $"{ex.GetType().Name}: {ex.Message}");
+        }
+
+        // Delete account B (using original password)
+        try
+        {
+            var cleanB = BuildStack(serverUrl);
+            var loginCleanB = await cleanB.auth.LoginAsync(serverUrl, emailB, eaPassword);
+            if (loginCleanB is AuthResult.Success && cleanB.session.UserKey is not null)
+            {
+                var masterKeyB = cleanB.crypto.DeriveMasterKey(
+                    eaPassword, emailB, Core.Enums.KdfType.Pbkdf2, 600_000, null, null);
+                var hashB = cleanB.crypto.ComputeMasterPasswordHash(masterKeyB, eaPassword);
+                System.Security.Cryptography.CryptographicOperations.ZeroMemory(masterKeyB);
+                IEmergencyAccessApiClient eaApiB = cleanB.api;
+                await eaApiB.DeleteAccountAsync(new Api.Dtos.DeleteAccountRequest { MasterPasswordHash = hashB });
+                Step("ea: cleanup delete account B (best-effort)", true, emailB);
+            }
+            else
+            {
+                Step("ea: cleanup delete account B (best-effort)", false, "login failed");
+            }
+        }
+        catch (Exception ex)
+        {
+            Step("ea: cleanup delete account B (best-effort)", false,
+                $"{ex.GetType().Name}: {ex.Message}");
+        }
     }
 }

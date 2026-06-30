@@ -23,6 +23,7 @@ public sealed class SyncService : ISyncService
         var sync = await _api.GetSyncAsync(ct);
         var vault = _decryptor.Decrypt(sync, userKey, _session.Account.ServerUrl);
         _session.SetSnapshot(vault);
+        _session.SetEncryptedPrivateKey(sync.Profile?.PrivateKey);
         return vault.Ciphers;
     }
 }

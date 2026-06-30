@@ -25,6 +25,7 @@ public sealed class VaultBootstrapper
         var sync = await _api.GetSyncAsync(ct);
         var vault = _decryptor.Decrypt(sync, userKey, serverUrl);
         _session.SetSnapshot(vault);
+        _session.SetEncryptedPrivateKey(sync.Profile?.PrivateKey);
 
         var devices = await _api.GetDevicesAsync(ct);
         _session.SetDevices(devices.Data.Select(MapDevice).ToArray());

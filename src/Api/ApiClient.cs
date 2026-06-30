@@ -8,7 +8,7 @@ using Core.Abstractions;
 
 namespace Api;
 
-public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiClient, ISendApiClient, IAttachmentApiClient, IAccountApiClient, ITwoFactorApiClient, IAuthRequestApiClient
+public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiClient, ISendApiClient, IAttachmentApiClient, IAccountApiClient, ITwoFactorApiClient, IAuthRequestApiClient, IEmergencyAccessApiClient
 {
     private readonly HttpClient _http;
     private Uri? _baseAddress;
@@ -247,6 +247,90 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
 
     public Task RegisterAsync(RegisterRequest request, CancellationToken ct = default)
         => SendWriteAsync(HttpMethod.Post, "identity/accounts/register", request, ApiJsonContext.Default.RegisterRequest, ct);
+
+    // ===== Emergency Access =====
+    public async Task<ListResponse<EmergencyAccessGranteeDetailsDto>> GetTrustedAsync(CancellationToken ct = default)
+    {
+        var r = await _http.GetAsync(Url("api/emergency-access/trusted"), ct);
+        r.EnsureSuccessStatusCode();
+        return await ReadJson(r, ApiJsonContext.Default.ListResponseEmergencyAccessGranteeDetailsDto, ct);
+    }
+
+    public async Task<ListResponse<EmergencyAccessGrantorDetailsDto>> GetGrantedAsync(CancellationToken ct = default)
+    {
+        var r = await _http.GetAsync(Url("api/emergency-access/granted"), ct);
+        r.EnsureSuccessStatusCode();
+        return await ReadJson(r, ApiJsonContext.Default.ListResponseEmergencyAccessGrantorDetailsDto, ct);
+    }
+
+    public async Task<PublicKeyResponse> GetPublicKeyAsync(string userId, CancellationToken ct = default)
+    {
+        var r = await _http.GetAsync(Url($"api/users/{userId}/public-key"), ct);
+        r.EnsureSuccessStatusCode();
+        return await ReadJson(r, ApiJsonContext.Default.PublicKeyResponse, ct);
+    }
+
+    public Task InviteAsync(EmergencyAccessInviteRequest request, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Post, "api/emergency-access/invite", request, ApiJsonContext.Default.EmergencyAccessInviteRequest, ct);
+
+    public Task ReinviteAsync(string id, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Post, $"api/emergency-access/{id}/reinvite", ct);
+
+    public Task AcceptAsync(string id, EmergencyAccessAcceptRequest request, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Post, $"api/emergency-access/{id}/accept", request, ApiJsonContext.Default.EmergencyAccessAcceptRequest, ct);
+
+    public async Task<EmergencyAccessDto> ConfirmAsync(string id, EmergencyAccessConfirmRequest request, CancellationToken ct = default)
+        => await SendWriteReadAsync(HttpMethod.Post, $"api/emergency-access/{id}/confirm", request,
+            ApiJsonContext.Default.EmergencyAccessConfirmRequest, ApiJsonContext.Default.EmergencyAccessDto, ct);
+
+    public async Task<EmergencyAccessDto> UpdateAsync(string id, EmergencyAccessUpdateRequest request, CancellationToken ct = default)
+        => await SendWriteReadAsync(HttpMethod.Put, $"api/emergency-access/{id}", request,
+            ApiJsonContext.Default.EmergencyAccessUpdateRequest, ApiJsonContext.Default.EmergencyAccessDto, ct);
+
+    public Task DeleteAsync(string id, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Delete, $"api/emergency-access/{id}", ct);
+
+    public async Task<EmergencyAccessDto> InitiateAsync(string id, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, Url($"api/emergency-access/{id}/initiate"));
+        return await SendWriteCoreRead(req, ApiJsonContext.Default.EmergencyAccessDto, ct);
+    }
+
+    public async Task<EmergencyAccessDto> ApproveAsync(string id, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, Url($"api/emergency-access/{id}/approve"));
+        return await SendWriteCoreRead(req, ApiJsonContext.Default.EmergencyAccessDto, ct);
+    }
+
+    public async Task<EmergencyAccessDto> RejectAsync(string id, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, Url($"api/emergency-access/{id}/reject"));
+        return await SendWriteCoreRead(req, ApiJsonContext.Default.EmergencyAccessDto, ct);
+    }
+
+    public async Task<EmergencyAccessViewResponse> ViewAsync(string id, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, Url($"api/emergency-access/{id}/view"));
+        return await SendWriteCoreRead(req, ApiJsonContext.Default.EmergencyAccessViewResponse, ct);
+    }
+
+    public async Task<EmergencyAccessTakeoverResponse> TakeoverAsync(string id, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, Url($"api/emergency-access/{id}/takeover"));
+        return await SendWriteCoreRead(req, ApiJsonContext.Default.EmergencyAccessTakeoverResponse, ct);
+    }
+
+    public Task PasswordAsync(string id, EmergencyAccessPasswordRequest request, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Post, $"api/emergency-access/{id}/password", request, ApiJsonContext.Default.EmergencyAccessPasswordRequest, ct);
+
+    public async Task DeleteAccountAsync(DeleteAccountRequest request, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Delete, Url("api/accounts"))
+        {
+            Content = System.Net.Http.Json.JsonContent.Create(request, ApiJsonContext.Default.DeleteAccountRequest),
+        };
+        await SendWriteCore(req, ct);
+    }
 
     // ===== Two-Factor =====
 
