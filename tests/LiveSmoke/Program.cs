@@ -258,19 +258,22 @@ try
         // 批量移动到文件夹
         await writeService.MoveCiphersAsync(bulkIds, bulkFolder?.Id);
         var afterMove = await sync.SyncAsync();
-        var movedOk = afterMove.Where(c => bulkIds.Contains(c.Id)).All(c => c.FolderId == bulkFolder?.Id);
+        var moved = afterMove.Where(c => bulkIds.Contains(c.Id)).ToList();
+        var movedOk = moved.Count == 3 && moved.All(c => c.FolderId == bulkFolder?.Id);
         Step("bulk: moved to folder", movedOk, bulkFolder?.Id);
 
         // 批量软删
         await writeService.DeleteCiphersAsync(bulkIds, permanent: false);
         var afterSoft = await sync.SyncAsync();
-        var softOk = afterSoft.Where(c => bulkIds.Contains(c.Id)).All(c => c.IsDeleted);
+        var soft = afterSoft.Where(c => bulkIds.Contains(c.Id)).ToList();
+        var softOk = soft.Count == 3 && soft.All(c => c.IsDeleted);
         Step("bulk: soft-deleted to trash", softOk);
 
         // 批量恢复
         await writeService.RestoreCiphersAsync(bulkIds);
         var afterRestore = await sync.SyncAsync();
-        var restoreOk = afterRestore.Where(c => bulkIds.Contains(c.Id)).All(c => !c.IsDeleted);
+        var restored = afterRestore.Where(c => bulkIds.Contains(c.Id)).ToList();
+        var restoreOk = restored.Count == 3 && restored.All(c => !c.IsDeleted);
         Step("bulk: restored", restoreOk);
 
         // 批量硬删清理 + 删文件夹
@@ -282,6 +285,7 @@ try
         if (bulkFolder is not null)
         {
             await writeService.DeleteFolderAsync(bulkFolder.Id);
+            await sync.SyncAsync();
             Step("bulk: folder cleanup", session.Folders.All(x => x.Id != bulkFolder.Id));
         }
     }
