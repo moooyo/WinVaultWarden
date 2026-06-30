@@ -97,7 +97,7 @@ public sealed class EmergencyAccessService : IEmergencyAccessService
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(grantorKey.FullKey);
+            ZeroKey(grantorKey);
         }
     }
 
@@ -117,8 +117,16 @@ public sealed class EmergencyAccessService : IEmergencyAccessService
         finally
         {
             if (newMasterKey is not null) CryptographicOperations.ZeroMemory(newMasterKey);
-            CryptographicOperations.ZeroMemory(grantorKey.FullKey);
+            ZeroKey(grantorKey);
         }
+    }
+
+    private static void ZeroKey(SymmetricCryptoKey k)
+    {
+        CryptographicOperations.ZeroMemory(k.FullKey);
+        CryptographicOperations.ZeroMemory(k.EncKey);
+        if (k.MacKey is not null)
+            CryptographicOperations.ZeroMemory(k.MacKey);
     }
 
     // 用受托方私钥 RSA-解出授予方 userKey（64 字节 enc+mac）
