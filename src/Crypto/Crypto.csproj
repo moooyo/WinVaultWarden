@@ -14,4 +14,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Core\Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="PasswordStrength\passwords.txt" />
+    <EmbeddedResource Include="PasswordStrength\english.txt" />
+  </ItemGroup>
 </Project>
