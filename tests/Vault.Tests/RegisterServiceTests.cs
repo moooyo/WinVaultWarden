@@ -139,14 +139,11 @@ public class RegisterServiceTests
     public async Task RegisterAsync_sets_base_address_without_trailing_slash()
     {
         var api = new FakeAccountApiClient();
-        // 使用带斜杠的 URL
         var svc = new RegisterService(_crypto, api);
 
         await svc.RegisterAsync("http://vault.example.com/", Email, Name, Password, Hint,
             TestContext.Current.CancellationToken);
 
-        // FakeAccountApiClient.SetBaseAddress 是 no-op，不需要额外断言；
-        // 此测试验证不会因为斜杠而抛出异常，且 Register 有值。
-        Assert.NotNull(api.Register);
+        Assert.Equal("http://vault.example.com", api.LastBaseAddress);
     }
 }

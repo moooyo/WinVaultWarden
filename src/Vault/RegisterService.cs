@@ -27,6 +27,9 @@ public sealed class RegisterService : IRegisterService
         string? hint,
         CancellationToken ct = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverUrl);
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+        ArgumentException.ThrowIfNullOrWhiteSpace(password);
         _api.SetBaseAddress(serverUrl.TrimEnd('/'));
 
         var masterKey = _crypto.DeriveMasterKey(password, email, KdfType.Pbkdf2, Iterations, null, null);
