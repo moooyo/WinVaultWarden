@@ -34,3 +34,19 @@ public sealed record ChangeKdfRequest(
     [property: JsonPropertyName("authenticationData")] AuthData AuthenticationData,
     [property: JsonPropertyName("unlockData")] UnlockData UnlockData,
     [property: JsonPropertyName("masterPasswordHash")] string MasterPasswordHash);
+
+public sealed record RegisterKeys(
+    [property: JsonPropertyName("encryptedPrivateKey")] string EncryptedPrivateKey,
+    [property: JsonPropertyName("publicKey")] string PublicKey);
+
+public sealed record RegisterRequest(
+    [property: JsonPropertyName("email")] string Email,
+    [property: JsonPropertyName("name")] string? Name,
+    [property: JsonPropertyName("masterPasswordHash")] string MasterPasswordHash,
+    [property: JsonPropertyName("masterPasswordHint")] string? MasterPasswordHint,
+    [property: JsonPropertyName("key")] string Key,
+    [property: JsonPropertyName("kdf")] int Kdf,
+    [property: JsonPropertyName("kdfIterations")] int KdfIterations,
+    [property: JsonPropertyName("kdfMemory")] int? KdfMemory,
+    [property: JsonPropertyName("kdfParallelism")] int? KdfParallelism,
+    [property: JsonPropertyName("keys")] RegisterKeys Keys);

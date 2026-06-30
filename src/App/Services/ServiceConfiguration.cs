@@ -86,6 +86,12 @@ public static class ServiceConfiguration
         services.AddTransient<IAccountUiService, AccountUiService>();
         services.AddSingleton<IClipboardService, ClipboardService>();
 
+        services.AddSingleton<IRegisterService, Vault.RegisterService>();
+        services.AddSingleton<IRegisterUiService>(sp =>
+            new RegisterUiService(sp.GetRequiredService<IRegisterService>()));
+        services.AddTransient<RegisterViewModel>(sp =>
+            new RegisterViewModel(sp.GetRequiredService<IRegisterUiService>()));
+
         services.AddTransient<LoginViewModel>();
         services.AddTransient<VaultViewModel>();
         services.AddTransient<SendViewModel>();

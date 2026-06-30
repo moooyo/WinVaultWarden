@@ -10,7 +10,9 @@ public sealed class FakeAccountApiClient : IAccountApiClient
     public ChangeKdfRequest? Kdf;
     public Exception? Throw;
 
-    public void SetBaseAddress(string b) { }
+    public string? LastBaseAddress;
+
+    public void SetBaseAddress(string b) { LastBaseAddress = b; }
 
     public Task UpdateProfileAsync(ProfileUpdateRequest r, CancellationToken ct = default)
     {
@@ -30,6 +32,15 @@ public sealed class FakeAccountApiClient : IAccountApiClient
     {
         if (Throw != null) throw Throw;
         Kdf = r;
+        return Task.CompletedTask;
+    }
+
+    public RegisterRequest? Register;
+
+    public Task RegisterAsync(RegisterRequest r, CancellationToken ct = default)
+    {
+        if (Throw != null) throw Throw;
+        Register = r;
         return Task.CompletedTask;
     }
 }

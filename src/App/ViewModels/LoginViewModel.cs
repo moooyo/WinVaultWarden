@@ -145,6 +145,21 @@ public partial class LoginViewModel : ObservableObject
         Status = "请输入主密码解锁。";
     }
 
+    public void PrepareAccount(string serverUrl, string email)
+    {
+        SelectedServerOptionIndex = serverUrl == BitwardenUsUrl ? 0
+            : serverUrl == BitwardenEuUrl ? 1
+            : 2;
+        Email = email;
+        MasterPassword = string.Empty;
+        TwoFactorCode = string.Empty;
+        Status = string.Empty;
+        Stage = LoginStage.Account;
+        // Set ServerUrl last so it wins over any placeholder written by
+        // OnSelectedServerOptionIndexChanged (e.g. "https://vault.example.com").
+        ServerUrl = serverUrl;
+    }
+
     [RelayCommand]
     private async Task LoginAsync()
     {

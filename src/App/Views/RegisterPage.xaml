@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="App.Views.RegisterPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:App.Converters"
+    xmlns:vm="using:App.ViewModels">
+
+    <Page.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </Page.Resources>
+
+    <Grid x:Name="RegisterSurface"
+          Padding="40,18,40,28">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="RegisterForm"
+                        Width="360"
+                        Spacing="0"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Top"
+                        Margin="0,22,0,0">
+
+                <!-- 页眉 Logo -->
+                <Border Width="52"
+                        Height="52"
+                        CornerRadius="12"
+                        HorizontalAlignment="Center"
+                        Background="{ThemeResource AccentFillColorDefaultBrush}">
+                    <TextBlock Text="V"
+                               Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                               FontWeight="SemiBold"
+                               FontSize="28"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
+
+                <TextBlock Text="创建账户"
+                           Margin="0,16,0,0"
+                           Style="{ThemeResource TitleTextBlockStyle}"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center" />
+
+                <TextBlock Text="注册 Bitwarden / Vaultwarden 账户"
+                           Margin="0,4,0,0"
+                           FontSize="14"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap" />
+
+                <!-- 错误提示 -->
+                <InfoBar x:Name="RegisterErrorInfoBar"
+                         Margin="0,18,0,0"
+                         IsOpen="{x:Bind ViewModel.HasOperationError, Mode=OneWay}"
+                         Severity="Error"
+                         Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" />
+
+                <!-- 表单主体 -->
+                <StackPanel Margin="0,18,0,0"
+                            Spacing="14">
+
+                    <!-- 服务器选择 -->
+                    <ComboBox x:Name="ServerOptionBox"
+                              AutomationProperties.AutomationId="RegisterServerOptionBox"
+                              Header="登录到"
+                              HorizontalAlignment="Stretch"
+                              MinHeight="38"
+                              SelectedIndex="{x:Bind ViewModel.SelectedServerOptionIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="Bitwarden.com (US)" />
+                        <ComboBoxItem Content="Bitwarden.com (EU)" />
+                        <ComboBoxItem Content="自托管" />
+                    </ComboBox>
+
+                    <!-- 自托管地址（条件显示） -->
+                    <TextBox x:Name="ServerUrlTextBox"
+                             AutomationProperties.AutomationId="RegisterServerUrlTextBox"
+                             Header="服务器地址"
+                             PlaceholderText="https://vault.example.com"
+                             Text="{x:Bind ViewModel.ServerUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             MinHeight="38"
+                             Visibility="{x:Bind ViewModel.ShowCustomServerUrl, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <!-- 邮箱 -->
+                    <TextBox x:Name="EmailTextBox"
+                             AutomationProperties.AutomationId="RegisterEmailTextBox"
+                             Header="邮箱地址"
+                             PlaceholderText="you@example.com"
+                             Text="{x:Bind ViewModel.Email, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             MinHeight="38"
+                             InputScope="EmailSmtpAddress" />
+
+                    <!-- 姓名 -->
+                    <TextBox x:Name="NameTextBox"
+                             AutomationProperties.AutomationId="RegisterNameTextBox"
+                             Header="姓名（可选）"
+                             PlaceholderText="你的姓名"
+                             Text="{x:Bind ViewModel.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             MinHeight="38" />
+
+                    <!-- 主密码 -->
+                    <PasswordBox x:Name="MasterPasswordBox"
+                                 AutomationProperties.AutomationId="RegisterMasterPasswordBox"
+                                 Header="主密码"
+                                 MinHeight="38"
+                                 Password="{x:Bind ViewModel.MasterPassword, Mode=TwoWay}" />
+
+                    <!-- 确认主密码 -->
+                    <PasswordBox x:Name="ConfirmPasswordBox"
+                                 AutomationProperties.AutomationId="RegisterConfirmPasswordBox"
+                                 Header="确认主密码"
+                                 MinHeight="38"
+                                 Password="{x:Bind ViewModel.ConfirmPassword, Mode=TwoWay}" />
+
+                    <!-- 密码提示 -->
+                    <TextBox x:Name="MasterPasswordHintTextBox"
+                             AutomationProperties.AutomationId="RegisterMasterPasswordHintTextBox"
+                             Header="主密码提示（可选）"
+                             PlaceholderText="帮助自己记住主密码的提示"
+                             Text="{x:Bind ViewModel.MasterPasswordHint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             MinHeight="38" />
+
+                    <!-- 注册按钮 -->
+                    <Button x:Name="RegisterSubmitButton"
+                            AutomationProperties.AutomationId="RegisterSubmitButton"
+                            Margin="0,4,0,0"
+                            Click="OnRegisterClick"
+                            Style="{ThemeResource AccentButtonStyle}"
+                            IsEnabled="{x:Bind Not(ViewModel.IsBusy), Mode=OneWay}"
+                            MinHeight="40"
+                            FontWeight="SemiBold"
+                            HorizontalAlignment="Stretch">
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="8"
+                                    HorizontalAlignment="Center">
+                            <ProgressRing Width="16"
+                                          Height="16"
+                                          IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
+                                          Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <TextBlock Text="{x:Bind RegisterButtonText(ViewModel.IsBusy), Mode=OneWay}" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 已有账户链接 -->
+                    <HyperlinkButton x:Name="BackToLoginButton"
+                                     AutomationProperties.AutomationId="BackToLoginButton"
+                                     Content="已有账户？登录"
+                                     HorizontalAlignment="Center"
+                                     Click="OnBackToLoginClick" />
+
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

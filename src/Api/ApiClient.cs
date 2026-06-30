@@ -229,6 +229,9 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
     public Task ChangeKdfAsync(ChangeKdfRequest request, CancellationToken ct = default)
         => SendWriteAsync(HttpMethod.Post, "api/accounts/kdf", request, ApiJsonContext.Default.ChangeKdfRequest, ct);
 
+    public Task RegisterAsync(RegisterRequest request, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Post, "identity/accounts/register", request, ApiJsonContext.Default.RegisterRequest, ct);
+
     // ===== Two-Factor =====
 
     public async Task<TwoFactorProvidersResponse> GetProvidersAsync(CancellationToken ct = default)

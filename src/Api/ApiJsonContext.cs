@@ -51,4 +51,5 @@ namespace Api;
 [JsonSerializable(typeof(AuthRequestListResponse))]
 [JsonSerializable(typeof(AuthResponseRequest))]
 [JsonSerializable(typeof(AuthRequestRequest))]
+[JsonSerializable(typeof(RegisterRequest))]
 public partial class ApiJsonContext : JsonSerializerContext;

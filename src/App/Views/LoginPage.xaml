@@ -110,6 +110,12 @@
                                  MinHeight="38"
                                  InputScope="EmailSmtpAddress" />
 
+                        <HyperlinkButton x:Name="GoToRegisterButton"
+                                         AutomationProperties.AutomationId="GoToRegisterButton"
+                                         Content="没有账户？注册"
+                                         HorizontalAlignment="Center"
+                                         Click="OnGoToRegisterClick" />
+
                     </StackPanel>
 
                     <StackPanel x:Name="LoginPasswordStage"
