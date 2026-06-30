@@ -62,5 +62,7 @@
     <Compile Include="..\..\src\App\Services\NotificationsHost.cs" Link="Services\NotificationsHost.cs" />
     <Compile Include="..\..\src\App\Services\RegisterUiService.cs" Link="Services\RegisterUiService.cs" />
     <Compile Include="..\..\src\App\ViewModels\RegisterViewModel.cs" Link="ViewModels\RegisterViewModel.cs" />
+    <Compile Include="..\..\src\App\Services\IEmergencyAccessUiService.cs" Link="Services\IEmergencyAccessUiService.cs" />
+    <Compile Include="..\..\src\App\Services\MockEmergencyAccessUiService.cs" Link="Services\MockEmergencyAccessUiService.cs" />
   </ItemGroup>
 </Project>
