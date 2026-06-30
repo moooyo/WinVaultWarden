@@ -9,4 +9,5 @@ public interface IAccountApiClient
     Task UpdateProfileAsync(ProfileUpdateRequest request, CancellationToken ct = default);
     Task ChangePasswordAsync(ChangePasswordRequest request, CancellationToken ct = default);
     Task ChangeKdfAsync(ChangeKdfRequest request, CancellationToken ct = default);
+    Task RegisterAsync(RegisterRequest request, CancellationToken ct = default);
 }
