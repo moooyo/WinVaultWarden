@@ -516,6 +516,28 @@ try
     // ── 21. Emergency Access: dual-account E2E ───────────────────────────────
     Console.WriteLine("[21] Emergency Access: dual-account E2E");
     await EmergencyAccessRoundTripAsync();
+
+    // ── 22. Vault health ──────────────────────────────────────────────────────
+    Console.WriteLine("[health] Vault health reports");
+    {
+        var evaluator = new Crypto.PasswordStrength.PasswordStrengthEvaluator(
+            new Crypto.PasswordStrength.Omnimatch(
+                new Crypto.PasswordStrength.DictionaryMatcher(Crypto.PasswordStrength.FrequencyDictionaries.Load())));
+        var pwned = new PwnedPasswordsClient(new HttpClient());
+        IVaultService vaultService = new VaultService(session);
+        var health = new VaultHealthService(vaultService, evaluator, pwned);
+
+        await sync.SyncAsync();
+        var report = health.AnalyzeOffline();
+        Step("health: AnalyzeOffline ran", report is not null,
+            $"reused={report.Reused.Count} weak={report.Weak.Count} unsecured={report.Unsecured.Count}");
+
+        var leaked = await pwned.GetBreachCountAsync("password");
+        Step("health: HIBP flags known-exposed 'password'", leaked > 0, $"count={leaked}");
+
+        var clean = await pwned.GetBreachCountAsync($"WVW-unique-{run}-{Guid.NewGuid():N}");
+        Step("health: HIBP clears a random strong password", clean == 0);
+    }
 }
 catch (Exception ex)
 {

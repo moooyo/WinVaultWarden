@@ -236,6 +236,9 @@ public sealed partial class MainWindow : Window
             case "devices":
                 ContentFrame.Navigate(typeof(DevicesPage));
                 break;
+            case "reports":
+                ContentFrame.Navigate(typeof(SecurityReportPage));
+                break;
             case "lock":
                 await global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
                 await global::App.App.Services.GetRequiredService<IAuthService>().LockAsync();
