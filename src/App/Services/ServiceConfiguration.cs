@@ -3,6 +3,7 @@ using Core.Abstractions;
 using Core.Passkeys;
 using Core.Services;
 using Crypto;
+using Crypto.PasswordStrength;
 using Vault;
 using Microsoft.Extensions.DependencyInjection;
 using App.ViewModels;
@@ -108,6 +109,17 @@ public static class ServiceConfiguration
             new DevicesViewModel(
                 sp.GetRequiredService<IDeviceUiService>(),
                 sp.GetRequiredService<IAuthRequestUiService>()));
+
+        // ── Vault 健康报告 ──────────────────────────────────────────────────────
+        services.AddSingleton<PasswordStrengthEvaluator>(_ =>
+            new PasswordStrengthEvaluator(
+                new Omnimatch(
+                    new DictionaryMatcher(FrequencyDictionaries.Load()))));
+        services.AddSingleton<IPwnedPasswordsClient>(_ =>
+            new PwnedPasswordsClient(new HttpClient()));
+        services.AddSingleton<IVaultHealthService, Vault.VaultHealthService>();
+        services.AddTransient<IVaultHealthUiService, VaultHealthUiService>();
+        services.AddTransient<SecurityReportViewModel>();
 
         // WebSocket 推送通知
         services.AddSingleton<INotificationDispatcher>(sp =>

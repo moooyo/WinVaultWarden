@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="App.Views.SecurityReportPage"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conv="using:App.Converters"
+    xmlns:models="using:Core.Models">
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
+    </Page.Resources>
+
+    <ScrollViewer Padding="{StaticResource PageContentPadding}">
+        <StackPanel Spacing="24" MaxWidth="800" HorizontalAlignment="Left">
+
+            <!-- 页面标题 -->
+            <TextBlock Text="安全报告"
+                       Style="{ThemeResource TitleTextBlockStyle}" />
+
+            <!-- ── 1. 重复密码 ─────────────────────────────────────────── -->
+            <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE8FD;" FontSize="16"
+                              Foreground="{ThemeResource SystemFillColorCautionBrush}" />
+                    <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">
+                        <Run Text="重复密码" />
+                        <Run Text=" (" />
+                        <Run Text="{x:Bind ViewModel.ReusedGroups.Count, Mode=OneWay}" />
+                        <Run Text=" 组)" />
+                    </TextBlock>
+                </StackPanel>
+
+                <ItemsRepeater x:Name="ReusedGroupsRepeater"
+                               ItemsSource="{x:Bind ViewModel.ReusedGroups, Mode=OneWay}">
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="models:ReusedGroup">
+                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{StaticResource CardCornerRadius}"
+                                    Padding="{StaticResource CardContentPadding}"
+                                    Margin="0,0,0,4">
+                                <StackPanel Spacing="4">
+                                    <TextBlock>
+                                        <Run Text="{x:Bind Count}" FontWeight="SemiBold" />
+                                        <Run Text=" 个条目共用同一密码" />
+                                    </TextBlock>
+                                    <ItemsRepeater ItemsSource="{x:Bind Items}">
+                                        <ItemsRepeater.ItemTemplate>
+                                            <DataTemplate x:DataType="models:HealthItemRef">
+                                                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
+                                                    <FontIcon Glyph="&#xE7B7;" FontSize="12"
+                                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                    <TextBlock Text="{x:Bind Name}"
+                                                               Style="{ThemeResource CaptionTextBlockStyle}" />
+                                                    <TextBlock Text="{x:Bind Username}"
+                                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsRepeater.ItemTemplate>
+                                    </ItemsRepeater>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+
+                <TextBlock Text="未发现重复密码"
+                           Style="{ThemeResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Visibility="{x:Bind ViewModel.ReusedGroups.Count, Mode=OneWay,
+                               Converter={StaticResource InverseBoolToVis}}" />
+            </StackPanel>
+
+            <!-- ── 2. 弱密码 ──────────────────────────────────────────── -->
+            <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE814;" FontSize="16"
+                              Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                    <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">
+                        <Run Text="弱密码" />
+                        <Run Text=" (" />
+                        <Run Text="{x:Bind ViewModel.WeakItems.Count, Mode=OneWay}" />
+                        <Run Text=" 个)" />
+                    </TextBlock>
+                </StackPanel>
+
+                <ItemsRepeater x:Name="WeakItemsRepeater"
+                               ItemsSource="{x:Bind ViewModel.WeakItems, Mode=OneWay}">
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="models:WeakFinding">
+                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{StaticResource CardCornerRadius}"
+                                    Padding="{StaticResource CardContentPadding}"
+                                    Margin="0,0,0,4">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{x:Bind Item.Name}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{x:Bind Item.Username}"
+                                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                    <Border Grid.Column="1"
+                                            Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}"
+                                            CornerRadius="4" Padding="8,2" VerticalAlignment="Center">
+                                        <TextBlock Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                   FontSize="12" FontWeight="SemiBold">
+                                            <Run Text="强度 " />
+                                            <Run Text="{x:Bind Score}" />
+                                            <Run Text="/4" />
+                                        </TextBlock>
+                                    </Border>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+
+                <TextBlock Text="未发现弱密码"
+                           Style="{ThemeResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Visibility="{x:Bind ViewModel.WeakItems.Count, Mode=OneWay,
+                               Converter={StaticResource InverseBoolToVis}}" />
+            </StackPanel>
+
+            <!-- ── 3. 不安全网站 ───────────────────────────────────────── -->
+            <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE728;" FontSize="16"
+                              Foreground="{ThemeResource SystemFillColorCautionBrush}" />
+                    <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">
+                        <Run Text="不安全网站 (HTTP)" />
+                        <Run Text=" (" />
+                        <Run Text="{x:Bind ViewModel.UnsecuredItems.Count, Mode=OneWay}" />
+                        <Run Text=" 个)" />
+                    </TextBlock>
+                </StackPanel>
+
+                <ItemsRepeater x:Name="UnsecuredItemsRepeater"
+                               ItemsSource="{x:Bind ViewModel.UnsecuredItems, Mode=OneWay}">
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="models:UnsecuredFinding">
+                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{StaticResource CardCornerRadius}"
+                                    Padding="{StaticResource CardContentPadding}"
+                                    Margin="0,0,0,4">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="{x:Bind Item.Name}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{x:Bind Item.Username}"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Text="{x:Bind Uri}"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+
+                <TextBlock Text="未发现不安全的 HTTP 网站"
+                           Style="{ThemeResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Visibility="{x:Bind ViewModel.UnsecuredItems.Count, Mode=OneWay,
+                               Converter={StaticResource InverseBoolToVis}}" />
+            </StackPanel>
+
+            <!-- ── 4. 暴露密码 (HIBP) ─────────────────────────────────── -->
+            <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xEA18;" FontSize="16"
+                              Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                    <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">
+                        <Run Text="暴露密码" />
+                        <Run Text=" (" />
+                        <Run Text="{x:Bind ViewModel.ExposedItems.Count, Mode=OneWay}" />
+                        <Run Text=" 个)" />
+                    </TextBlock>
+                </StackPanel>
+
+                <!-- 未检查时：显示运行检查按钮 + 隐私说明 -->
+                <StackPanel Spacing="8"
+                            Visibility="{x:Bind ViewModel.ExposedChecked, Mode=OneWay,
+                                Converter={StaticResource InverseBoolToVis}}">
+                    <TextBlock Text="仅发送密码哈希前 5 位到 HaveIBeenPwned，绝不发送密码本身"
+                               Style="{ThemeResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Button Content="运行检查"
+                            Command="{x:Bind ViewModel.RunExposedCheckCommand}"
+                            AutomationProperties.AutomationId="RunExposedCheckButton"
+                            Visibility="{x:Bind ViewModel.IsCheckingExposed, Mode=OneWay,
+                                Converter={StaticResource InverseBoolToVis}}" />
+                    <ProgressRing Width="24" Height="24"
+                                  HorizontalAlignment="Left"
+                                  IsActive="{x:Bind ViewModel.IsCheckingExposed, Mode=OneWay}"
+                                  Visibility="{x:Bind ViewModel.IsCheckingExposed, Mode=OneWay,
+                                      Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
+
+                <!-- 检查出错时 -->
+                <InfoBar x:Name="ExposedErrorInfoBar"
+                         IsClosable="False"
+                         Severity="Error"
+                         IsOpen="{x:Bind ViewModel.HasExposedError, Mode=OneWay}"
+                         Message="{x:Bind ViewModel.ExposedError, Mode=OneWay}" />
+
+                <!-- 已检查完成：显示结果列表 -->
+                <StackPanel Spacing="4"
+                            Visibility="{x:Bind ViewModel.ExposedChecked, Mode=OneWay,
+                                Converter={StaticResource BoolToVis}}">
+                    <ItemsRepeater x:Name="ExposedItemsRepeater"
+                                   ItemsSource="{x:Bind ViewModel.ExposedItems, Mode=OneWay}">
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="models:ExposedFinding">
+                                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="{StaticResource CardCornerRadius}"
+                                        Padding="{StaticResource CardContentPadding}"
+                                        Margin="0,0,0,4">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind Item.Name}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{x:Bind Item.Username}"
+                                                       Style="{ThemeResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                        <Border Grid.Column="1"
+                                                Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}"
+                                                CornerRadius="4" Padding="8,2" VerticalAlignment="Center">
+                                            <TextBlock Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                       FontSize="12" FontWeight="SemiBold">
+                                                <Run Text="泄露 " />
+                                                <Run Text="{x:Bind BreachCount}" />
+                                                <Run Text=" 次" />
+                                            </TextBlock>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+
+                    <TextBlock Text="未发现已暴露的密码"
+                               Style="{ThemeResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Visibility="{x:Bind ViewModel.ExposedItems.Count, Mode=OneWay,
+                                   Converter={StaticResource InverseBoolToVis}}" />
+                </StackPanel>
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>
