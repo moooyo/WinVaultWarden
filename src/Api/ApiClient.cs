@@ -86,6 +86,22 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
     public async Task RestoreCipherAsync(string cipherId, CancellationToken ct = default)
         => await SendWriteAsync(HttpMethod.Put, $"api/ciphers/{cipherId}/restore", ct);
 
+    public Task BulkSoftDeleteCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Put, "api/ciphers/delete",
+            new CipherIdsRequest { Ids = ids.ToArray() }, ApiJsonContext.Default.CipherIdsRequest, ct);
+
+    public Task BulkHardDeleteCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Post, "api/ciphers/delete",
+            new CipherIdsRequest { Ids = ids.ToArray() }, ApiJsonContext.Default.CipherIdsRequest, ct);
+
+    public Task BulkRestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Put, "api/ciphers/restore",
+            new CipherIdsRequest { Ids = ids.ToArray() }, ApiJsonContext.Default.CipherIdsRequest, ct);
+
+    public Task BulkMoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Put, "api/ciphers/move",
+            new MoveCiphersRequest { Ids = ids.ToArray(), FolderId = folderId }, ApiJsonContext.Default.MoveCiphersRequest, ct);
+
     public async Task CreateFolderAsync(FolderRequest request, CancellationToken ct = default)
         => await SendWriteAsync(HttpMethod.Post, "api/folders", request, ApiJsonContext.Default.FolderRequest, ct);
 

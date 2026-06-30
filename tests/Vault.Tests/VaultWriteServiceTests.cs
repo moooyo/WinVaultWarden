@@ -35,6 +35,18 @@ public class VaultWriteServiceTests
         public Task RestoreCipherAsync(string cipherId, CancellationToken ct = default)
         { Calls.Add("restore"); LastId = cipherId; return Task.CompletedTask; }
 
+        public Task BulkSoftDeleteCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
+        { Calls.Add("bulk-soft"); return Task.CompletedTask; }
+
+        public Task BulkHardDeleteCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
+        { Calls.Add("bulk-hard"); return Task.CompletedTask; }
+
+        public Task BulkRestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
+        { Calls.Add("bulk-restore"); return Task.CompletedTask; }
+
+        public Task BulkMoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default)
+        { Calls.Add("bulk-move"); return Task.CompletedTask; }
+
         public Task CreateFolderAsync(FolderRequest request, CancellationToken ct = default)
         { Calls.Add("folder-create"); LastFolder = request; return Task.CompletedTask; }
 

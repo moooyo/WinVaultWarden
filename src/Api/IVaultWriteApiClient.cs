@@ -12,6 +12,10 @@ public interface IVaultWriteApiClient
     Task SoftDeleteCipherAsync(string cipherId, CancellationToken ct = default);
     Task HardDeleteCipherAsync(string cipherId, CancellationToken ct = default);
     Task RestoreCipherAsync(string cipherId, CancellationToken ct = default);
+    Task BulkSoftDeleteCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default);
+    Task BulkHardDeleteCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default);
+    Task BulkRestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default);
+    Task BulkMoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default);
     Task CreateFolderAsync(FolderRequest request, CancellationToken ct = default);
     Task UpdateFolderAsync(string folderId, FolderRequest request, CancellationToken ct = default);
     Task DeleteFolderAsync(string folderId, CancellationToken ct = default);
