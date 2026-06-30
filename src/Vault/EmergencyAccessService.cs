@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Api;
 using Api.Dtos;
 using Core.Models;
@@ -69,23 +70,74 @@ public sealed class EmergencyAccessService : IEmergencyAccessService
 
     // ===== 受托方（Grantee）— Task 6 =====
 
-    // Task 6
-    public Task<IReadOnlyList<GrantedAccess>> GetGrantedAsync(CancellationToken ct = default)
-        => throw new NotImplementedException();
+    public async Task<IReadOnlyList<GrantedAccess>> GetGrantedAsync(CancellationToken ct = default)
+    {
+        var res = await _api.GetGrantedAsync(ct);
+        return (res.Data ?? Array.Empty<EmergencyAccessGrantorDetailsDto>())
+            .Select(d => new GrantedAccess(d.Id, d.GrantorId, d.Email, d.Name,
+                (EmergencyAccessStatus)d.Status, (EmergencyAccessType)d.Type, d.WaitTimeDays))
+            .ToArray();
+    }
 
-    // Task 6
     public Task AcceptAsync(string id, string token, CancellationToken ct = default)
-        => throw new NotImplementedException();
+        => _api.AcceptAsync(id, new EmergencyAccessAcceptRequest { Token = token }, ct);
 
-    // Task 6
-    public Task InitiateAsync(string id, CancellationToken ct = default)
-        => throw new NotImplementedException();
+    public Task InitiateAsync(string id, CancellationToken ct = default) => _api.InitiateAsync(id, ct);
 
-    // Task 6
-    public Task<RecoveredVault> ViewAsync(string id, string grantorEmail, CancellationToken ct = default)
-        => throw new NotImplementedException();
+    public async Task<RecoveredVault> ViewAsync(string id, string grantorEmail, CancellationToken ct = default)
+    {
+        var res = await _api.ViewAsync(id, ct);
+        var grantorKey = RecoverGrantorKey(res.KeyEncrypted);
+        try
+        {
+            var ciphers = (res.Ciphers ?? Array.Empty<CipherDto>())
+                .Select(dto => _decryptor.DecryptCipher(dto, grantorKey))
+                .ToArray();
+            return new RecoveredVault(grantorEmail, ciphers);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(grantorKey.FullKey);
+        }
+    }
 
-    // Task 6
-    public Task TakeoverAndResetPasswordAsync(string id, string grantorEmail, string newPassword, CancellationToken ct = default)
-        => throw new NotImplementedException();
+    public async Task TakeoverAndResetPasswordAsync(string id, string grantorEmail, string newPassword, CancellationToken ct = default)
+    {
+        var res = await _api.TakeoverAsync(id, ct);
+        var grantorKey = RecoverGrantorKey(res.KeyEncrypted);
+        byte[]? newMasterKey = null;
+        try
+        {
+            newMasterKey = _crypto.DeriveMasterKey(newPassword, grantorEmail,
+                (Core.Enums.KdfType)res.Kdf, res.KdfIterations, res.KdfMemory, res.KdfParallelism);
+            var newHash = _crypto.ComputeMasterPasswordHash(newMasterKey, newPassword);
+            var protectedKey = _crypto.ProtectUserKey(newMasterKey, grantorKey);   // EncString
+            await _api.PasswordAsync(id, new EmergencyAccessPasswordRequest { NewMasterPasswordHash = newHash, Key = protectedKey.ToString() }, ct);
+        }
+        finally
+        {
+            if (newMasterKey is not null) CryptographicOperations.ZeroMemory(newMasterKey);
+            CryptographicOperations.ZeroMemory(grantorKey.FullKey);
+        }
+    }
+
+    // 用受托方私钥 RSA-解出授予方 userKey（64 字节 enc+mac）
+    private SymmetricCryptoKey RecoverGrantorKey(string? keyEncrypted)
+    {
+        var userKey = _session.UserKey ?? throw new EmergencyAccessOperationException("Vault is locked.");
+        if (string.IsNullOrEmpty(_session.EncryptedPrivateKey))
+            throw new EmergencyAccessOperationException("Private key unavailable; re-sync required.");
+        if (string.IsNullOrEmpty(keyEncrypted))
+            throw new EmergencyAccessOperationException("Server returned no encrypted key.");
+        byte[] pkcs8 = _crypto.Decrypt(EncString.Parse(_session.EncryptedPrivateKey), userKey);
+        try
+        {
+            byte[] grantorKeyBytes = _crypto.DecryptRsa(EncString.Parse(keyEncrypted), pkcs8);
+            return new SymmetricCryptoKey(grantorKeyBytes);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(pkcs8);
+        }
+    }
 }
