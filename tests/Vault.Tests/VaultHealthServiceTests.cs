@@ -63,4 +63,29 @@ public class VaultHealthServiceTests
         Assert.Empty(r.Weak);
         Assert.Empty(r.Reused);
     }
+
+    private sealed class MapPwned : IPwnedPasswordsClient
+    {
+        private readonly Dictionary<string, int> _map;
+        public Dictionary<string, int> Calls { get; } = new();
+        public MapPwned(Dictionary<string, int> map) => _map = map;
+        public Task<int> GetBreachCountAsync(string p, CancellationToken ct = default)
+        { Calls[p] = Calls.GetValueOrDefault(p) + 1; return Task.FromResult(_map.GetValueOrDefault(p)); }
+    }
+
+    [Fact]
+    public async Task CheckExposed_DedupesAndMapsBackToAllItems()
+    {
+        var pwned = new MapPwned(new() { ["leaked-pw"] = 42, ["clean-pw"] = 0 });
+        var svc = new VaultHealthService(
+            new FakeVault(new[] { Login("1","A","leaked-pw"), Login("2","B","leaked-pw"), Login("3","C","clean-pw") }),
+            new PasswordStrengthEvaluator(new Omnimatch(new DictionaryMatcher(FrequencyDictionaries.Load()))),
+            pwned);
+
+        var exposed = await svc.CheckExposedAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, exposed.Count);                       // 两条用了泄露密码
+        Assert.All(exposed, e => Assert.Equal(42, e.BreachCount));
+        Assert.Equal(1, pwned.Calls["leaked-pw"]);            // 去重：每唯一密码只查一次
+    }
 }

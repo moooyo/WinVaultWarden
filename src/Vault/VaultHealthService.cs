@@ -46,6 +46,22 @@ public sealed class VaultHealthService : IVaultHealthService
     }
 
     // Task 7
-    public Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(CancellationToken ct = default)
-        => throw new NotImplementedException();
+    public async Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(CancellationToken ct = default)
+    {
+        var logins = ActiveLogins().Where(c => !string.IsNullOrEmpty(c.Login!.Password)).ToList();
+        var unique = logins.Select(c => c.Login!.Password!).Distinct(StringComparer.Ordinal).ToList();
+
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var pw in unique)
+        {
+            try { counts[pw] = await _pwned.GetBreachCountAsync(pw, ct); }
+            catch (OperationCanceledException) { throw; }
+            catch { counts[pw] = 0; } // 单项失败降级为 0，不阻塞整体
+        }
+
+        return logins
+            .Where(c => counts.GetValueOrDefault(c.Login!.Password!) > 0)
+            .Select(c => new ExposedFinding(Ref(c), counts[c.Login!.Password!]))
+            .ToArray();
+    }
 }
