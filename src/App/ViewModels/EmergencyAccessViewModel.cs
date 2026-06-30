@@ -152,6 +152,7 @@ public partial class EmergencyAccessViewModel : ObservableObject
         await RunAsync(async ct =>
         {
             await _service.ReinviteAsync(SelectedContactId, ct);
+            await ReloadAsync(ct);
         });
     }
 
@@ -173,6 +174,7 @@ public partial class EmergencyAccessViewModel : ObservableObject
         await RunAsync(async ct =>
         {
             await _service.UpdateAsync(SelectedContactId, InviteType, InviteWaitTimeDays, ct);
+            await ReloadAsync(ct);
         });
     }
 

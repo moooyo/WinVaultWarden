@@ -153,6 +153,30 @@ public class EmergencyAccessViewModelTests
         Assert.Equal("ec-4", ui.LastId);
     }
 
+    [Fact]
+    public async Task Update_TriggersReload_AfterServiceCall()
+    {
+        var ui = new RecordingEaUiService();
+        var vm = new EmergencyAccessViewModel(ui);
+        vm.SelectedContactId = "ec-4";
+        vm.InviteType = EmergencyAccessType.Takeover;
+        vm.InviteWaitTimeDays = 3;
+        var countBefore = ui.GetTrustedCallCount;
+        await vm.UpdateCommand.ExecuteAsync(null);
+        Assert.True(ui.GetTrustedCallCount > countBefore, "UpdateCommand should call ReloadAsync (GetTrustedAsync) after service call");
+    }
+
+    [Fact]
+    public async Task Reinvite_TriggersReload_AfterServiceCall()
+    {
+        var ui = new RecordingEaUiService();
+        var vm = new EmergencyAccessViewModel(ui);
+        vm.SelectedContactId = "ec-2";
+        var countBefore = ui.GetTrustedCallCount;
+        await vm.ReinviteCommand.ExecuteAsync(null);
+        Assert.True(ui.GetTrustedCallCount > countBefore, "ReinviteCommand should call ReloadAsync (GetTrustedAsync) after service call");
+    }
+
     // ── ApproveCommand ────────────────────────────────────────────────────────
 
     [Fact]
@@ -289,9 +313,10 @@ public class EmergencyAccessViewModelTests
         public string LastNewPassword { get; private set; } = "";
         public EmergencyAccessType LastType { get; private set; }
         public int LastWaitDays { get; private set; }
+        public int GetTrustedCallCount { get; private set; }
 
-        public Task<IReadOnlyList<EmergencyContact>> GetTrustedAsync(CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<EmergencyContact>>([]);
+        public Task<IReadOnlyList<EmergencyContact>> GetTrustedAsync(CancellationToken ct = default)
+        { GetTrustedCallCount++; return Task.FromResult<IReadOnlyList<EmergencyContact>>([]); }
         public Task<IReadOnlyList<GrantedAccess>> GetGrantedAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<GrantedAccess>>([]);
 
