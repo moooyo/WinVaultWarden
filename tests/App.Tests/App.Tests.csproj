@@ -67,5 +67,6 @@
     <Compile Include="..\..\src\App\ViewModels\EmergencyAccessViewModel.cs" Link="ViewModels\EmergencyAccessViewModel.cs" />
     <Compile Include="..\..\src\App\Services\IVaultHealthUiService.cs" Link="Services\IVaultHealthUiService.cs" />
     <Compile Include="..\..\src\App\Services\MockVaultHealthUiService.cs" Link="Services\MockVaultHealthUiService.cs" />
+    <Compile Include="..\..\src\App\ViewModels\SecurityReportViewModel.cs" Link="ViewModels\SecurityReportViewModel.cs" />
   </ItemGroup>
 </Project>
