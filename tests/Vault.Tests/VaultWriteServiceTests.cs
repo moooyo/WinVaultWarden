@@ -17,6 +17,8 @@ public class VaultWriteServiceTests
         public string? LastId { get; private set; }
         public CipherRequest? LastCipher { get; private set; }
         public FolderRequest? LastFolder { get; private set; }
+        public IReadOnlyCollection<string>? LastIds { get; private set; }
+        public string? LastFolderId { get; private set; }
 
         public void SetBaseAddress(string baseUrl) { }
 
@@ -36,16 +38,16 @@ public class VaultWriteServiceTests
         { Calls.Add("restore"); LastId = cipherId; return Task.CompletedTask; }
 
         public Task BulkSoftDeleteCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
-        { Calls.Add("bulk-soft"); return Task.CompletedTask; }
+        { Calls.Add("bulk-soft"); LastIds = ids; return Task.CompletedTask; }
 
         public Task BulkHardDeleteCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
-        { Calls.Add("bulk-hard"); return Task.CompletedTask; }
+        { Calls.Add("bulk-hard"); LastIds = ids; return Task.CompletedTask; }
 
         public Task BulkRestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
-        { Calls.Add("bulk-restore"); return Task.CompletedTask; }
+        { Calls.Add("bulk-restore"); LastIds = ids; return Task.CompletedTask; }
 
         public Task BulkMoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default)
-        { Calls.Add("bulk-move"); return Task.CompletedTask; }
+        { Calls.Add("bulk-move"); LastIds = ids; LastFolderId = folderId; return Task.CompletedTask; }
 
         public Task CreateFolderAsync(FolderRequest request, CancellationToken ct = default)
         { Calls.Add("folder-create"); LastFolder = request; return Task.CompletedTask; }
@@ -221,6 +223,59 @@ public class VaultWriteServiceTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.DeleteFolderAsync("f-1", TestContext.Current.CancellationToken));
 
+        Assert.Empty(_api.Calls);
+        Assert.Equal(0, _sync.Calls);
+    }
+
+    [Fact]
+    public async Task MoveCiphers_CallsBulkMoveThenResyncs()
+    {
+        await NewUnlockedService().MoveCiphersAsync(new[] { "a", "b" }, "f1", TestContext.Current.CancellationToken);
+
+        Assert.Equal("bulk-move", Assert.Single(_api.Calls));
+        Assert.Equal(new[] { "a", "b" }, _api.LastIds);
+        Assert.Equal("f1", _api.LastFolderId);
+        Assert.Equal(1, _sync.Calls);
+    }
+
+    [Fact]
+    public async Task DeleteCiphers_Soft_CallsBulkSoft()
+    {
+        await NewUnlockedService().DeleteCiphersAsync(new[] { "a" }, permanent: false, TestContext.Current.CancellationToken);
+        Assert.Equal("bulk-soft", Assert.Single(_api.Calls));
+        Assert.Equal(1, _sync.Calls);
+    }
+
+    [Fact]
+    public async Task DeleteCiphers_Permanent_CallsBulkHard()
+    {
+        await NewUnlockedService().DeleteCiphersAsync(new[] { "a" }, permanent: true, TestContext.Current.CancellationToken);
+        Assert.Equal("bulk-hard", Assert.Single(_api.Calls));
+        Assert.Equal(1, _sync.Calls);
+    }
+
+    [Fact]
+    public async Task RestoreCiphers_CallsBulkRestore()
+    {
+        await NewUnlockedService().RestoreCiphersAsync(new[] { "a" }, TestContext.Current.CancellationToken);
+        Assert.Equal("bulk-restore", Assert.Single(_api.Calls));
+        Assert.Equal(1, _sync.Calls);
+    }
+
+    [Fact]
+    public async Task MoveCiphers_EmptyIds_NoApiNoSync()
+    {
+        await NewUnlockedService().MoveCiphersAsync(Array.Empty<string>(), "f1", TestContext.Current.CancellationToken);
+        Assert.Empty(_api.Calls);
+        Assert.Equal(0, _sync.Calls);
+    }
+
+    [Fact]
+    public async Task MoveCiphers_WhenLocked_ThrowsAndDoesNotCallApi()
+    {
+        var service = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.MoveCiphersAsync(new[] { "a" }, null, TestContext.Current.CancellationToken));
         Assert.Empty(_api.Calls);
         Assert.Equal(0, _sync.Calls);
     }

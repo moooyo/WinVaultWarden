@@ -18,4 +18,10 @@ public interface IVaultWriteService
     Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default);
 
     Task DeleteFolderAsync(string folderId, CancellationToken ct = default);
+
+    // 批量:ids 为空 → 直接返回(不发请求)。folderId null/空 → 移到根。
+    Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default);
+    // permanent=true → 批量硬删;false → 批量软删(移入回收站)。
+    Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default);
+    Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default);
 }
