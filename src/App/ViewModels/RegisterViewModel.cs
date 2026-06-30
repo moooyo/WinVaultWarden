@@ -44,7 +44,6 @@ public partial class RegisterViewModel : ObservableObject
     // ── 成功后由 VM 暴露给页面读取 ────────────────────────────────────────
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasOperationError))]
     public partial bool Registered { get; set; }
 
     [ObservableProperty]

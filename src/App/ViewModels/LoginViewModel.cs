@@ -150,13 +150,14 @@ public partial class LoginViewModel : ObservableObject
         SelectedServerOptionIndex = serverUrl == BitwardenUsUrl ? 0
             : serverUrl == BitwardenEuUrl ? 1
             : 2;
-        if (SelectedServerOptionIndex == 2)
-            ServerUrl = serverUrl;
         Email = email;
         MasterPassword = string.Empty;
         TwoFactorCode = string.Empty;
         Status = string.Empty;
         Stage = LoginStage.Account;
+        // Set ServerUrl last so it wins over any placeholder written by
+        // OnSelectedServerOptionIndexChanged (e.g. "https://vault.example.com").
+        ServerUrl = serverUrl;
     }
 
     [RelayCommand]
