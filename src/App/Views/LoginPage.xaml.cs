@@ -85,4 +85,9 @@ public sealed partial class LoginPage : Page
         or nameof(LoginViewModel.FormSubtitle)
         or nameof(LoginViewModel.StepText)
         or nameof(LoginViewModel.PrimaryButtonText);
+
+    private void OnGoToRegisterClick(object sender, RoutedEventArgs e)
+    {
+        Frame.Navigate(typeof(RegisterPage));
+    }
 }
