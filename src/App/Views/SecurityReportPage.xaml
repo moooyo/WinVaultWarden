@@ -70,7 +70,7 @@
                 <TextBlock Text="未发现重复密码"
                            Style="{ThemeResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           Visibility="{x:Bind ViewModel.ReusedGroups.Count, Mode=OneWay,
+                           Visibility="{x:Bind ViewModel.HasReused, Mode=OneWay,
                                Converter={StaticResource InverseBoolToVis}}" />
             </StackPanel>
 
@@ -127,7 +127,7 @@
                 <TextBlock Text="未发现弱密码"
                            Style="{ThemeResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           Visibility="{x:Bind ViewModel.WeakItems.Count, Mode=OneWay,
+                           Visibility="{x:Bind ViewModel.HasWeak, Mode=OneWay,
                                Converter={StaticResource InverseBoolToVis}}" />
             </StackPanel>
 
@@ -172,7 +172,7 @@
                 <TextBlock Text="未发现不安全的 HTTP 网站"
                            Style="{ThemeResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           Visibility="{x:Bind ViewModel.UnsecuredItems.Count, Mode=OneWay,
+                           Visibility="{x:Bind ViewModel.HasUnsecured, Mode=OneWay,
                                Converter={StaticResource InverseBoolToVis}}" />
             </StackPanel>
 
@@ -210,6 +210,7 @@
 
                 <!-- 检查出错时 -->
                 <InfoBar x:Name="ExposedErrorInfoBar"
+                         AutomationProperties.AutomationId="ExposedErrorInfoBar"
                          IsClosable="False"
                          Severity="Error"
                          IsOpen="{x:Bind ViewModel.HasExposedError, Mode=OneWay}"
@@ -259,7 +260,7 @@
                     <TextBlock Text="未发现已暴露的密码"
                                Style="{ThemeResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Visibility="{x:Bind ViewModel.ExposedItems.Count, Mode=OneWay,
+                               Visibility="{x:Bind ViewModel.HasExposed, Mode=OneWay,
                                    Converter={StaticResource InverseBoolToVis}}" />
                 </StackPanel>
             </StackPanel>

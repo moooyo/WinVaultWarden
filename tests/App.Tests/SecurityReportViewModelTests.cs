@@ -94,6 +94,77 @@ public class SecurityReportViewModelTests
         Assert.Contains(msg, vm.ExposedError);
     }
 
+    // ── HasX 空态布尔属性 ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void HasReused_True_WhenReusedGroupsNonEmpty()
+    {
+        var vm = new SecurityReportViewModel(new MockVaultHealthUiService());
+        vm.LoadOffline();
+        Assert.True(vm.HasReused);
+    }
+
+    [Fact]
+    public void HasWeak_True_WhenWeakItemsNonEmpty()
+    {
+        var vm = new SecurityReportViewModel(new MockVaultHealthUiService());
+        vm.LoadOffline();
+        Assert.True(vm.HasWeak);
+    }
+
+    [Fact]
+    public void HasUnsecured_True_WhenUnsecuredItemsNonEmpty()
+    {
+        var vm = new SecurityReportViewModel(new MockVaultHealthUiService());
+        vm.LoadOffline();
+        Assert.True(vm.HasUnsecured);
+    }
+
+    [Fact]
+    public void HasReused_False_WhenEmptyReport()
+    {
+        var stub = new StubHealthUiService();
+        // stub.Report defaults to empty
+        var vm = new SecurityReportViewModel(stub);
+        vm.LoadOffline();
+        Assert.False(vm.HasReused);
+    }
+
+    [Fact]
+    public void HasWeak_False_WhenEmptyReport()
+    {
+        var stub = new StubHealthUiService();
+        var vm = new SecurityReportViewModel(stub);
+        vm.LoadOffline();
+        Assert.False(vm.HasWeak);
+    }
+
+    [Fact]
+    public void HasUnsecured_False_WhenEmptyReport()
+    {
+        var stub = new StubHealthUiService();
+        var vm = new SecurityReportViewModel(stub);
+        vm.LoadOffline();
+        Assert.False(vm.HasUnsecured);
+    }
+
+    [Fact]
+    public async Task HasExposed_True_AfterRunExposedCheckWithResults()
+    {
+        var vm = new SecurityReportViewModel(new MockVaultHealthUiService());
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+        Assert.True(vm.HasExposed);
+    }
+
+    [Fact]
+    public async Task HasExposed_False_WhenExposedCheckReturnsEmpty()
+    {
+        var stub = new StubHealthUiService(); // CheckExposedAsync returns []
+        var vm = new SecurityReportViewModel(stub);
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+        Assert.False(vm.HasExposed);
+    }
+
     // ── Fakes ──────────────────────────────────────────────────────────────────
 
     private sealed class StubHealthUiService : IVaultHealthUiService

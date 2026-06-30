@@ -43,11 +43,30 @@ public partial class SecurityReportViewModel : ObservableObject
 
     public bool HasExposedError => !string.IsNullOrEmpty(ExposedError);
 
+    // ── 空态可见性辅助属性 ──────────────────────────────────────────────────────
+
+    /// <summary>存在重复密码分组时为 true（用于控制"未发现"空态 TextBlock 隐藏）。</summary>
+    public bool HasReused => ReusedGroups.Count > 0;
+
+    /// <summary>存在弱密码条目时为 true。</summary>
+    public bool HasWeak => WeakItems.Count > 0;
+
+    /// <summary>存在不安全 HTTP 条目时为 true。</summary>
+    public bool HasUnsecured => UnsecuredItems.Count > 0;
+
+    /// <summary>存在已暴露密码条目时为 true。</summary>
+    public bool HasExposed => ExposedItems.Count > 0;
+
     // ── 构造 ────────────────────────────────────────────────────────────────────
 
     public SecurityReportViewModel(IVaultHealthUiService service)
     {
         _service = service;
+
+        ReusedGroups.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasReused));
+        WeakItems.CollectionChanged    += (_, _) => OnPropertyChanged(nameof(HasWeak));
+        UnsecuredItems.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasUnsecured));
+        ExposedItems.CollectionChanged  += (_, _) => OnPropertyChanged(nameof(HasExposed));
     }
 
     // ── 离线分析 ────────────────────────────────────────────────────────────────
