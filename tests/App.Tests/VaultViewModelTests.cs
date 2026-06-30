@@ -793,6 +793,8 @@ public sealed class ThrowingVaultUiService : IVaultUiService
     public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => throw new InvalidOperationException("boom");
     public Task SyncAsync(CancellationToken ct = default) => throw new InvalidOperationException("boom");
     public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => throw new InvalidOperationException("boom");
+    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default) => throw new InvalidOperationException("boom");
+    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) => throw new InvalidOperationException("boom");
 }
 
 public sealed class EmptyVaultUiService : IVaultUiService
@@ -809,6 +811,8 @@ public sealed class EmptyVaultUiService : IVaultUiService
     public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => Task.CompletedTask;
     public Task SyncAsync(CancellationToken ct = default) => Task.CompletedTask;
     public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => Task.CompletedTask;
+    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default) => Task.CompletedTask;
+    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) => Task.CompletedTask;
 }
 
 public class VaultSelectionTests

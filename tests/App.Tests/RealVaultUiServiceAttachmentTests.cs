@@ -78,6 +78,9 @@ public class RealVaultUiServiceAttachmentTests
         public Task RestoreCipherAsync(string cipherId, CancellationToken ct = default) => Task.CompletedTask;
         public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => Task.CompletedTask;
         public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     private sealed class NoopSync : ISyncService
