@@ -153,6 +153,72 @@ public sealed partial class EmergencyAccessPage : Page
         await ViewModel.RemoveCommand.ExecuteAsync(null);
     }
 
+    private async void OnUpdateClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not EmergencyContact contact)
+            return;
+
+        ViewModel.SelectedContactId = contact.Id;
+
+        var typeCombo = new ComboBox { MinWidth = 200 };
+        typeCombo.Items.Add(new ComboBoxItem { Content = "查看 (View)", Tag = EmergencyAccessType.View });
+        typeCombo.Items.Add(new ComboBoxItem { Content = "接管 (Takeover)", Tag = EmergencyAccessType.Takeover });
+        typeCombo.SelectedIndex = contact.Type == EmergencyAccessType.Takeover ? 1 : 0;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(typeCombo, "UpdateTypeCombo");
+
+        var waitDaysBox = new NumberBox
+        {
+            Header = "等待天数",
+            Minimum = 1,
+            Maximum = 90,
+            Value = contact.WaitTimeDays,
+            SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline,
+            SmallChange = 1,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(waitDaysBox, "UpdateWaitDaysBox");
+
+        var errorText = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
+        errorText.SetValue(ForegroundProperty, Application.Current.Resources["SystemFillColorCriticalBrush"]);
+
+        var panel = new StackPanel { Spacing = 12 };
+        panel.Children.Add(new TextBlock { Text = "访问类型" });
+        panel.Children.Add(typeCombo);
+        panel.Children.Add(waitDaysBox);
+        panel.Children.Add(errorText);
+
+        var dialog = new ContentDialog
+        {
+            Title = $"修改紧急访问 — {contact.Email}",
+            Content = panel,
+            PrimaryButtonText = "保存",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+        };
+
+        ViewModel.OperationError = null;
+
+        while (true)
+        {
+            var result = await dialog.ShowAsync();
+            if (result != ContentDialogResult.Primary)
+                return;
+
+            if (typeCombo.SelectedItem is ComboBoxItem selectedType && selectedType.Tag is EmergencyAccessType t)
+                ViewModel.InviteType = t;
+
+            ViewModel.InviteWaitTimeDays = double.IsNaN(waitDaysBox.Value) ? contact.WaitTimeDays : (int)waitDaysBox.Value;
+
+            await ViewModel.UpdateCommand.ExecuteAsync(null);
+
+            if (!ViewModel.HasError)
+                return;
+
+            errorText.Text = ViewModel.OperationError ?? string.Empty;
+            errorText.Visibility = Visibility.Visible;
+        }
+    }
+
     // ── 受托方按钮 ────────────────────────────────────────────────────────────
 
     private async void OnInitiateClick(object sender, RoutedEventArgs e)

@@ -31,6 +31,7 @@
 
             <!-- ── 邀请按钮（InviteCommand via code-behind OnInviteClick）──── -->
             <!-- TakeoverCommand via code-behind OnTakeoverClick -->
+            <!-- UpdateCommand via code-behind OnUpdateClick -->
             <Button AutomationProperties.AutomationId="EmergencyInviteButton"
                     Content="邀请紧急联系人"
                     Style="{ThemeResource AccentButtonStyle}"
@@ -106,6 +107,10 @@
                                                 Content="移除"
                                                 Tag="{x:Bind}"
                                                 Click="OnRemoveContactClick" />
+                                        <Button AutomationProperties.AutomationId="EmergencyUpdateButton"
+                                                Content="修改"
+                                                Tag="{x:Bind}"
+                                                Click="OnUpdateClick" />
                                     </StackPanel>
                                 </Grid>
                             </Border>
