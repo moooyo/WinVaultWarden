@@ -26,6 +26,7 @@ public partial class VaultViewModel : ObservableObject
     public int SelectedCount => _selectedIds.Count;
     public IReadOnlyCollection<string> SelectedIds => _selectedIds;
     public bool HasSelectionForMove => IsSelectionMode && _selectedIds.Count > 0;
+    public bool HasSelection => IsSelectionMode && _selectedIds.Count > 0;
 
     [ObservableProperty]
     public partial CipherListItem? SelectedItem { get; set; }
@@ -58,11 +59,12 @@ public partial class VaultViewModel : ObservableObject
     // InfoBar.IsOpen 需要 bool;OperationError 是 string,直接用转换器会因返回 Visibility 而绑定失败。
     public bool HasOperationError => !string.IsNullOrEmpty(OperationError);
 
-    public bool HasSelection => Detail is not null;
+    public bool HasDetailSelected => Detail is not null;
     public bool NoSelection => Detail is null;
     public string? SelectedFilterTag => TagForFilter(SelectedFilter);
     public bool IsSelectedItemDeleted => SelectedItem?.IsDeleted == true;
     public bool IsFolderFilterSelected => SelectedFilter?.Kind == FilterKind.Folder;
+    public bool IsTrashFilterSelected => SelectedFilter?.Kind == FilterKind.Trash;
 
     // 保险库内一条(未删除)记录都没有 → 空库引导。
     public bool HasNoItems => Items.All(i => i.IsDeleted);
@@ -95,7 +97,7 @@ public partial class VaultViewModel : ObservableObject
     partial void OnSelectedItemChanged(CipherListItem? value)
     {
         Detail = value is null ? null : _service.GetDetail(value.Id);
-        OnPropertyChanged(nameof(HasSelection));
+        OnPropertyChanged(nameof(HasDetailSelected));
         OnPropertyChanged(nameof(NoSelection));
         OnPropertyChanged(nameof(IsSelectedItemDeleted));
     }
@@ -138,6 +140,7 @@ public partial class VaultViewModel : ObservableObject
         ApplyFilter();
         OnPropertyChanged(nameof(SelectedFilterTag));
         OnPropertyChanged(nameof(IsFolderFilterSelected));
+        OnPropertyChanged(nameof(IsTrashFilterSelected));
     }
 
     private static string? TagForFilter(FilterNode? filter) => filter?.Kind switch
@@ -246,7 +249,7 @@ public partial class VaultViewModel : ObservableObject
         IsEditing = true;
         SelectedItem = null;
         Detail = null;
-        OnPropertyChanged(nameof(HasSelection));
+        OnPropertyChanged(nameof(HasDetailSelected));
         OnPropertyChanged(nameof(NoSelection));
         OnPropertyChanged(nameof(EditorTitle));
     }
@@ -436,6 +439,7 @@ public partial class VaultViewModel : ObservableObject
             _selectedIds.Add(id);
         OnPropertyChanged(nameof(SelectedCount));
         OnPropertyChanged(nameof(HasSelectionForMove));
+        OnPropertyChanged(nameof(HasSelection));
     }
 
     public bool IsSelected(string id) => _selectedIds.Contains(id);
@@ -445,14 +449,18 @@ public partial class VaultViewModel : ObservableObject
         _selectedIds.Clear();
         OnPropertyChanged(nameof(SelectedCount));
         OnPropertyChanged(nameof(HasSelectionForMove));
+        OnPropertyChanged(nameof(HasSelection));
     }
 
     partial void OnIsSelectionModeChanged(bool value)
     {
         if (!value)
-            ClearSelection(); // ClearSelection 已通知 HasSelectionForMove
+            ClearSelection(); // ClearSelection 已通知 HasSelectionForMove / HasSelection
         else
+        {
             OnPropertyChanged(nameof(HasSelectionForMove));
+            OnPropertyChanged(nameof(HasSelection));
+        }
     }
 
     [RelayCommand]
@@ -467,6 +475,7 @@ public partial class VaultViewModel : ObservableObject
             _selectedIds.Add(item.Id);
         OnPropertyChanged(nameof(SelectedCount));
         OnPropertyChanged(nameof(HasSelectionForMove));
+        OnPropertyChanged(nameof(HasSelection));
     }
 
     [RelayCommand]
@@ -481,6 +490,40 @@ public partial class VaultViewModel : ObservableObject
     }
 
     public Task MoveSelectedToFolderAsync(string? folderId) => MoveSelectedToFolder(folderId);
+
+    [RelayCommand]
+    private async Task SoftDeleteSelected()
+    {
+        if (_selectedIds.Count == 0)
+            return;
+        var ids = _selectedIds.ToArray();
+        var ok = await RunWriteAsync(() => _service.DeleteCiphersAsync(ids, permanent: false), selectId: null);
+        if (ok)
+            IsSelectionMode = false;
+    }
+
+    [RelayCommand]
+    private async Task RestoreSelected()
+    {
+        if (_selectedIds.Count == 0)
+            return;
+        var ids = _selectedIds.ToArray();
+        var ok = await RunWriteAsync(() => _service.RestoreCiphersAsync(ids), selectId: null);
+        if (ok)
+            IsSelectionMode = false;
+    }
+
+    // 注：破坏性确认在 XAML code-behind 先弹 ContentDialog，确认后才执行此命令。
+    [RelayCommand]
+    private async Task PermanentDeleteSelected()
+    {
+        if (_selectedIds.Count == 0)
+            return;
+        var ids = _selectedIds.ToArray();
+        var ok = await RunWriteAsync(() => _service.DeleteCiphersAsync(ids, permanent: true), selectId: null);
+        if (ok)
+            IsSelectionMode = false;
+    }
 
     [RelayCommand]
     private void AddCustomField()

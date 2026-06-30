@@ -897,3 +897,78 @@ public class VaultSelectionTests
         Assert.Null(vm.EditorDraft);
     }
 }
+
+public class VaultBulkCommandTests
+{
+    private static VaultViewModel NewVm() => new(new MockVaultUiService());
+
+    [Fact]
+    public async Task SoftDeleteSelected_MovesToTrashAndExitsSelectionMode()
+    {
+        var vm = NewVm();
+        vm.ToggleSelectionModeCommand.Execute(null);
+        vm.ToggleSelection("1");                       // 活动项
+        Assert.False(vm.Items.First(i => i.Id == "1").IsDeleted);
+
+        await vm.SoftDeleteSelectedCommand.ExecuteAsync(null);
+
+        Assert.True(vm.Items.First(i => i.Id == "1").IsDeleted);
+        Assert.False(vm.IsSelectionMode);
+        Assert.Equal(0, vm.SelectedCount);
+    }
+
+    [Fact]
+    public async Task RestoreSelected_RestoresTrashedItem()
+    {
+        var vm = NewVm();
+        vm.ToggleSelectionModeCommand.Execute(null);
+        vm.ToggleSelection("6");                       // mock 中 id=6 在回收站
+
+        await vm.RestoreSelectedCommand.ExecuteAsync(null);
+
+        Assert.False(vm.Items.First(i => i.Id == "6").IsDeleted);
+        Assert.False(vm.IsSelectionMode);
+    }
+
+    [Fact]
+    public async Task PermanentDeleteSelected_RemovesItem()
+    {
+        var vm = NewVm();
+        vm.ToggleSelectionModeCommand.Execute(null);
+        vm.ToggleSelection("6");
+
+        await vm.PermanentDeleteSelectedCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain(vm.Items, i => i.Id == "6");
+        Assert.False(vm.IsSelectionMode);
+    }
+
+    [Fact]
+    public void IsTrashFilterSelected_TrueOnlyForTrashFilter()
+    {
+        var vm = NewVm();
+        vm.SelectedFilter = vm.Filters.First(f => f.Kind == FilterKind.Trash);
+        Assert.True(vm.IsTrashFilterSelected);
+        vm.SelectedFilter = vm.Filters.First(f => f.Kind == FilterKind.AllItems);
+        Assert.False(vm.IsTrashFilterSelected);
+    }
+
+    [Fact]
+    public void HasSelection_TracksSelectionInSelectionMode()
+    {
+        var vm = NewVm();
+        Assert.False(vm.HasSelection);
+        vm.ToggleSelectionModeCommand.Execute(null);
+        vm.ToggleSelection("1");
+        Assert.True(vm.HasSelection);
+    }
+
+    [Fact]
+    public async Task SoftDeleteSelected_EmptySelection_NoThrow_NoExit()
+    {
+        var vm = NewVm();
+        vm.ToggleSelectionModeCommand.Execute(null);    // 未选任何项
+        await vm.SoftDeleteSelectedCommand.ExecuteAsync(null);
+        Assert.True(vm.IsSelectionMode);                // 空选不退出
+    }
+}

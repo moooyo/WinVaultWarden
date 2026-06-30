@@ -610,7 +610,7 @@
                 <StackPanel Spacing="12"
                             Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}">
                 <StackPanel Spacing="2"
-                            Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            Visibility="{x:Bind ViewModel.HasDetailSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="{x:Bind ViewModel.SelectedItem.Glyph, Mode=OneWay}"
                                   FontSize="18" VerticalAlignment="Center" />
@@ -629,7 +629,7 @@
 
                 <!-- 共用底部:备注/自定义字段/历史/操作 -->
                 <StackPanel Spacing="12"
-                            Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            Visibility="{x:Bind ViewModel.HasDetailSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <!-- 备注 -->
                     <StackPanel Spacing="4"
                                 Visibility="{x:Bind ViewModel.Detail.Notes, Mode=OneWay, Converter={StaticResource EmptyToCollapsed}}">
