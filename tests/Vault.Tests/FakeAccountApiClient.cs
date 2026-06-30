@@ -32,4 +32,13 @@ public sealed class FakeAccountApiClient : IAccountApiClient
         Kdf = r;
         return Task.CompletedTask;
     }
+
+    public RegisterRequest? Register;
+
+    public Task RegisterAsync(RegisterRequest r, CancellationToken ct = default)
+    {
+        if (Throw != null) throw Throw;
+        Register = r;
+        return Task.CompletedTask;
+    }
 }
