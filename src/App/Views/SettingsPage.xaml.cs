@@ -593,6 +593,13 @@ public sealed partial class SettingsPage : Page
         await doneDialog.ShowAsync();
     }
 
+    // ── 紧急访问入口 ─────────────────────────────────────────────────────────
+
+    private void OnEmergencyAccessCardClick(object sender, RoutedEventArgs e)
+    {
+        Frame.Navigate(typeof(EmergencyAccessPage));
+    }
+
     // ── 成功后导航到锁定/登录页 ──────────────────────────────────────────────
 
     private static void NavigateToLogin()

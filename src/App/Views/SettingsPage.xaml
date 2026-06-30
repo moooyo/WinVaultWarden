@@ -94,6 +94,16 @@
                         <FontIcon Glyph="&#xE8D7;" />
                     </tk:SettingsCard.HeaderIcon>
                 </tk:SettingsCard>
+
+                <tk:SettingsCard Header="紧急访问"
+                                 Description="管理紧急联系人与受托访问权限"
+                                 IsClickEnabled="True"
+                                 AutomationProperties.AutomationId="EmergencyAccessCard"
+                                 Click="OnEmergencyAccessCardClick">
+                    <tk:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE8F8;" />
+                    </tk:SettingsCard.HeaderIcon>
+                </tk:SettingsCard>
             </StackPanel>
 
             <!-- ================= 偏好设置 ================= -->

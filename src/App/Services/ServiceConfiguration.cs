@@ -40,6 +40,7 @@ public static class ServiceConfiguration
         services.AddSingleton<IAccountApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<ITwoFactorApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<IAuthRequestApiClient>(sp => sp.GetRequiredService<ApiClient>());
+        services.AddSingleton<IEmergencyAccessApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<CipherEncryptor>();
         services.AddSingleton<IVaultWriteService, Vault.VaultWriteService>();
         services.AddSingleton<VaultDecryptor>();
@@ -60,10 +61,13 @@ public static class ServiceConfiguration
         services.AddSingleton<IAccountService, Vault.AccountService>();
         services.AddSingleton<ITwoFactorService, Vault.TwoFactorService>();
         services.AddSingleton<IAuthRequestService, Vault.AuthRequestService>();
+        services.AddSingleton<IEmergencyAccessService, Vault.EmergencyAccessService>();
         services.AddSingleton<ITwoFactorUiService>(sp =>
             new TwoFactorUiService(sp.GetRequiredService<ITwoFactorService>()));
         services.AddSingleton<IAuthRequestUiService>(sp =>
             new AuthRequestUiService(sp.GetRequiredService<IAuthRequestService>()));
+        services.AddTransient<IEmergencyAccessUiService, EmergencyAccessUiService>();
+        services.AddTransient<EmergencyAccessViewModel>();
         services.AddSingleton<IPasskeyApprovalService, PasskeyApprovalDialogService>();
         services.AddSingleton<BrowserPasskeyRequestHandler>();
         services.AddSingleton<PasskeyBridgeServer>();
