@@ -17,7 +17,7 @@ public sealed class DictionaryMatcher
         var result = new List<Match>();
 
         // Plain forward scan: token = substring of password
-        ScanDirect(password, reversed: false, l33t: false, result);
+        ScanDirect(password, result);
 
         // Reversed scan: reverse the password, scan substrings of reversed string;
         // but store original token (i.e. the substring in the original password, reversed).
@@ -25,14 +25,14 @@ public sealed class DictionaryMatcher
         ScanReversed(password, reversedPw, result);
 
         // L33t scan: substitute l33t chars, scan; store original (l33t) substring as token
-        foreach (var (variant, offset) in L33tVariants(password))
+        foreach (var variant in L33tVariants(password))
             ScanL33t(password, variant, result);
 
         return result;
     }
 
     /// <summary>Plain forward: substrings of <paramref name="password"/> searched directly in dictionaries.</summary>
-    private void ScanDirect(string password, bool reversed, bool l33t, List<Match> result)
+    private void ScanDirect(string password, List<Match> result)
     {
         var lower = password.ToLowerInvariant();
         for (var i = 0; i < lower.Length; i++)
@@ -40,7 +40,7 @@ public sealed class DictionaryMatcher
             {
                 var token = lower.Substring(i, j - i);
                 if (TryRank(token, out var rank))
-                    result.Add(new Match(i, j - 1, token, MatchType.Dictionary, Rank: rank, Reversed: reversed, L33t: l33t));
+                    result.Add(new Match(i, j - 1, token, StrengthMatchType.Dictionary, Rank: rank));
             }
     }
 
@@ -63,7 +63,7 @@ public sealed class DictionaryMatcher
                     var origJ = n - i - 1;
                     // The token in original coordinates (reversed) is the substring of original
                     var origToken = original.ToLowerInvariant().Substring(origI, j - i);
-                    result.Add(new Match(origI, origJ, origToken, MatchType.Dictionary, Rank: rank, Reversed: true, L33t: false));
+                    result.Add(new Match(origI, origJ, origToken, StrengthMatchType.Dictionary, Rank: rank, Reversed: true, L33t: false));
                 }
             }
     }
@@ -83,7 +83,7 @@ public sealed class DictionaryMatcher
                 {
                     // Token shown to user is the original l33t substring
                     var originalToken = lowerOriginal.Substring(i, j - i);
-                    result.Add(new Match(i, j - 1, originalToken, MatchType.Dictionary, Rank: rank, Reversed: false, L33t: true));
+                    result.Add(new Match(i, j - 1, originalToken, StrengthMatchType.Dictionary, Rank: rank, Reversed: false, L33t: true));
                 }
             }
     }
@@ -97,9 +97,8 @@ public sealed class DictionaryMatcher
 
     /// <summary>
     /// Generate l33t substitution variants. Each variant replaces l33t chars with their letter equivalents.
-    /// Returns tuples of (substituted string, original password) — offset is implicit (same length).
     /// </summary>
-    private static IEnumerable<(string variant, int dummy)> L33tVariants(string password)
+    private static IEnumerable<string> L33tVariants(string password)
     {
         if (!password.Any(c => L33t.ContainsKey(c))) yield break;
         var current = new List<char[]> { password.ToLowerInvariant().ToCharArray() };
@@ -117,6 +116,6 @@ public sealed class DictionaryMatcher
                 }
             current = next.Count > 64 ? next.GetRange(0, 64) : next; // limit explosion
         }
-        foreach (var v in current) yield return (new string(v), 0);
+        foreach (var v in current) yield return new string(v);
     }
 }

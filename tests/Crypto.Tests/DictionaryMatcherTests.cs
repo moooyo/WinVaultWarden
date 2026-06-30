@@ -1,5 +1,4 @@
 using Crypto.PasswordStrength;
-using MatchType = Crypto.PasswordStrength.MatchType;
 using Xunit;
 
 namespace Crypto.Tests;
@@ -12,7 +11,7 @@ public class DictionaryMatcherTests
     public void Matches_CommonPassword_WithLowRank()
     {
         var matches = _m.Match("password");
-        Assert.Contains(matches, x => x.Token == "password" && x.Type == MatchType.Dictionary && x.Rank > 0);
+        Assert.Contains(matches, x => x.Token == "password" && x.Type == StrengthMatchType.Dictionary && x.Rank > 0);
     }
 
     [Fact]
@@ -26,13 +25,13 @@ public class DictionaryMatcherTests
     public void Matches_L33t()
     {
         var matches = _m.Match("p@ssw0rd"); // l33t of "password"
-        Assert.Contains(matches, x => x.L33t && x.Type == MatchType.Dictionary);
+        Assert.Contains(matches, x => x.L33t && x.Type == StrengthMatchType.Dictionary);
     }
 
     [Fact]
     public void NoMatch_ForRandomString()
     {
         var matches = _m.Match("x7q2zk9w");
-        Assert.DoesNotContain(matches, x => x.Type == MatchType.Dictionary && x.Token.Length >= 4);
+        Assert.DoesNotContain(matches, x => x.Type == StrengthMatchType.Dictionary && x.Token.Length >= 4);
     }
 }
