@@ -1075,13 +1075,11 @@ async Task EmergencyAccessRoundTripAsync()
         var foundA = syncedA.FirstOrDefault(c => c.Name == eaCipherNameA);
         Step("ea: A cipher created", foundA is not null, foundA?.Id);
 
-        // ── Step 4: B logs in (once); SyncAsync populates EncryptedPrivateKey ──
-        // (required by the production ViewAsync/TakeoverAsync recovery path).
+        // ── Step 4: B logs in — BootstrapAsync populates EncryptedPrivateKey ──
         var loginB = await stackB.auth.LoginAsync(serverUrl, emailB, eaPassword);
         Step("ea: B login", loginB is AuthResult.Success, loginB.GetType().Name);
         if (loginB is not AuthResult.Success)
             throw new InvalidOperationException("EA: B login failed, aborting.");
-        await stackB.sync.SyncAsync();
 
         // Local helper: run a full grant cycle (invite → auto-accept → confirm →
         // initiate → approve) for a given access type, returning the grant id from
