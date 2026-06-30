@@ -162,4 +162,73 @@ public class ApiWriteClientTests
 
         Assert.Equal("Bad Request", ex.Message);
     }
+
+    [Fact]
+    public async Task BulkSoftDelete_PutsToCiphersDelete_WithIdsBody()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
+        var client = NewClient(handler);
+
+        await client.BulkSoftDeleteCiphersAsync(new[] { "a", "b" }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpMethod.Put, handler.Requests[0].Method);
+        Assert.Equal("/api/ciphers/delete", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Contains("\"ids\":[\"a\",\"b\"]", handler.Bodies[0]);
+    }
+
+    [Fact]
+    public async Task BulkHardDelete_PostsToCiphersDelete_WithIdsBody()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
+        var client = NewClient(handler);
+
+        await client.BulkHardDeleteCiphersAsync(new[] { "a" }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
+        Assert.Equal("/api/ciphers/delete", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Contains("\"ids\":[\"a\"]", handler.Bodies[0]);
+    }
+
+    [Fact]
+    public async Task BulkRestore_PutsToCiphersRestore_WithIdsBody()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
+        var client = NewClient(handler);
+
+        await client.BulkRestoreCiphersAsync(new[] { "a", "b" }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpMethod.Put, handler.Requests[0].Method);
+        Assert.Equal("/api/ciphers/restore", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Contains("\"ids\":[\"a\",\"b\"]", handler.Bodies[0]);
+    }
+
+    [Fact]
+    public async Task BulkMove_PutsToCiphersMove_WithIdsAndFolderId()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
+        var client = NewClient(handler);
+
+        await client.BulkMoveCiphersAsync(new[] { "a" }, "f1", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpMethod.Put, handler.Requests[0].Method);
+        Assert.Equal("/api/ciphers/move", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Contains("\"ids\":[\"a\"]", handler.Bodies[0]);
+        Assert.Contains("\"folderId\":\"f1\"", handler.Bodies[0]);
+    }
+
+    [Fact]
+    public async Task BulkMove_NullFolder_SerializesFolderIdNull()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
+        var client = NewClient(handler);
+
+        await client.BulkMoveCiphersAsync(new[] { "a" }, null, TestContext.Current.CancellationToken);
+
+        Assert.Contains("\"folderId\":null", handler.Bodies[0]);
+    }
 }

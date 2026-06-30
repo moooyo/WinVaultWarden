@@ -222,6 +222,47 @@ public class RealVaultUiServiceWriteTests
         Assert.Equal(1, sync.SyncCount);
     }
 
+    [Fact]
+    public async Task MoveCiphersAsync_DelegatesToWriteService()
+    {
+        var vault = new MutableVaultService();
+        var write = new RecordingWriteService(vault);
+        var service = new VaultUiService(vault, write, new NoopSyncService());
+
+        await service.MoveCiphersAsync(new[] { "a", "b" }, "f1");
+
+        Assert.Equal("move", write.LastOp);
+        Assert.Equal(new[] { "a", "b" }, write.LastIds);
+        Assert.Equal("f1", write.LastFolderId);
+    }
+
+    [Fact]
+    public async Task DeleteCiphersAsync_Permanent_DelegatesWithFlag()
+    {
+        var vault = new MutableVaultService();
+        var write = new RecordingWriteService(vault);
+        var service = new VaultUiService(vault, write, new NoopSyncService());
+
+        await service.DeleteCiphersAsync(new[] { "a" }, permanent: true);
+
+        Assert.Equal("delete", write.LastOp);
+        Assert.Equal(new[] { "a" }, write.LastIds);
+        Assert.True(write.LastPermanent);
+    }
+
+    [Fact]
+    public async Task RestoreCiphersAsync_Delegates()
+    {
+        var vault = new MutableVaultService();
+        var write = new RecordingWriteService(vault);
+        var service = new VaultUiService(vault, write, new NoopSyncService());
+
+        await service.RestoreCiphersAsync(new[] { "a" });
+
+        Assert.Equal("restore", write.LastOp);
+        Assert.Equal(new[] { "a" }, write.LastIds);
+    }
+
 }
 
 file sealed class MutableVaultService : IVaultService
@@ -244,6 +285,12 @@ file sealed class RecordingWriteService : IVaultWriteService
     public string? LastRestore { get; private set; }
     public (string? Id, string Name)? LastFolderSave { get; private set; }
     public string? LastFolderDelete { get; private set; }
+
+    // Bulk operation recording
+    public string? LastOp { get; private set; }
+    public IReadOnlyCollection<string>? LastIds { get; private set; }
+    public string? LastFolderId { get; private set; }
+    public bool? LastPermanent { get; private set; }
 
     public Task SaveCipherAsync(Cipher cipher, CancellationToken ct = default)
     {
@@ -276,6 +323,29 @@ file sealed class RecordingWriteService : IVaultWriteService
         LastFolderDelete = folderId;
         return Task.CompletedTask;
     }
+
+    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default)
+    {
+        LastOp = "move";
+        LastIds = ids;
+        LastFolderId = folderId;
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default)
+    {
+        LastOp = "delete";
+        LastIds = ids;
+        LastPermanent = permanent;
+        return Task.CompletedTask;
+    }
+
+    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
+    {
+        LastOp = "restore";
+        LastIds = ids;
+        return Task.CompletedTask;
+    }
 }
 
 file sealed class NoopWriteService : IVaultWriteService
@@ -285,6 +355,9 @@ file sealed class NoopWriteService : IVaultWriteService
     public Task RestoreCipherAsync(string cipherId, CancellationToken ct = default) => Task.CompletedTask;
     public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => Task.CompletedTask;
     public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => Task.CompletedTask;
+    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => Task.CompletedTask;
+    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default) => Task.CompletedTask;
+    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) => Task.CompletedTask;
 }
 
 file sealed class NoopSyncService : ISyncService

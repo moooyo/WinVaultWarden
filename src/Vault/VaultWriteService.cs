@@ -69,6 +69,33 @@ public sealed class VaultWriteService : IVaultWriteService
         await _sync.SyncAsync(ct);
     }
 
+    public async Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default)
+    {
+        RequireUserKey();
+        if (ids.Count == 0) return;
+        await _api.BulkMoveCiphersAsync(ids, string.IsNullOrWhiteSpace(folderId) ? null : folderId, ct);
+        await _sync.SyncAsync(ct);
+    }
+
+    public async Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default)
+    {
+        RequireUserKey();
+        if (ids.Count == 0) return;
+        if (permanent)
+            await _api.BulkHardDeleteCiphersAsync(ids, ct);
+        else
+            await _api.BulkSoftDeleteCiphersAsync(ids, ct);
+        await _sync.SyncAsync(ct);
+    }
+
+    public async Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
+    {
+        RequireUserKey();
+        if (ids.Count == 0) return;
+        await _api.BulkRestoreCiphersAsync(ids, ct);
+        await _sync.SyncAsync(ct);
+    }
+
     private SymmetricCryptoKey RequireUserKey() =>
         _session.UserKey ?? throw new InvalidOperationException("Vault is locked.");
 }

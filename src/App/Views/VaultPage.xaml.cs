@@ -190,6 +190,43 @@ public sealed partial class VaultPage : Page
         DetailHost.Content = detail;
     }
 
+    private void OnMoveSelectedFlyoutOpening(object sender, object e)
+    {
+        MoveFolderFlyout.Items.Clear();
+
+        var noFolder = new MenuFlyoutItem { Text = "无文件夹" };
+        noFolder.Click += (_, _) => ViewModel.MoveSelectedToFolderCommand.Execute(null);
+        MoveFolderFlyout.Items.Add(noFolder);
+
+        foreach (var folder in ViewModel.FolderFilters)
+        {
+            var item = new MenuFlyoutItem { Text = folder.Label };
+            var folderId = folder.FolderId;
+            item.Click += (_, _) => ViewModel.MoveSelectedToFolderCommand.Execute(folderId);
+            MoveFolderFlyout.Items.Add(item);
+        }
+    }
+
+    private async void OnPermanentDeleteSelectedClick(object sender, RoutedEventArgs e)
+    {
+        var count = ViewModel.SelectedCount;
+        if (count == 0)
+            return;
+
+        var dialog = new ContentDialog
+        {
+            Title = "永久删除所选项目？",
+            Content = $"此操作不可撤销，将从回收站彻底移除 {count} 项。",
+            PrimaryButtonText = "永久删除",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.XamlRoot,
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            await ViewModel.PermanentDeleteSelectedCommand.ExecuteAsync(null);
+    }
+
     private void OnVaultFoldersChanged(object? sender, EventArgs e) =>
         global::App.App.MainWindow?.RefreshFolderNavigation();
 

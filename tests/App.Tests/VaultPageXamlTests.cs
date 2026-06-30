@@ -17,7 +17,11 @@ public class VaultPageXamlTests
         var move = buttons.Single(b => b.Attribute("Label")?.Value == "移动");
 
         Assert.Contains("SelectAllCommand", selectAll.Attribute("Command")?.Value ?? "");
-        Assert.Contains("MoveSelectedToFolderCommand", move.Attribute("Command")?.Value ?? "");
+        // 移动按钮改为 MenuFlyout 模式（OnMoveSelectedFlyoutOpening 在 code-behind 动态填充），
+        // 不再把 MoveSelectedToFolderCommand 直接绑 Command 属性。
+        // 验证按钮有 Flyout（即 MenuFlyout 子元素）而非硬编码 CommandParameter。
+        Assert.NotNull(move.Element(Xaml + "AppBarButton.Flyout"));
+        Assert.Null(move.Attribute("Command")); // command 已移至 flyout items
     }
 
     [Fact]

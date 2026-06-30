@@ -109,3 +109,15 @@ public sealed class FieldRequest
 // Vaultwarden 4xx 错误体:{"message":"...","validationErrors":{...},"object":"error"}
 public sealed record WriteErrorResponse(
     [property: JsonPropertyName("message")] string? Message);
+
+// 批量操作请求体（镜像 Vaultwarden CipherIdsData / MoveCipherData，camelCase）。
+public sealed class CipherIdsRequest
+{
+    public string[] Ids { get; init; } = Array.Empty<string>();
+}
+
+public sealed class MoveCiphersRequest
+{
+    public string[] Ids { get; init; } = Array.Empty<string>();
+    public string? FolderId { get; init; }   // null = 移到根（无文件夹）
+}

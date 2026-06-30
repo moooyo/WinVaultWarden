@@ -231,6 +231,65 @@ try
         Step("restored (not deleted)", restored is not null && !restored.IsDeleted);
     }
 
+    // ── 9b. Bulk operations ─────────────────────────────────────────────────
+    Console.WriteLine("[9b] Bulk operations");
+    {
+        var bulkFolderName = $"WVW-Bulk-{run}";
+        await writeService.SaveFolderAsync(null, bulkFolderName);
+        var bulkFolder = session.Folders.FirstOrDefault(x => x.Name == bulkFolderName);
+
+        var bulkIds = new List<string>();
+        for (var i = 0; i < 3; i++)
+        {
+            var c = new Cipher
+            {
+                Type = CipherType.Login,
+                Name = $"WVW-Bulk-Item-{run}-{i}",
+                Login = new CipherLogin($"user{i}", "pw", null, Array.Empty<CipherLoginUri>()),
+            };
+            await writeService.SaveCipherAsync(c);
+        }
+        var afterCreate = await sync.SyncAsync();
+        bulkIds.AddRange(afterCreate
+            .Where(c => c.Name.StartsWith($"WVW-Bulk-Item-{run}-", StringComparison.Ordinal))
+            .Select(c => c.Id));
+        Step("bulk: 3 items created", bulkIds.Count == 3, $"{bulkIds.Count} ids");
+
+        // 批量移动到文件夹
+        await writeService.MoveCiphersAsync(bulkIds, bulkFolder?.Id);
+        var afterMove = await sync.SyncAsync();
+        var moved = afterMove.Where(c => bulkIds.Contains(c.Id)).ToList();
+        var movedOk = moved.Count == 3 && moved.All(c => c.FolderId == bulkFolder?.Id);
+        Step("bulk: moved to folder", movedOk, bulkFolder?.Id);
+
+        // 批量软删
+        await writeService.DeleteCiphersAsync(bulkIds, permanent: false);
+        var afterSoft = await sync.SyncAsync();
+        var soft = afterSoft.Where(c => bulkIds.Contains(c.Id)).ToList();
+        var softOk = soft.Count == 3 && soft.All(c => c.IsDeleted);
+        Step("bulk: soft-deleted to trash", softOk);
+
+        // 批量恢复
+        await writeService.RestoreCiphersAsync(bulkIds);
+        var afterRestore = await sync.SyncAsync();
+        var restored = afterRestore.Where(c => bulkIds.Contains(c.Id)).ToList();
+        var restoreOk = restored.Count == 3 && restored.All(c => !c.IsDeleted);
+        Step("bulk: restored", restoreOk);
+
+        // 批量硬删清理 + 删文件夹
+        await writeService.DeleteCiphersAsync(bulkIds, permanent: true);
+        var afterHard = await sync.SyncAsync();
+        var hardOk = afterHard.All(c => !bulkIds.Contains(c.Id));
+        Step("bulk: hard-deleted cleanup", hardOk);
+
+        if (bulkFolder is not null)
+        {
+            await writeService.DeleteFolderAsync(bulkFolder.Id);
+            await sync.SyncAsync();
+            Step("bulk: folder cleanup", session.Folders.All(x => x.Id != bulkFolder.Id));
+        }
+    }
+
     // ── 10. Cleanup: hard delete cipher + delete folder ──────────────────────
     Console.WriteLine("[10] Cleanup");
     if (createdId is not null)

@@ -70,7 +70,13 @@ public sealed class VaultUiService : IVaultUiService
     public Task SyncAsync(CancellationToken ct = default) => _sync.SyncAsync(ct);
 
     public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) =>
-        throw new NotImplementedException("移动到文件夹功能尚未接入。");
+        _writeService.MoveCiphersAsync(ids, folderId, ct);
+
+    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default) =>
+        _writeService.DeleteCiphersAsync(ids, permanent, ct);
+
+    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) =>
+        _writeService.RestoreCiphersAsync(ids, ct);
 
     public IReadOnlyList<FilterNode> GetFilters()
     {

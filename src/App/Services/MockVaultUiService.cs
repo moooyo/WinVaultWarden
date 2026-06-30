@@ -19,6 +19,8 @@ public interface IVaultUiService
     Task DeleteFolderAsync(string folderId, CancellationToken ct = default);
     Task SyncAsync(CancellationToken ct = default);
     Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default);
+    Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default);
+    Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default);
 }
 
 public sealed class MockVaultUiService : IVaultUiService
@@ -158,6 +160,31 @@ public sealed class MockVaultUiService : IVaultUiService
             if (_details.Any(d => d.Id == id))
                 _folderIds[id] = target;
         }
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default)
+    {
+        foreach (var id in ids)
+        {
+            if (permanent)
+            {
+                _details.RemoveAll(d => d.Id == id);
+                _deleted.Remove(id);
+                _folderIds.Remove(id);
+            }
+            else
+            {
+                _deleted.Add(id);
+            }
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
+    {
+        foreach (var id in ids)
+            _deleted.Remove(id);
         return Task.CompletedTask;
     }
 
