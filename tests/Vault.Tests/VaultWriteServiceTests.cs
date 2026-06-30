@@ -243,6 +243,7 @@ public class VaultWriteServiceTests
     {
         await NewUnlockedService().DeleteCiphersAsync(new[] { "a" }, permanent: false, TestContext.Current.CancellationToken);
         Assert.Equal("bulk-soft", Assert.Single(_api.Calls));
+        Assert.Equal(new[] { "a" }, _api.LastIds);
         Assert.Equal(1, _sync.Calls);
     }
 
@@ -251,6 +252,7 @@ public class VaultWriteServiceTests
     {
         await NewUnlockedService().DeleteCiphersAsync(new[] { "a" }, permanent: true, TestContext.Current.CancellationToken);
         Assert.Equal("bulk-hard", Assert.Single(_api.Calls));
+        Assert.Equal(new[] { "a" }, _api.LastIds);
         Assert.Equal(1, _sync.Calls);
     }
 
@@ -260,6 +262,26 @@ public class VaultWriteServiceTests
         await NewUnlockedService().RestoreCiphersAsync(new[] { "a" }, TestContext.Current.CancellationToken);
         Assert.Equal("bulk-restore", Assert.Single(_api.Calls));
         Assert.Equal(1, _sync.Calls);
+    }
+
+    [Fact]
+    public async Task DeleteCiphers_WhenLocked_ThrowsAndDoesNotCallApi()
+    {
+        var service = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.DeleteCiphersAsync(new[] { "a" }, permanent: false, TestContext.Current.CancellationToken));
+        Assert.Empty(_api.Calls);
+        Assert.Equal(0, _sync.Calls);
+    }
+
+    [Fact]
+    public async Task RestoreCiphers_WhenLocked_ThrowsAndDoesNotCallApi()
+    {
+        var service = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RestoreCiphersAsync(new[] { "a" }, TestContext.Current.CancellationToken));
+        Assert.Empty(_api.Calls);
+        Assert.Equal(0, _sync.Calls);
     }
 
     [Fact]

@@ -246,6 +246,7 @@ public class RealVaultUiServiceWriteTests
         await service.DeleteCiphersAsync(new[] { "a" }, permanent: true);
 
         Assert.Equal("delete", write.LastOp);
+        Assert.Equal(new[] { "a" }, write.LastIds);
         Assert.True(write.LastPermanent);
     }
 
@@ -259,6 +260,7 @@ public class RealVaultUiServiceWriteTests
         await service.RestoreCiphersAsync(new[] { "a" });
 
         Assert.Equal("restore", write.LastOp);
+        Assert.Equal(new[] { "a" }, write.LastIds);
     }
 
 }
