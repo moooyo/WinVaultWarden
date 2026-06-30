@@ -1,7 +1,4 @@
-using System.Net.Http.Headers;
 using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using System.Threading.Channels;
 using Api;
 using Core.Abstractions;
@@ -24,7 +21,6 @@ string serverUrl = args.Length > 0 ? args[0]
     : Environment.GetEnvironmentVariable("WVW_LIVE_SERVER") ?? "http://10.0.1.20:8080";
 string email = args.Length > 1 ? args[1] : "test@winvaultwarden.local";
 string password = args.Length > 2 ? args[2] : "Test-Master-Password-1!";
-const int Iterations = 600_000;
 
 var run = "S" + DateTime.UtcNow.ToString("HHmmss");
 int passed = 0, failed = 0;
@@ -483,54 +479,25 @@ async Task TestCipherType(string label, Cipher cipher, Func<Cipher, (bool ok, st
     await writeService.DeleteCipherAsync(found.Id, permanent: true);
 }
 
-// ── Registration helper (client has no register feature; build the payload
-//    with our own crypto, exactly as the Bitwarden web vault would). ──────────
+// ── Registration helper: uses production Vault.RegisterService path ──────────
 async Task RegisterAsync()
 {
-    var masterKey = crypto.DeriveMasterKey(password, email, KdfType.Pbkdf2, Iterations, null, null);
-    var passwordHash = crypto.ComputeMasterPasswordHash(masterKey, password);
-    var stretched = crypto.StretchMasterKey(masterKey);
-
-    var userKeyBytes = RandomNumberGenerator.GetBytes(64);
-    var userKey = new SymmetricCryptoKey(userKeyBytes);
-    var protectedKey = crypto.Encrypt(userKeyBytes, stretched).ToString();
-
-    using var rsa = RSA.Create(2048);
-    var publicKeyB64 = Convert.ToBase64String(rsa.ExportSubjectPublicKeyInfo());
-    var encryptedPrivateKey = crypto.Encrypt(rsa.ExportPkcs8PrivateKey(), userKey).ToString();
-
-    var payload = new Dictionary<string, object?>
+    var registerService = new Vault.RegisterService(crypto, api);
+    try
     {
-        ["email"] = email,
-        ["name"] = "WVW Smoke",
-        ["masterPasswordHash"] = passwordHash,
-        ["key"] = protectedKey,
-        ["kdf"] = 0,
-        ["kdfIterations"] = Iterations,
-        ["keys"] = new Dictionary<string, object?>
-        {
-            ["publicKey"] = publicKeyB64,
-            ["encryptedPrivateKey"] = encryptedPrivateKey,
-        },
-    };
-    var json = JsonSerializer.Serialize(payload);
-
-    using var plain = new HttpClient();
-    using var req = new HttpRequestMessage(HttpMethod.Post, serverUrl.TrimEnd('/') + "/identity/accounts/register")
-    {
-        Content = new StringContent(json, Encoding.UTF8, "application/json"),
-    };
-    req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-    var resp = await plain.SendAsync(req);
-    var body = await resp.Content.ReadAsStringAsync();
-
-    if (resp.IsSuccessStatusCode)
+        await registerService.RegisterAsync(serverUrl, email, "WVW Smoke", password, null);
         Step("account registered", true);
-    else if (body.Contains("already exists", StringComparison.OrdinalIgnoreCase)
-             || body.Contains("not allowed", StringComparison.OrdinalIgnoreCase))
-        Step("account already exists (reuse)", true, $"{(int)resp.StatusCode}");
-    else
-        Step("account registered", false, $"{(int)resp.StatusCode}: {body}");
+    }
+    catch (Core.Services.RegistrationException ex)
+        when (ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase)
+           || ex.Message.Contains("not allowed", StringComparison.OrdinalIgnoreCase))
+    {
+        Step("account already exists (reuse)", true);
+    }
+    catch (Core.Services.RegistrationException ex)
+    {
+        Step("account registered", false, ex.Message);
+    }
 }
 
 // ── Account: rename to "WinVault SmokeTest" then revert to a stable name. ───
