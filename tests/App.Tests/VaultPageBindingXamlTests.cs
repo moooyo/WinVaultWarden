@@ -24,4 +24,22 @@ public class VaultPageBindingXamlTests
         // 全量 AOT 要求 0 处反射 {Binding};VaultPage 是最后的留存点。
         Assert.DoesNotContain("{Binding ElementName=Root", Xaml());
     }
+
+    [Fact]
+    public void SelectionToolbar_HasBulkActionBindings()
+    {
+        var xaml = Xaml();
+        Assert.Contains("SoftDeleteSelectedCommand", xaml);
+        Assert.Contains("RestoreSelectedCommand", xaml);
+        Assert.Contains("OnPermanentDeleteSelectedClick", xaml);   // 永久删走 code-behind 确认
+        Assert.Contains("IsTrashFilterSelected", xaml);            // 回收站上下文可见性
+    }
+
+    [Fact]
+    public void MoveButton_UsesMenuFlyout_NotHardcodedNull()
+    {
+        var xaml = Xaml();
+        // 移动按钮挂 flyout（由 code-behind 依 FolderFilters 动态填充），不再写死 CommandParameter="{x:Null}" 作为唯一入口
+        Assert.Contains("OnMoveSelectedFlyoutOpening", xaml);
+    }
 }

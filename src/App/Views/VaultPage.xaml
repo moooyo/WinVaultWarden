@@ -179,10 +179,24 @@
                 <AppBarButton Icon="SelectAll" Label="全选"
                               Command="{x:Bind ViewModel.SelectAllCommand}"
                               IsEnabled="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay}" />
-                <AppBarButton Icon="MoveToFolder" Label="移动"
-                              Command="{x:Bind ViewModel.MoveSelectedToFolderCommand}"
-                              CommandParameter="{x:Null}"
-                              IsEnabled="{x:Bind ViewModel.HasSelectionForMove, Mode=OneWay}" />
+                <AppBarButton x:Name="MoveSelectedButton" Icon="MoveToFolder" Label="移动"
+                              IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                    <AppBarButton.Flyout>
+                        <MenuFlyout x:Name="MoveFolderFlyout" Opening="OnMoveSelectedFlyoutOpening" />
+                    </AppBarButton.Flyout>
+                </AppBarButton>
+                <AppBarButton Icon="Delete" Label="移到回收站"
+                              Command="{x:Bind ViewModel.SoftDeleteSelectedCommand}"
+                              IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                              Visibility="{x:Bind ViewModel.IsTrashFilterSelected, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}" />
+                <AppBarButton Icon="Undo" Label="恢复"
+                              Command="{x:Bind ViewModel.RestoreSelectedCommand}"
+                              IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                              Visibility="{x:Bind ViewModel.IsTrashFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                <AppBarButton x:Name="PermanentDeleteButton" Icon="Delete" Label="永久删除"
+                              Click="OnPermanentDeleteSelectedClick"
+                              IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                              Visibility="{x:Bind ViewModel.IsTrashFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
             </CommandBar>
             <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" Margin="0,4,0,0"
                         Visibility="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">

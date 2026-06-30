@@ -25,7 +25,6 @@ public partial class VaultViewModel : ObservableObject
 
     public int SelectedCount => _selectedIds.Count;
     public IReadOnlyCollection<string> SelectedIds => _selectedIds;
-    public bool HasSelectionForMove => IsSelectionMode && _selectedIds.Count > 0;
     public bool HasSelection => IsSelectionMode && _selectedIds.Count > 0;
 
     [ObservableProperty]
@@ -438,7 +437,6 @@ public partial class VaultViewModel : ObservableObject
         if (!_selectedIds.Remove(id))
             _selectedIds.Add(id);
         OnPropertyChanged(nameof(SelectedCount));
-        OnPropertyChanged(nameof(HasSelectionForMove));
         OnPropertyChanged(nameof(HasSelection));
     }
 
@@ -448,17 +446,15 @@ public partial class VaultViewModel : ObservableObject
     {
         _selectedIds.Clear();
         OnPropertyChanged(nameof(SelectedCount));
-        OnPropertyChanged(nameof(HasSelectionForMove));
         OnPropertyChanged(nameof(HasSelection));
     }
 
     partial void OnIsSelectionModeChanged(bool value)
     {
         if (!value)
-            ClearSelection(); // ClearSelection 已通知 HasSelectionForMove / HasSelection
+            ClearSelection(); // ClearSelection 已通知 HasSelection
         else
         {
-            OnPropertyChanged(nameof(HasSelectionForMove));
             OnPropertyChanged(nameof(HasSelection));
         }
     }
@@ -474,7 +470,6 @@ public partial class VaultViewModel : ObservableObject
         foreach (var item in FilteredItems)
             _selectedIds.Add(item.Id);
         OnPropertyChanged(nameof(SelectedCount));
-        OnPropertyChanged(nameof(HasSelectionForMove));
         OnPropertyChanged(nameof(HasSelection));
     }
 
