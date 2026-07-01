@@ -594,6 +594,37 @@ try
         catch { ok = false; }
         Step("icons: /icons request completes without throwing", ok, bytes is null ? "no image (glyph fallback)" : $"{bytes.Length} bytes");
     }
+
+    // ── 24. Import / Export ───────────────────────────────────────────────────
+    Console.WriteLine("[io] Import / Export");
+    {
+        var importSvc = new VaultImportService(api, encryptor, sync, session);
+        var exportSvc = new VaultExportService(new VaultService(session));
+        var ioFolderName = $"WVW-IO-{run}";
+        var ioLoginName = $"WVW-IO-Login-{run}";
+        var ioJson = "{\"encrypted\":false,\"folders\":[{\"id\":\"f0\",\"name\":\"" + ioFolderName + "\"}],\"items\":[" +
+                   "{\"type\":1,\"name\":\"" + ioLoginName + "\",\"folderId\":\"f0\",\"login\":{\"username\":\"u\",\"password\":\"io-pass\",\"uris\":[]}}]}";
+
+        var ioImportedCount = await importSvc.ImportAsync(Core.Services.ImportFormat.Json, ioJson);
+        Step("io: import returned 1", ioImportedCount == 1, $"n={ioImportedCount}");
+
+        var ioAfter = await sync.SyncAsync();
+        var ioImported = ioAfter.FirstOrDefault(c => c.Name == ioLoginName);
+        var ioFolder = session.Folders.FirstOrDefault(f => f.Name == ioFolderName);
+        Step("io: imported login decrypts + in folder",
+            ioImported is not null && ioImported.Login?.Password == "io-pass"
+            && ioFolder is not null && ioImported.FolderId == ioFolder.Id,
+            ioImported?.Login?.Password);
+
+        var ioExport = exportSvc.Export(Core.Services.ExportFormat.Json);
+        var ioReparsed = Vault.Porting.BitwardenJsonCodec.Parse(ioExport);
+        Step("io: export round-trips through codec", ioReparsed.Ciphers.Any(c => c.Name == ioLoginName));
+
+        // cleanup: hard-delete imported cipher + delete folder
+        if (ioImported is not null) await writeService.DeleteCipherAsync(ioImported.Id, permanent: true);
+        if (ioFolder is not null) await writeService.DeleteFolderAsync(ioFolder.Id);
+        Step("io: cleanup", true);
+    }
 }
 catch (Exception ex)
 {
