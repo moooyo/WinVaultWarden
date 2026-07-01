@@ -13,9 +13,6 @@ namespace Vault.Porting;
 // 有意为之的有损转换——需要无损往返请使用 BitwardenJsonCodec（Task 1）。
 public static class BitwardenCsvCodec
 {
-    private const string Header =
-        "folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp";
-
     private static readonly string[] ColumnNames =
     [
         "folder", "favorite", "type", "name", "notes", "fields",
