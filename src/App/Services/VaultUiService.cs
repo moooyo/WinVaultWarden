@@ -1,3 +1,4 @@
+using System.Text;
 using App.ViewModels.Models;
 using Core.Enums;
 using Core.Models;
@@ -120,7 +121,47 @@ public sealed class VaultUiService : IVaultUiService
         IconDomain = cipher.Type == CipherType.Login
             ? Core.IconDomain.Extract(cipher.Login?.Uris.FirstOrDefault()?.Uri)
             : null,
+        SearchHaystack = BuildHaystack(cipher),
+        HasTotp = !string.IsNullOrEmpty(cipher.Login?.Totp),
+        HasAttachment = cipher.Attachments.Count > 0,
+        HasUri = cipher.Login?.Uris.Any(u => !string.IsNullOrEmpty(u.Uri)) == true,
+        RevisionDate = cipher.RevisionDate,
+        CreationDate = cipher.CreationDate,
     };
+
+    // 需要 using System.Text; using Core.Enums;（若未引入）
+    public static string BuildHaystack(Cipher cipher)
+    {
+        var sb = new StringBuilder();
+        void Add(string? s) { if (!string.IsNullOrWhiteSpace(s)) { sb.Append(s); sb.Append('\n'); } }
+
+        Add(cipher.Name);
+        Add(cipher.Notes);
+
+        if (cipher.Login is { } login)
+        {
+            Add(login.Username);
+            foreach (var u in login.Uris) Add(u.Uri);
+        }
+
+        foreach (var f in cipher.Fields)
+        {
+            Add(f.Name);                                  // 字段名可搜(含隐藏字段的名)
+            if (f.Type != CipherFieldType.Hidden) Add(f.Value);  // 仅非隐藏值
+        }
+
+        if (cipher.Card?.Number is { Length: >= 4 } num) Add(num[^4..]);  // 仅后四位,不含 CVV
+
+        if (cipher.Identity is { } id)
+        {
+            Add(id.FirstName); Add(id.MiddleName); Add(id.LastName);
+            Add(id.Username); Add(id.Company);
+            Add(id.Email); Add(id.Phone);
+            Add(id.City);
+        }
+
+        return sb.ToString().ToLowerInvariant();
+    }
 
     private CipherDetail ToDetail(Cipher cipher)
     {
