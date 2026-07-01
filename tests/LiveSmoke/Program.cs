@@ -517,6 +517,48 @@ try
     Console.WriteLine("[21] Emergency Access: dual-account E2E");
     await EmergencyAccessRoundTripAsync();
 
+    // ── pwh. Password history: two password changes → 2 entries, newest-first ──
+    Console.WriteLine("[pwh] Password history");
+    {
+        var name = $"WVW-PwHist-{run}";
+        await writeService.SaveCipherAsync(new Cipher
+        {
+            Type = CipherType.Login, Name = name,
+            Login = new CipherLogin("u", "passA", null, Array.Empty<CipherLoginUri>()),
+        });
+        var c1 = (await sync.SyncAsync()).First(c => c.Name == name);
+
+        // 改密码 A→B：前插旧密码 A
+        await writeService.SaveCipherAsync(new Cipher
+        {
+            Id = c1.Id, Type = CipherType.Login, Name = name,
+            CreationDate = c1.CreationDate, RevisionDate = c1.RevisionDate,
+            Login = new CipherLogin("u", "passB", null, Array.Empty<CipherLoginUri>()),
+            PasswordHistory = new[] { new PasswordHistoryEntry("passA", DateTimeOffset.UtcNow) },
+        });
+        var c2 = (await sync.SyncAsync()).First(c => c.Id == c1.Id);
+        Step("pwh: 1 entry after first change", c2.PasswordHistory.Count == 1 && c2.PasswordHistory[0].Password == "passA");
+
+        // 改密码 B→C：前插 B，保留 A
+        await writeService.SaveCipherAsync(new Cipher
+        {
+            Id = c1.Id, Type = CipherType.Login, Name = name,
+            CreationDate = c1.CreationDate, RevisionDate = c2.RevisionDate,
+            Login = new CipherLogin("u", "passC", null, Array.Empty<CipherLoginUri>()),
+            PasswordHistory = new[]
+            {
+                new PasswordHistoryEntry("passB", DateTimeOffset.UtcNow),
+                new PasswordHistoryEntry("passA", c2.PasswordHistory[0].LastUsedDate ?? DateTimeOffset.UtcNow),
+            },
+        });
+        var c3 = (await sync.SyncAsync()).First(c => c.Id == c1.Id);
+        Step("pwh: 2 entries newest-first after second change",
+            c3.PasswordHistory.Count == 2 && c3.PasswordHistory[0].Password == "passB" && c3.PasswordHistory[1].Password == "passA");
+
+        await writeService.DeleteCipherAsync(c1.Id, permanent: true);  // 清理(方法名以现有为准)
+        Step("pwh: cleanup", (await sync.SyncAsync()).All(c => c.Id != c1.Id));
+    }
+
     // ── 22. Vault health ──────────────────────────────────────────────────────
     Console.WriteLine("[health] Vault health reports");
     {
