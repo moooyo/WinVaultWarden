@@ -24,22 +24,39 @@ public sealed class FaviconCache : IFaviconCache
             "WinVaultWarden", "IconCache");
     }
 
-    public Task<byte[]?> GetAsync(string domain, CancellationToken ct = default)
+    public async Task<byte[]?> GetAsync(string domain, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(domain))
-            return Task.FromResult<byte[]?>(null);
-        return _inflight.GetOrAdd(domain, d => LoadAsync(d, ct))
-            .ContinueWith(t => { _inflight.TryRemove(domain, out _); return t.GetAwaiter().GetResult(); }, ct);
+            return null;
+
+        var shared = _inflight.GetOrAdd(domain, LoadAsync);
+        try
+        {
+            return await shared.WaitAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return null; // 绝不抛:调用方取消只影响自己的等待,不影响共享抓取
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            if (shared.IsCompleted)
+                _inflight.TryRemove(new KeyValuePair<string, Task<byte[]?>>(domain, shared)); // 仅移除同一个 task,避免误删更新的在途条目
+        }
     }
 
-    private async Task<byte[]?> LoadAsync(string domain, CancellationToken ct)
+    private async Task<byte[]?> LoadAsync(string domain)
     {
         var hash = Hash(domain);
         var png = Path.Combine(_cacheDir, hash + ".png");
         var none = Path.Combine(_cacheDir, hash + ".none");
 
         // 1. 命中未过期缓存
-        if (Fresh(png, PositiveTtl)) { try { return await File.ReadAllBytesAsync(png, ct); } catch { } }
+        if (Fresh(png, PositiveTtl)) { try { return await File.ReadAllBytesAsync(png, CancellationToken.None); } catch { } }
         if (Fresh(none, NegativeTtl)) return null;
 
         // 2. 拉取
@@ -49,21 +66,20 @@ public sealed class FaviconCache : IFaviconCache
 
         try
         {
-            using var resp = await _http.GetAsync(url, ct);
+            using var resp = await _http.GetAsync(url, CancellationToken.None);
             var ctType = resp.Content.Headers.ContentType?.MediaType;
             if (resp.IsSuccessStatusCode && ctType is not null && ctType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             {
-                var bytes = await resp.Content.ReadAsByteArrayAsync(ct);
+                var bytes = await resp.Content.ReadAsByteArrayAsync(CancellationToken.None);
                 if (bytes.Length > 0) { WriteAtomic(png, bytes); TryDelete(none); return bytes; }
             }
             WriteAtomic(none, Array.Empty<byte>()); // 负缓存
             return null;
         }
-        catch (OperationCanceledException) { throw; }
         catch
         {
             // 拉取失败:若有旧 .png(即便过期)则用旧的
-            if (File.Exists(png)) { try { return await File.ReadAllBytesAsync(png, ct); } catch { } }
+            if (File.Exists(png)) { try { return await File.ReadAllBytesAsync(png, CancellationToken.None); } catch { } }
             return null;
         }
     }

@@ -89,5 +89,35 @@ public class FaviconCacheTests : IDisposable
         Assert.Equal(0, handler.Calls);
     }
 
+    private sealed class GatedHandler : HttpMessageHandler
+    {
+        private readonly TaskCompletionSource _gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly Func<HttpRequestMessage, HttpResponseMessage> _fn;
+        public GatedHandler(Func<HttpRequestMessage, HttpResponseMessage> fn) => _fn = fn;
+        public void Release() => _gate.TrySetResult();
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage r, CancellationToken ct)
+        {
+            await _gate.Task; // 卡住共享抓取,直到测试放行,确保 WaitAsync 观察到的是"未完成"的任务
+            return _fn(r);
+        }
+    }
+
+    [Fact]
+    public async Task GetAsync_CancelledToken_ReturnsNull_DoesNotThrow()
+    {
+        // 用尚未完成的共享任务+ 已取消的 token,验证 WaitAsync 会在调用方这一侧抛出并被吞掉(绝不抛),
+        // 而不是像同步立即完成的 stub 那样让取消令牌被"竞速"绕过。
+        var handler = new GatedHandler(_ => Png(new byte[] { 1 }));
+        var cache = new FaviconCache(new HttpClient(handler), Session(), _dir);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var task = cache.GetAsync("example.com", cts.Token); // must NOT throw
+        handler.Release(); // 让共享抓取完成,避免测试进程遗留悬挂任务
+        var result = await task;
+
+        Assert.Null(result);
+    }
+
     public void Dispose() { try { Directory.Delete(_dir, true); } catch { } }
 }
