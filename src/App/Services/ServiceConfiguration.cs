@@ -122,6 +122,11 @@ public static class ServiceConfiguration
         services.AddTransient<IVaultHealthUiService, VaultHealthUiService>();
         services.AddTransient<SecurityReportViewModel>();
 
+        // ── 导入 / 导出 ──────────────────────────────────────────────────────────
+        services.AddSingleton<IVaultExportService, Vault.VaultExportService>();
+        services.AddSingleton<IVaultImportService, Vault.VaultImportService>();
+        services.AddTransient<ImportExportViewModel>();
+
         // WebSocket 推送通知
         services.AddSingleton<INotificationDispatcher>(sp =>
             new NotificationDispatcher(

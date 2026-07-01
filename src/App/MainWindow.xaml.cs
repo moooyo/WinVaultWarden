@@ -254,7 +254,7 @@ public sealed partial class MainWindow : Window
                 }
                 break;
             case "io":
-                ContentFrame.Navigate(typeof(SimplePage), ("导入导出", "\uE8AB"));
+                ContentFrame.Navigate(typeof(ImportExportPage));
                 break;
         }
     }
