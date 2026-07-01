@@ -158,3 +158,71 @@ public class CipherDraftMapperTests
         Assert.Equal("  keep\n  indent  ", cipher.Notes);   // 备注原样保留
     }
 }
+
+public class CipherDraftMapperPasswordHistoryTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 7, 1, 12, 0, 0, TimeSpan.Zero);
+
+    private static CipherEditorDraft LoginDraft(string password)
+    {
+        var d = new CipherEditorDraft { Type = VaultItemKind.Login, Name = "A" };
+        d.Login.Password = password;
+        return d;
+    }
+
+    private static Cipher LoginCipher(string password, params PasswordHistoryEntry[] history) => new()
+    {
+        Id = "1",
+        Type = CipherType.Login,
+        Name = "A",
+        Login = new CipherLogin("u", password, null, Array.Empty<CipherLoginUri>()),
+        PasswordHistory = history,
+    };
+
+    [Fact]
+    public void ChangedPassword_PrependsOld()
+    {
+        var h = CipherDraftMapper.BuildPasswordHistory(LoginDraft("new"), LoginCipher("old"), Now);
+        var e = Assert.Single(h);
+        Assert.Equal("old", e.Password);
+        Assert.Equal(Now, e.LastUsedDate);
+    }
+
+    [Fact]
+    public void UnchangedPassword_KeepsHistory()
+    {
+        var existing = new PasswordHistoryEntry("older", Now.AddDays(-1));
+        var h = CipherDraftMapper.BuildPasswordHistory(LoginDraft("same"), LoginCipher("same", existing), Now);
+        Assert.Equal(new[] { existing }, h);
+    }
+
+    [Fact]
+    public void CapsAtFive_NewestFirst()
+    {
+        var old5 = Enumerable.Range(0, 5).Select(i => new PasswordHistoryEntry($"p{i}", Now.AddDays(-i))).ToArray();
+        var h = CipherDraftMapper.BuildPasswordHistory(LoginDraft("new"), LoginCipher("current", old5), Now);
+        Assert.Equal(5, h.Count);
+        Assert.Equal("current", h[0].Password);   // 前插旧的当前密码
+        Assert.Equal("p3", h[4].Password);          // 最旧(p4)被挤出
+    }
+
+    [Fact]
+    public void NewItem_NoHistory()
+    {
+        Assert.Empty(CipherDraftMapper.BuildPasswordHistory(LoginDraft("new"), null, Now));
+    }
+
+    [Fact]
+    public void EmptyOldPassword_NoPrepend()
+    {
+        Assert.Empty(CipherDraftMapper.BuildPasswordHistory(LoginDraft("new"), LoginCipher(""), Now));
+    }
+
+    [Fact]
+    public void NonLogin_NoHistory()
+    {
+        var d = new CipherEditorDraft { Type = VaultItemKind.Card, Name = "C" };
+        var orig = new Cipher { Id = "1", Type = CipherType.Card, Name = "C" };
+        Assert.Empty(CipherDraftMapper.BuildPasswordHistory(d, orig, Now));
+    }
+}
