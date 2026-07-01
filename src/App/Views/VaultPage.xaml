@@ -735,9 +735,21 @@
                     </StackPanel>
                     <!-- 附件 -->
                     <StackPanel Spacing="6">
-                        <TextBlock Text="附件" Style="{StaticResource SectionHeaderTextBlockStyle}" />
+                        <TextBlock Text="{x:Bind ViewModel.Detail.AttachmentHeader, Mode=OneWay}"
+                                   Style="{StaticResource SectionHeaderTextBlockStyle}" />
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    Visibility="{x:Bind ViewModel.AttachmentBusyText, Mode=OneWay, Converter={StaticResource EmptyToCollapsed}}">
+                            <ProgressRing IsActive="{x:Bind ViewModel.IsAttachmentBusy, Mode=OneWay}" Width="16" Height="16" />
+                            <TextBlock Text="{x:Bind ViewModel.AttachmentBusyText, Mode=OneWay}" VerticalAlignment="Center"
+                                       Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                        </StackPanel>
+                        <TextBlock Text="暂无附件"
+                                   Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                                   Visibility="{x:Bind ViewModel.Detail.HasAttachments, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}" />
                         <ItemsControl x:Name="AttachmentsItems"
-                                      ItemsSource="{x:Bind ViewModel.Detail.Attachments, Mode=OneWay}">
+                                      ItemsSource="{x:Bind ViewModel.Detail.Attachments, Mode=OneWay}"
+                                      IsEnabled="{x:Bind ViewModel.IsNotAttachmentBusy, Mode=OneWay}"
+                                      Visibility="{x:Bind ViewModel.Detail.HasAttachments, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="models:AttachmentItem">
                                     <Grid ColumnSpacing="8" Padding="0,4">
@@ -748,7 +760,7 @@
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <FontIcon Glyph="&#xE723;" FontSize="16"
+                                        <FontIcon Glyph="{x:Bind Glyph}" FontSize="16"
                                                   VerticalAlignment="Center"
                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                         <TextBlock Grid.Column="1"
@@ -782,6 +794,7 @@
                         <Button x:Name="AddAttachmentButton"
                                 Content="添加附件"
                                 HorizontalAlignment="Left"
+                                IsEnabled="{x:Bind ViewModel.IsNotAttachmentBusy, Mode=OneWay}"
                                 Click="OnAddAttachmentClick" />
                     </StackPanel>
                     <!-- 自定义字段 -->
