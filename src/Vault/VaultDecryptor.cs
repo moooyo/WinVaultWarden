@@ -126,7 +126,7 @@ public sealed class VaultDecryptor
             try { pw = Dec(d.Password, key); }
             catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException) { continue; }
             if (string.IsNullOrEmpty(pw)) continue;
-            DateTimeOffset? when = DateTimeOffset.TryParse(d.LastUsedDate, out var t) ? t : null;
+            DateTimeOffset? when = DateTimeOffset.TryParse(d.LastUsedDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var t) ? t : null;
             result.Add(new PasswordHistoryEntry(pw, when));
         }
         return result;

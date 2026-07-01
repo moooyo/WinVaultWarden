@@ -318,6 +318,30 @@ public class RealVaultUiServiceWriteTests
         Assert.Equal(new[] { "a" }, write.LastIds);
     }
 
+    [Fact]
+    public async Task SaveCipher_UnchangedPassword_PreservesHistory()
+    {
+        var original = new Cipher
+        {
+            Id = "1", Type = CipherType.Login, Name = "A",
+            Login = new CipherLogin("u", "samePass", null, System.Array.Empty<CipherLoginUri>()),
+            PasswordHistory = new[] { new PasswordHistoryEntry("old1", DateTimeOffset.UtcNow.AddDays(-1)) },
+        };
+        var vault = new MutableVaultService();
+        vault.Ciphers.Add(original);
+        var write = new RecordingWriteService(vault);
+        var service = new VaultUiService(vault, write, new NoopSyncService());
+
+        // 从原始 cipher 构造草稿(密码未变),模拟仅改收藏/改名等非密码编辑。
+        var draft = CipherDraftMapper.ToDraft(original);
+        await service.SaveCipherAsync(draft, "1");
+
+        // 关键断言:未改密码的保存,写入服务收到的 Cipher 仍带完整历史(不能被静默清空)。
+        var sent = write.LastSavedCipher!;
+        Assert.Single(sent.PasswordHistory);
+        Assert.Equal("old1", sent.PasswordHistory[0].Password);
+    }
+
 }
 
 file sealed class MutableVaultService : IVaultService
