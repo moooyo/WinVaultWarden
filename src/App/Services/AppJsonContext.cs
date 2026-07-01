@@ -11,4 +11,6 @@ namespace App.Services;
     WriteIndented = true)]
 [JsonSerializable(typeof(PersistedSession))]
 [JsonSerializable(typeof(AppPreferencesData))]
+[JsonSerializable(typeof(SavedSearchViewData))]
+[JsonSerializable(typeof(List<SavedSearchViewData>))]
 public partial class AppJsonContext : JsonSerializerContext;

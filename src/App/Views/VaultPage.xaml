@@ -129,6 +129,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <Grid ColumnSpacing="8">
@@ -213,7 +214,7 @@
                               IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
                               Visibility="{x:Bind ViewModel.IsTrashFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
             </CommandBar>
-            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" Margin="0,4,0,0"
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="12" Margin="0,4,0,0"
                         Visibility="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                 <TextBlock VerticalAlignment="Center"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -221,13 +222,75 @@
                 <TextBlock VerticalAlignment="Center" Text="项已选" />
                 <Button Content="完成" Command="{x:Bind ViewModel.ToggleSelectionModeCommand}" />
             </StackPanel>
-            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8"
+            <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8"
                         Visibility="{x:Bind ViewModel.IsFolderFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                 <Button x:Name="RenameFolderButton" Content="重命名文件夹" Click="OnRenameFolderClick" />
                 <Button x:Name="DeleteFolderButton" Content="删除文件夹" Click="OnDeleteFolderClick" />
                 <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="20" Height="20" />
             </StackPanel>
-            <ListView Grid.Row="4"
+
+            <!-- 筛选栏:分面 ToggleButton + 排序 + 保存视图 + 保存/清除 -->
+            <StackPanel Grid.Row="2" Spacing="8" Margin="0,4,0,0">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <ToggleButton Content="含TOTP"
+                                  IsChecked="{x:Bind ViewModel.FacetTotp, Mode=TwoWay}"
+                                  AutomationProperties.Name="按含 TOTP 筛选"
+                                  AutomationProperties.AutomationId="VaultFacetTotpToggle" />
+                    <ToggleButton Content="含附件"
+                                  IsChecked="{x:Bind ViewModel.FacetAttachment, Mode=TwoWay}"
+                                  AutomationProperties.Name="按含附件筛选"
+                                  AutomationProperties.AutomationId="VaultFacetAttachmentToggle" />
+                    <ToggleButton Content="含网址"
+                                  IsChecked="{x:Bind ViewModel.FacetUri, Mode=TwoWay}"
+                                  AutomationProperties.Name="按含网址筛选"
+                                  AutomationProperties.AutomationId="VaultFacetUriToggle" />
+                    <ToggleButton Content="仅收藏"
+                                  IsChecked="{x:Bind ViewModel.FacetFavoriteOnly, Mode=TwoWay}"
+                                  AutomationProperties.Name="仅显示收藏"
+                                  AutomationProperties.AutomationId="VaultFacetFavoriteOnlyToggle" />
+                </StackPanel>
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="SortComboBox"
+                              MinWidth="130"
+                              SelectedIndex="{x:Bind ViewModel.SelectedSortIndex, Mode=TwoWay}"
+                              AutomationProperties.Name="排序方式"
+                              AutomationProperties.AutomationId="VaultSortComboBox">
+                        <ComboBoxItem Content="名称 A→Z" />
+                        <ComboBoxItem Content="名称 Z→A" />
+                        <ComboBoxItem Content="最近修改" />
+                        <ComboBoxItem Content="创建时间" />
+                    </ComboBox>
+                    <DropDownButton x:Name="SavedViewsButton"
+                                    Grid.Column="1"
+                                    Content="已保存视图"
+                                    AutomationProperties.Name="已保存视图"
+                                    AutomationProperties.AutomationId="VaultSavedViewsButton">
+                        <DropDownButton.Flyout>
+                            <MenuFlyout x:Name="SavedViewsFlyout" Opening="OnSavedViewsFlyoutOpening" />
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+                    <Button Grid.Column="3"
+                            Content="清除筛选"
+                            Click="OnClearFiltersClick"
+                            Visibility="{x:Bind ViewModel.HasActiveRefinement, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                            AutomationProperties.Name="清除筛选"
+                            AutomationProperties.AutomationId="VaultClearFiltersButton" />
+                </Grid>
+                <Button x:Name="SaveCurrentViewButton"
+                        Content="保存当前视图"
+                        HorizontalAlignment="Left"
+                        Click="OnSaveCurrentViewClick"
+                        AutomationProperties.Name="保存当前视图"
+                        AutomationProperties.AutomationId="VaultSaveCurrentViewButton" />
+            </StackPanel>
+
+            <ListView Grid.Row="5"
                       x:Name="CipherList"
                       ItemsSource="{x:Bind GroupedItemsSource.View, Mode=OneWay}"
                       SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
@@ -342,7 +405,7 @@
             </ListView>
 
             <InfoBar x:Name="VaultErrorInfoBar"
-                     Grid.Row="4"
+                     Grid.Row="5"
                      VerticalAlignment="Top"
                      IsClosable="True"
                      Severity="Error"
@@ -350,7 +413,7 @@
                      Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" />
 
             <StackPanel x:Name="VaultEmptyPanel"
-                        Grid.Row="4"
+                        Grid.Row="5"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Center"
                         Spacing="{StaticResource SpacingMedium}"
@@ -368,7 +431,7 @@
             </StackPanel>
 
             <StackPanel x:Name="VaultNoResultsPanel"
-                        Grid.Row="4"
+                        Grid.Row="5"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Center"
                         Spacing="{StaticResource SpacingMedium}"

@@ -11,8 +11,12 @@ public partial class VaultViewModel : ObservableObject
     private readonly IVaultUiService _service;
     private readonly IClipboardService? _clipboard;
     private readonly IAttachmentUiService? _attachments;
+    private readonly ISavedSearchStore? _savedStore;
     private string? _editingId;
+    private bool _suppressApply;
     private readonly HashSet<string> _selectedIds = new(StringComparer.Ordinal);
+
+    public ObservableCollection<SavedSearchView> SavedViews { get; } = new();
 
     public ObservableCollection<CipherListItem> Items { get; } = new();
     public ObservableCollection<FilterNode> Filters { get; } = new();
@@ -35,6 +39,37 @@ public partial class VaultViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string SearchText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool FacetTotp { get; set; }
+    [ObservableProperty]
+    public partial bool FacetAttachment { get; set; }
+    [ObservableProperty]
+    public partial bool FacetUri { get; set; }
+    [ObservableProperty]
+    public partial bool FacetFavoriteOnly { get; set; }
+    [ObservableProperty]
+    public partial VaultSortKey SelectedSort { get; set; } = VaultSortKey.NameAsc;
+
+    public VaultFacets CurrentFacets => new(FacetTotp, FacetAttachment, FacetUri, FacetFavoriteOnly);
+    public bool HasActiveRefinement => CurrentFacets.Any || !string.IsNullOrWhiteSpace(SearchText);
+
+    /// <summary>供排序 ComboBox.SelectedIndex 双向绑定使用（顺序与 VaultSortKey 枚举一致）。</summary>
+    public int SelectedSortIndex
+    {
+        get => (int)SelectedSort;
+        set { if ((int)SelectedSort != value) SelectedSort = (VaultSortKey)value; }
+    }
+
+    partial void OnFacetTotpChanged(bool value) { if (!_suppressApply) ApplyFilter(); }
+    partial void OnFacetAttachmentChanged(bool value) { if (!_suppressApply) ApplyFilter(); }
+    partial void OnFacetUriChanged(bool value) { if (!_suppressApply) ApplyFilter(); }
+    partial void OnFacetFavoriteOnlyChanged(bool value) { if (!_suppressApply) ApplyFilter(); }
+    partial void OnSelectedSortChanged(VaultSortKey value)
+    {
+        OnPropertyChanged(nameof(SelectedSortIndex));
+        if (!_suppressApply) ApplyFilter();
+    }
 
     [ObservableProperty]
     public partial FilterNode? SelectedFilter { get; set; }
@@ -86,15 +121,61 @@ public partial class VaultViewModel : ObservableObject
         _ => string.Empty,
     };
 
-    public VaultViewModel(IVaultUiService service, IClipboardService? clipboard = null, IAttachmentUiService? attachments = null)
+    public VaultViewModel(IVaultUiService service, IClipboardService? clipboard = null, IAttachmentUiService? attachments = null,
+        ISavedSearchStore? savedStore = null)
     {
         _service = service;
         _clipboard = clipboard;
         _attachments = attachments;
+        _savedStore = savedStore;
         foreach (var it in service.GetItems()) Items.Add(it);
         foreach (var f in service.GetFilters()) Filters.Add(f);
+        if (savedStore is not null)
+            foreach (var v in savedStore.GetAll()) SavedViews.Add(v);
         SelectedFilter = Filters.FirstOrDefault();
         ApplyFilter();
+    }
+
+    public SavedSearchView CaptureCurrentView(string name) =>
+        new(name, SelectedFilterTag, CurrentFacets, SearchText, SelectedSort);
+
+    [RelayCommand]
+    private void SaveCurrentView(string name)
+    {
+        if (_savedStore is null || string.IsNullOrWhiteSpace(name)) return;
+        var view = CaptureCurrentView(name.Trim());
+        _savedStore.Save(view);
+        var existing = SavedViews.FirstOrDefault(v => v.Name == view.Name);
+        if (existing is not null) SavedViews.Remove(existing);
+        SavedViews.Add(view);
+    }
+
+    [RelayCommand]
+    private void ApplyView(SavedSearchView? view)
+    {
+        if (view is null) return;
+        _suppressApply = true;
+        try
+        {
+            SelectFilterByTag(view.NavTag);                 // 失效文件夹 → 回退 AllItems(既有行为)
+            FacetTotp = view.Facets.Totp;
+            FacetAttachment = view.Facets.Attachment;
+            FacetUri = view.Facets.Uri;
+            FacetFavoriteOnly = view.Facets.FavoriteOnly;
+            SearchText = view.Search;
+            SelectedSort = view.Sort;
+        }
+        finally { _suppressApply = false; }
+        ApplyFilter();
+    }
+
+    [RelayCommand]
+    private void DeleteView(string name)
+    {
+        if (_savedStore is null) return;
+        _savedStore.Delete(name);
+        var existing = SavedViews.FirstOrDefault(v => v.Name == name);
+        if (existing is not null) SavedViews.Remove(existing);
     }
 
     partial void OnSelectedItemChanged(CipherListItem? value)
@@ -106,7 +187,11 @@ public partial class VaultViewModel : ObservableObject
         OnPropertyChanged(nameof(DetailIconDomain));
     }
 
-    partial void OnSearchTextChanged(string value) => ApplyFilter();
+    partial void OnSearchTextChanged(string value)
+    {
+        if (!_suppressApply) ApplyFilter();
+        OnPropertyChanged(nameof(HasActiveRefinement));
+    }
 
     public void SelectFilterByTag(string? tag)
     {
@@ -141,7 +226,7 @@ public partial class VaultViewModel : ObservableObject
 
     partial void OnSelectedFilterChanged(FilterNode? value)
     {
-        ApplyFilter();
+        if (!_suppressApply) ApplyFilter();
         OnPropertyChanged(nameof(SelectedFilterTag));
         OnPropertyChanged(nameof(IsFolderFilterSelected));
         OnPropertyChanged(nameof(IsTrashFilterSelected));
@@ -161,7 +246,7 @@ public partial class VaultViewModel : ObservableObject
     {
         FilteredItems.Clear();
 
-        IEnumerable<CipherListItem> source = SelectedFilter?.Kind switch
+        IEnumerable<CipherListItem> baseItems = SelectedFilter?.Kind switch
         {
             FilterKind.Favorites => Items.Where(i => i.Favorite && !i.IsDeleted),
             FilterKind.Trash     => Items.Where(i => i.IsDeleted),
@@ -170,14 +255,13 @@ public partial class VaultViewModel : ObservableObject
             _                    => Items.Where(i => !i.IsDeleted), // AllItems 及未选中
         };
 
-        if (!string.IsNullOrWhiteSpace(SearchText))
-            source = source.Where(i => i.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase)
-                                    || i.Subtitle.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+        foreach (var i in VaultQuery.Apply(baseItems, SearchText, CurrentFacets, SelectedSort))
+            FilteredItems.Add(i);
 
-        foreach (var i in source) FilteredItems.Add(i);
         RebuildGroups();
         OnPropertyChanged(nameof(HasNoItems));
         OnPropertyChanged(nameof(NoResults));
+        OnPropertyChanged(nameof(HasActiveRefinement));
     }
 
     private static readonly VaultItemKind[] TypeOrder =
@@ -204,6 +288,16 @@ public partial class VaultViewModel : ObservableObject
     private void RebuildGroups()
     {
         GroupedItems.Clear();
+
+        // 日期排序:压平为单一无头分组(跨文件夹/类型分组无意义)。
+        if (SelectedSort is VaultSortKey.RevisionDesc or VaultSortKey.CreationDesc)
+        {
+            if (FilteredItems.Count == 0) return;
+            var flat = new VaultListGroup { Key = string.Empty, ShowHeader = false };
+            foreach (var i in FilteredItems) flat.Items.Add(i);
+            GroupedItems.Add(flat);
+            return;
+        }
 
         // 选具体文件夹:单组、不显头。
         if (SelectedFilter?.Kind == FilterKind.Folder)
