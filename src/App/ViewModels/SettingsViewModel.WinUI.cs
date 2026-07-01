@@ -19,6 +19,15 @@ public partial class SettingsViewModel
         ThemeManager.Apply(value);
     }
 
+    [ObservableProperty]
+    public partial bool ShowWebsiteIcons { get; set; } = AppPreferences.Current.ShowWebsiteIcons;
+
+    partial void OnShowWebsiteIconsChanged(bool value)
+    {
+        AppPreferences.Current.ShowWebsiteIcons = value;
+        AppPreferences.Save();
+    }
+
     // "关于"区:运行时真实诊断信息。
     public string AppVersion => AboutInfo.AppVersion;
     public string WindowsVersion => AboutInfo.WindowsVersion;

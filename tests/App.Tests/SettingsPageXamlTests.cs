@@ -369,4 +369,13 @@ public class SettingsPageXamlTests
         var src = LoadCodeBehind();
         Assert.Contains("DisableTwoFactorAsync", src, StringComparison.Ordinal);
     }
+
+    // ── Task 6: 显示网站图标 开关 ─────────────────────────────────────────────
+
+    [Fact]
+    public void Settings_HasShowWebsiteIconsToggle()
+    {
+        var doc = LoadXaml();
+        Assert.Contains("ShowWebsiteIcons", doc.ToString(), StringComparison.Ordinal);
+    }
 }

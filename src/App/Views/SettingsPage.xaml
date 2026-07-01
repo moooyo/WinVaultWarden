@@ -178,6 +178,14 @@
                     <ToggleSwitch IsOn="{x:Bind ViewModel.UseHardwareAcceleration, Mode=TwoWay}" />
                 </tk:SettingsCard>
 
+                <tk:SettingsCard Header="显示网站图标" Description="关闭后仅显示类型图标，不向服务器请求网站图标">
+                    <tk:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xEB9F;" />
+                    </tk:SettingsCard.HeaderIcon>
+                    <ToggleSwitch OffContent="关" OnContent="开"
+                                  IsOn="{x:Bind ViewModel.ShowWebsiteIcons, Mode=TwoWay}" />
+                </tk:SettingsCard>
+
                 <!-- SSH 用 Expander 收纳:开关 + 授权提示子项 -->
                 <tk:SettingsExpander Header="SSH 代理" Description="允许应用处理 SSH 签名请求">
                     <tk:SettingsExpander.HeaderIcon>
