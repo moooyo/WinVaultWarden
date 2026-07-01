@@ -41,10 +41,25 @@ public sealed class CipherEncryptor
             LastKnownRevisionDate = cipher.RevisionDate == default
                 ? null
                 : cipher.RevisionDate.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture),
+            PasswordHistory = EncPasswordHistory(cipher.PasswordHistory, cipherKey),
         };
     }
 
     public string EncryptFolderName(string name, SymmetricCryptoKey userKey) => EncRequired(name, userKey);
+
+    // 空历史→省略字段(null);非空历史→完整数组。服务端用请求里的 password_history 整体覆盖,
+    // 发 null 会清空既有历史,故保留编辑时必须回发非空数组。
+    private PasswordHistoryRequest[]? EncPasswordHistory(IReadOnlyList<PasswordHistoryEntry> history, SymmetricCryptoKey key)
+    {
+        if (history.Count == 0) return null;
+        return history
+            .Select(h => new PasswordHistoryRequest
+            {
+                Password = Enc(h.Password, key),
+                LastUsedDate = h.LastUsedDate?.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture),
+            })
+            .ToArray();
+    }
 
     private LoginRequest EncLogin(CipherLogin login, SymmetricCryptoKey key) => new()
     {

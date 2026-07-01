@@ -74,6 +74,7 @@ public sealed class VaultDecryptor
             Ssh = dto.SshKey is null ? null : DecryptSsh(dto.SshKey, key),
             Fields = DecryptFields(dto.Fields, key),
             Attachments = DecryptAttachments(dto.Attachments, key),
+            PasswordHistory = DecryptPasswordHistory(dto.PasswordHistory, key),
         };
     }
 
@@ -109,6 +110,25 @@ public sealed class VaultDecryptor
             }
         }
 
+        return result;
+    }
+
+    // 解密密码历史条目。密码为空或解密失败(坏 EncString)时跳过该条,不连累其余历史或整条目。
+    private IReadOnlyList<PasswordHistoryEntry> DecryptPasswordHistory(PasswordHistoryDto[]? dtos, SymmetricCryptoKey key)
+    {
+        if (dtos is null || dtos.Length == 0)
+            return Array.Empty<PasswordHistoryEntry>();
+        var result = new List<PasswordHistoryEntry>(dtos.Length);
+        foreach (var d in dtos)
+        {
+            if (string.IsNullOrEmpty(d.Password)) continue;
+            string? pw;
+            try { pw = Dec(d.Password, key); }
+            catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException) { continue; }
+            if (string.IsNullOrEmpty(pw)) continue;
+            DateTimeOffset? when = DateTimeOffset.TryParse(d.LastUsedDate, out var t) ? t : null;
+            result.Add(new PasswordHistoryEntry(pw, when));
+        }
         return result;
     }
 
