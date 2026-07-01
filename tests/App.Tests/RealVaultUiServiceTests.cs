@@ -72,6 +72,40 @@ public class RealVaultUiServiceTests
         Assert.Equal("SHA256:fp", ssh.Fingerprint);
     }
 
+    [Fact]
+    public void GetItems_LoginWithUri_SetsIconDomain()
+    {
+        var vault = new IconDomainVaultService(new[]
+        {
+            new Cipher
+            {
+                Id = "1", Type = CipherType.Login, Name = "A",
+                Login = new CipherLogin("u", "p", null, new[] { new CipherLoginUri("https://www.example.com/x", null) }),
+            },
+            new Cipher
+            {
+                Id = "2", Type = CipherType.Card, Name = "B",
+                Card = new CipherCard(null, null, null, null, null, null),
+            },
+        });
+        var service = new VaultUiService(vault, new NoopWriteService(), new NoopSyncService());
+
+        var items = service.GetItems();
+
+        Assert.Equal("www.example.com", items.First(i => i.Id == "1").IconDomain);
+        Assert.Null(items.First(i => i.Id == "2").IconDomain);
+    }
+
+    private sealed class IconDomainVaultService : IVaultService
+    {
+        private readonly IReadOnlyList<Cipher> _ciphers;
+        public IconDomainVaultService(IReadOnlyList<Cipher> ciphers) => _ciphers = ciphers;
+        public Core.Session.IVaultSnapshot Snapshot => throw new NotSupportedException();
+        public IReadOnlyList<Cipher> GetCiphers() => _ciphers;
+        public IReadOnlyList<Folder> GetFolders() => System.Array.Empty<Folder>();
+        public IReadOnlyList<DeviceInfo> GetDevices() => System.Array.Empty<DeviceInfo>();
+    }
+
     private sealed class TestVaultService : IVaultService
     {
         public IVaultSnapshot Snapshot { get; } = new TestSnapshot();

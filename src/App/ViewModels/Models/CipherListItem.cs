@@ -13,6 +13,8 @@ public sealed class CipherListItem
     public string? FolderId { get; init; }
     // Segoe Fluent Icon glyph(类型图标)。登录类后续可换 favicon。
     public string Glyph { get; init; } = "";
+    // 登录条目的网站 host(供 favicon);非登录/无 URI 为 null。
+    public string? IconDomain { get; init; }
     // 是否在回收站。回收站项不出现在常规过滤结果中。
     public bool IsDeleted { get; init; }
 }
