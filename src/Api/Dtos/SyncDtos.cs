@@ -39,7 +39,12 @@ public sealed record CipherDto(
     [property: JsonPropertyName("creationDate")] DateTimeOffset? CreationDate,
     [property: JsonPropertyName("revisionDate")] DateTimeOffset? RevisionDate,
     [property: JsonPropertyName("deletedDate")] DateTimeOffset? DeletedDate,
-    [property: JsonPropertyName("attachments")] CipherAttachmentDto[]? Attachments = null);
+    [property: JsonPropertyName("attachments")] CipherAttachmentDto[]? Attachments = null,
+    [property: JsonPropertyName("passwordHistory")] PasswordHistoryDto[]? PasswordHistory = null);
+
+public sealed record PasswordHistoryDto(
+    [property: JsonPropertyName("password")] string? Password,
+    [property: JsonPropertyName("lastUsedDate")] string? LastUsedDate);
 
 public sealed record LoginDto(
     [property: JsonPropertyName("username")] string? Username,
