@@ -538,6 +538,20 @@ try
         var clean = await pwned.GetBreachCountAsync($"WVW-unique-{run}-{Guid.NewGuid():N}");
         Step("health: HIBP clears a random strong password", clean == 0);
     }
+
+    // ── 23. Website icons ─────────────────────────────────────────────────────
+    Console.WriteLine("[icons] Website favicon");
+    {
+        var domain = Core.IconDomain.Extract("https://github.com");
+        Step("icons: IconDomain.Extract", domain == "github.com", domain);
+
+        var favicons = new FaviconCache(new HttpClient(), session);
+        byte[]? bytes = null;
+        var ok = true;
+        try { bytes = await favicons.GetAsync(domain!); }
+        catch { ok = false; }
+        Step("icons: /icons request completes without throwing", ok, bytes is null ? "no image (glyph fallback)" : $"{bytes.Length} bytes");
+    }
 }
 catch (Exception ex)
 {
