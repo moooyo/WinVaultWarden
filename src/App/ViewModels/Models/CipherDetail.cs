@@ -34,6 +34,9 @@ public abstract class CipherDetail
     public bool Favorite { get; init; }
     public bool Reprompt { get; init; }
     public IReadOnlyList<AttachmentItem> Attachments { get; init; } = Array.Empty<AttachmentItem>();
+    public int AttachmentCount => Attachments.Count;
+    public bool HasAttachments => Attachments.Count > 0;
+    public string AttachmentHeader => HasAttachments ? $"附件 ({AttachmentCount})" : "附件";
 
     public string HistoryText =>
         $"最后编辑:{Edited.LocalDateTime:yyyy/M/d HH:mm:ss}　创建于:{Created.LocalDateTime:yyyy/M/d HH:mm:ss}";
