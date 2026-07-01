@@ -87,7 +87,9 @@ public static class BitwardenJsonCodec
     private static Cipher FromBw(BwItem item) => new()
     {
         Id = item.Id ?? string.Empty,
-        Type = (CipherType)item.Type,
+        // 未知/非法 type（如手工篡改的导出文件）回退为 Login —— Bitwarden 以登录为中心的默认类型，
+        // 保持导入侧的健壮性与可加性而非抛出异常中断整批导入。
+        Type = Enum.IsDefined(typeof(CipherType), item.Type) ? (CipherType)item.Type : CipherType.Login,
         FolderId = item.FolderId,
         Favorite = item.Favorite,
         Reprompt = item.Reprompt != 0,

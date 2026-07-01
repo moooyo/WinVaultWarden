@@ -71,4 +71,18 @@ public class BitwardenJsonCodecTests
         Assert.Empty(parsed.Ciphers);
         Assert.Empty(parsed.Folders);
     }
+
+    [Fact]
+    public void Parse_UnknownCipherType_DefaultsToLogin()
+    {
+        var json = "{\"encrypted\":false,\"folders\":[],\"items\":[{\"name\":\"Weird\",\"type\":99}]}";
+
+        var exception = Record.Exception(() => BitwardenJsonCodec.Parse(json));
+
+        Assert.Null(exception);
+        var parsed = BitwardenJsonCodec.Parse(json);
+        var cipher = Assert.Single(parsed.Ciphers);
+        Assert.Equal(CipherType.Login, cipher.Type);
+        Assert.Equal("Weird", cipher.Name);
+    }
 }

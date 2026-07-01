@@ -43,6 +43,14 @@
                             Style="{ThemeResource AccentButtonStyle}"
                             AutomationProperties.AutomationId="ExportButton"
                             Click="OnExportClick" />
+
+                    <TextBlock Text="{x:Bind ViewModel.ExportStatus, Mode=OneWay}"
+                               AutomationProperties.AutomationId="ExportResultText"
+                               Style="{ThemeResource BodyTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Visibility="{x:Bind ViewModel.ExportStatus, Mode=OneWay,
+                                   Converter={StaticResource EmptyStringToCollapsed}}" />
                 </StackPanel>
             </Border>
 

@@ -11,6 +11,8 @@ namespace Vault.Porting;
 // 注意：CSV 格式只有 11 个固定列，非 login 类型（Card/Identity/SecureNote/SshKey）的
 // 类型专属字段（卡号、身份信息、SecureNote.Type、SSH 私钥等）不会被导出，属于
 // 有意为之的有损转换——需要无损往返请使用 BitwardenJsonCodec（Task 1）。
+// 即便是 login 类型也有损：login_uri 只保留第一条 URI（Uris[0]），且不携带每条 URI 的
+// match 匹配策略——这与真实 Bitwarden 单列 CSV 格式行为一致（CSV 无法表达多 URI 列表）。
 public static class BitwardenCsvCodec
 {
     private static readonly string[] ColumnNames =

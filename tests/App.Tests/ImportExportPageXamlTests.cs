@@ -52,6 +52,16 @@ public class ImportExportPageXamlTests
         Assert.Equal("OnExportClick", button!.Attribute("Click")?.Value);
     }
 
+    [Fact]
+    public void ExportSection_ResultText_BoundToExportStatus()
+    {
+        var doc = LoadXaml();
+        var textBlock = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "TextBlock"
+            && e.Attribute("AutomationProperties.AutomationId")?.Value == "ExportResultText");
+        Assert.NotNull(textBlock);
+        Assert.Contains("ExportStatus", textBlock!.Attribute("Text")?.Value ?? string.Empty);
+    }
+
     // ── 导入区 ───────────────────────────────────────────────────────────────
 
     [Fact]

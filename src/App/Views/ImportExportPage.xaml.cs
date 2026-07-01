@@ -62,24 +62,32 @@ public sealed partial class ImportExportPage : Page
             break;
         }
 
-        var format = ViewModel.SelectedExportFormat;
-        var picker = new Windows.Storage.Pickers.FileSavePicker
+        try
         {
-            SuggestedFileName = "bitwarden_export",
-        };
-        if (format == ExportFormat.Json)
-            picker.FileTypeChoices.Add("JSON", new System.Collections.Generic.List<string> { ".json" });
-        else
-            picker.FileTypeChoices.Add("CSV", new System.Collections.Generic.List<string> { ".csv" });
+            var format = ViewModel.SelectedExportFormat;
+            var picker = new Windows.Storage.Pickers.FileSavePicker
+            {
+                SuggestedFileName = "bitwarden_export",
+            };
+            if (format == ExportFormat.Json)
+                picker.FileTypeChoices.Add("JSON", new System.Collections.Generic.List<string> { ".json" });
+            else
+                picker.FileTypeChoices.Add("CSV", new System.Collections.Generic.List<string> { ".csv" });
 
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
-        var file = await picker.PickSaveFileAsync();
-        if (file is null)
-            return;
+            var file = await picker.PickSaveFileAsync();
+            if (file is null)
+                return;
 
-        await Windows.Storage.FileIO.WriteTextAsync(file, ViewModel.ExportToText());
+            await Windows.Storage.FileIO.WriteTextAsync(file, ViewModel.ExportToText());
+            ViewModel.ExportStatus = "导出成功";
+        }
+        catch (Exception ex)
+        {
+            ViewModel.ExportStatus = $"导出失败：{ex.Message}";
+        }
     }
 
     // ── 导入：FileOpenPicker → 读取文本 → 预览 ──────────────────────────────────

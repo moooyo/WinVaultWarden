@@ -36,6 +36,9 @@ public partial class ImportExportViewModel : ObservableObject
 
     public Task<bool> VerifyMasterPasswordAsync(string password) => _account.VerifyMasterPasswordAsync(password);
 
+    [ObservableProperty]
+    public partial string? ExportStatus { get; set; }
+
     // ── 导入 ─────────────────────────────────────────────────────────────────
 
     [ObservableProperty]
