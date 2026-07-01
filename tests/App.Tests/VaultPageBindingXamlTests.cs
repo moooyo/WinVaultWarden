@@ -50,4 +50,12 @@ public class VaultPageBindingXamlTests
         Assert.Contains("FaviconView", xaml);
         Assert.Contains("IconDomain", xaml); // 列表项绑定
     }
+
+    [Fact]
+    public void LoginTemplate_HasPasswordHistorySection()
+    {
+        var xaml = Xaml();
+        Assert.Contains("PasswordHistory", xaml);
+        Assert.Contains("HasPasswordHistory", xaml);
+    }
 }

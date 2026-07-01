@@ -49,6 +49,21 @@
                         </ItemsControl>
                     </controls:DetailCard.CardContent>
                 </controls:DetailCard>
+                <Expander HorizontalAlignment="Stretch"
+                          Visibility="{x:Bind HasPasswordHistory, Converter={StaticResource BoolToVis}}">
+                    <Expander.Header>
+                        <TextBlock>
+                            <Run Text="密码历史 (" /><Run Text="{x:Bind PasswordHistoryCount}" /><Run Text=")" />
+                        </TextBlock>
+                    </Expander.Header>
+                    <ItemsControl ItemsSource="{x:Bind PasswordHistory}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:PasswordHistoryItem">
+                                <controls:FieldRow Label="{x:Bind DateLabel}" Value="{x:Bind Password}" IsSecret="True" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Expander>
             </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="CardTemplate" x:DataType="models:CardDetail">
