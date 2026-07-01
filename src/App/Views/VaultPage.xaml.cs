@@ -324,6 +324,16 @@ public sealed partial class VaultPage : Page
         if (file is null)
             return;
 
+        var props = await file.GetBasicPropertiesAsync();
+        var size = (long)props.Size;
+        if (!global::App.Services.AttachmentSizePolicy.IsWithinLimit(size))
+        {
+            var sizeText = global::App.Services.AttachmentSizePolicy.FormatSize(size);
+            var maxSizeText = global::App.Services.AttachmentSizePolicy.FormatSize(global::App.Services.AttachmentSizePolicy.MaxBytes);
+            ViewModel.OperationError = $"文件 {sizeText} 超过附件上限 {maxSizeText}。";
+            return;
+        }
+
         var buffer = await Windows.Storage.FileIO.ReadBufferAsync(file);
         await ViewModel.AddAttachmentAsync(item.Id, buffer.ToArray(), file.Name);
     }

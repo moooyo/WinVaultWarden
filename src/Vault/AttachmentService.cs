@@ -11,7 +11,7 @@ namespace Vault;
 // 旧格式附件(att.Key 为空):文件名与文件体直接用 itemKey 加解密(无独立附件密钥)。
 public sealed class AttachmentService : IAttachmentService
 {
-    public const long MaxPlaintextBytes = 100L * 1024 * 1024;
+    public const long MaxPlaintextBytes = Core.Services.AttachmentLimits.MaxPlaintextBytes;
 
     private readonly IAttachmentApiClient _api;
     private readonly AttachmentCryptoService _crypto;

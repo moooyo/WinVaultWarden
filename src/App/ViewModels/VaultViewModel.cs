@@ -93,6 +93,14 @@ public partial class VaultViewModel : ObservableObject
     // InfoBar.IsOpen 需要 bool;OperationError 是 string,直接用转换器会因返回 Visibility 而绑定失败。
     public bool HasOperationError => !string.IsNullOrEmpty(OperationError);
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAttachmentBusy))]
+    [NotifyPropertyChangedFor(nameof(IsNotAttachmentBusy))]
+    public partial string AttachmentBusyText { get; set; } = string.Empty;
+
+    public bool IsAttachmentBusy => !string.IsNullOrEmpty(AttachmentBusyText);
+    public bool IsNotAttachmentBusy => !IsAttachmentBusy;
+
     public bool HasDetailSelected => Detail is not null;
     public bool NoSelection => Detail is null;
 
@@ -682,6 +690,7 @@ public partial class VaultViewModel : ObservableObject
             return;
 
         IsBusy = true;
+        AttachmentBusyText = "上传中…";
         OperationError = string.Empty;
         try
         {
@@ -694,6 +703,7 @@ public partial class VaultViewModel : ObservableObject
         }
         finally
         {
+            AttachmentBusyText = string.Empty;
             IsBusy = false;
         }
     }
@@ -704,6 +714,7 @@ public partial class VaultViewModel : ObservableObject
             return null;
 
         IsBusy = true;
+        AttachmentBusyText = "下载中…";
         OperationError = string.Empty;
         try
         {
@@ -716,6 +727,7 @@ public partial class VaultViewModel : ObservableObject
         }
         finally
         {
+            AttachmentBusyText = string.Empty;
             IsBusy = false;
         }
     }
@@ -726,6 +738,7 @@ public partial class VaultViewModel : ObservableObject
             return;
 
         IsBusy = true;
+        AttachmentBusyText = "删除中…";
         OperationError = string.Empty;
         try
         {
@@ -738,6 +751,7 @@ public partial class VaultViewModel : ObservableObject
         }
         finally
         {
+            AttachmentBusyText = string.Empty;
             IsBusy = false;
         }
     }
