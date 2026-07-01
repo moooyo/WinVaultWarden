@@ -129,7 +129,7 @@ public sealed class VaultUiService : IVaultUiService
         CreationDate = cipher.CreationDate,
     };
 
-    // 需要 using System.Text; using Core.Enums;（若未引入）
+    // 拼接可搜索文本(小写);不含密码/隐藏字段值/CVV,卡号仅后四位。
     public static string BuildHaystack(Cipher cipher)
     {
         var sb = new StringBuilder();
