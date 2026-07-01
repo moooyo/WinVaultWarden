@@ -5,6 +5,8 @@ public record CustomField(string Label, string Value, CipherEditorFieldType Type
     public bool IsSecret => Type == CipherEditorFieldType.Hidden;
 }
 
+public sealed record PasswordHistoryItem(string Password, string DateLabel);
+
 public sealed record PasskeyDetail(
     string? RpId,
     string? UserName,
@@ -46,6 +48,9 @@ public sealed class LoginDetail : CipherDetail
     public string? Uri { get; init; }
     public IReadOnlyList<PasskeyDetail> Passkeys { get; init; } = Array.Empty<PasskeyDetail>();
     public bool HasPasskeys => Passkeys.Count > 0;
+    public IReadOnlyList<PasswordHistoryItem> PasswordHistory { get; init; } = Array.Empty<PasswordHistoryItem>();
+    public bool HasPasswordHistory => PasswordHistory.Count > 0;
+    public int PasswordHistoryCount => PasswordHistory.Count;
 }
 
 public sealed class CardDetail : CipherDetail

@@ -36,7 +36,29 @@ public static class CipherDraftMapper
             SecureNote = type == CipherType.SecureNote ? new CipherSecureNote(draft.SecureNote.Type) : null,
             Ssh = type == CipherType.SshKey ? ToSsh(draft.SshKey) : null,
             Fields = fields,
+            PasswordHistory = BuildPasswordHistory(draft, original, DateTimeOffset.UtcNow),
         };
+    }
+
+    // 密码历史:编辑 Login 且密码发生变化时,把旧密码(带 now 时间戳)前插到历史最前,封顶 5 条。
+    public static IReadOnlyList<PasswordHistoryEntry> BuildPasswordHistory(
+        CipherEditorDraft draft, Cipher? original, DateTimeOffset now)
+    {
+        var baseline = original?.PasswordHistory ?? Array.Empty<PasswordHistoryEntry>();
+        if (draft.Type != VaultItemKind.Login || original?.Login is null)
+            return baseline;
+
+        var oldPassword = original.Login.Password;
+        var newPassword = draft.Login.Password;
+        if (string.IsNullOrEmpty(oldPassword) || string.Equals(oldPassword, newPassword, StringComparison.Ordinal))
+            return baseline;
+
+        var result = new List<PasswordHistoryEntry>(baseline.Count + 1)
+        {
+            new(oldPassword, now),
+        };
+        result.AddRange(baseline);
+        return result.Count > 5 ? result.GetRange(0, 5) : result;
     }
 
     public static CipherEditorDraft ToDraft(Cipher cipher)

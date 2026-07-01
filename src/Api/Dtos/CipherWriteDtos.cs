@@ -21,6 +21,13 @@ public sealed class CipherRequest
     public SecureNoteRequest? SecureNote { get; init; }
     public SshKeyRequest? SshKey { get; init; }
     public string? LastKnownRevisionDate { get; init; }
+    public PasswordHistoryRequest[]? PasswordHistory { get; init; }
+}
+
+public sealed class PasswordHistoryRequest
+{
+    public string? Password { get; init; }
+    public string? LastUsedDate { get; init; }
 }
 
 public sealed class LoginRequest
