@@ -227,6 +227,43 @@ public sealed class AccountService : IAccountService
     }
 
     // -----------------------------------------------------------------------
+    // VerifyMasterPasswordAsync:
+    //   复用 ChangePassword/ChangeKdf 中"验证旧密码"的同一套逻辑：
+    //   派生 masterKey → ValidateCurrentPassword 解密 protectedUserKey。
+    //   正确返回 true；密码错误返回 false（不抛异常，供导出前确认等场景使用）。
+    // -----------------------------------------------------------------------
+
+    public Task<bool> VerifyMasterPasswordAsync(string password, CancellationToken ct = default)
+    {
+        RequireUnlocked();
+
+        if (!_tokenStore.TryLoad(out var persisted))
+            throw new AccountOperationException("无法加载持久化会话，请重新登录后重试。");
+
+        byte[] masterKey = _crypto.DeriveMasterKey(
+            password,
+            persisted.Email,
+            persisted.KdfType,
+            persisted.KdfIterations,
+            persisted.KdfMemory,
+            persisted.KdfParallelism);
+
+        try
+        {
+            ValidateCurrentPassword(masterKey, persisted.ProtectedUserKey);
+            return Task.FromResult(true);
+        }
+        catch (Exception ex) when (ex is CryptographicException or FormatException)
+        {
+            return Task.FromResult(false);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(masterKey);
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // 私有辅助
     // -----------------------------------------------------------------------
 

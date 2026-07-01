@@ -450,6 +450,9 @@ public class SettingsViewModelTests
             LastChangeKdf = (currentPassword, newIterations);
             return Task.CompletedTask;
         }
+
+        public Task<bool> VerifyMasterPasswordAsync(string password, CancellationToken ct = default)
+            => Task.FromResult(true);
     }
 
     // -----------------------------------------------------------------------
