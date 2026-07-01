@@ -56,4 +56,7 @@ public sealed class AppPreferencesData
 
     /// <summary>是否显示网站 favicon。默认开。</summary>
     public bool ShowWebsiteIcons { get; set; } = true;
+
+    /// <summary>本地保存的命名筛选视图(不同步服务端)。</summary>
+    public List<SavedSearchViewData> SavedSearchViews { get; set; } = new();
 }

@@ -70,5 +70,8 @@
     <Compile Include="..\..\src\App\ViewModels\SecurityReportViewModel.cs" Link="ViewModels\SecurityReportViewModel.cs" />
     <Compile Include="..\..\src\App\ViewModels\ImportExportViewModel.cs" Link="ViewModels\ImportExportViewModel.cs" />
     <Compile Include="..\..\src\App\Services\VaultQuery.cs" Link="Services\VaultQuery.cs" />
+    <Compile Include="..\..\src\App\Services\SavedSearchView.cs" Link="Services\SavedSearchView.cs" />
+    <Compile Include="..\..\src\App\Services\ISavedSearchStore.cs" Link="Services\ISavedSearchStore.cs" />
+    <Compile Include="..\..\src\App\Services\AppPreferencesSavedSearchStore.cs" Link="Services\AppPreferencesSavedSearchStore.cs" />
   </ItemGroup>
 </Project>

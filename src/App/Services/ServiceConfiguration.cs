@@ -120,6 +120,7 @@ public static class ServiceConfiguration
             new PwnedPasswordsClient(new HttpClient()));
         services.AddSingleton<IVaultHealthService, Vault.VaultHealthService>();
         services.AddTransient<IVaultHealthUiService, VaultHealthUiService>();
+        services.AddSingleton<ISavedSearchStore, AppPreferencesSavedSearchStore>();
         services.AddTransient<SecurityReportViewModel>();
 
         // ── 导入 / 导出 ──────────────────────────────────────────────────────────
