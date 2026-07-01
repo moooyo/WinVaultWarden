@@ -37,6 +37,26 @@ public partial class VaultViewModel : ObservableObject
     public partial string SearchText { get; set; } = string.Empty;
 
     [ObservableProperty]
+    public partial bool FacetTotp { get; set; }
+    [ObservableProperty]
+    public partial bool FacetAttachment { get; set; }
+    [ObservableProperty]
+    public partial bool FacetUri { get; set; }
+    [ObservableProperty]
+    public partial bool FacetFavoriteOnly { get; set; }
+    [ObservableProperty]
+    public partial VaultSortKey SelectedSort { get; set; } = VaultSortKey.NameAsc;
+
+    public VaultFacets CurrentFacets => new(FacetTotp, FacetAttachment, FacetUri, FacetFavoriteOnly);
+    public bool HasActiveRefinement => CurrentFacets.Any || !string.IsNullOrWhiteSpace(SearchText);
+
+    partial void OnFacetTotpChanged(bool value) => ApplyFilter();
+    partial void OnFacetAttachmentChanged(bool value) => ApplyFilter();
+    partial void OnFacetUriChanged(bool value) => ApplyFilter();
+    partial void OnFacetFavoriteOnlyChanged(bool value) => ApplyFilter();
+    partial void OnSelectedSortChanged(VaultSortKey value) => ApplyFilter();
+
+    [ObservableProperty]
     public partial FilterNode? SelectedFilter { get; set; }
 
     [ObservableProperty]
@@ -106,7 +126,11 @@ public partial class VaultViewModel : ObservableObject
         OnPropertyChanged(nameof(DetailIconDomain));
     }
 
-    partial void OnSearchTextChanged(string value) => ApplyFilter();
+    partial void OnSearchTextChanged(string value)
+    {
+        ApplyFilter();
+        OnPropertyChanged(nameof(HasActiveRefinement));
+    }
 
     public void SelectFilterByTag(string? tag)
     {
@@ -161,7 +185,7 @@ public partial class VaultViewModel : ObservableObject
     {
         FilteredItems.Clear();
 
-        IEnumerable<CipherListItem> source = SelectedFilter?.Kind switch
+        IEnumerable<CipherListItem> baseItems = SelectedFilter?.Kind switch
         {
             FilterKind.Favorites => Items.Where(i => i.Favorite && !i.IsDeleted),
             FilterKind.Trash     => Items.Where(i => i.IsDeleted),
@@ -170,14 +194,13 @@ public partial class VaultViewModel : ObservableObject
             _                    => Items.Where(i => !i.IsDeleted), // AllItems 及未选中
         };
 
-        if (!string.IsNullOrWhiteSpace(SearchText))
-            source = source.Where(i => i.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase)
-                                    || i.Subtitle.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+        foreach (var i in VaultQuery.Apply(baseItems, SearchText, CurrentFacets, SelectedSort))
+            FilteredItems.Add(i);
 
-        foreach (var i in source) FilteredItems.Add(i);
         RebuildGroups();
         OnPropertyChanged(nameof(HasNoItems));
         OnPropertyChanged(nameof(NoResults));
+        OnPropertyChanged(nameof(HasActiveRefinement));
     }
 
     private static readonly VaultItemKind[] TypeOrder =
@@ -204,6 +227,16 @@ public partial class VaultViewModel : ObservableObject
     private void RebuildGroups()
     {
         GroupedItems.Clear();
+
+        // 日期排序:压平为单一无头分组(跨文件夹/类型分组无意义)。
+        if (SelectedSort is VaultSortKey.RevisionDesc or VaultSortKey.CreationDesc)
+        {
+            if (FilteredItems.Count == 0) return;
+            var flat = new VaultListGroup { Key = string.Empty, ShowHeader = false };
+            foreach (var i in FilteredItems) flat.Items.Add(i);
+            GroupedItems.Add(flat);
+            return;
+        }
 
         // 选具体文件夹:单组、不显头。
         if (SelectedFilter?.Kind == FilterKind.Folder)

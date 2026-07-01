@@ -52,7 +52,31 @@ public sealed class MockVaultUiService : IVaultUiService
             Favorite = d.Favorite,
             FolderId = _folderIds.TryGetValue(d.Id, out var folderId) ? folderId : null,
             IsDeleted = _deleted.Contains(d.Id),
+            SearchHaystack = BuildHaystack(d),
+            HasTotp = d is LoginDetail { TotpSecret.Length: > 0 },
+            HasAttachment = d.Attachments.Count > 0,
+            HasUri = d is LoginDetail { Uri.Length: > 0 },
+            RevisionDate = d.Edited,
+            CreationDate = d.Created,
         }).ToList();
+
+    // Mock 版 haystack:与 VaultUiService.BuildHaystack 同思路(名称/备注/登录用户名与 URI/自定义字段名+非隐藏值),
+    // 供搜索测试(SearchText 命中 haystack)在 mock 数据上也生效。不含密码/隐藏字段值/CVV。
+    private static string BuildHaystack(CipherDetail d)
+    {
+        var parts = new List<string?> { d.Name, d.Notes };
+        if (d is LoginDetail login)
+        {
+            parts.Add(login.Username);
+            parts.Add(login.Uri);
+        }
+        foreach (var f in d.CustomFields)
+        {
+            parts.Add(f.Label);
+            if (!f.IsSecret) parts.Add(f.Value);
+        }
+        return string.Join('\n', parts.Where(s => !string.IsNullOrWhiteSpace(s))).ToLowerInvariant();
+    }
 
     public CipherDetail GetDetail(string id) => _details.First(d => d.Id == id);
 
