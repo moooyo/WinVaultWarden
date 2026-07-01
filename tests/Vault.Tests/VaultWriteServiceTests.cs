@@ -57,6 +57,9 @@ public class VaultWriteServiceTests
 
         public Task DeleteFolderAsync(string folderId, CancellationToken ct = default)
         { Calls.Add("folder-delete"); LastId = folderId; return Task.CompletedTask; }
+
+        public Task ImportCiphersAsync(ImportRequest request, CancellationToken ct = default)
+        { Calls.Add("import"); return Task.CompletedTask; }
     }
 
     private sealed class FakeSync : ISyncService

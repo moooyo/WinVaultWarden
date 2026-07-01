@@ -128,3 +128,19 @@ public sealed class MoveCiphersRequest
     public string[] Ids { get; init; } = Array.Empty<string>();
     public string? FolderId { get; init; }   // null = 移到根（无文件夹）
 }
+
+// 批量导入请求体（镜像 Vaultwarden ImportData / post_ciphers_import,camelCase）。
+// 文件夹归属由 folderRelationships 表达(cipher 下标 -> folder 下标),
+// 而非各 CipherRequest.FolderId ——服务端按此映射建立关联,详见 src/api/core/ciphers.rs。
+public sealed class ImportRequest
+{
+    public CipherRequest[] Ciphers { get; init; } = Array.Empty<CipherRequest>();
+    public FolderRequest[] Folders { get; init; } = Array.Empty<FolderRequest>();
+    public ImportRelationship[] FolderRelationships { get; init; } = Array.Empty<ImportRelationship>();
+}
+
+public sealed class ImportRelationship
+{
+    public int Key { get; init; }
+    public int Value { get; init; }
+}
