@@ -256,7 +256,9 @@
                             </Grid.ColumnDefinitions>
                             <Border Width="32" Height="32"
                                     Style="{StaticResource IconBadgeBorderStyle}">
-                                <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" />
+                                <controls:FaviconView Domain="{x:Bind IconDomain}"
+                                                      FallbackGlyph="{x:Bind Glyph}"
+                                                      IconSize="16" />
                             </Border>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                 <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" />
@@ -626,8 +628,11 @@
                 <StackPanel Spacing="2"
                             Visibility="{x:Bind ViewModel.HasDetailSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="{x:Bind ViewModel.SelectedItem.Glyph, Mode=OneWay}"
-                                  FontSize="18" VerticalAlignment="Center" />
+                        <controls:FaviconView Domain="{x:Bind ViewModel.DetailIconDomain, Mode=OneWay}"
+                                              FallbackGlyph="{x:Bind ViewModel.SelectedItem.Glyph, Mode=OneWay}"
+                                              IconSize="18"
+                                              Width="24" Height="24"
+                                              VerticalAlignment="Center" />
                         <TextBlock Text="{x:Bind ViewModel.Detail.Name, Mode=OneWay}"
                                    Style="{ThemeResource SubtitleTextBlockStyle}" />
                         <FontIcon Glyph="&#xE735;" FontSize="14"

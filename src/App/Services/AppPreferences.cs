@@ -53,4 +53,7 @@ public sealed class AppPreferencesData
 {
     /// <summary>主题:0=跟随系统,1=浅色,2=深色。与设置页 ComboBox 索引一致。</summary>
     public int ThemeIndex { get; set; }
+
+    /// <summary>是否显示网站 favicon。默认开。</summary>
+    public bool ShowWebsiteIcons { get; set; } = true;
 }

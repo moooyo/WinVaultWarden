@@ -117,6 +117,9 @@ public sealed class VaultUiService : IVaultUiService
         Favorite = cipher.Favorite,
         FolderId = cipher.FolderId,
         IsDeleted = cipher.IsDeleted,
+        IconDomain = cipher.Type == CipherType.Login
+            ? Core.IconDomain.Extract(cipher.Login?.Uris.FirstOrDefault()?.Uri)
+            : null,
     };
 
     private CipherDetail ToDetail(Cipher cipher)
