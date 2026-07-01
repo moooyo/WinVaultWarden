@@ -60,6 +60,10 @@ public partial class VaultViewModel : ObservableObject
 
     public bool HasDetailSelected => Detail is not null;
     public bool NoSelection => Detail is null;
+
+    // 详情头 favicon 域名(仅登录详情有值)。
+    public string? DetailIconDomain =>
+        Detail is LoginDetail login ? Core.IconDomain.Extract(login.Uri) : null;
     public string? SelectedFilterTag => TagForFilter(SelectedFilter);
     public bool IsSelectedItemDeleted => SelectedItem?.IsDeleted == true;
     public bool IsFolderFilterSelected => SelectedFilter?.Kind == FilterKind.Folder;
@@ -99,6 +103,7 @@ public partial class VaultViewModel : ObservableObject
         OnPropertyChanged(nameof(HasDetailSelected));
         OnPropertyChanged(nameof(NoSelection));
         OnPropertyChanged(nameof(IsSelectedItemDeleted));
+        OnPropertyChanged(nameof(DetailIconDomain));
     }
 
     partial void OnSearchTextChanged(string value) => ApplyFilter();
@@ -250,6 +255,7 @@ public partial class VaultViewModel : ObservableObject
         Detail = null;
         OnPropertyChanged(nameof(HasDetailSelected));
         OnPropertyChanged(nameof(NoSelection));
+        OnPropertyChanged(nameof(DetailIconDomain));
         OnPropertyChanged(nameof(EditorTitle));
     }
 
@@ -653,6 +659,7 @@ public partial class VaultViewModel : ObservableObject
         Detail = _service.GetDetail(cipherId) is { } refreshed && refreshed.Id == cipherId
             ? CloneDetailWithAttachments(refreshed, attachments)
             : Detail;
+        OnPropertyChanged(nameof(DetailIconDomain));
     }
 
     private static CipherDetail CloneDetailWithAttachments(CipherDetail detail, IReadOnlyList<AttachmentItem> attachments) => detail switch

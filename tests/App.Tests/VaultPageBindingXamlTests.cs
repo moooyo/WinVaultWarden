@@ -42,4 +42,12 @@ public class VaultPageBindingXamlTests
         // 移动按钮挂 flyout（由 code-behind 依 FolderFilters 动态填充），不再写死 CommandParameter="{x:Null}" 作为唯一入口
         Assert.Contains("OnMoveSelectedFlyoutOpening", xaml);
     }
+
+    [Fact]
+    public void VaultPage_UsesFaviconViewForListAndDetail()
+    {
+        var xaml = Xaml();
+        Assert.Contains("FaviconView", xaml);
+        Assert.Contains("IconDomain", xaml); // 列表项绑定
+    }
 }
