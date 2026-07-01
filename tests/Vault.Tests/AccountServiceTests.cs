@@ -275,6 +275,28 @@ public class AccountServiceTests
 
         Assert.Null(api.Profile);
     }
+
+    // ---- Test 8: VerifyMasterPassword 正确密码返回 true ----
+
+    [Fact]
+    public async Task VerifyMasterPassword_correct_returns_true()
+    {
+        var (session, store, _, _) = BuildUnlockedSession();
+        var svc = BuildService(session, store, new FakeAccountApiClient(), new FakeAuthService(session, store));
+
+        Assert.True(await svc.VerifyMasterPasswordAsync(OldPassword, TestContext.Current.CancellationToken));
+    }
+
+    // ---- Test 9: VerifyMasterPassword 错误密码返回 false（不抛异常）----
+
+    [Fact]
+    public async Task VerifyMasterPassword_wrong_returns_false()
+    {
+        var (session, store, _, _) = BuildUnlockedSession();
+        var svc = BuildService(session, store, new FakeAccountApiClient(), new FakeAuthService(session, store));
+
+        Assert.False(await svc.VerifyMasterPasswordAsync("WRONG-PASSWORD", TestContext.Current.CancellationToken));
+    }
 }
 
 // ---- FakeAuthService: 追踪 LogoutAsync 调用，并真实清除 session/store ----

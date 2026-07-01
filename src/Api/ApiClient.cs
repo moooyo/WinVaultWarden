@@ -111,6 +111,9 @@ public sealed class ApiClient : IApiClient, IReadonlyApiClient, IVaultWriteApiCl
     public async Task DeleteFolderAsync(string folderId, CancellationToken ct = default)
         => await SendWriteAsync(HttpMethod.Delete, $"api/folders/{folderId}", ct);
 
+    public Task ImportCiphersAsync(ImportRequest request, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Post, "api/ciphers/import", request, ApiJsonContext.Default.ImportRequest, ct);
+
     public async Task<FolderDto> GetFolderAsync(string folderId, CancellationToken ct = default)
     {
         var response = await _http.GetAsync(Url($"api/folders/{folderId}"), ct);

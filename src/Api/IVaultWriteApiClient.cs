@@ -19,4 +19,5 @@ public interface IVaultWriteApiClient
     Task CreateFolderAsync(FolderRequest request, CancellationToken ct = default);
     Task UpdateFolderAsync(string folderId, FolderRequest request, CancellationToken ct = default);
     Task DeleteFolderAsync(string folderId, CancellationToken ct = default);
+    Task ImportCiphersAsync(ImportRequest request, CancellationToken ct = default);
 }
