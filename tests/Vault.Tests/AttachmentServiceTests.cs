@@ -258,4 +258,11 @@ public class AttachmentServiceTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.DeleteAsync("c-8", "a", TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public void MaxPlaintextBytes_IsHundredMegabytes_AndMatchesCoreLimit()
+    {
+        Assert.Equal(100L * 1024 * 1024, Core.Services.AttachmentLimits.MaxPlaintextBytes);
+        Assert.Equal(Core.Services.AttachmentLimits.MaxPlaintextBytes, AttachmentService.MaxPlaintextBytes);
+    }
 }
