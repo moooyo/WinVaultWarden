@@ -96,6 +96,27 @@ public class RealVaultUiServiceTests
         Assert.Null(items.First(i => i.Id == "2").IconDomain);
     }
 
+    [Fact]
+    public void GetDetail_Login_MapsPasswordHistory()
+    {
+        var vault = new IconDomainVaultService(new[]
+        {
+            new Cipher
+            {
+                Id = "1", Type = CipherType.Login, Name = "A",
+                Login = new CipherLogin("u", "cur", null, Array.Empty<CipherLoginUri>()),
+                PasswordHistory = new[] { new PasswordHistoryEntry("old1", new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.Zero)) },
+            },
+        });
+        var svc = new VaultUiService(vault, new NoopWriteService(), new NoopSyncService());
+
+        var detail = Assert.IsType<LoginDetail>(svc.GetDetail("1"));
+
+        Assert.True(detail.HasPasswordHistory);
+        Assert.Equal(1, detail.PasswordHistoryCount);
+        Assert.Equal("old1", detail.PasswordHistory[0].Password);
+    }
+
     private sealed class IconDomainVaultService : IVaultService
     {
         private readonly IReadOnlyList<Cipher> _ciphers;

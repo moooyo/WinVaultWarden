@@ -148,6 +148,11 @@ public sealed class VaultUiService : IVaultUiService
                 TotpSecret = cipher.Login?.Totp,
                 Uri = cipher.Login?.Uris.FirstOrDefault()?.Uri,
                 Passkeys = MapPasskeys(cipher.Login?.Fido2Credentials),
+                PasswordHistory = (cipher.PasswordHistory ?? Array.Empty<Core.Models.PasswordHistoryEntry>())
+                    .Select(h => new PasswordHistoryItem(
+                        h.Password,
+                        h.LastUsedDate is { } d ? d.LocalDateTime.ToString("yyyy/M/d HH:mm:ss") : "—"))
+                    .ToList(),
             },
             CipherType.Card => new CardDetail
             {
