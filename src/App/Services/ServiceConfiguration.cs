@@ -90,6 +90,7 @@ public static class ServiceConfiguration
         });
         services.AddTransient<IAccountUiService, AccountUiService>();
         services.AddSingleton<IClipboardService, ClipboardService>();
+        services.AddSingleton<IFaviconCache>(sp => new Vault.FaviconCache(new HttpClient(), sp.GetRequiredService<VaultSession>()));
 
         services.AddSingleton<IRegisterService, Vault.RegisterService>();
         services.AddSingleton<IRegisterUiService>(sp =>
