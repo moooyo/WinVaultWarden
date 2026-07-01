@@ -54,11 +54,22 @@ public partial class VaultViewModel : ObservableObject
     public VaultFacets CurrentFacets => new(FacetTotp, FacetAttachment, FacetUri, FacetFavoriteOnly);
     public bool HasActiveRefinement => CurrentFacets.Any || !string.IsNullOrWhiteSpace(SearchText);
 
+    /// <summary>供排序 ComboBox.SelectedIndex 双向绑定使用（顺序与 VaultSortKey 枚举一致）。</summary>
+    public int SelectedSortIndex
+    {
+        get => (int)SelectedSort;
+        set { if ((int)SelectedSort != value) SelectedSort = (VaultSortKey)value; }
+    }
+
     partial void OnFacetTotpChanged(bool value) { if (!_suppressApply) ApplyFilter(); }
     partial void OnFacetAttachmentChanged(bool value) { if (!_suppressApply) ApplyFilter(); }
     partial void OnFacetUriChanged(bool value) { if (!_suppressApply) ApplyFilter(); }
     partial void OnFacetFavoriteOnlyChanged(bool value) { if (!_suppressApply) ApplyFilter(); }
-    partial void OnSelectedSortChanged(VaultSortKey value) { if (!_suppressApply) ApplyFilter(); }
+    partial void OnSelectedSortChanged(VaultSortKey value)
+    {
+        OnPropertyChanged(nameof(SelectedSortIndex));
+        if (!_suppressApply) ApplyFilter();
+    }
 
     [ObservableProperty]
     public partial FilterNode? SelectedFilter { get; set; }

@@ -6,6 +6,7 @@ using App.ViewModels;
 using App.ViewModels.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using System.Runtime.InteropServices.WindowsRuntime;
@@ -361,5 +362,62 @@ public sealed partial class VaultPage : Page
 
         if (await ConfirmAsync("删除附件", $"确定要删除附件“{attachment.FileName}”吗?此操作无法撤销。", "删除"))
             await ViewModel.DeleteAttachmentAsync(item.Id, attachment.Id);
+    }
+
+    // ── 筛选栏:分面/排序/保存视图 ────────────────────────────────────────────
+
+    private void OnSavedViewsFlyoutOpening(object sender, object e)
+    {
+        SavedViewsFlyout.Items.Clear();
+
+        if (ViewModel.SavedViews.Count == 0)
+        {
+            SavedViewsFlyout.Items.Add(new MenuFlyoutItem { Text = "暂无已保存视图", IsEnabled = false });
+            return;
+        }
+
+        foreach (var view in ViewModel.SavedViews)
+        {
+            var applyItem = new MenuFlyoutItem { Text = view.Name };
+            applyItem.Click += (_, _) => ViewModel.ApplyViewCommand.Execute(view);
+
+            var deleteItem = new MenuFlyoutItem { Text = $"删除“{view.Name}”" };
+            deleteItem.Click += (_, _) => ViewModel.DeleteViewCommand.Execute(view.Name);
+
+            SavedViewsFlyout.Items.Add(applyItem);
+            SavedViewsFlyout.Items.Add(deleteItem);
+        }
+    }
+
+    private async void OnSaveCurrentViewClick(object sender, RoutedEventArgs e)
+    {
+        var input = new TextBox { PlaceholderText = "视图名称" };
+        AutomationProperties.SetAutomationId(input, "VaultSaveViewNameTextBox");
+
+        var dialog = new ContentDialog
+        {
+            Title = "保存当前视图",
+            Content = input,
+            PrimaryButtonText = "确认",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot,
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+
+        var name = input.Text?.Trim();
+        if (!string.IsNullOrEmpty(name))
+            ViewModel.SaveCurrentViewCommand.Execute(name);
+    }
+
+    private void OnClearFiltersClick(object sender, RoutedEventArgs e)
+    {
+        ViewModel.FacetTotp = false;
+        ViewModel.FacetAttachment = false;
+        ViewModel.FacetUri = false;
+        ViewModel.FacetFavoriteOnly = false;
+        ViewModel.SearchText = string.Empty;
     }
 }
