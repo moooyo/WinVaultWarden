@@ -65,7 +65,7 @@ public sealed class MockVaultUiService : IVaultUiService
             CreationDate = d.Created,
         }).ToList();
 
-    // Mock 版 haystack:与 VaultUiService.BuildHaystack 同思路(名称/备注/登录用户名与 URI/自定义字段名+非隐藏值),
+    // Mock 版 haystack:与 Vault.VaultSearch.BuildHaystack 同思路(名称/备注/登录用户名与 URI/自定义字段名+非隐藏值),
     // 供搜索测试(SearchText 命中 haystack)在 mock 数据上也生效。不含密码/隐藏字段值/CVV。
     private static string BuildHaystack(CipherDetail d)
     {
