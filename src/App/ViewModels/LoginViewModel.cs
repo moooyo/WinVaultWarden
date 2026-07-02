@@ -11,6 +11,7 @@ public enum LoginStage
     Password,
     TwoFactor,
     Unlock,
+    PinUnlock,
 }
 
 public partial class LoginViewModel : ObservableObject
@@ -20,6 +21,7 @@ public partial class LoginViewModel : ObservableObject
 
     private readonly IAuthService _auth;
     private readonly IDemoVaultSessionService? _demoVault;
+    private readonly IPinService? _pin;
     private Action? _onSuccess;
 
     [ObservableProperty]
@@ -30,6 +32,9 @@ public partial class LoginViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string MasterPassword { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Pin { get; set; } = string.Empty;
 
     [ObservableProperty]
     public partial string TwoFactorCode { get; set; } = string.Empty;
@@ -54,10 +59,11 @@ public partial class LoginViewModel : ObservableObject
     {
     }
 
-    public LoginViewModel(IAuthService auth, IDemoVaultSessionService? demoVault)
+    public LoginViewModel(IAuthService auth, IDemoVaultSessionService? demoVault, IPinService? pin = null)
     {
         _auth = auth;
         _demoVault = demoVault;
+        _pin = pin;
     }
 
     public bool IsAccountStage => Stage == LoginStage.Account;
@@ -67,6 +73,8 @@ public partial class LoginViewModel : ObservableObject
     public bool IsTwoFactorStage => Stage == LoginStage.TwoFactor;
 
     public bool IsUnlockStage => Stage == LoginStage.Unlock;
+
+    public bool IsPinUnlockStage => Stage == LoginStage.PinUnlock;
 
     public bool CanEditServer => IsAccountStage && !IsBusy;
 
@@ -86,6 +94,7 @@ public partial class LoginViewModel : ObservableObject
             LoginStage.Password => "正在登录",
             LoginStage.TwoFactor => "正在验证",
             LoginStage.Unlock => "正在解锁",
+            LoginStage.PinUnlock => "正在解锁",
             _ => "请稍候",
         }
         : Stage switch
@@ -93,6 +102,7 @@ public partial class LoginViewModel : ObservableObject
             LoginStage.Account => "继续",
             LoginStage.TwoFactor => "验证",
             LoginStage.Unlock => "解锁",
+            LoginStage.PinUnlock => "解锁",
             _ => "登录",
         };
 
@@ -101,6 +111,7 @@ public partial class LoginViewModel : ObservableObject
         LoginStage.Password => "输入主密码",
         LoginStage.TwoFactor => "两步验证",
         LoginStage.Unlock => "解锁保险库",
+        LoginStage.PinUnlock => "用 PIN 解锁",
         _ => "登录",
     };
 
@@ -109,6 +120,7 @@ public partial class LoginViewModel : ObservableObject
         LoginStage.Password => ServerSummary,
         LoginStage.TwoFactor => AccountSummary,
         LoginStage.Unlock => ServerSummary,
+        LoginStage.PinUnlock => ServerSummary,
         _ => "连接到你的 Bitwarden / Vaultwarden 保险库",
     };
 
@@ -117,6 +129,7 @@ public partial class LoginViewModel : ObservableObject
         LoginStage.Password => "第 2 步 / 3",
         LoginStage.TwoFactor => "第 3 步 / 3",
         LoginStage.Unlock => "已锁定",
+        LoginStage.PinUnlock => "已锁定",
         _ => "第 1 步 / 3",
     };
 
@@ -141,8 +154,9 @@ public partial class LoginViewModel : ObservableObject
         Email = email;
         MasterPassword = string.Empty;
         TwoFactorCode = string.Empty;
-        Stage = LoginStage.Unlock;
-        Status = "请输入主密码解锁。";
+        Pin = string.Empty;
+        Stage = (_pin?.IsPinSet ?? false) ? LoginStage.PinUnlock : LoginStage.Unlock;
+        Status = IsPinUnlockStage ? "请输入 PIN 解锁。" : "请输入主密码解锁。";
     }
 
     public void PrepareAccount(string serverUrl, string email)
@@ -178,11 +192,13 @@ public partial class LoginViewModel : ObservableObject
         try
         {
             IsBusy = true;
-            var result = IsUnlockStage
-                ? await _auth.UnlockAsync(MasterPassword)
-                : IsTwoFactorStage
-                    ? await _auth.SubmitTwoFactorAsync(TwoFactorCode.Trim(), rememberDevice: RememberDevice)
-                    : await _auth.LoginAsync(ResolveServerUrl(), Email.Trim(), MasterPassword);
+            var result = IsPinUnlockStage
+                ? await _auth.UnlockWithPinAsync(Pin)
+                : IsUnlockStage
+                    ? await _auth.UnlockAsync(MasterPassword)
+                    : IsTwoFactorStage
+                        ? await _auth.SubmitTwoFactorAsync(TwoFactorCode.Trim(), rememberDevice: RememberDevice)
+                        : await _auth.LoginAsync(ResolveServerUrl(), Email.Trim(), MasterPassword);
 
             HandleResult(result);
         }
@@ -223,6 +239,14 @@ public partial class LoginViewModel : ObservableObject
             MasterPassword = string.Empty;
             Stage = LoginStage.Account;
         }
+    }
+
+    [RelayCommand]
+    private void UseMasterPassword()
+    {
+        Stage = LoginStage.Unlock;
+        Pin = string.Empty;
+        Status = "请输入主密码解锁。";
     }
 
     [RelayCommand]
@@ -275,6 +299,12 @@ public partial class LoginViewModel : ObservableObject
             return false;
         }
 
+        if (IsPinUnlockStage && string.IsNullOrWhiteSpace(Pin))
+        {
+            Status = "请输入 PIN。";
+            return false;
+        }
+
         if (IsTwoFactorStage && string.IsNullOrWhiteSpace(TwoFactorCode))
         {
             Status = "请输入两步验证码。";
@@ -293,6 +323,7 @@ public partial class LoginViewModel : ObservableObject
                 Status = string.Empty;
                 MasterPassword = string.Empty;
                 TwoFactorCode = string.Empty;
+                Pin = string.Empty;
                 if (wasTwoFactor)
                     Stage = LoginStage.Password;
                 _onSuccess?.Invoke();
@@ -303,8 +334,15 @@ public partial class LoginViewModel : ObservableObject
                 TwoFactorCode = string.Empty;
                 Status = "请输入两步验证码。";
                 break;
+            case AuthResult.PinCleared pinCleared:
+                Status = pinCleared.Message;
+                Stage = LoginStage.Unlock;
+                Pin = string.Empty;
+                break;
             case AuthResult.Failure failure:
                 Status = failure.Message;
+                if (IsPinUnlockStage)
+                    Pin = string.Empty;
                 break;
         }
     }
@@ -374,6 +412,7 @@ public partial class LoginViewModel : ObservableObject
         OnPropertyChanged(nameof(IsPasswordStage));
         OnPropertyChanged(nameof(IsTwoFactorStage));
         OnPropertyChanged(nameof(IsUnlockStage));
+        OnPropertyChanged(nameof(IsPinUnlockStage));
         OnPropertyChanged(nameof(CanEditServer));
         OnPropertyChanged(nameof(CanGoBack));
         OnPropertyChanged(nameof(CanUsePrimaryAction));
