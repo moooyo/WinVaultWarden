@@ -112,6 +112,12 @@ public partial class VaultViewModel : ObservableObject
     public bool IsFolderFilterSelected => SelectedFilter?.Kind == FilterKind.Folder;
     public bool IsTrashFilterSelected => SelectedFilter?.Kind == FilterKind.Trash;
 
+    public int TrashCount => Items.Count(i => i.IsDeleted);
+    public bool HasTrashItems => TrashCount > 0;
+    public bool IsTrashEmpty => IsTrashFilterSelected && TrashCount == 0;
+    public bool CanEmptyRecycleBin => IsTrashFilterSelected && HasTrashItems;
+    public string TrashHeader => $"回收站 ({TrashCount})";
+
     // 保险库内一条(未删除)记录都没有 → 空库引导。
     public bool HasNoItems => Items.All(i => i.IsDeleted);
     // 库里有记录,但当前搜索/筛选结果为空 → 无结果提示。
@@ -270,6 +276,11 @@ public partial class VaultViewModel : ObservableObject
         OnPropertyChanged(nameof(HasNoItems));
         OnPropertyChanged(nameof(NoResults));
         OnPropertyChanged(nameof(HasActiveRefinement));
+        OnPropertyChanged(nameof(TrashCount));
+        OnPropertyChanged(nameof(HasTrashItems));
+        OnPropertyChanged(nameof(IsTrashEmpty));
+        OnPropertyChanged(nameof(CanEmptyRecycleBin));
+        OnPropertyChanged(nameof(TrashHeader));
     }
 
     private static readonly VaultItemKind[] TypeOrder =
@@ -626,6 +637,16 @@ public partial class VaultViewModel : ObservableObject
         var ok = await RunWriteAsync(() => _service.DeleteCiphersAsync(ids, permanent: true), selectId: null);
         if (ok)
             IsSelectionMode = false;
+    }
+
+    // 注：清空确认在 XAML code-behind 先弹 ContentDialog，确认后才执行此命令。
+    [RelayCommand]
+    private async Task EmptyRecycleBinAsync()
+    {
+        var ids = Items.Where(i => i.IsDeleted).Select(i => i.Id).ToArray();
+        if (ids.Length == 0)
+            return;
+        await RunWriteAsync(() => _service.DeleteCiphersAsync(ids, permanent: true), selectId: null);
     }
 
     [RelayCommand]
