@@ -134,8 +134,63 @@ public sealed class AuthService : IAuthService
         }
     }
 
-    public Task<AuthResult> UnlockWithPinAsync(string pin, CancellationToken ct = default)
-        => throw new NotImplementedException("PIN unlock is implemented in a later task.");
+    public async Task<AuthResult> UnlockWithPinAsync(string pin, CancellationToken ct = default)
+    {
+        if (!_tokenStore.TryLoad(out var persisted) || string.IsNullOrEmpty(persisted.PinProtectedUserKey))
+            return new AuthResult.Failure("未设置 PIN。");
+
+        SymmetricCryptoKey userKey;
+        try
+        {
+            _api.SetBaseAddress(persisted.ServerUrl);
+            _session.SetState(Core.Session.VaultState.Unlocking);
+
+            var stretchedKey = DeriveStretchedKey(
+                pin, persisted.Email, persisted.KdfType,
+                persisted.KdfIterations, persisted.KdfMemory, persisted.KdfParallelism);
+            try
+            {
+                userKey = _crypto.DecryptUserKey(stretchedKey, EncString.Parse(persisted.PinProtectedUserKey));
+            }
+            catch (Exception ex) when (ex is CryptographicException or FormatException)
+            {
+                _session.Lock();
+                return HandleWrongPin(persisted);
+            }
+
+            var refresh = await _api.ConnectTokenAsync(ConnectTokenRequest.Refresh(
+                persisted.RefreshToken, persisted.DeviceIdentifier, DeviceName), ct);
+
+            if (refresh is not ConnectTokenResult.Success success)
+            {
+                _session.Lock();
+                return ToFailure(refresh);
+            }
+
+            _session.SetTokens(success.Token.AccessToken, success.Token.RefreshToken);
+            _session.SetUnlockedKey(userKey);
+            _tokenStore.Save(persisted with { RefreshToken = success.Token.RefreshToken, PinFailedAttempts = 0 });
+            await _bootstrapper.BootstrapAsync(persisted.ServerUrl, ct);
+            return new AuthResult.Success();
+        }
+        catch (Exception ex) when (IsExpectedAuthException(ex))
+        {
+            _session.Lock();
+            return new AuthResult.Failure(ex.Message);
+        }
+    }
+
+    private AuthResult HandleWrongPin(PersistedSession persisted)
+    {
+        var n = persisted.PinFailedAttempts + 1;
+        if (n >= 5)
+        {
+            _tokenStore.Save(persisted with { PinProtectedUserKey = null, PinFailedAttempts = 0 });
+            return new AuthResult.PinCleared("PIN 已因多次错误被清除，请用主密码解锁。");
+        }
+        _tokenStore.Save(persisted with { PinFailedAttempts = n });
+        return new AuthResult.Failure($"PIN 错误，还可尝试 {5 - n} 次。");
+    }
 
     public Task LockAsync(CancellationToken ct = default)
     {
