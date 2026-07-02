@@ -78,8 +78,7 @@ public static class ServiceConfiguration
         services.AddSingleton<ISendUiService>(sp => new SendUiService(
             sp.GetRequiredService<ISendService>(),
             sp.GetRequiredService<ISendWriteService>(),
-            sp.GetRequiredService<ISendAccessService>(),
-            sp.GetRequiredService<VaultSession>().Account?.ServerUrl ?? string.Empty));
+            sp.GetRequiredService<ISendAccessService>()));
         services.AddSingleton<IAttachmentUiService>(sp =>
             new AttachmentUiService(sp.GetRequiredService<IAttachmentService>()));
         services.AddTransient<IDeviceUiService>(sp =>
