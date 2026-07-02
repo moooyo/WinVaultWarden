@@ -64,6 +64,7 @@ public static class ServiceConfiguration
         services.AddSingleton<ITwoFactorService, Vault.TwoFactorService>();
         services.AddSingleton<IAuthRequestService, Vault.AuthRequestService>();
         services.AddSingleton<IEmergencyAccessService, Vault.EmergencyAccessService>();
+        services.AddSingleton<IPinService, Vault.PinService>();
         services.AddSingleton<ITwoFactorUiService>(sp =>
             new TwoFactorUiService(sp.GetRequiredService<ITwoFactorService>()));
         services.AddSingleton<IAuthRequestUiService>(sp =>
@@ -106,7 +107,8 @@ public static class ServiceConfiguration
         services.AddTransient<SettingsViewModel>(sp =>
             new SettingsViewModel(
                 sp.GetRequiredService<IAccountUiService>(),
-                sp.GetRequiredService<ITwoFactorUiService>()));
+                sp.GetRequiredService<ITwoFactorUiService>(),
+                sp.GetRequiredService<IPinService>()));
         services.AddTransient<DevicesViewModel>(sp =>
             new DevicesViewModel(
                 sp.GetRequiredService<IDeviceUiService>(),
