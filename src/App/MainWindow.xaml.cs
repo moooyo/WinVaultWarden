@@ -65,6 +65,17 @@ public sealed partial class MainWindow : Window
                 _timeout.LockNow();
         };
 
+        // 系统锁屏/切换会话 → 立即锁定(最佳努力:打包环境可能不触发)。
+        try
+        {
+            Microsoft.Win32.SystemEvents.SessionSwitch += OnSessionSwitch;
+            Closed += (_, _) =>
+            {
+                try { Microsoft.Win32.SystemEvents.SessionSwitch -= OnSessionSwitch; } catch { }
+            };
+        }
+        catch { /* 事件不可用则降级:其余触发照常 */ }
+
         // 给系统标题栏按钮(最小化/最大化/关闭)留出右侧空间,避免与自定义内容重叠。
         SizeChanged += (_, _) => UpdateCaptionPadding();
         UpdateCaptionPadding();
@@ -89,6 +100,12 @@ public sealed partial class MainWindow : Window
         }
         catch { /* 宁可多锁一次:即便 auth 调用失败也导航到登录/解锁屏 */ }
         ShowLogin();
+    }
+
+    private void OnSessionSwitch(object sender, Microsoft.Win32.SessionSwitchEventArgs e)
+    {
+        if (e.Reason == Microsoft.Win32.SessionSwitchReason.SessionLock)
+            DispatcherQueue.TryEnqueue(() => _timeout.LockNow());
     }
 
     private void OnFirstActivated(object sender, WindowActivatedEventArgs args)
