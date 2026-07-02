@@ -54,8 +54,7 @@ internal sealed unsafe class TrayIconService : IDisposable
             hIcon = _hIcon,
         };
         SetTip(ref data, "WinVaultWarden");
-        NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_ADD, ref data);
-        _visible = true;
+        _visible = NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_ADD, ref data);
     }
 
     /// <summary>删托盘图标（幂等）。窗口过程子类化保留至 Dispose，避免频繁装卸的竞态。</summary>
@@ -121,6 +120,7 @@ internal sealed unsafe class TrayIconService : IDisposable
             NativeMethods.TPM_RETURNCMD | NativeMethods.TPM_RIGHTBUTTON,
             pt.X, pt.Y, 0, _hwnd, IntPtr.Zero);
         NativeMethods.DestroyMenu(menu);
+        NativeMethods.PostMessage(_hwnd, NativeMethods.WM_NULL, IntPtr.Zero, IntPtr.Zero);
 
         switch (cmd)
         {

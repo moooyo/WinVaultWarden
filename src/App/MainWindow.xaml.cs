@@ -385,9 +385,12 @@ public sealed partial class MainWindow : Window
     /// <summary>从托盘恢复窗口：显示、还原最小化、置前台。供托盘左键/「打开」与单实例重定向调用。</summary>
     public void RestoreFromTray()
     {
-        AppWindow.Show(true);
-        (AppWindow.Presenter as OverlappedPresenter)?.Restore();
-        NativeMethods.SetForegroundWindow(_hwnd);
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            AppWindow.Show(true);
+            (AppWindow.Presenter as OverlappedPresenter)?.Restore();
+            NativeMethods.SetForegroundWindow(_hwnd);
+        });
     }
 
     private void LockFromTray()
@@ -407,9 +410,12 @@ public sealed partial class MainWindow : Window
 
     private void ExitApp()
     {
-        _realExit = true;
-        _tray?.Dispose();
-        _tray = null;
-        Microsoft.UI.Xaml.Application.Current.Exit();
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            _realExit = true;
+            _tray?.Dispose();
+            _tray = null;
+            Microsoft.UI.Xaml.Application.Current.Exit();
+        });
     }
 }

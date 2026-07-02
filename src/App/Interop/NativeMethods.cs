@@ -14,6 +14,7 @@ internal static unsafe partial class NativeMethods
     public const uint WM_LBUTTONUP = 0x0202;
     public const uint WM_RBUTTONUP = 0x0205;
     public const uint WM_CONTEXTMENU = 0x007B;
+    public const uint WM_NULL = 0x0000;
 
     // ── Shell_NotifyIcon ────────────────────────────────────────────────
     public const uint NIM_ADD = 0x00000000;
@@ -106,4 +107,8 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport("shell32.dll", EntryPoint = "ExtractIconExW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     public static partial uint ExtractIconEx(string lpszFile, int nIconIndex, IntPtr[]? phiconLarge, IntPtr[]? phiconSmall, uint nIcons);
+
+    [LibraryImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 }
