@@ -107,6 +107,10 @@ dotnet run --project tests/LiveSmoke -- http://10.0.1.20:8080
 
 > 客户端本身未实现自助注册（注册仅 Web 端）；冒烟测试用我方 Crypto 按 Vaultwarden `RegisterData` 契约（`src/api/core/accounts.rs`）自行构造注册体来准备账户，账户已存在时自动复用。
 
+> **⚠️ LiveSmoke 有状态测试的两个坑（2026-07-02 踩过）：**
+> 1. **改密/改KDF 用例会改测试账户**（`AccountChangePasswordAndRevertAsync` 切到 `Temp-Smoke-Password-2!` 再切回；`AccountChangeKdfAndRevertAsync` 切到 700000 再切回）。若某次运行**中途中断**（含被管道 `| head`/`sed` 提前关闭而 SIGPIPE 杀死进程），账户会**卡在临时密码或 700000 KDF**，导致后续所有运行在 login 就失败。查当前 KDF：`curl -s -X POST http://10.0.1.20:8080/identity/accounts/prelogin -H 'Content-Type: application/json' -d '{"email":"test@winvaultwarden.local"}'`。**恢复**：用我方 `AuthService.LoginAsync`(临时口令) + `AccountService.ChangePasswordAsync`(临时→`Test-Master-Password-1!`) 和 `ChangeKdfAsync(pwd, 600000)`（可临时在 LiveSmoke 加个 env 触发的 restore 分支，或写个引用 src 项目的一次性 console）。**因此：跑 LiveSmoke 时不要用 `| head`/`| sed` 截断输出**（会中途杀死进程、污染账户）；要么全量输出、要么重定向到文件再 grep。
+> 2. **Vaultwarden 有登录限流**。短时间内大量 login（改密/改KDF 往返一次就有 ~4 次 login）会触发限流，`LoginAsync` 返回**空消息的 `AuthResult.Failure`**、vault 变 Locked，account-mutation 系列连锁失败。这**不是代码 bug**——限流窗口（~60s）冷却后即恢复。密集调试后若见 login 莫名失败，先等一会再跑。
+
 ## 给未来实例的工作提示
 
 - 新增/修改任何 API 调用前，**先 grep Vaultwarden 源码**确认真实契约：路由用 `#[get/post/put/delete(...)]` 宏标注，请求体看 `data` 参数的结构体（`#[derive(Deserialize)]` + `#[serde(rename_all = "camelCase")]`），响应体看对应 model 的 `to_json()`。
