@@ -113,9 +113,11 @@ public sealed class FieldRequest
     public string? Value { get; init; }
 }
 
-// Vaultwarden 4xx 错误体:{"message":"...","validationErrors":{...},"object":"error"}
+// Vaultwarden 4xx 错误体:{"message":"...","validationErrors":{"":["msg"]},"object":"error"}
+// validationErrors 为 HashMap<string, Vec<string>>(字段名 -> 错误消息列表),见 vaultwarden/src/error.rs。
 public sealed record WriteErrorResponse(
-    [property: JsonPropertyName("message")] string? Message);
+    [property: JsonPropertyName("message")] string? Message,
+    [property: JsonPropertyName("validationErrors")] Dictionary<string, string[]>? ValidationErrors = null);
 
 // 批量操作请求体（镜像 Vaultwarden CipherIdsData / MoveCipherData，camelCase）。
 public sealed class CipherIdsRequest

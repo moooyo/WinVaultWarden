@@ -8,7 +8,6 @@ public interface IReadonlyApiClient
     Task<ConfigResponse> GetConfigAsync(CancellationToken ct = default);
     Task<PreloginResponse> PreloginAsync(string email, CancellationToken ct = default);
     Task<ConnectTokenResult> ConnectTokenAsync(ConnectTokenRequest request, CancellationToken ct = default);
-    Task<TokenResponse> RefreshTokenAsync(string refreshToken, CancellationToken ct = default);
     Task<SyncResponse> GetSyncAsync(CancellationToken ct = default);
     Task<ListResponse<DeviceDto>> GetDevicesAsync(CancellationToken ct = default);
     Task<FolderDto> GetFolderAsync(string folderId, CancellationToken ct = default);

@@ -148,6 +148,26 @@ public class ApiWriteClientTests
             client.UpdateCipherAsync("c-1", SampleCipher(), TestContext.Current.CancellationToken));
 
         Assert.Equal("The client copy of this cipher is out of date. Resync the client and try again.", ex.Message);
+        Assert.Equal(HttpStatusCode.BadRequest, ex.StatusCode);
+        // 派生自 HttpRequestException:既有异常处理器行为不变。
+        Assert.IsAssignableFrom<HttpRequestException>(ex);
+    }
+
+    [Fact]
+    public async Task WriteError_400WithValidationErrors_PopulatesStatusAndValidationErrors()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"message":"The model state is invalid.","validationErrors":{"Name":["Name is required.","Name too long."]},"object":"error"}"""));
+        var client = NewClient(handler);
+
+        var ex = await Assert.ThrowsAsync<VaultWriteException>(() =>
+            client.CreateCipherAsync(SampleCipher(), TestContext.Current.CancellationToken));
+
+        Assert.Equal("The model state is invalid.", ex.Message);
+        Assert.Equal(HttpStatusCode.BadRequest, ex.StatusCode);
+        Assert.NotNull(ex.ValidationErrors);
+        Assert.Equal(["Name is required.", "Name too long."], ex.ValidationErrors!["Name"]);
     }
 
     [Fact]

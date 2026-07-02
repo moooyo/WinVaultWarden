@@ -19,7 +19,7 @@ public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendA
     public async Task<ConfigResponse> GetConfigAsync(CancellationToken ct = default)
     {
         var response = await _http.GetAsync(Url("api/config"), ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.ConfigResponse, ct);
     }
 
@@ -28,7 +28,7 @@ public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendA
         var response = await _http.PostAsJsonAsync(
             Url("identity/accounts/prelogin"), new PreloginRequest(email),
             ApiJsonContext.Default.PreloginRequest, ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.PreloginResponse, ct);
     }
 
@@ -48,25 +48,17 @@ public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendA
         return new ConnectTokenResult.Error(error?.ErrorDescription ?? error?.Error ?? response.ReasonPhrase ?? "Request failed");
     }
 
-    public async Task<TokenResponse> RefreshTokenAsync(string refreshToken, CancellationToken ct = default)
-    {
-        var result = await ConnectTokenAsync(ConnectTokenRequest.Refresh(refreshToken, "refresh", "WinVaultWarden"), ct);
-        return result is ConnectTokenResult.Success success
-            ? success.Token
-            : throw new HttpRequestException("Token refresh failed.");
-    }
-
     public async Task<SyncResponse> GetSyncAsync(CancellationToken ct = default)
     {
         var response = await _http.GetAsync(Url("api/sync?excludeDomains=true"), ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.SyncResponse, ct);
     }
 
     public async Task<ListResponse<DeviceDto>> GetDevicesAsync(CancellationToken ct = default)
     {
         var response = await _http.GetAsync(Url("api/devices"), ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.ListResponseDeviceDto, ct);
     }
 
@@ -116,7 +108,7 @@ public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendA
     public async Task<FolderDto> GetFolderAsync(string folderId, CancellationToken ct = default)
     {
         var response = await _http.GetAsync(Url($"api/folders/{folderId}"), ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.FolderDto, ct);
     }
 
@@ -125,14 +117,14 @@ public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendA
     public async Task<SendListResponse> GetSendsAsync(CancellationToken ct = default)
     {
         var response = await _http.GetAsync(Url("api/sends"), ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.SendListResponse, ct);
     }
 
     public async Task<SendResponseDto> GetSendAsync(string sendId, CancellationToken ct = default)
     {
         var response = await _http.GetAsync(Url($"api/sends/{sendId}"), ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.SendResponseDto, ct);
     }
 
@@ -191,7 +183,7 @@ public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendA
     public async Task<byte[]> DownloadSendFileBytesAsync(string downloadUrl, CancellationToken ct = default)
     {
         var response = await _http.GetAsync(Url(NormalizeServerPath(downloadUrl)), ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
@@ -200,7 +192,7 @@ public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendA
     public async Task<CipherDto> GetCipherAsync(string cipherId, CancellationToken ct = default)
     {
         var response = await _http.GetAsync(Url($"api/ciphers/{cipherId}"), ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.CipherDto, ct);
     }
 
@@ -232,7 +224,7 @@ public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendA
     public async Task<byte[]> DownloadAttachmentBytesAsync(string downloadUrl, CancellationToken ct = default)
     {
         var response = await _http.GetAsync(Url(NormalizeServerPath(downloadUrl)), ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
@@ -254,21 +246,21 @@ public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendA
     public async Task<ListResponse<EmergencyAccessGranteeDetailsDto>> GetTrustedAsync(CancellationToken ct = default)
     {
         var r = await _http.GetAsync(Url("api/emergency-access/trusted"), ct);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, ct);
         return await ReadJson(r, ApiJsonContext.Default.ListResponseEmergencyAccessGranteeDetailsDto, ct);
     }
 
     public async Task<ListResponse<EmergencyAccessGrantorDetailsDto>> GetGrantedAsync(CancellationToken ct = default)
     {
         var r = await _http.GetAsync(Url("api/emergency-access/granted"), ct);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, ct);
         return await ReadJson(r, ApiJsonContext.Default.ListResponseEmergencyAccessGrantorDetailsDto, ct);
     }
 
     public async Task<PublicKeyResponse> GetPublicKeyAsync(string userId, CancellationToken ct = default)
     {
         var r = await _http.GetAsync(Url($"api/users/{userId}/public-key"), ct);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, ct);
         return await ReadJson(r, ApiJsonContext.Default.PublicKeyResponse, ct);
     }
 
@@ -339,7 +331,7 @@ public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendA
     public async Task<TwoFactorProvidersResponse> GetProvidersAsync(CancellationToken ct = default)
     {
         var response = await _http.GetAsync(Url("api/two-factor"), ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.TwoFactorProvidersResponse, ct);
     }
 
@@ -382,7 +374,7 @@ public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendA
     public async Task<AuthRequestListResponse> GetPendingAsync(CancellationToken ct = default)
     {
         var response = await _http.GetAsync(Url("api/auth-requests/pending"), ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.AuthRequestListResponse, ct);
     }
 
@@ -399,7 +391,7 @@ public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendA
     public async Task<AuthRequestResponse> GetResponseAsync(string id, string code, CancellationToken ct = default)
     {
         var response = await _http.GetAsync(Url($"api/auth-requests/{id}/response?code={Uri.EscapeDataString(code)}"), ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.AuthRequestResponse, ct);
     }
 
@@ -442,7 +434,7 @@ public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendA
         var message = string.IsNullOrWhiteSpace(error?.Message)
             ? response.ReasonPhrase ?? "Vault write failed."
             : error.Message;
-        throw new VaultWriteException(message);
+        throw new VaultWriteException(response.StatusCode, message, error?.ValidationErrors);
     }
 
     private async Task SendWriteAsync<TBody>(
@@ -471,7 +463,7 @@ public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendA
         var message = string.IsNullOrWhiteSpace(error?.Message)
             ? response.ReasonPhrase ?? "Vault write failed."
             : error.Message;
-        throw new VaultWriteException(message);
+        throw new VaultWriteException(response.StatusCode, message, error?.ValidationErrors);
     }
 
     private Uri Url(string relativePath) =>
@@ -500,6 +492,31 @@ public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendA
             yield return new("two_factor_token", twoFactor.Token);
             yield return new("two_factor_remember", twoFactor.Remember ? "1" : "0");
         }
+    }
+
+    // 读/GET 路径统一错误契约:失败时解析服务端错误体(message),抛携带状态码与消息的
+    // VaultApiException(其派生自 HttpRequestException,现有异常处理器行为不变)。
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        if (response.IsSuccessStatusCode)
+            return;
+
+        string? serverMsg = null;
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync(ApiJsonContext.Default.WriteErrorResponse, ct);
+            serverMsg = body?.Message;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // 错误体不是可解析的 JSON(如代理返回的 HTML),回退 ReasonPhrase;
+            // 读取诊断体失败绝不能掩盖底层 HTTP 错误。取消需继续冒泡。
+        }
+
+        throw new VaultApiException(
+            response.StatusCode,
+            serverMsg,
+            $"请求失败 ({(int)response.StatusCode} {response.ReasonPhrase}): {serverMsg ?? response.ReasonPhrase}");
     }
 
     private static async Task<T> ReadJson<T>(HttpResponseMessage response, JsonTypeInfo<T> typeInfo, CancellationToken ct)
