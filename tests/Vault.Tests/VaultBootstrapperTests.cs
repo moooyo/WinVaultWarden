@@ -24,7 +24,7 @@ public class VaultBootstrapperTests
         api.SetBaseAddress("https://vault.example");
         var session = new VaultSession();
         session.SetUnlockedKey(userKey);
-        var bootstrapper = new VaultBootstrapper(api, new VaultDecryptor(crypto), session);
+        var bootstrapper = new VaultBootstrapper(new SyncService(api, new VaultDecryptor(crypto), session), api, session);
 
         await bootstrapper.BootstrapAsync("https://vault.example", TestContext.Current.CancellationToken);
 
@@ -49,7 +49,7 @@ public class VaultBootstrapperTests
         api.SetBaseAddress("https://vault.example");
         var session = new VaultSession();
         session.SetUnlockedKey(userKey);
-        var bootstrapper = new VaultBootstrapper(api, new VaultDecryptor(crypto), session);
+        var bootstrapper = new VaultBootstrapper(new SyncService(api, new VaultDecryptor(crypto), session), api, session);
 
         await bootstrapper.BootstrapAsync("https://vault.example", TestContext.Current.CancellationToken);
 

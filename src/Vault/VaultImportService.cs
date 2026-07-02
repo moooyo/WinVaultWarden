@@ -46,7 +46,7 @@ public sealed class VaultImportService : IVaultImportService
         var rels = data.Relations.Select(r => new ImportRelationship { Key = r.CipherIndex, Value = r.FolderIndex }).ToArray();
 
         await _api.ImportCiphersAsync(new ImportRequest { Ciphers = ciphers, Folders = folders, FolderRelationships = rels }, ct);
-        await _sync.SyncAsync(ct);
+        await ResyncAsync(ct);
 
         return data.Ciphers.Count;
     }
@@ -60,4 +60,22 @@ public sealed class VaultImportService : IVaultImportService
 
     private SymmetricCryptoKey RequireUserKey() =>
         _session.UserKey ?? throw new InvalidOperationException("Vault is locked.");
+
+    // 写后整库重同步:导入已在服务端成功,若刷新失败则本地快照可能过期。
+    // 包装为 VaultRefreshException 让上层区分"导入失败"与"导入成功但刷新失败"。
+    private async Task ResyncAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _sync.SyncAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new VaultRefreshException("导入已完成,但刷新本地数据失败,请手动刷新。", ex);
+        }
+    }
 }

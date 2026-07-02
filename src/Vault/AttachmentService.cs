@@ -52,7 +52,7 @@ public sealed class AttachmentService : IAttachmentService
             cipherId, new AttachmentUploadRequest(wrapped, encName, buffer.LongLength), ct);
         await _api.UploadAttachmentDataAsync(resp.Url, encName, buffer, ct);
 
-        await _sync.SyncAsync(ct);
+        await ResyncAsync(ct);
         return CurrentAttachments(cipherId);
     }
 
@@ -78,7 +78,7 @@ public sealed class AttachmentService : IAttachmentService
     {
         RequireUserKey();
         await _api.DeleteAttachmentAsync(cipherId, attachmentId, ct);
-        await _sync.SyncAsync(ct);
+        await ResyncAsync(ct);
         return CurrentAttachments(cipherId);
     }
 
@@ -88,4 +88,22 @@ public sealed class AttachmentService : IAttachmentService
 
     private SymmetricCryptoKey RequireUserKey() =>
         _session.UserKey ?? throw new InvalidOperationException("Vault is locked.");
+
+    // 写后整库重同步:写已在服务端成功,若刷新失败则本地快照可能过期。
+    // 包装为 VaultRefreshException 让上层区分"写失败"与"写成功但刷新失败"。
+    private async Task ResyncAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _sync.SyncAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new VaultRefreshException("附件已更新,但刷新本地数据失败,请手动刷新。", ex);
+        }
+    }
 }
