@@ -4,7 +4,6 @@ namespace Api;
 
 public interface IReadonlyApiClient
 {
-    void SetBaseAddress(string baseUrl);
     Task<ConfigResponse> GetConfigAsync(CancellationToken ct = default);
     Task<PreloginResponse> PreloginAsync(string email, CancellationToken ct = default);
     Task<ConnectTokenResult> ConnectTokenAsync(ConnectTokenRequest request, CancellationToken ct = default);

@@ -7,7 +7,7 @@ using Api.Dtos;
 
 namespace Api;
 
-public sealed class ApiClient : IReadonlyApiClient, IVaultWriteApiClient, ISendApiClient, IAttachmentApiClient, IAccountApiClient, ITwoFactorApiClient, IAuthRequestApiClient, IEmergencyAccessApiClient
+public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWriteApiClient, ISendApiClient, IAttachmentApiClient, IAccountApiClient, ITwoFactorApiClient, IAuthRequestApiClient, IEmergencyAccessApiClient
 {
     private readonly HttpClient _http;
     private Uri? _baseAddress;

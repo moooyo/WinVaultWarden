@@ -3,7 +3,7 @@ using Api.Dtos;
 
 namespace Vault.Tests;
 
-public sealed class FakeAccountApiClient : IAccountApiClient
+public sealed class FakeAccountApiClient : IAccountApiClient, IApiEndpointConfig
 {
     public ProfileUpdateRequest? Profile;
     public ChangePasswordRequest? Password;

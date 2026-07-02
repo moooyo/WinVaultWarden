@@ -28,7 +28,7 @@ public class RegisterServiceTests
     public async Task RegisterAsync_sends_correct_kdf_params()
     {
         var api = new FakeAccountApiClient();
-        var svc = new RegisterService(_crypto, api);
+        var svc = new RegisterService(_crypto, api, api);
 
         await svc.RegisterAsync(ServerUrl, Email, Name, Password, Hint, TestContext.Current.CancellationToken);
 
@@ -44,7 +44,7 @@ public class RegisterServiceTests
     public async Task RegisterAsync_sends_correct_identity_fields()
     {
         var api = new FakeAccountApiClient();
-        var svc = new RegisterService(_crypto, api);
+        var svc = new RegisterService(_crypto, api, api);
 
         await svc.RegisterAsync(ServerUrl, Email, Name, Password, Hint, TestContext.Current.CancellationToken);
 
@@ -59,7 +59,7 @@ public class RegisterServiceTests
     public async Task RegisterAsync_sends_correct_master_password_hash()
     {
         var api = new FakeAccountApiClient();
-        var svc = new RegisterService(_crypto, api);
+        var svc = new RegisterService(_crypto, api, api);
 
         await svc.RegisterAsync(ServerUrl, Email, Name, Password, Hint, TestContext.Current.CancellationToken);
 
@@ -77,7 +77,7 @@ public class RegisterServiceTests
     public async Task RegisterAsync_key_decrypts_to_64byte_user_key()
     {
         var api = new FakeAccountApiClient();
-        var svc = new RegisterService(_crypto, api);
+        var svc = new RegisterService(_crypto, api, api);
 
         await svc.RegisterAsync(ServerUrl, Email, Name, Password, Hint, TestContext.Current.CancellationToken);
 
@@ -97,7 +97,7 @@ public class RegisterServiceTests
     public async Task RegisterAsync_encrypted_private_key_matches_public_key()
     {
         var api = new FakeAccountApiClient();
-        var svc = new RegisterService(_crypto, api);
+        var svc = new RegisterService(_crypto, api, api);
 
         await svc.RegisterAsync(ServerUrl, Email, Name, Password, Hint, TestContext.Current.CancellationToken);
 
@@ -126,7 +126,7 @@ public class RegisterServiceTests
     public async Task RegisterAsync_server_error_throws_RegistrationException()
     {
         var api = new FakeAccountApiClient { Throw = new VaultWriteException("Registration not allowed") };
-        var svc = new RegisterService(_crypto, api);
+        var svc = new RegisterService(_crypto, api, api);
 
         var ex = await Assert.ThrowsAsync<RegistrationException>(() =>
             svc.RegisterAsync(ServerUrl, Email, Name, Password, Hint, TestContext.Current.CancellationToken));
@@ -139,7 +139,7 @@ public class RegisterServiceTests
     public async Task RegisterAsync_sets_base_address_without_trailing_slash()
     {
         var api = new FakeAccountApiClient();
-        var svc = new RegisterService(_crypto, api);
+        var svc = new RegisterService(_crypto, api, api);
 
         await svc.RegisterAsync("http://vault.example.com/", Email, Name, Password, Hint,
             TestContext.Current.CancellationToken);

@@ -23,8 +23,6 @@ public sealed class FakeAttachmentApiClient : IAttachmentApiClient
         new(AttachmentId: "att-new", Url: "/ciphers/c-1/attachment/att-new", FileUploadType: 0);
     public byte[] DownloadBytes { get; set; } = Array.Empty<byte>();
 
-    public void SetBaseAddress(string baseUrl) { /* no-op in fake */ }
-
     public Task<CipherDto> GetCipherAsync(string cipherId, CancellationToken ct = default)
     {
         Calls.Add("get-cipher");

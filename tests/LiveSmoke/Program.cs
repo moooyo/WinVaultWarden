@@ -50,11 +50,11 @@ var authHandler = new AuthHeaderHandler(
 };
 var http = new HttpClient(authHandler);
 var api = new ApiClient(http);
-refresher = new TokenRefreshService(api, session, tokenStore);
+refresher = new TokenRefreshService(api, api, session, tokenStore);
 
 var decryptor = new VaultDecryptor(crypto);
 var bootstrapper = new VaultBootstrapper(new SyncService(api, decryptor, session), api, session);
-var auth = new AuthService(api, crypto, session, tokenStore, bootstrapper);
+var auth = new AuthService(api, api, crypto, session, tokenStore, bootstrapper);
 var sync = new SyncService(api, decryptor, session);
 var encryptor = new CipherEncryptor(crypto);
 var writeService = new VaultWriteService(api, encryptor, sync, session);
@@ -685,7 +685,7 @@ async Task TestCipherType(string label, Cipher cipher, Func<Cipher, (bool ok, st
 // ── Registration helper: uses production Vault.RegisterService path ──────────
 async Task RegisterAsync()
 {
-    var registerService = new Vault.RegisterService(crypto, api);
+    var registerService = new Vault.RegisterService(crypto, api, api);
     try
     {
         await registerService.RegisterAsync(serverUrl, email, "WVW Smoke", password, null);
@@ -1138,10 +1138,10 @@ BuildStack(string url)
     { InnerHandler = new HttpClientHandler() };
     var h = new HttpClient(handler);
     var a = new ApiClient(h);
-    ref2 = new TokenRefreshService(a, s, ts);
+    ref2 = new TokenRefreshService(a, a, s, ts);
     var dec = new VaultDecryptor(c);
     var boot = new VaultBootstrapper(new SyncService(a, dec, s), a, s);
-    var auth2 = new AuthService(a, c, s, ts, boot);
+    var auth2 = new AuthService(a, a, c, s, ts, boot);
     var sync2 = new SyncService(a, dec, s);
     var enc2 = new CipherEncryptor(c);
     var write2 = new VaultWriteService(a, enc2, sync2, s);
@@ -1166,7 +1166,7 @@ async Task EmergencyAccessRoundTripAsync()
 
     // ── Step 1: Register A and B ────────────────────────────────────────────
     {
-        var regSvc = new Vault.RegisterService(crypto, api);
+        var regSvc = new Vault.RegisterService(crypto, api, api);
         foreach (var (em, label) in new[] { (emailA, "A"), (emailB, "B") })
         {
             try

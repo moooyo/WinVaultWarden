@@ -12,11 +12,13 @@ public sealed class RegisterService : IRegisterService
     private const int Iterations = 600_000;
     private readonly CryptoService _crypto;
     private readonly IAccountApiClient _api;
+    private readonly IApiEndpointConfig _apiConfig;
 
-    public RegisterService(CryptoService crypto, IAccountApiClient api)
+    public RegisterService(CryptoService crypto, IAccountApiClient api, IApiEndpointConfig apiConfig)
     {
         _crypto = crypto;
         _api = api;
+        _apiConfig = apiConfig;
     }
 
     public async Task RegisterAsync(
@@ -30,7 +32,7 @@ public sealed class RegisterService : IRegisterService
         ArgumentException.ThrowIfNullOrWhiteSpace(serverUrl);
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(password);
-        _api.SetBaseAddress(serverUrl.TrimEnd('/'));
+        _apiConfig.SetBaseAddress(serverUrl.TrimEnd('/'));
 
         var masterKey = _crypto.DeriveMasterKey(password, email, KdfType.Pbkdf2, Iterations, null, null);
         var userKeyBytes = RandomNumberGenerator.GetBytes(64);

@@ -33,8 +33,6 @@ public sealed class FakeTwoFactorApiClient : ITwoFactorApiClient
 
     // ---------- 实现 ----------
 
-    public void SetBaseAddress(string baseUrl) { }
-
     public Task<TwoFactorProvidersResponse> GetProvidersAsync(CancellationToken ct = default)
     {
         if (Throw is not null) throw Throw;

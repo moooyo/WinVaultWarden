@@ -35,7 +35,7 @@ public class TokenRefreshIntegrationTests
         using var pipeline = new HttpClient(authHandler) { BaseAddress = new Uri("https://vault.example/") };
         var api = new ApiClient(pipeline);
         api.SetBaseAddress("https://vault.example");
-        refresher = new TokenRefreshService(api, session, tokenStore);
+        refresher = new TokenRefreshService(api, api, session, tokenStore);
 
         var response = await pipeline.GetAsync("api/sync", TestContext.Current.CancellationToken);
 

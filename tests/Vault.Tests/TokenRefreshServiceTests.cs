@@ -16,7 +16,7 @@ public class TokenRefreshServiceTests
     private static TokenRefreshService Create(FakeHttpMessageHandler handler, VaultSession session, MemoryTokenStore tokenStore)
     {
         var api = new ApiClient(new HttpClient(handler));
-        return new TokenRefreshService(api, session, tokenStore);
+        return new TokenRefreshService(api, api, session, tokenStore);
     }
 
     private static MemoryTokenStore StoreWithSession()

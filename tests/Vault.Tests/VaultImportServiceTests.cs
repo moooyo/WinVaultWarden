@@ -14,8 +14,6 @@ public class VaultImportServiceTests
     {
         public ImportRequest? Last { get; private set; }
 
-        public void SetBaseAddress(string baseUrl) { }
-
         public Task CreateCipherAsync(CipherRequest request, CancellationToken ct = default) => throw new NotSupportedException();
         public Task UpdateCipherAsync(string cipherId, CipherRequest request, CancellationToken ct = default) => throw new NotSupportedException();
         public Task SoftDeleteCipherAsync(string cipherId, CancellationToken ct = default) => throw new NotSupportedException();

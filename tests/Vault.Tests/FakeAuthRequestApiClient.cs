@@ -33,8 +33,6 @@ public sealed class FakeAuthRequestApiClient : IAuthRequestApiClient
     public Exception? ThrowOnApprove { get; set; }
 
     // ── IAuthRequestApiClient ─────────────────────────────────────────────────
-    public void SetBaseAddress(string baseUrl) { /* no-op in fake */ }
-
     public Task<AuthRequestListResponse> GetPendingAsync(CancellationToken ct = default)
     {
         Calls.Add("get-pending");

@@ -7,8 +7,6 @@ namespace Api;
 // (3) 发起方轮询 GET response 等待审批结果。
 public interface IAuthRequestApiClient
 {
-    void SetBaseAddress(string baseUrl);
-
     // GET api/auth-requests/pending — 审批方拉取所有待处理的请求列表。
     Task<AuthRequestListResponse> GetPendingAsync(CancellationToken ct = default);
 

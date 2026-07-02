@@ -8,8 +8,6 @@ namespace Api;
 // 失败抛 VaultWriteException。
 public interface ITwoFactorApiClient
 {
-    void SetBaseAddress(string baseUrl);
-
     // GET api/two-factor — 获取账户所有已配置提供者的列表与启用状态。
     Task<TwoFactorProvidersResponse> GetProvidersAsync(CancellationToken ct = default);
 
