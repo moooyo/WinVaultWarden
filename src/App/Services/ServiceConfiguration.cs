@@ -47,6 +47,7 @@ public static class ServiceConfiguration
         services.AddSingleton<VaultDecryptor>();
         services.AddSingleton<AttachmentCryptoService>();
         services.AddSingleton<VaultBootstrapper>();
+        services.AddSingleton<VaultTimeoutService>();
 #if DEBUG
         services.AddSingleton<IDemoVaultSessionService, DemoVaultSessionService>();
 #endif

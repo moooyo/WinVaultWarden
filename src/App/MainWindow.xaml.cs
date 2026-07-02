@@ -30,6 +30,10 @@ public sealed partial class MainWindow : Window
     private bool _hasShownVault;
     private bool _isLoginWindow;
 
+    private readonly VaultTimeoutService _timeout =
+        global::App.App.Services.GetRequiredService<VaultTimeoutService>();
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _idleTimer;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -37,12 +41,71 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
         SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop();
 
+        _timeout.TimeoutRequested += OnTimeoutRequested;
+
+        _idleTimer = DispatcherQueue.CreateTimer();
+        _idleTimer.Interval = TimeSpan.FromSeconds(10);
+        _idleTimer.Tick += (_, _) => _timeout.Tick(
+            IdleTimeoutPolicy.MinutesForIndex(AppPreferences.Current.SessionTimeoutIndex),
+            IdleTimeoutPolicy.ActionForIndex(AppPreferences.Current.TimeoutActionIndex));
+
+        // 输入活动:挂到根内容(覆盖全窗口),handledEventsToo 以捕获子控件已处理事件。
+        if (Content is UIElement root)
+        {
+            root.AddHandler(UIElement.PointerMovedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => _timeout.NotifyActivity()), true);
+            root.AddHandler(UIElement.PointerPressedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => _timeout.NotifyActivity()), true);
+            root.AddHandler(UIElement.PointerWheelChangedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => _timeout.NotifyActivity()), true);
+            root.AddHandler(UIElement.KeyDownEvent, new Microsoft.UI.Xaml.Input.KeyEventHandler((_, _) => _timeout.NotifyActivity()), true);
+        }
+
+        // 最小化 → 立即锁定。
+        AppWindow.Changed += (_, _) =>
+        {
+            if (AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized })
+                _timeout.LockNow();
+        };
+
+        // 系统锁屏/切换会话 → 立即锁定(最佳努力:打包环境可能不触发)。
+        try
+        {
+            Microsoft.Win32.SystemEvents.SessionSwitch += OnSessionSwitch;
+            Closed += (_, _) =>
+            {
+                try { Microsoft.Win32.SystemEvents.SessionSwitch -= OnSessionSwitch; } catch { }
+            };
+        }
+        catch { /* 事件不可用则降级:其余触发照常 */ }
+
         // 给系统标题栏按钮(最小化/最大化/关闭)留出右侧空间,避免与自定义内容重叠。
         SizeChanged += (_, _) => UpdateCaptionPadding();
         UpdateCaptionPadding();
 
         Activated += OnFirstActivated;
         ShowLogin();
+    }
+
+    private async void OnTimeoutRequested(object? sender, VaultTimeoutAction action)
+    {
+        try
+        {
+            if (action == VaultTimeoutAction.Logout)
+            {
+                await global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
+                await global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync();
+            }
+            else
+            {
+                await global::App.App.Services.GetRequiredService<IAuthService>().LockAsync();
+            }
+        }
+        catch { /* 宁可多锁一次:即便 auth 调用失败也导航到登录/解锁屏 */ }
+        ShowLogin();
+    }
+
+    private void OnSessionSwitch(object sender, Microsoft.Win32.SessionSwitchEventArgs e)
+    {
+        if (e.Reason == Microsoft.Win32.SessionSwitchReason.SessionLock)
+            DispatcherQueue.TryEnqueue(() => _timeout.LockNow());
     }
 
     private void OnFirstActivated(object sender, WindowActivatedEventArgs args)
@@ -104,6 +167,9 @@ public sealed partial class MainWindow : Window
     // 登录前:隐藏导航壳,只显示登录页(占满整窗,标题栏仅保留品牌)。
     public void ShowLogin()
     {
+        _timeout.Stop();
+        _idleTimer?.Stop();
+
         ApplyLoginWindowLayout();
         Nav.Visibility = Visibility.Collapsed;
         LoginHost.Visibility = Visibility.Visible;
@@ -121,6 +187,9 @@ public sealed partial class MainWindow : Window
         ContentFrame.Navigate(typeof(VaultPage), "vault:allitems");
         // 保险库已就绪，启动 WebSocket 推送（最佳努力）。
         _ = global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StartAsync();
+
+        _timeout.Start();
+        _idleTimer?.Start();
     }
 
     private void ApplyLoginWindowLayout()

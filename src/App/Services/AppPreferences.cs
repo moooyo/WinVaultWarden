@@ -59,4 +59,10 @@ public sealed class AppPreferencesData
 
     /// <summary>本地保存的命名筛选视图(不同步服务端)。</summary>
     public List<SavedSearchViewData> SavedSearchViews { get; set; } = new();
+
+    /// <summary>会话超时 ComboBox 索引(0重启时..7永不)。默认 3=15分钟。</summary>
+    public int SessionTimeoutIndex { get; set; } = 3;
+
+    /// <summary>超时动作:0=锁定(默认),1=登出。</summary>
+    public int TimeoutActionIndex { get; set; }
 }

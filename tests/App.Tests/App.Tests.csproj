@@ -75,5 +75,7 @@
     <Compile Include="..\..\src\App\Services\AppPreferencesSavedSearchStore.cs" Link="Services\AppPreferencesSavedSearchStore.cs" />
     <Compile Include="..\..\src\App\Services\AttachmentSizePolicy.cs" Link="Services\AttachmentSizePolicy.cs" />
     <Compile Include="..\..\src\App\Services\AttachmentGlyph.cs" Link="Services\AttachmentGlyph.cs" />
+    <Compile Include="..\..\src\App\Services\IdleTimeoutPolicy.cs" Link="Services\IdleTimeoutPolicy.cs" />
+    <Compile Include="..\..\src\App\Services\VaultTimeoutService.cs" Link="Services\VaultTimeoutService.cs" />
   </ItemGroup>
 </Project>

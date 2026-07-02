@@ -16,10 +16,10 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ITwoFactorUiService? _twoFactorUi;
 
     [ObservableProperty]
-    public partial int SelectedSessionTimeoutIndex { get; set; }
+    public partial int SelectedSessionTimeoutIndex { get; set; } = AppPreferences.Current.SessionTimeoutIndex;
 
     [ObservableProperty]
-    public partial int SelectedTimeoutActionIndex { get; set; }
+    public partial int SelectedTimeoutActionIndex { get; set; } = AppPreferences.Current.TimeoutActionIndex;
 
     [ObservableProperty]
     public partial bool UsePinUnlock { get; set; }
@@ -73,6 +73,18 @@ public partial class SettingsViewModel : ObservableObject
     public partial bool IsBusy { get; set; }
 
     public bool HasOperationError => !string.IsNullOrEmpty(OperationError);
+
+    partial void OnSelectedSessionTimeoutIndexChanged(int value)
+    {
+        AppPreferences.Current.SessionTimeoutIndex = value;
+        AppPreferences.Save();
+    }
+
+    partial void OnSelectedTimeoutActionIndexChanged(int value)
+    {
+        AppPreferences.Current.TimeoutActionIndex = value;
+        AppPreferences.Save();
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
 
