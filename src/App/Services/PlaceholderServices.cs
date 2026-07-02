@@ -15,6 +15,9 @@ public sealed class AuthService : IAuthService
     public Task<AuthResult> UnlockAsync(string masterPassword, CancellationToken ct = default)
         => Task.FromResult<AuthResult>(new AuthResult.Failure("解锁服务尚未接入。"));
 
+    public Task<AuthResult> UnlockWithPinAsync(string pin, CancellationToken ct = default)
+        => Task.FromResult<AuthResult>(new AuthResult.Failure("PIN 解锁服务尚未接入。"));
+
     public Task LockAsync(CancellationToken ct = default) => Task.CompletedTask;
 
     public Task LogoutAsync(CancellationToken ct = default) => Task.CompletedTask;

@@ -134,6 +134,9 @@ public sealed class AuthService : IAuthService
         }
     }
 
+    public Task<AuthResult> UnlockWithPinAsync(string pin, CancellationToken ct = default)
+        => throw new NotImplementedException("PIN unlock is implemented in a later task.");
+
     public Task LockAsync(CancellationToken ct = default)
     {
         _session.Lock();
