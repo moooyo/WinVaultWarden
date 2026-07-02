@@ -28,8 +28,7 @@ public class RealSendUiServiceTests
         var read = new FakeSendService(
             CoreSend("s1", CoreSendType.Text, "口令"),
             CoreSend("s2", CoreSendType.File, "报告.pdf"));
-        var svc = new SendUiService(read, new FakeSendWriteService(), new FakeSendAccessService(),
-            serverUrl: "https://vault.example");
+        var svc = new SendUiService(read, new FakeSendWriteService(), new FakeSendAccessService());
 
         var items = await svc.GetSendsAsync(CancellationToken.None);
 
@@ -43,7 +42,7 @@ public class RealSendUiServiceTests
     public async Task CreateSendAsync_TextDraft_CallsSaveTextWithMappedDraftAndAbsoluteDeletionDate()
     {
         var write = new FakeSendWriteService();
-        var svc = new SendUiService(new FakeSendService(), write, new FakeSendAccessService(), "https://vault.example");
+        var svc = new SendUiService(new FakeSendService(), write, new FakeSendAccessService());
         var draft = SendEditorDraft.CreateDefault(AppSendType.Text);
         draft.Name = "一次性口令";
         draft.Text = "123456";
@@ -74,7 +73,7 @@ public class RealSendUiServiceTests
     public async Task CreateSendAsync_FileDraft_CallsSaveFileWithBytes()
     {
         var write = new FakeSendWriteService();
-        var svc = new SendUiService(new FakeSendService(), write, new FakeSendAccessService(), "https://vault.example");
+        var svc = new SendUiService(new FakeSendService(), write, new FakeSendAccessService());
         var draft = SendEditorDraft.CreateDefault(AppSendType.File);
         draft.Name = "合同.zip";
         draft.FileName = "合同.zip";
@@ -92,7 +91,7 @@ public class RealSendUiServiceTests
     public async Task DeleteSendAsync_DelegatesToWriteService()
     {
         var write = new FakeSendWriteService();
-        var svc = new SendUiService(new FakeSendService(), write, new FakeSendAccessService(), "https://vault.example");
+        var svc = new SendUiService(new FakeSendService(), write, new FakeSendAccessService());
 
         await svc.DeleteSendAsync("s9", CancellationToken.None);
 
@@ -114,8 +113,7 @@ public class RealSendUiServiceTests
                 DeletionDate = DateTimeOffset.Parse("2026-07-10T00:00:00Z"),
                 ShareUrl = expectedShareUrl,
             });
-        var svc = new SendUiService(coreRead, new FakeSendWriteService(), new FakeSendAccessService(),
-            serverUrl: "https://vault.example");
+        var svc = new SendUiService(coreRead, new FakeSendWriteService(), new FakeSendAccessService());
 
         var items = await svc.GetSendsAsync(CancellationToken.None);
 
@@ -128,7 +126,7 @@ public class RealSendUiServiceTests
     [Fact]
     public void CopyShareLink_ReturnsItemLink()
     {
-        var svc = new SendUiService(new FakeSendService(), new FakeSendWriteService(), new FakeSendAccessService(), "https://vault.example");
+        var svc = new SendUiService(new FakeSendService(), new FakeSendWriteService(), new FakeSendAccessService());
         var item = new SendListItem("s1", "n", AppSendType.Text, "del", "https://vault.example/#/send/acc/seed");
 
         Assert.Equal("https://vault.example/#/send/acc/seed", svc.CopyShareLink(item));
@@ -145,7 +143,7 @@ public class RealSendUiServiceTests
                 AccessId = "acc", Seed = new byte[16],
             },
         };
-        var svc = new SendUiService(new FakeSendService(), new FakeSendWriteService(), access, "https://vault.example");
+        var svc = new SendUiService(new FakeSendService(), new FakeSendWriteService(), access);
 
         var r = await svc.OpenReceivedLinkAsync("https://vault.example/#/send/acc/seed", null, CancellationToken.None);
 
@@ -159,7 +157,7 @@ public class RealSendUiServiceTests
     public async Task OpenReceivedLinkAsync_WrongPassword_ReturnsWrongPasswordResult()
     {
         var access = new FakeSendAccessService { ThrowUnauthorized = true };
-        var svc = new SendUiService(new FakeSendService(), new FakeSendWriteService(), access, "https://vault.example");
+        var svc = new SendUiService(new FakeSendService(), new FakeSendWriteService(), access);
 
         var r = await svc.OpenReceivedLinkAsync("https://vault.example/#/send/acc/seed", "bad", CancellationToken.None);
 

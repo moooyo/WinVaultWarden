@@ -14,14 +14,12 @@ public sealed class SendUiService : ISendUiService
     private readonly ISendService _read;
     private readonly ISendWriteService _write;
     private readonly ISendAccessService _access;
-    private readonly string _serverUrl;
 
-    public SendUiService(ISendService read, ISendWriteService write, ISendAccessService access, string serverUrl)
+    public SendUiService(ISendService read, ISendWriteService write, ISendAccessService access)
     {
         _read = read;
         _write = write;
         _access = access;
-        _serverUrl = serverUrl;
     }
 
     public async Task<IReadOnlyList<SendListItem>> GetSendsAsync(CancellationToken ct = default)
