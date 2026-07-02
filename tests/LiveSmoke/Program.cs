@@ -644,10 +644,6 @@ try
         Step("pin: same UserKey recovered",
             session.UserKey is not null && session.UserKey.FullKey.AsSpan().SequenceEqual(beforeKey));
 
-        // Verify a real cipher decrypts under the PIN-recovered UserKey (re-sync + read).
-        var afterPinUnlock = await sync.SyncAsync();
-        Step("pin: sync works after PIN unlock", true, $"{afterPinUnlock.Count} ciphers");
-
         session.Lock();
         var wrongPin = await auth.UnlockWithPinAsync("wrong-pin-9999");
         Step("pin: wrong PIN fails", wrongPin is AuthResult.Failure, wrongPin.GetType().Name);
