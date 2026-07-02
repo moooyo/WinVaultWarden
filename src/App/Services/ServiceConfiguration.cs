@@ -148,6 +148,11 @@ public static class ServiceConfiguration
                 sp.GetRequiredService<VaultSession>(),
                 sp.GetRequiredService<ITokenStore>(),
                 sp.GetRequiredService<ITokenRefresher>()));
+        // ── 导航服务 ──────────────────────────────────────────────────────────
+        // 单例:MainWindow 解析具体类型注入 Frame,页面解析接口下沉导航动作。
+        services.AddSingleton<FrameNavigationService>();
+        services.AddSingleton<INavigationService>(sp => sp.GetRequiredService<FrameNavigationService>());
+
         services.AddSingleton<NotificationsHost>(sp =>
         {
             var svc = sp.GetRequiredService<INotificationsService>();

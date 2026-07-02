@@ -29,12 +29,12 @@ public sealed partial class RegisterPage : Page
             // 注册成功：跳转到登录页，并预填服务器 + 邮箱
             var loginVm = global::App.App.Services.GetRequiredService<LoginViewModel>();
             loginVm.PrepareAccount(ViewModel.RegisteredServerUrl, ViewModel.RegisteredEmail);
-            Frame.Navigate(typeof(LoginPage));
+            global::App.App.Services.GetRequiredService<global::App.Services.INavigationService>().GoToLoginPage();
         }
     }
 
     private void OnBackToLoginClick(object sender, RoutedEventArgs e)
     {
-        Frame.Navigate(typeof(LoginPage));
+        global::App.App.Services.GetRequiredService<global::App.Services.INavigationService>().GoToLoginPage();
     }
 }

@@ -2,7 +2,11 @@ using App.ViewModels.Models;
 
 namespace App.Services;
 
-public static class VaultNavigationService
+/// <summary>
+/// 从过滤器节点构建文件夹导航项 DTO(<see cref="VaultFolderNavigationItem"/>)。
+/// 纯构建逻辑、不执行导航;实际页面导航由 <see cref="INavigationService"/> 负责。
+/// </summary>
+public static class VaultNavItemBuilder
 {
     private const string FolderGlyph = "\uE8B7";
 
