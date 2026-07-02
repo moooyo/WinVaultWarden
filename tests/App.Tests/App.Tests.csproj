@@ -78,5 +78,6 @@
     <Compile Include="..\..\src\App\Services\IdleTimeoutPolicy.cs" Link="Services\IdleTimeoutPolicy.cs" />
     <Compile Include="..\..\src\App\Services\VaultTimeoutService.cs" Link="Services\VaultTimeoutService.cs" />
     <Compile Include="..\..\src\App\Services\ClipboardClearPolicy.cs" Link="Services\ClipboardClearPolicy.cs" />
+    <Compile Include="..\..\src\App\Services\TrayPolicy.cs" Link="Services\TrayPolicy.cs" />
   </ItemGroup>
 </Project>

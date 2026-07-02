@@ -35,13 +35,13 @@ public partial class SettingsViewModel : ObservableObject
     public partial bool ShowIconsAndPasswordUrl { get; set; } = true;
 
     [ObservableProperty]
-    public partial bool ShowTrayIcon { get; set; } = true;
+    public partial bool ShowTrayIcon { get; set; } = AppPreferences.Current.ShowTrayIcon;
 
     [ObservableProperty]
-    public partial bool MinimizeToTray { get; set; }
+    public partial bool MinimizeToTray { get; set; } = AppPreferences.Current.MinimizeToTray;
 
     [ObservableProperty]
-    public partial bool CloseToTray { get; set; } = true;
+    public partial bool CloseToTray { get; set; } = AppPreferences.Current.CloseToTray;
 
     [ObservableProperty]
     public partial bool StartOnLogin { get; set; }
@@ -90,6 +90,29 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnSelectedClearClipboardIndexChanged(int value)
     {
         AppPreferences.Current.ClearClipboardIndex = value;
+        AppPreferences.Save();
+    }
+
+    /// <summary>ShowTrayIcon 变更时通知 UI（MainWindow）即时增删托盘图标。
+    /// 纯 BCL 事件，不引入 WinUI，故 SettingsViewModel 仍可编入无 WinUI 的 App.Tests。</summary>
+    public static event Action<bool>? ShowTrayIconSettingChanged;
+
+    partial void OnShowTrayIconChanged(bool value)
+    {
+        AppPreferences.Current.ShowTrayIcon = value;
+        AppPreferences.Save();
+        ShowTrayIconSettingChanged?.Invoke(value);
+    }
+
+    partial void OnMinimizeToTrayChanged(bool value)
+    {
+        AppPreferences.Current.MinimizeToTray = value;
+        AppPreferences.Save();
+    }
+
+    partial void OnCloseToTrayChanged(bool value)
+    {
+        AppPreferences.Current.CloseToTray = value;
         AppPreferences.Save();
     }
 

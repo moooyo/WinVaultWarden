@@ -1,4 +1,5 @@
-﻿using App.Views;
+﻿using App.Interop;
+using App.Views;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Extensions.DependencyInjection;
@@ -34,6 +35,10 @@ public sealed partial class MainWindow : Window
         global::App.App.Services.GetRequiredService<VaultTimeoutService>();
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _idleTimer;
 
+    private readonly IntPtr _hwnd;
+    private Services.TrayIconService? _tray;
+    private bool _realExit;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -58,11 +63,15 @@ public sealed partial class MainWindow : Window
             root.AddHandler(UIElement.KeyDownEvent, new Microsoft.UI.Xaml.Input.KeyEventHandler((_, _) => _timeout.NotifyActivity()), true);
         }
 
-        // 最小化 → 立即锁定。
+        // 最小化 → 立即锁定;若「最小化到托盘」则隐藏窗口(仍先锁定,更安全)。
         AppWindow.Changed += (_, _) =>
         {
             if (AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized })
+            {
                 _timeout.LockNow();
+                if (Services.TrayPolicy.ShouldHideOnMinimize(AppPreferences.Current.ShowTrayIcon, AppPreferences.Current.MinimizeToTray))
+                    AppWindow.Hide();
+            }
         };
 
         // 系统锁屏/切换会话 → 立即锁定(最佳努力:打包环境可能不触发)。
@@ -79,6 +88,31 @@ public sealed partial class MainWindow : Window
         // 给系统标题栏按钮(最小化/最大化/关闭)留出右侧空间,避免与自定义内容重叠。
         SizeChanged += (_, _) => UpdateCaptionPadding();
         UpdateCaptionPadding();
+
+        // 系统托盘：取 HWND、建服务（回调恢复/锁定/退出），按设置增删图标。
+        _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        _tray = new Services.TrayIconService(_hwnd, RestoreFromTray, LockFromTray, ExitApp);
+        ApplyTrayIconSetting();
+        ViewModels.SettingsViewModel.ShowTrayIconSettingChanged += OnShowTrayIconSettingChanged;
+
+        // 关闭窗口 → 若「关闭到托盘」则取消关闭、隐藏（真实退出仅经托盘「退出」）。
+        AppWindow.Closing += (_, e) =>
+        {
+            if (!_realExit &&
+                Services.TrayPolicy.ShouldHideOnClose(AppPreferences.Current.ShowTrayIcon, AppPreferences.Current.CloseToTray))
+            {
+                e.Cancel = true;
+                AppWindow.Hide();
+            }
+        };
+
+        // 窗口关闭时清理托盘（NIM_DELETE + 还原 WndProc），并退订设置事件。
+        Closed += (_, _) =>
+        {
+            ViewModels.SettingsViewModel.ShowTrayIconSettingChanged -= OnShowTrayIconSettingChanged;
+            _tray?.Dispose();
+            _tray = null;
+        };
 
         Activated += OnFirstActivated;
         ShowLogin();
@@ -332,5 +366,56 @@ public sealed partial class MainWindow : Window
     {
         var dialog = new GeneratorDialog { XamlRoot = Nav.XamlRoot };
         await dialog.ShowAsync();
+    }
+
+    /// <summary>按 ShowTrayIcon 设置增删托盘图标。</summary>
+    public void ApplyTrayIconSetting()
+    {
+        if (_tray is null)
+            return;
+        if (AppPreferences.Current.ShowTrayIcon)
+            _tray.Show();
+        else
+            _tray.Hide();
+    }
+
+    private void OnShowTrayIconSettingChanged(bool value) =>
+        DispatcherQueue.TryEnqueue(ApplyTrayIconSetting);
+
+    /// <summary>从托盘恢复窗口：显示、还原最小化、置前台。供托盘左键/「打开」与单实例重定向调用。</summary>
+    public void RestoreFromTray()
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            AppWindow.Show(true);
+            (AppWindow.Presenter as OverlappedPresenter)?.Restore();
+            NativeMethods.SetForegroundWindow(_hwnd);
+        });
+    }
+
+    private void LockFromTray()
+    {
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                await global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
+                await global::App.App.Services.GetRequiredService<IAuthService>().LockAsync();
+            }
+            catch { /* 宁可多锁一次:即便调用失败也导航到登录/解锁屏 */ }
+            ShowLogin();
+            RestoreFromTray();
+        });
+    }
+
+    private void ExitApp()
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            _realExit = true;
+            _tray?.Dispose();
+            _tray = null;
+            Microsoft.UI.Xaml.Application.Current.Exit();
+        });
     }
 }

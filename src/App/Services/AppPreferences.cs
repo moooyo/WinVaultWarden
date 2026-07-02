@@ -80,4 +80,13 @@ public sealed class AppPreferencesData
 
     /// <summary>清空剪贴板 ComboBox 索引(0永不..6=5分)。默认 3=30秒。</summary>
     public int ClearClipboardIndex { get; set; } = 3;
+
+    /// <summary>是否显示系统托盘图标。默认开。</summary>
+    public bool ShowTrayIcon { get; set; } = true;
+
+    /// <summary>最小化时隐藏到托盘（仅当 ShowTrayIcon 为真才生效）。默认关。</summary>
+    public bool MinimizeToTray { get; set; }
+
+    /// <summary>关闭窗口时隐藏到托盘而非退出（仅当 ShowTrayIcon 为真才生效）。默认开。</summary>
+    public bool CloseToTray { get; set; } = true;
 }
