@@ -78,11 +78,13 @@
                     </ComboBox>
                 </tk:SettingsCard>
 
-                <tk:SettingsCard Header="使用 PIN 码解锁">
+                <tk:SettingsCard Header="PIN 解锁" Description="使用 PIN 码快速解锁密码库">
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE928;" />
                     </tk:SettingsCard.HeaderIcon>
-                    <ToggleSwitch IsOn="{x:Bind ViewModel.UsePinUnlock, Mode=TwoWay}" />
+                    <ToggleSwitch x:Name="PinToggle"
+                                  AutomationProperties.AutomationId="PinToggle"
+                                  Toggled="OnPinToggleToggled" />
                 </tk:SettingsCard>
 
                 <tk:SettingsCard Header="双重验证"

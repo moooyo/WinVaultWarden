@@ -150,6 +150,9 @@ public class LoginViewModelPrepareAccountTests
         public Task<AuthResult> UnlockAsync(string masterPassword, CancellationToken ct = default)
             => Task.FromResult<AuthResult>(new AuthResult.Success());
 
+        public Task<AuthResult> UnlockWithPinAsync(string pin, CancellationToken ct = default)
+            => Task.FromResult<AuthResult>(new AuthResult.Success());
+
         public Task LockAsync(CancellationToken ct = default) => Task.CompletedTask;
 
         public Task LogoutAsync(CancellationToken ct = default) => Task.CompletedTask;

@@ -625,6 +625,37 @@ try
         if (ioFolder is not null) await writeService.DeleteFolderAsync(ioFolder.Id);
         Step("io: cleanup", true);
     }
+
+    // ── 25. PIN unlock: set PIN → lock → unlock with PIN → wrong PIN fails ────
+    Console.WriteLine("[pin] PIN unlock");
+    {
+        var pinSvc = new PinService(crypto, session, tokenStore);
+        var beforeKey = session.UserKey!.FullKey.ToArray();   // snapshot the unlocked UserKey bytes
+
+        pinSvc.SetPin("smoke-pin-1234");
+        Step("pin: IsPinSet after SetPin", pinSvc.IsPinSet);
+
+        session.Lock();
+        Step("pin: locked before unlock", session.UserKey is null);
+
+        var pinUnlock = await auth.UnlockWithPinAsync("smoke-pin-1234");
+        Step("pin: UnlockWithPin succeeds", pinUnlock is AuthResult.Success, pinUnlock.GetType().Name +
+            (pinUnlock is AuthResult.Failure pf ? $": {pf.Message}" : ""));
+        Step("pin: same UserKey recovered",
+            session.UserKey is not null && session.UserKey.FullKey.AsSpan().SequenceEqual(beforeKey));
+
+        session.Lock();
+        var wrongPin = await auth.UnlockWithPinAsync("wrong-pin-9999");
+        Step("pin: wrong PIN fails", wrongPin is AuthResult.Failure, wrongPin.GetType().Name);
+        Step("pin: still locked after wrong PIN", session.UserKey is null);
+
+        // Re-unlock with the correct PIN so the account/session are left usable, then clear.
+        var relock = await auth.UnlockWithPinAsync("smoke-pin-1234");
+        Step("pin: re-unlock with correct PIN after failure", relock is AuthResult.Success, relock.GetType().Name);
+
+        pinSvc.ClearPin();
+        Step("pin: cleared", !pinSvc.IsPinSet);
+    }
 }
 catch (Exception ex)
 {

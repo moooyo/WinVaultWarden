@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace App.Views;
@@ -13,10 +14,21 @@ public sealed partial class SettingsPage : Page
 {
     public SettingsViewModel ViewModel { get; }
 
+    private bool _suppressPinToggle;
+
     public SettingsPage()
     {
         ViewModel = global::App.App.Services.GetRequiredService<SettingsViewModel>();
         InitializeComponent();
+    }
+
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+
+        _suppressPinToggle = true;
+        PinToggle.IsOn = ViewModel.IsPinSet;
+        _suppressPinToggle = false;
     }
 
     private void OnExportDiagnosticsClick(object sender, RoutedEventArgs e)
@@ -197,6 +209,87 @@ public sealed partial class SettingsPage : Page
 
             errorText.Text = ViewModel.OperationError;
             errorText.Visibility = Visibility.Visible;
+        }
+    }
+
+    // ── PIN 解锁 ────────────────────────────────────────────────────────────
+
+    private async void OnPinToggleToggled(object sender, RoutedEventArgs e)
+    {
+        if (_suppressPinToggle)
+            return;
+
+        if (PinToggle.IsOn)
+        {
+            var pin = await PromptSetPinAsync();
+            if (pin is null)
+            {
+                _suppressPinToggle = true;
+                PinToggle.IsOn = false;
+                _suppressPinToggle = false;
+                return;
+            }
+
+            ViewModel.SetPin(pin);
+        }
+        else
+        {
+            ViewModel.ClearPin();
+        }
+    }
+
+    private async Task<string?> PromptSetPinAsync()
+    {
+        var pinBox = new PasswordBox { PlaceholderText = "PIN（至少 4 位）", MinWidth = 320 };
+        AutomationProperties.SetAutomationId(pinBox, "SetPinBox");
+
+        var confirmBox = new PasswordBox { PlaceholderText = "确认 PIN" };
+        AutomationProperties.SetAutomationId(confirmBox, "SetPinConfirmBox");
+
+        var errorText = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
+        AutomationProperties.SetAutomationId(errorText, "SetPinErrorText");
+        errorText.SetValue(TextBlock.ForegroundProperty,
+            Application.Current.Resources["SystemFillColorCriticalBrush"]);
+
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(pinBox);
+        panel.Children.Add(confirmBox);
+        panel.Children.Add(errorText);
+
+        var dialog = new ContentDialog
+        {
+            Title = "设置 PIN",
+            Content = panel,
+            PrimaryButtonText = "设置",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+        };
+
+        while (true)
+        {
+            var result = await dialog.ShowAsync();
+            if (result != ContentDialogResult.Primary)
+                return null;
+
+            var pin = pinBox.Password;
+            var confirm = confirmBox.Password;
+
+            if (string.IsNullOrEmpty(pin) || pin.Length < 4)
+            {
+                errorText.Text = "PIN 至少需要 4 位。";
+                errorText.Visibility = Visibility.Visible;
+                continue;
+            }
+
+            if (pin != confirm)
+            {
+                errorText.Text = "两次输入的 PIN 不一致。";
+                errorText.Visibility = Visibility.Visible;
+                continue;
+            }
+
+            return pin;
         }
     }
 

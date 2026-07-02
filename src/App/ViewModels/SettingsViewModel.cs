@@ -14,6 +14,7 @@ public partial class SettingsViewModel : ObservableObject
 {
     private readonly IAccountUiService? _accountUi;
     private readonly ITwoFactorUiService? _twoFactorUi;
+    private readonly IPinService? _pin;
 
     [ObservableProperty]
     public partial int SelectedSessionTimeoutIndex { get; set; } = AppPreferences.Current.SessionTimeoutIndex;
@@ -103,16 +104,25 @@ public partial class SettingsViewModel : ObservableObject
 
     public SettingsViewModel(ITwoFactorUiService twoFactorUi) => _twoFactorUi = twoFactorUi;
 
-    public SettingsViewModel(IAccountUiService accountUi, ITwoFactorUiService twoFactorUi)
+    public SettingsViewModel(IPinService pin) => _pin = pin;
+
+    public SettingsViewModel(IAccountUiService accountUi, ITwoFactorUiService twoFactorUi, IPinService? pin = null)
     {
         _accountUi = accountUi;
         _twoFactorUi = twoFactorUi;
+        _pin = pin;
     }
 
     public string AccountEmail => _accountUi?.GetAccount().Email ?? string.Empty;
     public string AccountServer => _accountUi?.GetAccount().ServerUrl ?? string.Empty;
     public string AccountInitial => _accountUi?.GetAccount().Initial ?? string.Empty;
     public string KdfSummary => _accountUi?.GetAccount().KdfSummary ?? string.Empty;
+
+    // ── PIN 解锁 ─────────────────────────────────────────────────────────────
+
+    public bool IsPinSet => _pin?.IsPinSet ?? false;
+    public void SetPin(string pin) => _pin?.SetPin(pin);
+    public void ClearPin() => _pin?.ClearPin();
 
     // ── 账户操作 ─────────────────────────────────────────────────────────────
 

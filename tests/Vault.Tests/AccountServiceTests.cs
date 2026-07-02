@@ -325,6 +325,9 @@ public sealed class FakeAuthService : IAuthService
     public Task<AuthResult> UnlockAsync(string masterPassword, CancellationToken ct = default)
         => Task.FromResult<AuthResult>(new AuthResult.Failure("not implemented"));
 
+    public Task<AuthResult> UnlockWithPinAsync(string pin, CancellationToken ct = default)
+        => Task.FromResult<AuthResult>(new AuthResult.Failure("not implemented"));
+
     public Task LockAsync(CancellationToken ct = default) => Task.CompletedTask;
 
     public Task LogoutAsync(CancellationToken ct = default)
