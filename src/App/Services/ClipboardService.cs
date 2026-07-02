@@ -16,7 +16,7 @@ public sealed class ClipboardService : IClipboardService
         Clipboard.SetContent(dp);
     }
 
-    public void SetSecretText(string text, int autoClearSeconds = 30)
+    public void SetSecretText(string text, int? autoClearSeconds = null)
     {
         var dp = new DataPackage();
         dp.SetText(text);
@@ -28,7 +28,9 @@ public sealed class ClipboardService : IClipboardService
 
         // 取消上一个尚未触发的清除定时器。
         _clearTimer?.Stop();
-        if (autoClearSeconds <= 0)
+
+        var seconds = autoClearSeconds ?? ClipboardClearPolicy.SecondsForIndex(AppPreferences.Current.ClearClipboardIndex);
+        if (seconds <= 0)
             return;
 
         var dispatcher = DispatcherQueue.GetForCurrentThread();
@@ -36,7 +38,7 @@ public sealed class ClipboardService : IClipboardService
             return;
 
         _clearTimer = dispatcher.CreateTimer();
-        _clearTimer.Interval = TimeSpan.FromSeconds(autoClearSeconds);
+        _clearTimer.Interval = TimeSpan.FromSeconds(seconds);
         _clearTimer.IsRepeating = false;
         _clearTimer.Tick += (timer, _) =>
         {
