@@ -15,7 +15,7 @@ public static class AppPreferences
         "preferences.json");
 
     private static readonly Lock InitLock = new();
-    private static AppPreferencesData? _data;
+    private static volatile AppPreferencesData? _data;
 
     public static AppPreferencesData Current
     {
