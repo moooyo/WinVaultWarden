@@ -211,6 +211,50 @@
                                 HorizontalAlignment="Stretch" />
                     </StackPanel>
 
+                    <StackPanel x:Name="LoginPinUnlockStage"
+                                Margin="0,18,0,0"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsPinUnlockStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Width="34"
+                                    Height="34"
+                                    CornerRadius="17"
+                                    Background="{ThemeResource AccentFillColorSecondaryBrush}">
+                                <TextBlock Text="{x:Bind ViewModel.AccountInitial, Mode=OneWay}"
+                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                            <StackPanel Grid.Column="1"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind ViewModel.AccountSummary, Mode=OneWay}"
+                                           FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind ViewModel.ServerSummary, Mode=OneWay}"
+                                           Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Grid>
+
+                        <PasswordBox x:Name="PinBox"
+                                     AutomationProperties.AutomationId="PinBox"
+                                     Header="PIN"
+                                     MinHeight="38"
+                                     InputScope="NumericPin"
+                                     Password="{x:Bind ViewModel.Pin, Mode=TwoWay}" />
+
+                        <HyperlinkButton x:Name="UseMasterPasswordButton"
+                                         AutomationProperties.AutomationId="UseMasterPasswordButton"
+                                         Content="用主密码解锁"
+                                         HorizontalAlignment="Center"
+                                         Command="{x:Bind ViewModel.UseMasterPasswordCommand, Mode=OneWay}" />
+                    </StackPanel>
+
                     <Button x:Name="PrimaryAuthButton"
                             Margin="0,18,0,0"
                             Click="OnLogin"
