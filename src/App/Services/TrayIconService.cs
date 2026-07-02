@@ -171,6 +171,9 @@ internal sealed unsafe class TrayIconService : IDisposable
                 self.ShowMenu();
             return IntPtr.Zero;
         }
-        return NativeMethods.CallWindowProc(self?._origWndProc ?? IntPtr.Zero, hWnd, msg, wParam, lParam);
+        var prev = self?._origWndProc ?? IntPtr.Zero;
+        return prev != IntPtr.Zero
+            ? NativeMethods.CallWindowProc(prev, hWnd, msg, wParam, lParam)
+            : NativeMethods.DefWindowProc(hWnd, msg, wParam, lParam);
     }
 }

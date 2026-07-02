@@ -72,6 +72,9 @@ internal static unsafe partial class NativeMethods
     [LibraryImport("user32.dll", EntryPoint = "CallWindowProcW")]
     public static partial IntPtr CallWindowProc(IntPtr lpPrevWndFunc, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
+    [LibraryImport("user32.dll", EntryPoint = "DefWindowProcW")]
+    public static partial IntPtr DefWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
     [LibraryImport("user32.dll")]
     public static partial IntPtr CreatePopupMenu();
 
