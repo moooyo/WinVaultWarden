@@ -1,13 +1,12 @@
 using System.Security.Cryptography;
 using System.Text;
-using Core.Abstractions;
 using Core.Enums;
 using Konscious.Security.Cryptography;
 
 namespace Crypto;
 
 // Bitwarden 加密链实现。严格遵循安全白皮书 + 独立实现核实。
-public sealed class CryptoService : ICryptoService
+public sealed class CryptoService
 {
     public byte[] DeriveMasterKey(string password, string email, KdfType kdfType, int iterations, int? memoryMiB, int? parallelism)
     {

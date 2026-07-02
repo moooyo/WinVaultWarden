@@ -18,7 +18,6 @@ public static class ServiceConfiguration
         var services = new ServiceCollection();
 
         services.AddSingleton<VaultSession>();
-        services.AddSingleton<ICryptoService, CryptoService>();
         services.AddSingleton<CryptoService>();
         services.AddSingleton<ITokenStore, DpapiTokenStore>();
         services.AddSingleton(sp =>
@@ -33,7 +32,6 @@ public static class ServiceConfiguration
             return new HttpClient(handler);
         });
         services.AddSingleton<ApiClient>();
-        services.AddSingleton<IApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<IReadonlyApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<IVaultWriteApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<ISendApiClient>(sp => sp.GetRequiredService<ApiClient>());
@@ -51,6 +49,8 @@ public static class ServiceConfiguration
 #if DEBUG
         services.AddSingleton<IDemoVaultSessionService, DemoVaultSessionService>();
 #endif
+        // 必须单例:401 并发去重依赖 TokenRefreshService 实例级 SemaphoreSlim + 双检
+        // (见 Vault/TokenRefreshService.cs)。改为 transient 会让每个 401 各自刷新,破坏去重。
         services.AddSingleton<ITokenRefresher, Vault.TokenRefreshService>();
         services.AddSingleton<IAuthService, Vault.AuthService>();
         services.AddSingleton<ISyncService, Vault.SyncService>();
