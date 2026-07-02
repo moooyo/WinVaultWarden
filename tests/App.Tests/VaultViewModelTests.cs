@@ -48,7 +48,7 @@ public class MockVaultUiServiceTests
     {
         var filters = new MockVaultUiService().GetFilters();
 
-        var folders = VaultNavigationService.BuildFolderItems(filters);
+        var folders = VaultNavItemBuilder.BuildFolderItems(filters);
 
         Assert.NotEmpty(folders);
         Assert.All(folders, f => Assert.StartsWith("vault:folder:", f.Tag, StringComparison.Ordinal));
@@ -63,7 +63,7 @@ public class MockVaultUiServiceTests
             new FilterNode { Label = "登录", Kind = FilterKind.Type, TypeFilter = VaultItemKind.Login },
         };
 
-        var folders = VaultNavigationService.BuildFolderItems(filters);
+        var folders = VaultNavItemBuilder.BuildFolderItems(filters);
 
         Assert.Empty(folders);
     }

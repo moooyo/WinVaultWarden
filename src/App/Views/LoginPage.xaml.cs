@@ -88,6 +88,6 @@ public sealed partial class LoginPage : Page
 
     private void OnGoToRegisterClick(object sender, RoutedEventArgs e)
     {
-        Frame.Navigate(typeof(RegisterPage));
+        global::App.App.Services.GetRequiredService<global::App.Services.INavigationService>().GoToRegister();
     }
 }

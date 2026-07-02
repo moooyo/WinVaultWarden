@@ -690,7 +690,7 @@ public sealed partial class SettingsPage : Page
 
     private void OnEmergencyAccessCardClick(object sender, RoutedEventArgs e)
     {
-        Frame.Navigate(typeof(EmergencyAccessPage));
+        global::App.App.Services.GetRequiredService<global::App.Services.INavigationService>().GoToEmergencyAccess();
     }
 
     // ── 成功后导航到锁定/登录页 ──────────────────────────────────────────────

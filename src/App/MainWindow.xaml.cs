@@ -35,6 +35,10 @@ public sealed partial class MainWindow : Window
         global::App.App.Services.GetRequiredService<VaultTimeoutService>();
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _idleTimer;
 
+    // 导航服务:集中所有 Frame 导航;构造时注入内容区(ContentFrame)与登录流(LoginFrame)两个 Frame。
+    private readonly FrameNavigationService _nav =
+        global::App.App.Services.GetRequiredService<FrameNavigationService>();
+
     private readonly IntPtr _hwnd;
     private Services.TrayIconService? _tray;
     private bool _realExit;
@@ -42,6 +46,8 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        // Frame 就绪后注入导航服务(须在任何导航如 ShowLogin 之前)。
+        _nav.Initialize(ContentFrame, LoginFrame);
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop();
@@ -160,7 +166,7 @@ public sealed partial class MainWindow : Window
     private void PopulateFolderNavigation()
     {
         var vaultService = global::App.App.Services.GetRequiredService<IVaultUiService>();
-        var folders = VaultNavigationService.BuildFolderItems(vaultService.GetFilters());
+        var folders = VaultNavItemBuilder.BuildFolderItems(vaultService.GetFilters());
         FoldersNavItem.MenuItems.Clear();
         FoldersNavItem.Visibility = folders.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
 
@@ -207,7 +213,7 @@ public sealed partial class MainWindow : Window
         ApplyLoginWindowLayout();
         Nav.Visibility = Visibility.Collapsed;
         LoginHost.Visibility = Visibility.Visible;
-        LoginFrame.Navigate(typeof(LoginPage));
+        _nav.GoToLoginPage();
     }
 
     // 登录成功:显示主导航壳。
@@ -218,7 +224,7 @@ public sealed partial class MainWindow : Window
         LoginHost.Visibility = Visibility.Collapsed;
         Nav.Visibility = Visibility.Visible;
         Nav.SelectedItem = AllItemsNavItem;
-        ContentFrame.Navigate(typeof(VaultPage), "vault:allitems");
+        _nav.GoToVault("vault:allitems");
         // 保险库已就绪，启动 WebSocket 推送（最佳努力）。
         _ = global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StartAsync();
 
@@ -318,13 +324,13 @@ public sealed partial class MainWindow : Window
 
         if (tag.StartsWith("vault:", StringComparison.Ordinal))
         {
-            ContentFrame.Navigate(typeof(VaultPage), tag);
+            _nav.GoToVault(tag);
             return;
         }
 
         if (tag.StartsWith("send:", StringComparison.Ordinal))
         {
-            ContentFrame.Navigate(typeof(SendPage), tag);
+            _nav.GoToSend(tag);
             return;
         }
 
@@ -334,13 +340,13 @@ public sealed partial class MainWindow : Window
                 await ShowGeneratorDialogAsync();
                 break;
             case "settings":
-                ContentFrame.Navigate(typeof(SettingsPage));
+                _nav.GoToSettings();
                 break;
             case "devices":
-                ContentFrame.Navigate(typeof(DevicesPage));
+                _nav.GoToDevices();
                 break;
             case "reports":
-                ContentFrame.Navigate(typeof(SecurityReportPage));
+                _nav.GoToSecurityReport();
                 break;
             case "lock":
                 await global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
@@ -357,7 +363,7 @@ public sealed partial class MainWindow : Window
                 }
                 break;
             case "io":
-                ContentFrame.Navigate(typeof(ImportExportPage));
+                _nav.GoToImportExport();
                 break;
         }
     }

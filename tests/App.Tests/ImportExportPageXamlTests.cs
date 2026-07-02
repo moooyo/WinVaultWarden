@@ -21,6 +21,9 @@ public class ImportExportPageXamlTests
 
     private static string LoadMainWindowCode() => File.ReadAllText(RepoRootFile(Path.Combine("src", "App", "MainWindow.xaml.cs")));
 
+    private static string LoadFrameNavServiceCode() =>
+        File.ReadAllText(RepoRootFile(Path.Combine("src", "App", "Services", "FrameNavigationService.cs")));
+
     // ── 导出区 ───────────────────────────────────────────────────────────────
 
     [Fact]
@@ -117,11 +120,19 @@ public class ImportExportPageXamlTests
     [Fact]
     public void MainWindow_IoCase_NavigatesToImportExportPage()
     {
+        // P2-2:io 分支经 INavigationService 下沉导航。校验行为契约不变:
+        // 1) io case 调用 _nav.GoToImportExport();
+        // 2) FrameNavigationService.GoToImportExport 映射到 typeof(ImportExportPage)。
         var code = LoadMainWindowCode();
         var ioCaseIndex = code.IndexOf("case \"io\":", StringComparison.Ordinal);
         Assert.True(ioCaseIndex >= 0, "case \"io\": not found in MainWindow.xaml.cs");
 
         var snippet = code.Substring(ioCaseIndex, Math.Min(200, code.Length - ioCaseIndex));
-        Assert.Contains("ContentFrame.Navigate(typeof(ImportExportPage))", snippet);
+        Assert.Contains("_nav.GoToImportExport()", snippet);
+
+        var navCode = LoadFrameNavServiceCode();
+        var goToIndex = navCode.IndexOf("GoToImportExport", StringComparison.Ordinal);
+        Assert.True(goToIndex >= 0, "GoToImportExport not found in FrameNavigationService.cs");
+        Assert.Contains("typeof(ImportExportPage)", navCode.Substring(goToIndex, Math.Min(120, navCode.Length - goToIndex)));
     }
 }
