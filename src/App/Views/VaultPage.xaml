@@ -288,6 +288,24 @@
                         Click="OnSaveCurrentViewClick"
                         AutomationProperties.Name="保存当前视图"
                         AutomationProperties.AutomationId="VaultSaveCurrentViewButton" />
+
+                <InfoBar Severity="Informational" IsClosable="False" IsOpen="True"
+                         Message="回收站中的项目不计入密码库，可恢复或永久删除。"
+                         Visibility="{x:Bind ViewModel.IsTrashFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+
+                <Grid Visibility="{x:Bind ViewModel.IsTrashFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                      ColumnSpacing="8" Margin="0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{x:Bind ViewModel.TrashHeader, Mode=OneWay}" VerticalAlignment="Center"
+                               Style="{StaticResource SectionHeaderTextBlockStyle}" />
+                    <Button Grid.Column="1" Content="清空回收站" Click="OnEmptyRecycleBinClick"
+                            Visibility="{x:Bind ViewModel.CanEmptyRecycleBin, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                            AutomationProperties.Name="清空回收站"
+                            AutomationProperties.AutomationId="VaultEmptyRecycleBinButton" />
+                </Grid>
             </StackPanel>
 
             <ListView Grid.Row="5"
@@ -447,6 +465,10 @@
                            TextAlignment="Center"
                            HorizontalAlignment="Center" />
             </StackPanel>
+
+            <TextBlock Grid.Row="5" Text="回收站为空" Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                       Margin="0,8" HorizontalAlignment="Center"
+                       Visibility="{x:Bind ViewModel.IsTrashEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
         </Grid>
 
         <!-- 详情 -->

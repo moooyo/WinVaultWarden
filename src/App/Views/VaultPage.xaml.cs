@@ -289,6 +289,15 @@ public sealed partial class VaultPage : Page
     private Task<bool> ConfirmAsync(string title, string message, string primaryText) =>
         DialogHelper.ConfirmAsync(XamlRoot, title, message, primaryText);
 
+    private async void OnEmptyRecycleBinClick(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.HasTrashItems)
+            return;
+        if (await ConfirmAsync("清空回收站",
+                $"确定永久删除回收站中的全部 {ViewModel.TrashCount} 项？此操作无法撤销。", "永久删除"))
+            await ViewModel.EmptyRecycleBinCommand.ExecuteAsync(null);
+    }
+
     private async Task<string?> PromptTextAsync(string title, string placeholder, string initial)
     {
         var input = new TextBox { PlaceholderText = placeholder, Text = initial };
