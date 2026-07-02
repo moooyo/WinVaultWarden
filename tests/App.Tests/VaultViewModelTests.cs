@@ -80,7 +80,7 @@ public class VaultViewModelTests
         public int PlainCount { get; private set; }
 
         public void SetText(string text) { Text = text; PlainCount++; }
-        public void SetSecretText(string text, int autoClearSeconds = 30) { Text = text; SecretCount++; }
+        public void SetSecretText(string text, int? autoClearSeconds = null) { Text = text; SecretCount++; }
     }
 
     [Fact]
