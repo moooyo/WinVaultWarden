@@ -25,7 +25,7 @@ public partial class SettingsViewModel : ObservableObject
     public partial bool UsePinUnlock { get; set; }
 
     [ObservableProperty]
-    public partial int SelectedClearClipboardIndex { get; set; }
+    public partial int SelectedClearClipboardIndex { get; set; } = AppPreferences.Current.ClearClipboardIndex;
 
     [ObservableProperty]
     public partial bool MinimizeOnCopy { get; set; }
@@ -83,6 +83,12 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnSelectedTimeoutActionIndexChanged(int value)
     {
         AppPreferences.Current.TimeoutActionIndex = value;
+        AppPreferences.Save();
+    }
+
+    partial void OnSelectedClearClipboardIndexChanged(int value)
+    {
+        AppPreferences.Current.ClearClipboardIndex = value;
         AppPreferences.Save();
     }
 

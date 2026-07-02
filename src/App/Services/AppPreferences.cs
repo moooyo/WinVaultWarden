@@ -14,9 +14,21 @@ public static class AppPreferences
         "WinVaultWarden",
         "preferences.json");
 
+    private static readonly Lock InitLock = new();
     private static AppPreferencesData? _data;
 
-    public static AppPreferencesData Current => _data ??= Load();
+    public static AppPreferencesData Current
+    {
+        get
+        {
+            if (_data is not null)
+                return _data;
+            lock (InitLock)
+            {
+                return _data ??= Load();
+            }
+        }
+    }
 
     private static AppPreferencesData Load()
     {
@@ -65,4 +77,7 @@ public sealed class AppPreferencesData
 
     /// <summary>超时动作:0=锁定(默认),1=登出。</summary>
     public int TimeoutActionIndex { get; set; }
+
+    /// <summary>清空剪贴板 ComboBox 索引(0永不..6=5分)。默认 3=30秒。</summary>
+    public int ClearClipboardIndex { get; set; } = 3;
 }
