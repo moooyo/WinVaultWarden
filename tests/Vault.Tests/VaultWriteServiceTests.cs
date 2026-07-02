@@ -102,6 +102,44 @@ public class VaultWriteServiceTests
     }
 
     [Fact]
+    public async Task SaveCipher_WriteSucceedsButResyncFails_ThrowsVaultRefreshException()
+    {
+        // 写已在服务端成功(FakeWriteApi 记录了 create),但随后的整库同步抛错 →
+        // 必须包装为 VaultRefreshException(而非裸传底层异常),让上层区分"写成功但刷新失败"。
+        var session = new VaultSession();
+        session.SetUnlockedKey(new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray()));
+        var innerEx = new HttpRequestException("network down");
+        var svc = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), new ThrowingSync(innerEx), session);
+
+        var ex = await Assert.ThrowsAsync<VaultRefreshException>(
+            () => svc.SaveCipherAsync(NewLogin(), TestContext.Current.CancellationToken));
+
+        Assert.Same(innerEx, ex.InnerException);
+        Assert.Equal("create", Assert.Single(_api.Calls)); // 写入确实发生了
+    }
+
+    [Fact]
+    public async Task SaveCipher_ResyncCancelled_PropagatesCancellationNotWrapped()
+    {
+        // 取消须原样冒泡(不能被包装成 VaultRefreshException)。
+        var session = new VaultSession();
+        session.SetUnlockedKey(new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray()));
+        var svc = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()),
+            new ThrowingSync(new OperationCanceledException()), session);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => svc.SaveCipherAsync(NewLogin(), CancellationToken.None));
+    }
+
+    private sealed class ThrowingSync : ISyncService
+    {
+        private readonly Exception _ex;
+        public ThrowingSync(Exception ex) => _ex = ex;
+        public Task<IReadOnlyList<Cipher>> SyncAsync(CancellationToken ct = default) => Task.FromException<IReadOnlyList<Cipher>>(_ex);
+    }
+
+
+    [Fact]
     public async Task SaveCipher_ExistingItem_UpdatesWithId()
     {
         await NewUnlockedService().SaveCipherAsync(NewLogin("c-9"), TestContext.Current.CancellationToken);

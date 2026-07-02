@@ -6,26 +6,25 @@ namespace Vault;
 
 public sealed class VaultBootstrapper
 {
+    private readonly SyncService _sync;
     private readonly IReadonlyApiClient _api;
-    private readonly VaultDecryptor _decryptor;
     private readonly VaultSession _session;
 
-    public VaultBootstrapper(IReadonlyApiClient api, VaultDecryptor decryptor, VaultSession session)
+    public VaultBootstrapper(SyncService sync, IReadonlyApiClient api, VaultSession session)
     {
+        _sync = sync;
         _api = api;
-        _decryptor = decryptor;
         _session = session;
     }
 
     public async Task BootstrapAsync(string serverUrl, CancellationToken ct = default)
     {
-        var userKey = _session.UserKey ?? throw new InvalidOperationException("Vault is locked.");
+        // 解锁后的初始数据装载 = 整库同步(委托 SyncService.SyncCoreAsync,serverUrl 显式传入)
+        // + 拉取设备 + 状态机迁移。同步/解密逻辑不在此重复。
+        _ = _session.UserKey ?? throw new InvalidOperationException("Vault is locked.");
         _session.SetState(VaultState.Syncing);
 
-        var sync = await _api.GetSyncAsync(ct);
-        var vault = _decryptor.Decrypt(sync, userKey, serverUrl);
-        _session.SetSnapshot(vault);
-        _session.SetEncryptedPrivateKey(sync.Profile?.PrivateKey);
+        await _sync.SyncCoreAsync(serverUrl, ct);
 
         var devices = await _api.GetDevicesAsync(ct);
         _session.SetDevices(devices.Data.Select(MapDevice).ToArray());

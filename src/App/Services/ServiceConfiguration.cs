@@ -53,7 +53,8 @@ public static class ServiceConfiguration
         // (见 Vault/TokenRefreshService.cs)。改为 transient 会让每个 401 各自刷新,破坏去重。
         services.AddSingleton<ITokenRefresher, Vault.TokenRefreshService>();
         services.AddSingleton<IAuthService, Vault.AuthService>();
-        services.AddSingleton<ISyncService, Vault.SyncService>();
+        services.AddSingleton<Vault.SyncService>();
+        services.AddSingleton<ISyncService>(sp => sp.GetRequiredService<Vault.SyncService>());
         services.AddSingleton<IVaultService, Vault.VaultService>();
         services.AddSingleton<SendCryptoService>();
         services.AddSingleton<ISendService, Vault.SendService>();

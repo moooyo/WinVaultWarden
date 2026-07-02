@@ -53,7 +53,7 @@ var api = new ApiClient(http);
 refresher = new TokenRefreshService(api, session, tokenStore);
 
 var decryptor = new VaultDecryptor(crypto);
-var bootstrapper = new VaultBootstrapper(api, decryptor, session);
+var bootstrapper = new VaultBootstrapper(new SyncService(api, decryptor, session), api, session);
 var auth = new AuthService(api, crypto, session, tokenStore, bootstrapper);
 var sync = new SyncService(api, decryptor, session);
 var encryptor = new CipherEncryptor(crypto);
@@ -1140,7 +1140,7 @@ BuildStack(string url)
     var a = new ApiClient(h);
     ref2 = new TokenRefreshService(a, s, ts);
     var dec = new VaultDecryptor(c);
-    var boot = new VaultBootstrapper(a, dec, s);
+    var boot = new VaultBootstrapper(new SyncService(a, dec, s), a, s);
     var auth2 = new AuthService(a, c, s, ts, boot);
     var sync2 = new SyncService(a, dec, s);
     var enc2 = new CipherEncryptor(c);
