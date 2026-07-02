@@ -23,6 +23,7 @@
     <IsAotCompatible>true</IsAotCompatible>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>app.ico</ApplicationIcon>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
   <!-- Stage 2 Native AOT: 仅 Release 发布开启,保护 Debug 内循环不受自包含/AOT 影响。
        全量 Native AOT(隐含 trimming + single-file);自包含为 trimming 所必需(NETSDK1102)。
