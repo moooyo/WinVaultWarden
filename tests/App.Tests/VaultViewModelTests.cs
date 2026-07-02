@@ -786,6 +786,7 @@ public sealed class ThrowingVaultUiService : IVaultUiService
     public CipherDetail GetDetail(string id) => _inner.GetDetail(id);
     public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
     public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
+    public int SkippedCipherCount => 0;
     public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => throw new InvalidOperationException("boom");
     public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => throw new InvalidOperationException("boom");
     public Task RestoreCipherAsync(string id, CancellationToken ct = default) => throw new InvalidOperationException("boom");
@@ -804,6 +805,7 @@ public sealed class EmptyVaultUiService : IVaultUiService
     public CipherDetail GetDetail(string id) => _inner.GetDetail(id);
     public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
     public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
+    public int SkippedCipherCount => 0;
     public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => Task.FromResult("x");
     public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => Task.CompletedTask;
     public Task RestoreCipherAsync(string id, CancellationToken ct = default) => Task.CompletedTask;
@@ -970,5 +972,69 @@ public class VaultBulkCommandTests
         vm.ToggleSelectionModeCommand.Execute(null);    // 未选任何项
         await vm.SoftDeleteSelectedCommand.ExecuteAsync(null);
         Assert.True(vm.IsSelectionMode);                // 空选不退出
+    }
+}
+
+// 可配置跳过计数的假实现,验证 VaultViewModel 把"解密失败被跳过条目数"上报到 UI。
+public sealed class SkippedCipherVaultUiService : IVaultUiService
+{
+    private readonly MockVaultUiService _inner = new();
+    public int SkippedCipherCount { get; set; }
+
+    public IReadOnlyList<CipherListItem> GetItems() => _inner.GetItems();
+    public CipherDetail GetDetail(string id) => _inner.GetDetail(id);
+    public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
+    public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
+    public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => _inner.SaveCipherAsync(draft, editingId, ct);
+    public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => _inner.DeleteCipherAsync(id, permanent, ct);
+    public Task RestoreCipherAsync(string id, CancellationToken ct = default) => _inner.RestoreCipherAsync(id, ct);
+    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => _inner.SaveFolderAsync(folderId, name, ct);
+    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => _inner.DeleteFolderAsync(folderId, ct);
+    public Task SyncAsync(CancellationToken ct = default) => _inner.SyncAsync(ct);
+    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => _inner.MoveCiphersAsync(ids, folderId, ct);
+    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default) => _inner.DeleteCiphersAsync(ids, permanent, ct);
+    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) => _inner.RestoreCiphersAsync(ids, ct);
+}
+
+public class VaultSkippedCipherTests
+{
+    [Fact]
+    public void NoSkippedCiphers_HasSkippedCiphersIsFalse()
+    {
+        var vm = new VaultViewModel(new MockVaultUiService());
+
+        Assert.Equal(0, vm.SkippedCipherCount);
+        Assert.False(vm.HasSkippedCiphers);
+    }
+
+    [Fact]
+    public void SkippedCiphers_LoadedInConstructor_ShowsBannerWithCount()
+    {
+        var vm = new VaultViewModel(new SkippedCipherVaultUiService { SkippedCipherCount = 2 });
+
+        Assert.Equal(2, vm.SkippedCipherCount);
+        Assert.True(vm.HasSkippedCiphers);
+        Assert.Contains("2", vm.SkippedCipherMessage);
+    }
+
+    [Fact]
+    public void RefreshFromSnapshot_UpdatesSkippedCipherCount_AndNotifiesUi()
+    {
+        var service = new SkippedCipherVaultUiService();
+        var vm = new VaultViewModel(service);
+        var notified = new List<string?>();
+        vm.PropertyChanged += (_, e) => notified.Add(e.PropertyName);
+
+        Assert.False(vm.HasSkippedCiphers);
+
+        service.SkippedCipherCount = 3;
+        vm.RefreshFromSnapshot();
+
+        Assert.Equal(3, vm.SkippedCipherCount);
+        Assert.True(vm.HasSkippedCiphers);
+        Assert.Contains("3", vm.SkippedCipherMessage);
+        Assert.Contains(nameof(VaultViewModel.SkippedCipherCount), notified);
+        Assert.Contains(nameof(VaultViewModel.HasSkippedCiphers), notified);
+        Assert.Contains(nameof(VaultViewModel.SkippedCipherMessage), notified);
     }
 }

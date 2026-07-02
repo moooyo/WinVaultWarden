@@ -60,4 +60,23 @@ public class VaultSessionTests
         Assert.Empty(session.Devices);
         Assert.Equal(AccountInfo.Empty, session.Account);
     }
+
+    [Fact]
+    public void SetSnapshot_ExposesSkippedCipherCount_ResetOnLockAndClear()
+    {
+        var session = new VaultSession();
+        var account = new AccountInfo("me@example.com", "https://vault.example", "M", "PBKDF2 600000");
+
+        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 3));
+        Assert.Equal(3, session.SkippedCipherCount);
+
+        session.Lock();
+        Assert.Equal(0, session.SkippedCipherCount);
+
+        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 5));
+        Assert.Equal(5, session.SkippedCipherCount);
+
+        session.Clear();
+        Assert.Equal(0, session.SkippedCipherCount);
+    }
 }

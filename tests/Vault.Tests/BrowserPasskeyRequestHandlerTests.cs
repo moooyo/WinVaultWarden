@@ -252,5 +252,7 @@ public class BrowserPasskeyRequestHandlerTests
         public IReadOnlyList<DeviceInfo> Devices => [];
 
         public AccountInfo Account => AccountInfo.Empty;
+
+        public int SkippedCipherCount => 0;
     }
 }

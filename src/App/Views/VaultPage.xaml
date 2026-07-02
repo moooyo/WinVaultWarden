@@ -231,6 +231,11 @@
 
             <!-- 筛选栏:分面 ToggleButton + 排序 + 保存视图 + 保存/清除 -->
             <StackPanel Grid.Row="2" Spacing="8" Margin="0,4,0,0">
+                <InfoBar x:Name="VaultSkippedInfoBar"
+                         Severity="Informational"
+                         IsClosable="True"
+                         IsOpen="{x:Bind ViewModel.HasSkippedCiphers, Mode=OneWay}"
+                         Message="{x:Bind ViewModel.SkippedCipherMessage, Mode=OneWay}" />
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <ToggleButton Content="含TOTP"
                                   IsChecked="{x:Bind ViewModel.FacetTotp, Mode=TwoWay}"

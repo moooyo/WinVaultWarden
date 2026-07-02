@@ -402,6 +402,7 @@ public class SettingsViewModelTests
         public IReadOnlyList<DeviceInfo> Devices => [];
         public AccountInfo Account { get; } =
             new("test@example.com", "https://vault.example.com", "T", "PBKDF2 · 600000");
+        public int SkippedCipherCount => 0;
     }
 
     private sealed class FakeVaultService : IVaultService

@@ -29,6 +29,8 @@ public sealed class FakeFacetVaultUiService : IVaultUiService
 
     public CipherEditorDraft GetDraft(string id) => CipherEditorDraft.CreateDefault(VaultItemKind.Login);
 
+    public int SkippedCipherCount => 0;
+
     public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => Task.FromResult("x");
     public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => Task.CompletedTask;
     public Task RestoreCipherAsync(string id, CancellationToken ct = default) => Task.CompletedTask;

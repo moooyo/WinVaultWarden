@@ -29,6 +29,8 @@ public sealed class VaultUiService : IVaultUiService
         _sync = sync;
     }
 
+    public int SkippedCipherCount => _vault.Snapshot.SkippedCipherCount;
+
     public IReadOnlyList<CipherListItem> GetItems() => _vault.GetCiphers().Select(ToListItem).ToList();
 
     public CipherDetail GetDetail(string id) => ToDetail(_vault.GetCiphers().First(c => c.Id == id));
