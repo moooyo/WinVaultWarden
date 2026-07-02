@@ -11,6 +11,9 @@ public interface IVaultUiService
     IReadOnlyList<FilterNode> GetFilters();
     CipherEditorDraft GetDraft(string id);
 
+    // 解密同步时被跳过(无法解密)的条目数,供 UI 提示用户有条目被隐藏。
+    int SkippedCipherCount { get; }
+
     // 写入侧:每个方法 = 加密 → 写 API → 整库 re-sync(真实实现委托 IVaultWriteService)。
     Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default);
     Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default);
@@ -40,6 +43,8 @@ public sealed class MockVaultUiService : IVaultUiService
     private readonly HashSet<string> _deleted = new(StringComparer.Ordinal) { "6" };
     private readonly List<(string Id, string Name)> _folders = new() { ("f1", "文件夹1") };
     private int _nextId = 100;
+
+    public int SkippedCipherCount => 0;
 
     public IReadOnlyList<CipherListItem> GetItems() =>
         _details.Select(d => new CipherListItem

@@ -94,6 +94,15 @@ public partial class VaultViewModel : ObservableObject
     public bool HasOperationError => !string.IsNullOrEmpty(OperationError);
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSkippedCiphers))]
+    [NotifyPropertyChangedFor(nameof(SkippedCipherMessage))]
+    public partial int SkippedCipherCount { get; set; }
+
+    // 同步时有条目无法解密被跳过 → 提示用户这些条目已被隐藏。
+    public bool HasSkippedCiphers => SkippedCipherCount > 0;
+    public string SkippedCipherMessage => $"{SkippedCipherCount} 个条目无法解密，已隐藏";
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAttachmentBusy))]
     [NotifyPropertyChangedFor(nameof(IsNotAttachmentBusy))]
     public partial string AttachmentBusyText { get; set; } = string.Empty;
@@ -144,6 +153,7 @@ public partial class VaultViewModel : ObservableObject
         _savedStore = savedStore;
         foreach (var it in service.GetItems()) Items.Add(it);
         foreach (var f in service.GetFilters()) Filters.Add(f);
+        SkippedCipherCount = service.SkippedCipherCount;
         if (savedStore is not null)
             foreach (var v in savedStore.GetAll()) SavedViews.Add(v);
         SelectedFilter = Filters.FirstOrDefault();
@@ -546,6 +556,7 @@ public partial class VaultViewModel : ObservableObject
         ReloadFilters();
         // 保持当前选中项（若已被删除则自动清空）
         SelectById(SelectedItem?.Id);
+        SkippedCipherCount = _service.SkippedCipherCount;
     }
 
     [RelayCommand]

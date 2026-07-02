@@ -40,6 +40,21 @@ public class VaultPageStateXamlTests
         Assert.Contains("ViewModel.HasOperationError", infoBar.Attribute("IsOpen")?.Value);
     }
 
+    [Fact]
+    public void ListColumn_HasSkippedCipherInfoBar_BoundToSkippedFlags()
+    {
+        var document = LoadXaml();
+
+        var infoBar = document
+            .Descendants(Xaml + "InfoBar")
+            .Single(b => b.Attribute(X + "Name")?.Value == "VaultSkippedInfoBar");
+
+        Assert.Equal("Informational", infoBar.Attribute("Severity")?.Value);
+        Assert.Equal("True", infoBar.Attribute("IsClosable")?.Value);
+        Assert.Contains("ViewModel.SkippedCipherMessage", infoBar.Attribute("Message")?.Value);
+        Assert.Contains("ViewModel.HasSkippedCiphers", infoBar.Attribute("IsOpen")?.Value);
+    }
+
     private static XDocument LoadXaml()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

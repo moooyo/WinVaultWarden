@@ -9,4 +9,5 @@ public interface IVaultSnapshot
     IReadOnlyList<Folder> Folders { get; }
     IReadOnlyList<DeviceInfo> Devices { get; }
     AccountInfo Account { get; }
+    int SkippedCipherCount { get; }
 }

@@ -18,6 +18,7 @@ public sealed class VaultSession : IVaultSnapshot
     public SymmetricCryptoKey? UserKey { get; private set; }
     public string? EncryptedPrivateKey { get; private set; }
     public AccountInfo Account { get; private set; } = AccountInfo.Empty;
+    public int SkippedCipherCount { get; private set; }
 
     public IReadOnlyList<Cipher> Ciphers
     {
@@ -71,6 +72,7 @@ public sealed class VaultSession : IVaultSnapshot
             Account = vault.Account;
             _folders = vault.Folders;
             _ciphers = vault.Ciphers;
+            SkippedCipherCount = vault.SkippedCipherCount;
         }
     }
 
@@ -198,5 +200,6 @@ public sealed class VaultSession : IVaultSnapshot
         _folders = Array.Empty<Folder>();
         _devices = Array.Empty<DeviceInfo>();
         EncryptedPrivateKey = null;
+        SkippedCipherCount = 0;
     }
 }

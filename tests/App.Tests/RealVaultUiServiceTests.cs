@@ -215,6 +215,8 @@ public class RealVaultUiServiceTests
                 Login = new CipherLogin("old", null, null, []),
             },
         ];
+
+        public int SkippedCipherCount => 0;
     }
 }
 

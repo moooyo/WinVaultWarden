@@ -49,4 +49,5 @@ internal sealed class EmptyVaultSnapshot : IVaultSnapshot
     public IReadOnlyList<Folder> Folders { get; } = Array.Empty<Folder>();
     public IReadOnlyList<DeviceInfo> Devices { get; } = Array.Empty<DeviceInfo>();
     public AccountInfo Account => AccountInfo.Empty;
+    public int SkippedCipherCount => 0;
 }
