@@ -12,13 +12,15 @@ public sealed class TokenRefreshService : ITokenRefresher
     private const string DeviceName = "WinVaultWarden";
 
     private readonly IReadonlyApiClient _api;
+    private readonly IApiEndpointConfig _apiConfig;
     private readonly VaultSession _session;
     private readonly ITokenStore _tokenStore;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public TokenRefreshService(IReadonlyApiClient api, VaultSession session, ITokenStore tokenStore)
+    public TokenRefreshService(IReadonlyApiClient api, IApiEndpointConfig apiConfig, VaultSession session, ITokenStore tokenStore)
     {
         _api = api;
+        _apiConfig = apiConfig;
         _session = session;
         _tokenStore = tokenStore;
     }
@@ -40,7 +42,7 @@ public sealed class TokenRefreshService : ITokenRefresher
             if (!_tokenStore.TryLoad(out var persisted))
                 return false;
 
-            _api.SetBaseAddress(persisted.ServerUrl);
+            _apiConfig.SetBaseAddress(persisted.ServerUrl);
             var result = await _api.ConnectTokenAsync(
                 ConnectTokenRequest.Refresh(refreshToken, persisted.DeviceIdentifier, DeviceName), ct);
 

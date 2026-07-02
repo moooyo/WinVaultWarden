@@ -6,7 +6,6 @@ namespace Api;
 // 路径前缀 /api,但文件上传 url 与下载 url 由服务端给出(可能是相对路径)。
 public interface ISendApiClient
 {
-    void SetBaseAddress(string baseUrl);
     Task<SendListResponse> GetSendsAsync(CancellationToken ct = default);
     Task<SendResponseDto> CreateTextSendAsync(SendRequest request, CancellationToken ct = default);
     Task<SendFileUploadV2Response> CreateFileSendV2Async(SendRequest request, CancellationToken ct = default);

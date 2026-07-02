@@ -6,7 +6,6 @@ namespace Api;
 // 4xx 失败统一抛 VaultWriteException(message 取自服务端错误体)。
 public interface IVaultWriteApiClient
 {
-    void SetBaseAddress(string baseUrl);
     Task CreateCipherAsync(CipherRequest request, CancellationToken ct = default);
     Task UpdateCipherAsync(string cipherId, CipherRequest request, CancellationToken ct = default);
     Task SoftDeleteCipherAsync(string cipherId, CancellationToken ct = default);

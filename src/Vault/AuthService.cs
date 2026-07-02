@@ -15,6 +15,7 @@ public sealed class AuthService : IAuthService
     private const string DeviceName = "WinVaultWarden";
 
     private readonly IReadonlyApiClient _api;
+    private readonly IApiEndpointConfig _apiConfig;
     private readonly CryptoService _crypto;
     private readonly VaultSession _session;
     private readonly ITokenStore _tokenStore;
@@ -23,12 +24,14 @@ public sealed class AuthService : IAuthService
 
     public AuthService(
         IReadonlyApiClient api,
+        IApiEndpointConfig apiConfig,
         CryptoService crypto,
         VaultSession session,
         ITokenStore tokenStore,
         VaultBootstrapper bootstrapper)
     {
         _api = api;
+        _apiConfig = apiConfig;
         _crypto = crypto;
         _session = session;
         _tokenStore = tokenStore;
@@ -44,7 +47,7 @@ public sealed class AuthService : IAuthService
         try
         {
             var normalizedServerUrl = NormalizeServerUrl(serverUrl);
-            _api.SetBaseAddress(normalizedServerUrl);
+            _apiConfig.SetBaseAddress(normalizedServerUrl);
             _session.SetState(Core.Session.VaultState.Unlocking);
 
             var prelogin = await _api.PreloginAsync(email, ct);
@@ -74,7 +77,7 @@ public sealed class AuthService : IAuthService
         try
         {
             var provider = context.Providers.FirstOrDefault();
-            _api.SetBaseAddress(context.ServerUrl);
+            _apiConfig.SetBaseAddress(context.ServerUrl);
             var result = await _api.ConnectTokenAsync(ConnectTokenRequest.Password(
                 context.Email,
                 context.PasswordHash,
@@ -98,7 +101,7 @@ public sealed class AuthService : IAuthService
 
         try
         {
-            _api.SetBaseAddress(persisted.ServerUrl);
+            _apiConfig.SetBaseAddress(persisted.ServerUrl);
             _session.SetState(Core.Session.VaultState.Unlocking);
 
             var stretchedKey = DeriveStretchedKey(
@@ -142,7 +145,7 @@ public sealed class AuthService : IAuthService
         SymmetricCryptoKey userKey;
         try
         {
-            _api.SetBaseAddress(persisted.ServerUrl);
+            _apiConfig.SetBaseAddress(persisted.ServerUrl);
             _session.SetState(Core.Session.VaultState.Unlocking);
 
             var stretchedKey = DeriveStretchedKey(

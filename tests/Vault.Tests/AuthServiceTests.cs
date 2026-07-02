@@ -160,7 +160,7 @@ public class AuthServiceTests
         var api = new ApiClient(new HttpClient(handler));
         var decryptor = new VaultDecryptor(_crypto);
         var bootstrapper = new VaultBootstrapper(new SyncService(api, decryptor, session), api, session);
-        return new AuthService(api, _crypto, session, tokenStore, bootstrapper);
+        return new AuthService(api, api, _crypto, session, tokenStore, bootstrapper);
     }
 
     private LoginFixture CreateLoginFixture()

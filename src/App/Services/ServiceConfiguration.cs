@@ -32,6 +32,8 @@ public static class ServiceConfiguration
             return new HttpClient(handler);
         });
         services.AddSingleton<ApiClient>();
+        // 端点配置 seam:与角色接口分离,单独解析到同一 ApiClient 单例。
+        services.AddSingleton<IApiEndpointConfig>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<IReadonlyApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<IVaultWriteApiClient>(sp => sp.GetRequiredService<ApiClient>());
         services.AddSingleton<ISendApiClient>(sp => sp.GetRequiredService<ApiClient>());

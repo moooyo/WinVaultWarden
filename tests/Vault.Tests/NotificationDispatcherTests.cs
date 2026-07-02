@@ -576,8 +576,6 @@ public sealed class FakeNotificationReadonlyApiClient : IReadonlyApiClient
     public string? LastGetFolderId { get; private set; }
     public FolderDto GetFolderResult { get; set; } = null!;
 
-    public void SetBaseAddress(string baseUrl) { }
-
     public Task<FolderDto> GetFolderAsync(string folderId, CancellationToken ct = default)
     {
         Calls.Add("get-folder");

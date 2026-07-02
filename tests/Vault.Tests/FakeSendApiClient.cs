@@ -45,8 +45,6 @@ public sealed class FakeSendApiClient : ISendApiClient
     public byte[] DownloadBytes { get; set; } = Array.Empty<byte>();
     public Exception? AccessException { get; set; }
 
-    public void SetBaseAddress(string baseUrl) { /* no-op in fake */ }
-
     public Task<SendListResponse> GetSendsAsync(CancellationToken ct = default)
     { Calls.Add("list"); return Task.FromResult(ListResult); }
 

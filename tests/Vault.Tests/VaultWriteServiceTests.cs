@@ -20,8 +20,6 @@ public class VaultWriteServiceTests
         public IReadOnlyCollection<string>? LastIds { get; private set; }
         public string? LastFolderId { get; private set; }
 
-        public void SetBaseAddress(string baseUrl) { }
-
         public Task CreateCipherAsync(CipherRequest request, CancellationToken ct = default)
         { Calls.Add("create"); LastCipher = request; return Task.CompletedTask; }
 
