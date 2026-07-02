@@ -592,8 +592,6 @@ public sealed class FakeNotificationReadonlyApiClient : IReadonlyApiClient
         => throw new NotImplementedException();
     public Task<Api.Dtos.ConnectTokenResult> ConnectTokenAsync(Api.Dtos.ConnectTokenRequest request, CancellationToken ct = default)
         => throw new NotImplementedException();
-    public Task<Api.Dtos.TokenResponse> RefreshTokenAsync(string refreshToken, CancellationToken ct = default)
-        => throw new NotImplementedException();
     public Task<Api.Dtos.SyncResponse> GetSyncAsync(CancellationToken ct = default)
         => throw new NotImplementedException();
     public Task<Api.Dtos.ListResponse<Api.Dtos.DeviceDto>> GetDevicesAsync(CancellationToken ct = default)

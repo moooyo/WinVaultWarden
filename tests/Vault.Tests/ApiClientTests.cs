@@ -159,6 +159,44 @@ public class ApiClientTests
     }
 
     [Fact]
+    public async Task ReadError_404WithJsonBody_ThrowsVaultApiExceptionWithStatusAndServerMessage()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.NotFound,
+            """{"message":"Folder doesn't exist","validationErrors":{},"object":"error"}"""));
+        var client = new ApiClient(new HttpClient(handler));
+        client.SetBaseAddress("https://vault.example");
+
+        var ex = await Assert.ThrowsAsync<VaultApiException>(() =>
+            client.GetFolderAsync("missing", TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.NotFound, ex.StatusCode);
+        Assert.Equal("Folder doesn't exist", ex.ServerMessage);
+        Assert.Contains("Folder doesn't exist", ex.Message);
+        // 派生自 HttpRequestException:既有异常处理器行为不变。
+        Assert.IsAssignableFrom<HttpRequestException>(ex);
+    }
+
+    [Fact]
+    public async Task ReadError_NonJsonBody_ThrowsVaultApiExceptionWithNullServerMessage()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StringContent("upstream exploded", System.Text.Encoding.UTF8, "text/plain"),
+        });
+        var client = new ApiClient(new HttpClient(handler));
+        client.SetBaseAddress("https://vault.example");
+
+        var ex = await Assert.ThrowsAsync<VaultApiException>(() =>
+            client.GetSyncAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.InternalServerError, ex.StatusCode);
+        Assert.Null(ex.ServerMessage);
+        Assert.IsAssignableFrom<HttpRequestException>(ex);
+    }
+
+    [Fact]
     public async Task GetConfig_ReadsServerObjectAndVersion()
     {
         // 真实 /api/config 把 server 作为对象返回(name/url),曾被误建模为 string。
