@@ -152,17 +152,17 @@ public static class ServiceConfiguration
         // 单例:MainWindow 解析具体类型注入 Frame,页面解析接口下沉导航动作。
         services.AddSingleton<FrameNavigationService>();
         services.AddSingleton<INavigationService>(sp => sp.GetRequiredService<FrameNavigationService>());
+        // UI 线程派发:具体类型供 MainWindow 注入 DispatcherQueue,接口供组合根/页面下沉派发。
+        services.AddSingleton<UiDispatcher>();
+        services.AddSingleton<IUiDispatcher>(sp => sp.GetRequiredService<UiDispatcher>());
 
         services.AddSingleton<NotificationsHost>(sp =>
         {
             var svc = sp.GetRequiredService<INotificationsService>();
+            var ui = sp.GetRequiredService<IUiDispatcher>();
 
             void Dispatch(Microsoft.UI.Dispatching.DispatcherQueueHandler handler)
-            {
-                var dq = global::App.App.MainWindow?.DispatcherQueue;
-                if (dq is not null)
-                    dq.TryEnqueue(handler);
-            }
+                => ui.Enqueue(() => handler());
 
             return new NotificationsHost(
                 svc,

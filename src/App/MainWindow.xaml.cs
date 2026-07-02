@@ -48,6 +48,8 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         // Frame 就绪后注入导航服务(须在任何导航如 ShowLogin 之前)。
         _nav.Initialize(ContentFrame, LoginFrame);
+        // 窗口 DispatcherQueue 就绪后注入 UI 派发器(须在任何后台线程派发到 UI 之前)。
+        global::App.App.Services.GetRequiredService<UiDispatcher>().Initialize(DispatcherQueue);
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop();

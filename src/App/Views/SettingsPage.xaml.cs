@@ -700,8 +700,8 @@ public sealed partial class SettingsPage : Page
         var auth = global::App.App.Services.GetRequiredService<IAuthService>();
         _ = auth.LockAsync().ContinueWith(_ =>
         {
-            global::App.App.MainWindow?.DispatcherQueue.TryEnqueue(() =>
-                global::App.App.MainWindow?.ShowLogin());
+            global::App.App.Services.GetRequiredService<global::App.Services.IUiDispatcher>()
+                .Enqueue(() => global::App.App.MainWindow?.ShowLogin());
         }, System.Threading.Tasks.TaskScheduler.Default);
     }
 }
