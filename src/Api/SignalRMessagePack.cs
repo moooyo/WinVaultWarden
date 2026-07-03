@@ -106,8 +106,16 @@ public static class SignalRMessagePack
     /// Reads one MessagePack value from <paramref name="buf"/> at position <paramref name="pos"/>,
     /// advances pos past the consumed bytes, and returns the decoded value.
     /// </summary>
-    public static object? ReadValue(ReadOnlySpan<byte> buf, ref int pos)
+    public static object? ReadValue(ReadOnlySpan<byte> buf, ref int pos) => ReadValue(buf, ref pos, 0);
+
+    // 嵌套容器最大层级。防止恶意/中间人服务端发深层嵌套帧(如连续 0x91 fixarray[1])触发
+    // **不可捕获的** StackOverflowException 使整进程崩溃(远程 DoS)。合法 ReceiveMessage 帧深度仅个位数。
+    private const int MaxDepth = 64;
+
+    private static object? ReadValue(ReadOnlySpan<byte> buf, ref int pos, int depth)
     {
+        if (depth > MaxDepth)
+            throw new InvalidDataException("MessagePack: nesting exceeds max depth");
         if (pos >= buf.Length)
             throw new InvalidDataException("Unexpected end of MessagePack data");
 
@@ -119,11 +127,11 @@ public static class SignalRMessagePack
 
         // ---- fixmap (0x80–0x8f) ----
         if (first >= 0x80 && first <= 0x8f)
-            return ReadMap(buf, ref pos, first & 0x0f);
+            return ReadMap(buf, ref pos, first & 0x0f, depth);
 
         // ---- fixarray (0x90–0x9f) ----
         if (first >= 0x90 && first <= 0x9f)
-            return ReadArray(buf, ref pos, first & 0x0f);
+            return ReadArray(buf, ref pos, first & 0x0f, depth);
 
         // ---- fixstr (0xa0–0xbf) ----
         if (first >= 0xa0 && first <= 0xbf)
@@ -217,12 +225,12 @@ public static class SignalRMessagePack
         if (first == 0xdb) return ReadStr(buf, ref pos, (int)ReadUInt32BE(buf, ref pos));
 
         // ---- array 16 / 32 ----
-        if (first == 0xdc) return ReadArray(buf, ref pos, ReadUInt16BE(buf, ref pos));
-        if (first == 0xdd) return ReadArray(buf, ref pos, (int)ReadUInt32BE(buf, ref pos));
+        if (first == 0xdc) return ReadArray(buf, ref pos, ReadUInt16BE(buf, ref pos), depth);
+        if (first == 0xdd) return ReadArray(buf, ref pos, (int)ReadUInt32BE(buf, ref pos), depth);
 
         // ---- map 16 / 32 ----
-        if (first == 0xde) return ReadMap(buf, ref pos, ReadUInt16BE(buf, ref pos));
-        if (first == 0xdf) return ReadMap(buf, ref pos, (int)ReadUInt32BE(buf, ref pos));
+        if (first == 0xde) return ReadMap(buf, ref pos, ReadUInt16BE(buf, ref pos), depth);
+        if (first == 0xdf) return ReadMap(buf, ref pos, (int)ReadUInt32BE(buf, ref pos), depth);
 
         // ---- negative fixint (0xe0–0xff) ----
         if (first >= 0xe0)
@@ -235,25 +243,35 @@ public static class SignalRMessagePack
     // Private helpers
     // ----------------------------------------------------------------
 
-    private static Dictionary<string, object?> ReadMap(ReadOnlySpan<byte> buf, ref int pos, int count)
+    private static Dictionary<string, object?> ReadMap(ReadOnlySpan<byte> buf, ref int pos, int count, int depth)
     {
+        EnsureCount(buf, pos, count);
         var dict = new Dictionary<string, object?>(count, StringComparer.Ordinal);
         for (int i = 0; i < count; i++)
         {
-            var key = ReadValue(buf, ref pos) as string
+            var key = ReadValue(buf, ref pos, depth + 1) as string
                 ?? throw new InvalidDataException("MessagePack map key must be a string");
-            var val = ReadValue(buf, ref pos);
+            var val = ReadValue(buf, ref pos, depth + 1);
             dict[key] = val;
         }
         return dict;
     }
 
-    private static object?[] ReadArray(ReadOnlySpan<byte> buf, ref int pos, int count)
+    private static object?[] ReadArray(ReadOnlySpan<byte> buf, ref int pos, int count, int depth)
     {
+        EnsureCount(buf, pos, count);
         var arr = new object?[count];
         for (int i = 0; i < count; i++)
-            arr[i] = ReadValue(buf, ref pos);
+            arr[i] = ReadValue(buf, ref pos, depth + 1);
         return arr;
+    }
+
+    // 容器声明的元素数不得超过剩余字节数(每元素至少占 1 字节)。挡住 array32/map32 用巨量/负数
+    // count 触发的预分配(new object?[count])内存放大 DoS,并把越界 count 归为可捕获的 InvalidDataException。
+    private static void EnsureCount(ReadOnlySpan<byte> buf, int pos, int count)
+    {
+        if (count < 0 || count > buf.Length - pos)
+            throw new InvalidDataException($"MessagePack: implausible container count {count}");
     }
 
     private static string ReadStr(ReadOnlySpan<byte> buf, ref int pos, int byteLen)

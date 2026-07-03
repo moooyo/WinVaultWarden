@@ -120,6 +120,10 @@ public sealed class NotificationsConnection : INotificationsConnection
         if (_ws is null)
             throw new InvalidOperationException("Call ConnectAsync before ReadAsync.");
 
+        // 单条通知帧累积上限:防止恶意/中间人服务端发超大或无尽分片帧累积耗尽内存(DoS)。
+        // 合法 SignalR 通知远小于此。对齐仓库既有 native host / 命名管道的 1 MiB 约定。
+        const int MaxFrameBytes = 1 * 1024 * 1024;
+
         // We grow this buffer on demand.
         var buf = new byte[4096];
         var accumulated = new System.IO.MemoryStream();
@@ -141,6 +145,9 @@ public sealed class NotificationsConnection : INotificationsConnection
                         yield break;
 
                     accumulated.Write(buf, 0, result.Count);
+
+                    if (accumulated.Length > MaxFrameBytes)
+                        yield break; // 超大/无尽分片 → 断开枚举,防内存耗尽
                 }
                 while (!result.EndOfMessage);
             }
