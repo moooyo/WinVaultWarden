@@ -71,7 +71,7 @@ IAttachmentApiClient attachmentApi = api;
 var attachmentService = new AttachmentService(attachmentApi, attachmentCrypto, decryptor, session, sync);
 
 IAccountApiClient accountApi = api;
-var accountService = new AccountService(crypto, accountApi, session, tokenStore, auth);
+var accountService = new AccountService(crypto, accountApi, session, tokenStore, auth, cache);
 
 ITwoFactorApiClient twoFactorApi = api;
 var twoFactorService = new TwoFactorService(crypto, twoFactorApi, tokenStore);
@@ -1180,7 +1180,7 @@ BuildStack(string url)
     var enc2 = new CipherEncryptor(c);
     var write2 = new VaultWriteService(a, enc2, sync2, s);
     IAccountApiClient acctApi = a;
-    var acct2 = new AccountService(c, acctApi, s, ts, auth2);
+    var acct2 = new AccountService(c, acctApi, s, ts, auth2, cache2);
     IEmergencyAccessApiClient eaApi = a;
     var ea2 = new EmergencyAccessService(eaApi, c, dec, s);
     a.SetBaseAddress(url);

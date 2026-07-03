@@ -53,11 +53,14 @@ public class AccountServiceTests
         VaultSession session,
         MemoryTokenStore store,
         FakeAccountApiClient api,
-        FakeAuthService auth)
+        FakeAuthService auth,
+        FakeCacheStore? cacheStore = null)
     {
         // FakeAuthService 需要持有 session/store 引用，以便 LogoutAsync 能真实清除它们
         // 通过重新创建确保传入正确引用（构造函数接受 session+store）
-        return new AccountService(_crypto, api, session, store, auth);
+        cacheStore ??= new FakeCacheStore();
+        var cache = new VaultCacheService(cacheStore, new VaultDecryptor(_crypto), session);
+        return new AccountService(_crypto, api, session, store, auth, cache);
     }
 
     // ---- Test 1: ChangePassword 发送重包 key 并登出 ----
@@ -70,8 +73,9 @@ public class AccountServiceTests
         var expectedKeyBytes = userKey.FullKey.ToArray();
         var api = new FakeAccountApiClient();
         var auth = new FakeAuthService(session, store);
+        var cacheStore = new FakeCacheStore();
 
-        var svc = BuildService(session, store, api, auth);
+        var svc = BuildService(session, store, api, auth, cacheStore);
 
         await svc.ChangePasswordAsync(OldPassword, NewPassword, "a hint", TestContext.Current.CancellationToken);
 
@@ -105,6 +109,8 @@ public class AccountServiceTests
         Assert.True(auth.LoggedOut);
         Assert.Null(session.UserKey);
         Assert.False(store.TryLoad(out _));
+        // 改密成功后清离线缓存（P1-1/D2）
+        Assert.Equal(1, cacheStore.ClearCount);
     }
 
     // ---- Test 2: ChangePassword 旧密码错误时抛出 AccountOperationException ----
@@ -174,7 +180,8 @@ public class AccountServiceTests
         var expectedKeyBytes = userKey.FullKey.ToArray();
         var api = new FakeAccountApiClient();
         var auth = new FakeAuthService(session, store);
-        var svc = BuildService(session, store, api, auth);
+        var cacheStore = new FakeCacheStore();
+        var svc = BuildService(session, store, api, auth, cacheStore);
 
         const int NewIterations = 700_000;
         await svc.ChangeKdfAsync(OldPassword, NewIterations, TestContext.Current.CancellationToken);
@@ -222,6 +229,8 @@ public class AccountServiceTests
         Assert.True(auth.LoggedOut);
         Assert.Null(session.UserKey);
         Assert.False(store.TryLoad(out _));
+        // 改 KDF 成功后清离线缓存（P1-1/D2）
+        Assert.Equal(1, cacheStore.ClearCount);
     }
 
     // ---- Test 5: UpdateName 名字过长时客户端拒绝 ----

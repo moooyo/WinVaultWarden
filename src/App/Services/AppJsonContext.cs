@@ -13,4 +13,5 @@ namespace App.Services;
 [JsonSerializable(typeof(AppPreferencesData))]
 [JsonSerializable(typeof(SavedSearchViewData))]
 [JsonSerializable(typeof(List<SavedSearchViewData>))]
+[JsonSerializable(typeof(Core.Models.VaultCacheEntry))]
 public partial class AppJsonContext : JsonSerializerContext;

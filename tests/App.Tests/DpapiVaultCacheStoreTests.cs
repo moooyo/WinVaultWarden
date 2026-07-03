@@ -1,0 +1,33 @@
+using App.Services;
+using Core.Models;
+using Xunit;
+
+namespace App.Tests;
+
+public class DpapiVaultCacheStoreTests
+{
+    [Fact]
+    public void SaveLoadClear_RoundTrips_AndProtectsPayload()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var path = Path.Combine(Path.GetTempPath(), "WinVaultWarden.Tests", Guid.NewGuid().ToString("N"), "vault-cache.bin");
+        var store = new DpapiVaultCacheStore(path);
+        var entry = new VaultCacheEntry(1, "me@example.com", "https://vault.example",
+            DateTimeOffset.UnixEpoch, "{\"secret-cipher-json\":\"2.abc\"}");
+
+        store.SaveVaultCache(entry);
+
+        // DPAPI 保护:文件不应含明文 payload。
+        var raw = File.ReadAllText(path);
+        Assert.DoesNotContain("secret-cipher-json", raw);
+        Assert.False(File.Exists(path + ".tmp")); // 原子写不留 tmp
+
+        Assert.True(store.TryLoadVaultCache(out var loaded));
+        Assert.Equal(entry, loaded);
+
+        store.ClearVaultCache();
+        Assert.False(store.TryLoadVaultCache(out _));
+    }
+}
