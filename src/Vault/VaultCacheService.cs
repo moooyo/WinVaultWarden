@@ -52,9 +52,10 @@ public sealed class VaultCacheService
             _session.SetEncryptedPrivateKey(sync.Profile?.PrivateKey);
             return true;
         }
-        catch (Exception ex) when (ex is JsonException or System.Security.Cryptography.CryptographicException or FormatException)
+        catch (Exception)
         {
-            // 缓存损坏/格式不符 → 视为无缓存,走联网。
+            // 缓存加载/解密的任何失败(损坏/格式不符/意外异常)→ 视为无缓存,回退联网。
+            // 在解锁(auth)路径上宁可回退也不外抛:此时会话已 SetUnlockedKey,外抛会留悬挂态。
             return false;
         }
     }
