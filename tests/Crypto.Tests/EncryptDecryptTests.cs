@@ -47,6 +47,34 @@ public class EncryptDecryptTests
     }
 
     [Fact]
+    public void Decrypt_MacCapableKey_RejectsStrippedNoMacCiphertext_DowngradeGuard()
+    {
+        // C1: 恶意/MITM 服务端把认证的 type-2 字段剥成无 MAC 的 type-0。
+        // MAC-capable(64 字节)密钥必须拒绝,否则击穿 enc-then-MAC。
+        var svc = new CryptoService();
+        var key = NewKey();
+        var enc = svc.Encrypt(Encoding.UTF8.GetBytes("secret"), key); // type-2 带 MAC
+
+        var stripped = new EncString(EncryptionType.AesCbc256_B64, enc.Iv, enc.Ct, null);
+
+        var ex = Assert.Throws<CryptographicException>(() => svc.Decrypt(stripped, key));
+        Assert.Contains("拒绝降级", ex.Message);
+    }
+
+    [Fact]
+    public void Decrypt_NonMacKey_StillDecryptsOwnNoMacCiphertext()
+    {
+        // 守卫只针对 MAC-capable 密钥;32 字节无 MAC 密钥解密自身 type-0 输出仍应正常(不误拒)。
+        var svc = new CryptoService();
+        var key = new SymmetricCryptoKey(RandomNumberGenerator.GetBytes(32));
+        Assert.Null(key.MacKey);
+        var enc = svc.Encrypt(Encoding.UTF8.GetBytes("plain"), key);
+        Assert.Null(enc.Mac);
+
+        Assert.Equal(Encoding.UTF8.GetBytes("plain"), svc.Decrypt(enc, key));
+    }
+
+    [Fact]
     public void DecryptRsa_RoundTripsThroughRsaOaepSha1()
     {
         var svc = new CryptoService();
