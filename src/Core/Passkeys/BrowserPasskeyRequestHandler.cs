@@ -50,7 +50,7 @@ public sealed class BrowserPasskeyRequestHandler
             .ToArray();
         var credential = FindCredential(rpId!, allowedCredentialIds);
         if (credential is null)
-            return Error(requestId, "no_credential_or_cancelled", "The passkey request could not be completed.");
+            return Error(requestId, "no_credential", "No matching passkey was found for this site.");
 
         var approved = await _approval.ConfirmUseAsync(new PasskeyApprovalRequest(
             requestId ?? string.Empty,
@@ -62,7 +62,7 @@ public sealed class BrowserPasskeyRequestHandler
             credential.Credential.UserDisplayName), ct);
 
         if (!approved)
-            return Error(requestId, "no_credential_or_cancelled", "The passkey request could not be completed.");
+            return Error(requestId, "user_cancelled", "The passkey request was cancelled.");
 
         try
         {
@@ -73,7 +73,8 @@ public sealed class BrowserPasskeyRequestHandler
                     payload.Challenge,
                     rpId,
                     allowedCredentialIds,
-                    UserVerified: RequiresUserVerification(payload.UserVerification)));
+                    UserVerified: RequiresUserVerification(payload.UserVerification),
+                    CrossOrigin: payload.CrossOrigin));
 
             return new BrowserPasskeyResponse(
                 requestId,

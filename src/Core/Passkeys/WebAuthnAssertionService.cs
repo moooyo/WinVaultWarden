@@ -15,7 +15,8 @@ public sealed record WebAuthnGetAssertionRequest(
     string Challenge,
     string? RpId,
     IReadOnlyList<string> AllowedCredentialIds,
-    bool UserVerified);
+    bool UserVerified,
+    bool CrossOrigin = false);
 
 public sealed record WebAuthnAssertionResult(
     string CredentialId,
@@ -49,9 +50,10 @@ public static class WebAuthnAssertionService
             && !request.AllowedCredentialIds.Contains(credentialId, StringComparer.Ordinal))
             throw new InvalidOperationException("The credential is not in allowCredentials.");
 
-        var signatureCounter = credential.Counter is > 0
-            ? checked((uint)credential.Counter.Value + 1)
-            : 0u;
+        // 安全:签名计数器始终发 0(对齐 Bitwarden "counter unsupported" 约定)。
+        // 本客户端不创建 passkey、无法维护严格递增计数;发 0 避免严格校验计数器的 RP
+        // 因计数器未递增而拒绝重复断言。authenticatorData 的 4 字节计数器字段随之写 0。
+        const uint signatureCounter = 0u;
         var authenticatorData = WebAuthnCrypto.BuildAuthenticatorData(
             effectiveRpId,
             signatureCounter,
@@ -71,7 +73,7 @@ public static class WebAuthnAssertionService
 
     private static byte[] BuildClientDataJson(WebAuthnGetAssertionRequest request) =>
         JsonSerializer.SerializeToUtf8Bytes(
-            new ClientDataJson("webauthn.get", request.Challenge, request.Origin, false),
+            new ClientDataJson("webauthn.get", request.Challenge, request.Origin, request.CrossOrigin),
             PasskeyJsonContext.Default.ClientDataJson);
 
     private static string HostFromOrigin(string origin)

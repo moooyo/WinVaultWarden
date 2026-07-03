@@ -5,7 +5,7 @@
     "native_host_unavailable",
     "not_implemented",
     "vault_locked",
-    "credential_not_found",
+    "no_credential",
   ]);
   const credentials = navigator.credentials;
 
@@ -150,6 +150,7 @@
     const keyOptions = options.publicKey;
     return {
       origin: window.location.origin,
+      crossOrigin: window.top !== window.self,
       rpId: keyOptions.rpId ?? null,
       challenge: bufferToBase64Url(keyOptions.challenge),
       allowCredentials:

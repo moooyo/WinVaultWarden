@@ -15,7 +15,8 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
 
         try
         {
-            if (!_throttle.TryBegin(request.Origin))
+            // 按 rpId(而非完整 origin)键控冷却:轮换同一 rpId 的子域 origin 无法绕过节流。
+            if (!_throttle.TryBegin(request.RpId))
                 return false;
 
             var window = global::App.App.MainWindow;
@@ -63,7 +64,8 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
             Title = $"使用此 passkey 登录 {request.RpId}？",
             PrimaryButtonText = "使用 passkey",
             CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Primary,
+            // 默认按钮为“取消”:回车不再批准安全敏感操作,须显式点击“使用 passkey”。
+            DefaultButton = ContentDialogButton.Close,
             Content = CreateDialogContent(request),
         };
 
@@ -87,7 +89,8 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         panel.Children.Add(CreateDetailLine("项目", request.CipherName));
         panel.Children.Add(CreateDetailLine("账户", DisplayAccount(request)));
         var origin = PasskeyOriginDisplay.Parse(request.Origin);
-        panel.Children.Add(CreateDetailLine("来源", origin.Display));
+        // “未验证”:origin 仅为请求方自报(经内容脚本钉真实帧 origin),客户端未对其做 RP 验证。
+        panel.Children.Add(CreateDetailLine("来源（请求方，未验证）", origin.Display));
 
         if (!origin.IsSecure)
         {

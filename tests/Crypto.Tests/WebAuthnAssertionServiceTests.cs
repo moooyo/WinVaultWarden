@@ -23,18 +23,19 @@ public class WebAuthnAssertionServiceTests
         var assertion = WebAuthnAssertionService.CreateAssertion(credential, request);
 
         Assert.Equal(credential.CredentialId, assertion.CredentialId);
-        Assert.Equal(6u, assertion.SignatureCounter);
+        Assert.Equal(0u, assertion.SignatureCounter);
         Assert.Equal(credential.UserHandle, assertion.UserHandle);
 
         var authData = WebAuthnCrypto.DecodeBase64Url(assertion.AuthenticatorData);
         Assert.Equal(0x05, authData[32]);
-        Assert.Equal(new byte[] { 0, 0, 0, 6 }, authData[33..37]);
+        Assert.Equal(new byte[] { 0, 0, 0, 0 }, authData[33..37]);
 
         var clientDataJson = WebAuthnCrypto.DecodeBase64Url(assertion.ClientDataJson);
         using var clientData = JsonDocument.Parse(clientDataJson);
         Assert.Equal("webauthn.get", clientData.RootElement.GetProperty("type").GetString());
         Assert.Equal("AQIDBA", clientData.RootElement.GetProperty("challenge").GetString());
         Assert.Equal("https://login.github.com", clientData.RootElement.GetProperty("origin").GetString());
+        Assert.False(clientData.RootElement.GetProperty("crossOrigin").GetBoolean());
 
         var signedData = authData.Concat(SHA256.HashData(clientDataJson)).ToArray();
         Assert.True(key.VerifyData(
@@ -42,6 +43,26 @@ public class WebAuthnAssertionServiceTests
             WebAuthnCrypto.DecodeBase64Url(assertion.Signature),
             HashAlgorithmName.SHA256,
             DSASignatureFormat.Rfc3279DerSequence));
+    }
+
+    [Fact]
+    public void CreateAssertion_CrossOrigin_ReflectsTrueInClientData()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var credential = Credential(key);
+        var request = new WebAuthnGetAssertionRequest(
+            "https://login.github.com",
+            "AQIDBA",
+            "github.com",
+            [credential.CredentialId!],
+            UserVerified: true,
+            CrossOrigin: true);
+
+        var assertion = WebAuthnAssertionService.CreateAssertion(credential, request);
+
+        var clientDataJson = WebAuthnCrypto.DecodeBase64Url(assertion.ClientDataJson);
+        using var clientData = JsonDocument.Parse(clientDataJson);
+        Assert.True(clientData.RootElement.GetProperty("crossOrigin").GetBoolean());
     }
 
     [Fact]
