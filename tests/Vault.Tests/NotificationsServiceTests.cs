@@ -198,6 +198,52 @@ public class NotificationsServiceTests
         Assert.Equal(1, dispatcher.Dispatched.Count);
     }
 
+    // ─────────────────────────── 场景 3b（R15/R23）───────────────────────────
+
+    /// <summary>连接因错误断开后应刷新 token（可能已失效）——刷新是重连关键路径。</summary>
+    [Fact]
+    public async Task FaultedConnection_RefreshesToken()
+    {
+        var conn = new FakeNotificationsConnection
+        {
+            ThrowOnConnectCount = 1,
+            Messages = new List<NotificationMessage> { new((int)UpdateType.SyncVault, null) },
+        };
+        var dispatcher = new FakeNotificationDispatcher();
+        var session = MakeSession();
+        var refresher = new FakeTokenRefresher();
+        var svc = MakeService(() => conn, dispatcher, session,
+            refresher: refresher, baseBackoff: TimeSpan.FromMilliseconds(5));
+
+        await svc.StartAsync();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (dispatcher.Dispatched.Count < 1 && !cts.Token.IsCancellationRequested)
+            await Task.Delay(10, cts.Token).ConfigureAwait(false);
+        await svc.StopAsync();
+
+        Assert.True(refresher.CallCount >= 1,
+            $"连接失败后应刷新 token, got {refresher.CallCount}");
+    }
+
+    /// <summary>连接正常关闭（token 仍有效）不应刷新——避免每次良性重连多一次 connect/token + 落盘（R15）。</summary>
+    [Fact]
+    public async Task BenignClose_DoesNotRefreshToken()
+    {
+        // 每次连接成功、无消息、ReadAsync 立即结束（良性关闭）→ 循环快速重连,但不刷新。
+        var refresher = new FakeTokenRefresher();
+        var dispatcher = new FakeNotificationDispatcher();
+        var session = MakeSession();
+        var svc = MakeService(
+            () => new FakeNotificationsConnection { Messages = new List<NotificationMessage>() },
+            dispatcher, session, refresher: refresher, baseBackoff: TimeSpan.FromMilliseconds(5));
+
+        await svc.StartAsync();
+        await Task.Delay(80).ConfigureAwait(false); // 让循环跑若干次良性重连
+        await svc.StopAsync();
+
+        Assert.Equal(0, refresher.CallCount); // 良性关闭从不刷新
+    }
+
     // ─────────────────────────── 场景 4 ───────────────────────────
 
     /// <summary>

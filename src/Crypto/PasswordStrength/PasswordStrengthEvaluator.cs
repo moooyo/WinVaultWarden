@@ -50,10 +50,22 @@ public sealed class PasswordStrengthEvaluator
         // L33t substitution: attacker must also try l33t permutations
         if (m.L33t) g *= 1.5;
 
-        // Uppercase: rough approximation — if token has any uppercase, multiply
-        if (m.Token.Any(char.IsUpper)) g *= 2;
+        // Uppercase: attacker must also try case permutations.
+        // 必须用原文子串判断——字典匹配的 m.Token 已被 DictionaryMatcher 小写化,
+        // 直接 m.Token.Any(char.IsUpper) 恒为 false(死代码,大写从不计入猜测量)。
+        if (HasUppercaseInOriginal(m, password)) g *= 2;
 
         return Math.Max(1, g);
+    }
+
+    private static bool HasUppercaseInOriginal(Match m, string password)
+    {
+        if (m.I < 0 || m.J < m.I || m.J >= password.Length)
+            return m.Token.Any(char.IsUpper); // 越界兜底(索引理论上总有效)
+        for (int i = m.I; i <= m.J; i++)
+            if (char.IsUpper(password[i]))
+                return true;
+        return false;
     }
 
     private static double RepeatGuesses(Match m)

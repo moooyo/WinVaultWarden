@@ -149,4 +149,19 @@ public class SendServiceTests
         Assert.Equal("acc-1", parsedAccessId);
         Assert.Equal(knownSeed, parsedSeed);
     }
+
+    [Fact]
+    public async Task GetSendsAsync_SkipsCorruptSend_KeepsOthers()
+    {
+        // R7:单个损坏的 Send(此处 Key=null → UnwrapSeed 抛异常)不得拖垮整表,其余正常 Send 仍返回。
+        var (service, api, crypto, userKey) = NewService();
+        var good = BuildEncryptedDto(crypto, userKey, 1, "Good", null, "hi", null);
+        var bad = good with { Id = "bad", Key = null! };
+        api.ListResult = new SendListResponse(Data: new[] { bad, good }, Object: "list");
+
+        var sends = await service.GetSendsAsync(TestContext.Current.CancellationToken);
+
+        var single = Assert.Single(sends);
+        Assert.Equal("Good", single.Name);
+    }
 }
