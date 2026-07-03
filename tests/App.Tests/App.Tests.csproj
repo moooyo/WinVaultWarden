@@ -38,6 +38,7 @@
     <Compile Include="..\..\src\App\Services\AppPreferences.cs" Link="Services\AppPreferences.cs" />
     <Compile Include="..\..\src\App\Services\DemoVaultSessionService.cs" Link="Services\DemoVaultSessionService.cs" />
     <Compile Include="..\..\src\App\Services\CipherDraftMapper.cs" Link="Services\CipherDraftMapper.cs" />
+    <Compile Include="..\..\src\App\Services\CrashLogger.cs" Link="Services\CrashLogger.cs" />
     <Compile Include="..\..\src\App\ViewModels\LoginViewModel.cs" Link="ViewModels\LoginViewModel.cs" />
     <Compile Include="..\..\src\App\Services\VaultNavItemBuilder.cs" Link="Services\VaultNavItemBuilder.cs" />
     <Compile Include="..\..\src\App\Services\IClipboardService.cs" Link="Services\IClipboardService.cs" />

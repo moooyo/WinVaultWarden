@@ -385,8 +385,17 @@ public sealed partial class MainWindow : Window
 
     private async Task ShowGeneratorDialogAsync()
     {
+        // 复用同一 GeneratorDialog 实例:生成器与历史对话框顺序打开(不嵌套),
+        // 查看历史后循环重开生成器,保留其已生成的口令/选项状态。
         var dialog = new GeneratorDialog { XamlRoot = Nav.XamlRoot };
-        await dialog.ShowAsync();
+        while (true)
+        {
+            await dialog.ShowAsync();
+            if (!dialog.ConsumeHistoryRequest())
+                break;
+            var history = new GeneratorHistoryDialog(dialog.ViewModel) { XamlRoot = Nav.XamlRoot };
+            await history.ShowAsync();
+        }
     }
 
     /// <summary>按 ShowTrayIcon 设置增删托盘图标。</summary>
