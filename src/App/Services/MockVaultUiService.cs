@@ -14,6 +14,9 @@ public interface IVaultUiService
     // 解密同步时被跳过(无法解密)的条目数,供 UI 提示用户有条目被隐藏。
     int SkippedCipherCount { get; }
 
+    // 当前快照是否来自离线缓存(而非刚完成的联网同步),供 UI 提示"数据可能过期"。
+    bool DataStale { get; }
+
     // 写入侧:每个方法 = 加密 → 写 API → 整库 re-sync(真实实现委托 IVaultWriteService)。
     Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default);
     Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default);
@@ -45,6 +48,7 @@ public sealed class MockVaultUiService : IVaultUiService
     private int _nextId = 100;
 
     public int SkippedCipherCount => 0;
+    public bool DataStale => false;
 
     public IReadOnlyList<CipherListItem> GetItems() =>
         _details.Select(d => new CipherListItem

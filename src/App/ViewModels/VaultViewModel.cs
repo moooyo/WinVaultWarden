@@ -102,6 +102,10 @@ public partial class VaultViewModel : ObservableObject
     public bool HasSkippedCiphers => SkippedCipherCount > 0;
     public string SkippedCipherMessage => $"{SkippedCipherCount} 个条目无法解密，已隐藏";
 
+    // 当前快照来自离线缓存(未联网同步) → 提示用户数据可能已过期。
+    [ObservableProperty]
+    public partial bool DataStale { get; set; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAttachmentBusy))]
     [NotifyPropertyChangedFor(nameof(IsNotAttachmentBusy))]
@@ -154,6 +158,7 @@ public partial class VaultViewModel : ObservableObject
         foreach (var it in service.GetItems()) Items.Add(it);
         foreach (var f in service.GetFilters()) Filters.Add(f);
         SkippedCipherCount = service.SkippedCipherCount;
+        DataStale = service.DataStale;
         if (savedStore is not null)
             foreach (var v in savedStore.GetAll()) SavedViews.Add(v);
         SelectedFilter = Filters.FirstOrDefault();
@@ -557,6 +562,7 @@ public partial class VaultViewModel : ObservableObject
         // 保持当前选中项（若已被删除则自动清空）
         SelectById(SelectedItem?.Id);
         SkippedCipherCount = _service.SkippedCipherCount;
+        DataStale = _service.DataStale;
     }
 
     [RelayCommand]

@@ -239,6 +239,12 @@
 
             <!-- 筛选栏:分面 ToggleButton + 排序 + 保存视图 + 保存/清除 -->
             <StackPanel Grid.Row="2" Spacing="8" Margin="0,4,0,0">
+                <InfoBar x:Name="VaultOfflineInfoBar"
+                         Severity="Warning"
+                         IsOpen="{x:Bind ViewModel.DataStale, Mode=OneWay}"
+                         IsClosable="False"
+                         Title="离线"
+                         Message="显示的是上次同步的数据,可能已过期。" />
                 <InfoBar x:Name="VaultSkippedInfoBar"
                          Severity="Informational"
                          IsClosable="True"

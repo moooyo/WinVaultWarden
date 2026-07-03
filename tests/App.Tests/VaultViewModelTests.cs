@@ -787,6 +787,7 @@ public sealed class ThrowingVaultUiService : IVaultUiService
     public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
     public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
     public int SkippedCipherCount => 0;
+    public bool DataStale => false;
     public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => throw new InvalidOperationException("boom");
     public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => throw new InvalidOperationException("boom");
     public Task RestoreCipherAsync(string id, CancellationToken ct = default) => throw new InvalidOperationException("boom");
@@ -806,6 +807,7 @@ public sealed class EmptyVaultUiService : IVaultUiService
     public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
     public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
     public int SkippedCipherCount => 0;
+    public bool DataStale => false;
     public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => Task.FromResult("x");
     public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => Task.CompletedTask;
     public Task RestoreCipherAsync(string id, CancellationToken ct = default) => Task.CompletedTask;
@@ -1000,6 +1002,7 @@ public sealed class SkippedCipherVaultUiService : IVaultUiService
 {
     private readonly MockVaultUiService _inner = new();
     public int SkippedCipherCount { get; set; }
+    public bool DataStale => false;
 
     public IReadOnlyList<CipherListItem> GetItems() => _inner.GetItems();
     public CipherDetail GetDetail(string id) => _inner.GetDetail(id);
@@ -1058,3 +1061,62 @@ public class VaultSkippedCipherTests
         Assert.Contains(nameof(VaultViewModel.SkippedCipherMessage), notified);
     }
 }
+
+// 可配置离线陈旧标志的假实现,验证 VaultViewModel 把"当前快照来自离线缓存"上报到 UI(镜像 SkippedCipherVaultUiService)。
+public sealed class DataStaleVaultUiService : IVaultUiService
+{
+    private readonly MockVaultUiService _inner = new();
+    public int SkippedCipherCount => 0;
+    public bool DataStale { get; set; }
+
+    public IReadOnlyList<CipherListItem> GetItems() => _inner.GetItems();
+    public CipherDetail GetDetail(string id) => _inner.GetDetail(id);
+    public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
+    public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
+    public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => _inner.SaveCipherAsync(draft, editingId, ct);
+    public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => _inner.DeleteCipherAsync(id, permanent, ct);
+    public Task RestoreCipherAsync(string id, CancellationToken ct = default) => _inner.RestoreCipherAsync(id, ct);
+    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => _inner.SaveFolderAsync(folderId, name, ct);
+    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => _inner.DeleteFolderAsync(folderId, ct);
+    public Task SyncAsync(CancellationToken ct = default) => _inner.SyncAsync(ct);
+    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => _inner.MoveCiphersAsync(ids, folderId, ct);
+    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default) => _inner.DeleteCiphersAsync(ids, permanent, ct);
+    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) => _inner.RestoreCiphersAsync(ids, ct);
+}
+
+public class VaultDataStaleTests
+{
+    [Fact]
+    public void NotStale_DataStaleIsFalse()
+    {
+        var vm = new VaultViewModel(new MockVaultUiService());
+
+        Assert.False(vm.DataStale);
+    }
+
+    [Fact]
+    public void Stale_LoadedInConstructor_SetsDataStaleTrue()
+    {
+        var vm = new VaultViewModel(new DataStaleVaultUiService { DataStale = true });
+
+        Assert.True(vm.DataStale);
+    }
+
+    [Fact]
+    public void RefreshFromSnapshot_UpdatesDataStale_AndNotifiesUi()
+    {
+        var service = new DataStaleVaultUiService { DataStale = true };
+        var vm = new VaultViewModel(service);
+        Assert.True(vm.DataStale);
+
+        var notified = new List<string?>();
+        vm.PropertyChanged += (_, e) => notified.Add(e.PropertyName);
+
+        service.DataStale = false;
+        vm.RefreshFromSnapshot();
+
+        Assert.False(vm.DataStale);
+        Assert.Contains(nameof(VaultViewModel.DataStale), notified);
+    }
+}
+

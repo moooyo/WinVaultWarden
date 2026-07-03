@@ -29,6 +29,7 @@ public sealed class VaultUiService : IVaultUiService
     }
 
     public int SkippedCipherCount => _vault.Snapshot.SkippedCipherCount;
+    public bool DataStale => _vault.Snapshot.DataStale;
 
     public IReadOnlyList<CipherListItem> GetItems() => _vault.GetCiphers().Select(ToListItem).ToList();
 
