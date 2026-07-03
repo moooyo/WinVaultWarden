@@ -128,18 +128,11 @@
                     </ComboBox>
                 </tk:SettingsCard>
 
-                <tk:SettingsCard Header="复制后最小化" Description="复制项目数据到剪贴板后最小化应用">
+                <tk:SettingsCard Header="复制后最小化" Description="复制项目数据到剪贴板后最小化应用（即将推出）">
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE921;" />
                     </tk:SettingsCard.HeaderIcon>
-                    <ToggleSwitch IsOn="{x:Bind ViewModel.MinimizeOnCopy, Mode=TwoWay}" />
-                </tk:SettingsCard>
-
-                <tk:SettingsCard Header="显示网站图标 / 密码 URL" Description="在条目中显示网站图标与地址">
-                    <tk:SettingsCard.HeaderIcon>
-                        <FontIcon Glyph="&#xE12B;" />
-                    </tk:SettingsCard.HeaderIcon>
-                    <ToggleSwitch IsOn="{x:Bind ViewModel.ShowIconsAndPasswordUrl, Mode=TwoWay}" />
+                    <ToggleSwitch IsEnabled="False" IsOn="{x:Bind ViewModel.MinimizeOnCopy, Mode=TwoWay}" />
                 </tk:SettingsCard>
             </StackPanel>
 
@@ -162,11 +155,11 @@
                     <ToggleSwitch IsOn="{x:Bind ViewModel.CloseToTray, Mode=TwoWay}" />
                 </tk:SettingsCard>
 
-                <tk:SettingsCard Header="登录时自动启动" Description="登录 Windows 后自动启动应用">
+                <tk:SettingsCard Header="登录时自动启动" Description="登录 Windows 后自动启动应用（即将推出）">
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE7E8;" />
                     </tk:SettingsCard.HeaderIcon>
-                    <ToggleSwitch IsOn="{x:Bind ViewModel.StartOnLogin, Mode=TwoWay}" />
+                    <ToggleSwitch IsEnabled="False" IsOn="{x:Bind ViewModel.StartOnLogin, Mode=TwoWay}" />
                 </tk:SettingsCard>
 
                 <tk:SettingsCard Header="允许浏览器集成" Description="允许浏览器扩展连接桌面应用">
@@ -176,8 +169,8 @@
                     <ToggleSwitch IsOn="{x:Bind ViewModel.AllowBrowserIntegration, Mode=TwoWay}" />
                 </tk:SettingsCard>
 
-                <tk:SettingsCard Header="使用硬件加速" Description="仅在遇到图形问题时关闭">
-                    <ToggleSwitch IsOn="{x:Bind ViewModel.UseHardwareAcceleration, Mode=TwoWay}" />
+                <tk:SettingsCard Header="使用硬件加速" Description="仅在遇到图形问题时关闭（即将推出）">
+                    <ToggleSwitch IsEnabled="False" IsOn="{x:Bind ViewModel.UseHardwareAcceleration, Mode=TwoWay}" />
                 </tk:SettingsCard>
 
                 <tk:SettingsCard Header="显示网站图标" Description="关闭后仅显示类型图标，不向服务器请求网站图标">
@@ -189,7 +182,8 @@
                 </tk:SettingsCard>
 
                 <!-- SSH 用 Expander 收纳:开关 + 授权提示子项 -->
-                <tk:SettingsExpander Header="SSH 代理" Description="允许应用处理 SSH 签名请求">
+                <tk:SettingsExpander Header="SSH 代理" Description="允许应用处理 SSH 签名请求（即将推出）"
+                                     IsEnabled="False">
                     <tk:SettingsExpander.HeaderIcon>
                         <FontIcon Glyph="&#xE756;" />
                     </tk:SettingsExpander.HeaderIcon>
@@ -222,11 +216,12 @@
                     </ComboBox>
                 </tk:SettingsCard>
 
-                <tk:SettingsCard Header="语言" Description="更改应用显示语言">
+                <tk:SettingsCard Header="语言" Description="更改应用显示语言（即将推出）">
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xF2B7;" />
                     </tk:SettingsCard.HeaderIcon>
                     <ComboBox MinWidth="200"
+                              IsEnabled="False"
                               SelectedIndex="{x:Bind ViewModel.SelectedLanguageIndex, Mode=TwoWay}">
                         <ComboBoxItem Content="zh-CN - 中文（中国大陆）" />
                         <ComboBoxItem Content="English" />

@@ -34,6 +34,22 @@ public class VaultPageXamlTests
         Assert.Contains("SelectionModeFromBool", list.Attribute("SelectionMode")?.Value ?? "");
     }
 
+    [Fact]
+    public void Vault_SelectionMode_HasEntryButtonAndListSelectionSync()
+    {
+        var document = LoadXaml();
+
+        // 「选择」入口按钮:进入选择模式(此前只有「完成」退出、无入口,多选整段在发布 UI 不可达)。
+        var enter = document.Descendants(Xaml + "AppBarButton")
+            .Single(b => b.Attribute("Label")?.Value == "选择");
+        Assert.Contains("ToggleSelectionModeCommand", enter.Attribute("Command")?.Value ?? "");
+
+        // CipherList 接线 SelectionChanged,把勾选精确同步进 VM 的选中集(R4)。
+        var list = document.Descendants(Xaml + "ListView")
+            .Single(e => e.Attribute(XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml") + "Name")?.Value == "CipherList");
+        Assert.Equal("OnCipherSelectionChanged", list.Attribute("SelectionChanged")?.Value);
+    }
+
     private static XDocument LoadXaml()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

@@ -570,6 +570,17 @@ public partial class VaultViewModel : ObservableObject
         OnPropertyChanged(nameof(HasSelection));
     }
 
+    // 由列表的 SelectionChanged 逐项调用:把 ListView 的勾选/取消精确同步进 _selectedIds
+    // (此前 UI 从不同步,逐项勾选完全不被记录,批量操作全程禁用)。
+    public void SetItemSelected(string id, bool selected)
+    {
+        var changed = selected ? _selectedIds.Add(id) : _selectedIds.Remove(id);
+        if (!changed)
+            return;
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(HasSelection));
+    }
+
     public bool IsSelected(string id) => _selectedIds.Contains(id);
 
     private void ClearSelection()
