@@ -29,15 +29,15 @@ public class PinServiceTests
     public void SetPin_StoresPinProtectedUserKey_RoundTripsToSameUserKey()
     {
         var (pin, _, store, userKey) = Unlocked();
-        pin.SetPin("1234");
+        pin.SetPin("123456");
 
         Assert.True(pin.IsPinSet);
         store.TryLoad(out var p);
         Assert.False(string.IsNullOrEmpty(p.PinProtectedUserKey));
         Assert.Equal(0, p.PinFailedAttempts);
 
-        // 用 "1234" 派生密钥应解回同一 UserKey。
-        var pinKey = _crypto.DeriveMasterKey("1234", Email, KdfType.Pbkdf2, Iter, null, null);
+        // 用 "123456" 派生密钥应解回同一 UserKey。
+        var pinKey = _crypto.DeriveMasterKey("123456", Email, KdfType.Pbkdf2, Iter, null, null);
         var stretched = _crypto.StretchMasterKey(pinKey);
         var decrypted = _crypto.DecryptUserKey(stretched, EncString.Parse(p.PinProtectedUserKey!));
         Assert.Equal(userKey.FullKey, decrypted.FullKey);
@@ -47,7 +47,7 @@ public class PinServiceTests
     public void WrongPin_DoesNotDecrypt()
     {
         var (pin, _, store, _) = Unlocked();
-        pin.SetPin("1234");
+        pin.SetPin("123456");
         store.TryLoad(out var p);
         var pinKey = _crypto.DeriveMasterKey("9999", Email, KdfType.Pbkdf2, Iter, null, null);
         var stretched = _crypto.StretchMasterKey(pinKey);
@@ -58,7 +58,7 @@ public class PinServiceTests
     public void ClearPin_RemovesKey()
     {
         var (pin, _, _, _) = Unlocked();
-        pin.SetPin("1234");
+        pin.SetPin("123456");
         pin.ClearPin();
         Assert.False(pin.IsPinSet);
     }
@@ -71,6 +71,24 @@ public class PinServiceTests
             "2.protected", KdfType.Pbkdf2, Iter, null, null));
         var session = new VaultSession();   // 未 SetUnlockedKey → 锁定
         var pin = new PinService(_crypto, session, store);
-        Assert.Throws<InvalidOperationException>(() => pin.SetPin("1234"));
+        Assert.Throws<InvalidOperationException>(() => pin.SetPin("123456"));
     }
+
+    [Fact]
+    public void SetPin_TooShort_ThrowsArgumentException()
+    {
+        // M2 层1:PIN 最短 6 位,服务层强制(纵深)。
+        var (pin, _, _, _) = Unlocked();
+        Assert.Throws<ArgumentException>(() => pin.SetPin("123"));
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("12345", false)]
+    [InlineData("123456", true)]
+    [InlineData("abc123", true)]     // 允许字母数字
+    [InlineData("longer-pin", true)]
+    public void PinPolicy_IsValid(string? pin, bool expected) =>
+        Assert.Equal(expected, Core.Services.PinPolicy.IsValid(pin));
 }

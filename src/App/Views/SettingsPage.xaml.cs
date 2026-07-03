@@ -240,7 +240,7 @@ public sealed partial class SettingsPage : Page
 
     private async Task<string?> PromptSetPinAsync()
     {
-        var pinBox = new PasswordBox { PlaceholderText = "PIN（至少 4 位）", MinWidth = 320 };
+        var pinBox = new PasswordBox { PlaceholderText = $"PIN（至少 {Core.Services.PinPolicy.MinLength} 位）", MinWidth = 320 };
         AutomationProperties.SetAutomationId(pinBox, "SetPinBox");
 
         var confirmBox = new PasswordBox { PlaceholderText = "确认 PIN" };
@@ -275,9 +275,9 @@ public sealed partial class SettingsPage : Page
             var pin = pinBox.Password;
             var confirm = confirmBox.Password;
 
-            if (string.IsNullOrEmpty(pin) || pin.Length < 4)
+            if (!Core.Services.PinPolicy.IsValid(pin))
             {
-                errorText.Text = "PIN 至少需要 4 位。";
+                errorText.Text = $"PIN 至少需要 {Core.Services.PinPolicy.MinLength} 位。";
                 errorText.Visibility = Visibility.Visible;
                 continue;
             }
