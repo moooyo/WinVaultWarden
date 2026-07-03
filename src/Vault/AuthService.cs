@@ -275,7 +275,18 @@ public sealed class AuthService : IAuthService
                 context.KdfIterations,
                 context.KdfMemory,
                 context.KdfParallelism));
-            await _bootstrapper.BootstrapAsync(context.ServerUrl, ct);
+            try
+            {
+                await _bootstrapper.BootstrapAsync(context.ServerUrl, ct);
+            }
+            catch (Exception)
+            {
+                // 凭据已成功,但初始整库同步/设备拉取失败(网络抖动/取消/任意异常)。与 Unlock 失败路径一致地
+                // Lock():清零刚解锁的 UserKey/tokens,避免在报"失败"后仍残留内存,并把状态收敛为 Locked
+                // (而非悬挂的 Error)。已保存的会话保留,用户可重新解锁重试(S7)。
+                _session.Lock();
+                return new AuthResult.Failure("登录成功,但加载密码库数据失败,请重新解锁重试。");
+            }
             return new AuthResult.Success();
         }
         finally

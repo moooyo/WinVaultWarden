@@ -40,6 +40,18 @@ public sealed class VaultSession : IVaultSnapshot
             State = state;
     }
 
+    // 仅当仍持 UserKey(未被并发 Lock/Clear)时把状态迁移到 Unlocked(S8)。
+    // 避免 bootstrap 结尾无条件置 Unlocked 覆盖并发锁定,导致 State=Unlocked 但 UserKey=null 的矛盾态
+    // (UI 以为已解锁却是空库、写操作抛"Vault is locked")。检查与赋值在同一 _gate 下,与 Lock() 原子互斥。
+    public void MarkUnlockedIfKeyPresent()
+    {
+        lock (_gate)
+        {
+            if (UserKey is not null)
+                State = VaultState.Unlocked;
+        }
+    }
+
     public void SetTokens(string accessToken, string refreshToken)
     {
         lock (_gate)
@@ -68,6 +80,10 @@ public sealed class VaultSession : IVaultSnapshot
     {
         lock (_gate)
         {
+            // 并发锁定/登出防护(S6):若在途同步期间已被 Lock()/Clear()(UserKey 已在同一 _gate 下清零置空),
+            // 不得把解密后的明文条目回灌进已锁定会话——否则会出现 State=Locked 却仍能读到整库明文的矛盾态。
+            if (UserKey is null)
+                return;
             Account = vault.Account;
             _folders = vault.Folders;
             _ciphers = vault.Ciphers;
