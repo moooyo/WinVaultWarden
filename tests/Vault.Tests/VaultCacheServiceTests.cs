@@ -1,5 +1,4 @@
 using Api.Dtos;
-using Core.Abstractions;
 using Core.Models;
 using Crypto;
 using Vault;
@@ -9,14 +8,6 @@ namespace Vault.Tests;
 
 public class VaultCacheServiceTests
 {
-    private sealed class MemoryCacheStore : ICacheStore
-    {
-        private VaultCacheEntry? _entry;
-        public void SaveVaultCache(VaultCacheEntry entry) => _entry = entry;
-        public bool TryLoadVaultCache(out VaultCacheEntry entry) { entry = _entry!; return _entry is not null; }
-        public void ClearVaultCache() => _entry = null;
-    }
-
     private static readonly SymmetricCryptoKey UserKey =
         new(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
     private const string Email = "me@example.com";
@@ -34,10 +25,10 @@ public class VaultCacheServiceTests
         return new SyncResponse("sync", new ProfileDto("u", Email, "Me", null, null), [], [dto]);
     }
 
-    private static (VaultCacheService svc, VaultSession session, MemoryCacheStore store) New()
+    private static (VaultCacheService svc, VaultSession session, FakeCacheStore store) New()
     {
         var crypto = new CryptoService();
-        var store = new MemoryCacheStore();
+        var store = new FakeCacheStore();
         var session = new VaultSession();
         return (new VaultCacheService(store, new VaultDecryptor(crypto), session), session, store);
     }
