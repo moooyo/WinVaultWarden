@@ -44,7 +44,7 @@ public partial class SettingsViewModel : ObservableObject
     public partial bool StartOnLogin { get; set; }
 
     [ObservableProperty]
-    public partial bool AllowBrowserIntegration { get; set; }
+    public partial bool AllowBrowserIntegration { get; set; } = AppPreferences.Current.AllowBrowserIntegration;
 
     [ObservableProperty]
     public partial bool UseHardwareAcceleration { get; set; } = true;
@@ -56,7 +56,7 @@ public partial class SettingsViewModel : ObservableObject
     public partial int SelectedSshAuthorizationPromptIndex { get; set; }
 
     [ObservableProperty]
-    public partial bool AllowScreenshots { get; set; } = true;
+    public partial bool AllowScreenshots { get; set; } = AppPreferences.Current.AllowScreenshots;
 
     [ObservableProperty]
     public partial int SelectedLanguageIndex { get; set; }
@@ -99,6 +99,26 @@ public partial class SettingsViewModel : ObservableObject
         AppPreferences.Current.ShowTrayIcon = value;
         AppPreferences.Save();
         ShowTrayIconSettingChanged?.Invoke(value);
+    }
+
+    /// <summary>AllowScreenshots 变更时通知 UI（MainWindow）即时对窗口应用/解除捕获保护。</summary>
+    public static event Action<bool>? AllowScreenshotsSettingChanged;
+
+    partial void OnAllowScreenshotsChanged(bool value)
+    {
+        AppPreferences.Current.AllowScreenshots = value;
+        AppPreferences.Save();
+        AllowScreenshotsSettingChanged?.Invoke(value);
+    }
+
+    /// <summary>AllowBrowserIntegration 变更时通知组合根（App）即时启动/停止 passkey 桥接服务器。</summary>
+    public static event Action<bool>? AllowBrowserIntegrationSettingChanged;
+
+    partial void OnAllowBrowserIntegrationChanged(bool value)
+    {
+        AppPreferences.Current.AllowBrowserIntegration = value;
+        AppPreferences.Save();
+        AllowBrowserIntegrationSettingChanged?.Invoke(value);
     }
 
     partial void OnMinimizeToTrayChanged(bool value)

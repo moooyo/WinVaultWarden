@@ -89,4 +89,10 @@ public sealed class AppPreferencesData
 
     /// <summary>关闭窗口时隐藏到托盘而非退出（仅当 ShowTrayIcon 为真才生效）。默认开。</summary>
     public bool CloseToTray { get; set; } = true;
+
+    /// <summary>允许捕获本应用窗口内容（截图/录屏/屏幕共享）。默认允许；关闭后对窗口设 WDA_EXCLUDEFROMCAPTURE 阻止捕获。</summary>
+    public bool AllowScreenshots { get; set; } = true;
+
+    /// <summary>允许浏览器扩展经命名管道桥接连接本应用（passkey）。默认关闭；仅开启时才启动桥接服务器。</summary>
+    public bool AllowBrowserIntegration { get; set; }
 }

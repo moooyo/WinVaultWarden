@@ -31,8 +31,23 @@ public partial class App : Application
 
         MainWindow = new MainWindow();
         ThemeManager.Apply(AppPreferences.Current.ThemeIndex);
-        Services.GetRequiredService<PasskeyBridgeServer>().Start();
+
+        // 浏览器集成(passkey 桥接)受设置门控(S5):仅当"允许浏览器集成"开启时才启动桥接命名管道服务器。
+        // 默认关闭——UI 显示"关"即真的不监听。开关运行时切换即时启停(桥接可重启)。
+        if (AppPreferences.Current.AllowBrowserIntegration)
+            Services.GetRequiredService<PasskeyBridgeServer>().Start();
+        ViewModels.SettingsViewModel.AllowBrowserIntegrationSettingChanged += OnBrowserIntegrationChanged;
+
         MainWindow.Activate();
+    }
+
+    private static void OnBrowserIntegrationChanged(bool enabled)
+    {
+        var bridge = Services.GetRequiredService<PasskeyBridgeServer>();
+        if (enabled)
+            bridge.Start();
+        else
+            _ = bridge.StopAsync();
     }
 
     private static void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
