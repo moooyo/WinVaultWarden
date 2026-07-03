@@ -38,6 +38,25 @@ public class LoginViewModelPrepareAccountTests
     }
 
     [Fact]
+    public void AccountPrefill_AppliedToNewlyConstructedViewModel()
+    {
+        // R10:注册成功后经 AccountPrefill(DI 单例)把预填带到新建的 LoginViewModel。
+        var prefill = new AccountPrefill();
+        prefill.Set("https://vault.example.com", "new@user.com");
+
+        var vm = new LoginViewModel(new FakeAuthService(), null, null, prefill);
+
+        Assert.Equal("new@user.com", vm.Email);
+        Assert.Equal("https://vault.example.com", vm.ServerUrl);
+        Assert.Equal(2, vm.SelectedServerOptionIndex); // 自托管
+        Assert.Equal(LoginStage.Account, vm.Stage);
+
+        // 取用即清:同一 AccountPrefill 再构造一个不应残留预填。
+        var vm2 = new LoginViewModel(new FakeAuthService(), null, null, prefill);
+        Assert.NotEqual("new@user.com", vm2.Email);
+    }
+
+    [Fact]
     public void PrepareAccount_UsUrl_ServerUrlEqualsPassedUrl()
     {
         var vm = Build();

@@ -102,6 +102,7 @@ public static class ServiceConfiguration
         services.AddTransient<RegisterViewModel>(sp =>
             new RegisterViewModel(sp.GetRequiredService<IRegisterUiService>()));
 
+        services.AddSingleton<AccountPrefill>(); // 注册→登录 的一次性预填暂存(R10)
         services.AddTransient<LoginViewModel>();
         services.AddTransient<VaultViewModel>();
         services.AddTransient<SendViewModel>();

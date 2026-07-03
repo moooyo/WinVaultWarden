@@ -17,6 +17,13 @@ public sealed partial class FaviconView : UserControl
     {
         InitializeComponent();
         Loaded += (_, _) => Reload();
+        // 卸载时取消并释放最后一个 CTS,避免虚拟化长列表滚动持续泄漏 CancellationTokenSource(R11)。
+        Unloaded += (_, _) =>
+        {
+            _cts?.Cancel();
+            _cts?.Dispose();
+            _cts = null;
+        };
     }
 
     public string? Domain
@@ -48,7 +55,12 @@ public sealed partial class FaviconView : UserControl
 
     private async void Reload()
     {
-        _cts?.Cancel();
+        // 取消并释放上一个 CTS(此前只 Cancel 不 Dispose,虚拟化列表滚动持续泄漏,R11)。
+        var old = _cts;
+        old?.Cancel();
+        old?.Dispose();
+        _cts = null;
+
         IconImage.Visibility = Visibility.Collapsed;   // 默认显字形
         IconImage.Source = null;
 
@@ -58,16 +70,19 @@ public sealed partial class FaviconView : UserControl
 
         var cts = new CancellationTokenSource();
         _cts = cts;
+        // 捕获 token(struct):后续 Reload 会把本 cts 当作 old 释放,而已捕获的 token 读
+        // IsCancellationRequested 不受源释放影响,避免读已释放 CTS 抛异常。
+        var token = cts.Token;
         try
         {
             var cache = global::App.App.Services.GetRequiredService<IFaviconCache>();
-            var bytes = await cache.GetAsync(domain, cts.Token);
-            if (cts.Token.IsCancellationRequested || bytes is null || bytes.Length == 0)
+            var bytes = await cache.GetAsync(domain, token);
+            if (token.IsCancellationRequested || bytes is null || bytes.Length == 0)
                 return;
             var bmp = new BitmapImage();
             using var ms = new MemoryStream(bytes);
             await bmp.SetSourceAsync(ms.AsRandomAccessStream());
-            if (cts.Token.IsCancellationRequested) return;
+            if (token.IsCancellationRequested) return;
             IconImage.Source = bmp;
             IconImage.Visibility = Visibility.Visible;  // 盖住字形
         }

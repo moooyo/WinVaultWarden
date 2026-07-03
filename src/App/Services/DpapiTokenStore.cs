@@ -65,10 +65,20 @@ public sealed class DpapiTokenStore : ITokenStore
             throw new PlatformNotSupportedException("DPAPI token storage is only supported on Windows.");
 
         var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(session, AppJsonContext.Default.PersistedSession);
-        var protectedBytes = ProtectedData.Protect(jsonBytes, null, DataProtectionScope.CurrentUser);
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        File.WriteAllBytes(_path, protectedBytes);
-        CryptographicOperations.ZeroMemory(jsonBytes);
+        try
+        {
+            var protectedBytes = ProtectedData.Protect(jsonBytes, null, DataProtectionScope.CurrentUser);
+            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+            // 原子写:先写临时文件,再 File.Move 替换。避免写入中途崩溃/断电截断 session.bin,
+            // 导致下次启动 TryLoad 失败、强制完整重新登录+全量重同步(R9)。与 FaviconCache.WriteAtomic 一致。
+            var tmp = _path + ".tmp";
+            File.WriteAllBytes(tmp, protectedBytes);
+            File.Move(tmp, _path, overwrite: true);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(jsonBytes);
+        }
     }
 
     public void Clear()

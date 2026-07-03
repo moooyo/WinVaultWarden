@@ -368,20 +368,28 @@ public sealed partial class MainWindow : Window
                 _nav.GoToSecurityReport();
                 break;
             case "lock":
-                ClearClipboardSecrets();
-                await global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
-                await global::App.App.Services.GetRequiredService<IAuthService>().LockAsync();
+                try
+                {
+                    ClearClipboardSecrets();
+                    await global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
+                    await global::App.App.Services.GetRequiredService<IAuthService>().LockAsync();
+                }
+                catch { /* 宁可多锁一次:即便清理/锁定失败也导航到锁屏(R16) */ }
                 ShowLogin();
                 break;
             case "logout":
                 if (await global::App.Views.DialogHelper.ConfirmAsync(
                         Nav.XamlRoot, "退出登录", "确定退出登录?将清除本地会话,需重新登录。", "退出登录"))
                 {
-                    ClearClipboardSecrets();
-                    _ = global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
-                    await global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync();
-                    // 登出清空本地图标缓存(锁定不清:锁定保留账户,图标可复用)。
-                    global::App.App.Services.GetRequiredService<IFaviconCache>().Clear();
+                    try
+                    {
+                        ClearClipboardSecrets();
+                        await global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
+                        await global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync();
+                        // 登出清空本地图标缓存(锁定不清:锁定保留账户,图标可复用)。
+                        global::App.App.Services.GetRequiredService<IFaviconCache>().Clear();
+                    }
+                    catch { /* 即便清理失败也导航到登录屏(R16) */ }
                     ShowLogin();
                 }
                 break;
