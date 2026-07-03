@@ -60,5 +60,6 @@ public class CoreDomainTests
         public IReadOnlyList<DeviceInfo> Devices { get; } = [];
         public AccountInfo Account { get; } = new("me@example.com", "https://vault.example", "M", "PBKDF2 600000");
         public int SkippedCipherCount => 0;
+        public bool DataStale => false;
     }
 }

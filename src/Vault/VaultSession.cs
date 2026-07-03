@@ -18,6 +18,7 @@ public sealed class VaultSession : IVaultSnapshot
     public string? EncryptedPrivateKey { get; private set; }
     public AccountInfo Account { get; private set; } = AccountInfo.Empty;
     public int SkippedCipherCount { get; private set; }
+    public bool DataStale { get; private set; }
 
     public IReadOnlyList<Cipher> Ciphers
     {
@@ -76,7 +77,7 @@ public sealed class VaultSession : IVaultSnapshot
             EncryptedPrivateKey = encryptedPrivateKey;
     }
 
-    public void SetSnapshot(DecryptedVault vault)
+    public void SetSnapshot(DecryptedVault vault, bool dataStale = false)
     {
         lock (_gate)
         {
@@ -88,6 +89,7 @@ public sealed class VaultSession : IVaultSnapshot
             _folders = vault.Folders;
             _ciphers = vault.Ciphers;
             SkippedCipherCount = vault.SkippedCipherCount;
+            DataStale = dataStale;
         }
     }
 
@@ -233,5 +235,6 @@ public sealed class VaultSession : IVaultSnapshot
         _devices = Array.Empty<DeviceInfo>();
         EncryptedPrivateKey = null;
         SkippedCipherCount = 0;
+        DataStale = false;
     }
 }
