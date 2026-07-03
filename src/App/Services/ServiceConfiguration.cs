@@ -76,6 +76,7 @@ public static class ServiceConfiguration
         services.AddTransient<EmergencyAccessViewModel>();
         services.AddSingleton<IPasskeyApprovalService, PasskeyApprovalDialogService>();
         services.AddSingleton<BrowserPasskeyRequestHandler>();
+        services.AddSingleton<IPeerAuthorizer, ClientPeerAuthorizer>(); // M1：管道 peer 鉴别
         services.AddSingleton<PasskeyBridgeServer>();
         services.AddSingleton<IVaultUiService, VaultUiService>();
         services.AddSingleton<ISendUiService>(sp => new SendUiService(

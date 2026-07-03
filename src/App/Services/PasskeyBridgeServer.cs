@@ -8,11 +8,16 @@ namespace App.Services;
 public sealed class PasskeyBridgeServer : IAsyncDisposable
 {
     private readonly BrowserPasskeyRequestHandler _handler;
+    private readonly IPeerAuthorizer _peerAuthorizer;
     private readonly object _gate = new();
     private CancellationTokenSource? _shutdown;
     private Task? _listenTask;
 
-    public PasskeyBridgeServer(BrowserPasskeyRequestHandler handler) => _handler = handler;
+    public PasskeyBridgeServer(BrowserPasskeyRequestHandler handler, IPeerAuthorizer peerAuthorizer)
+    {
+        _handler = handler;
+        _peerAuthorizer = peerAuthorizer;
+    }
 
     public bool IsRunning
     {
@@ -67,6 +72,14 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
             try
             {
                 await pipe.WaitForConnectionAsync(ct);
+
+                // Peer 鉴别(M1):连接进程须是期望的 BrowserNativeHost;否则记录并断开,不处理请求。
+                if (!_peerAuthorizer.IsAuthorized(pipe))
+                {
+                    await pipe.DisposeAsync();
+                    continue;
+                }
+
                 _ = Task.Run(() => HandleConnectionAsync(pipe, ct), CancellationToken.None);
             }
             catch (OperationCanceledException)
