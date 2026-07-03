@@ -27,8 +27,10 @@ public interface ITwoFactorApiClient
     // POST api/two-factor/send-email — 发送验证码到指定邮箱。
     Task SendEmailAsync(SendEmailRequest request, CancellationToken ct = default);
 
-    // PUT api/two-factor/email — 验证邮箱验证码并启用邮箱两步验证，返回更新后的状态。
-    Task<EmailStatusResponse> EnableEmailAsync(EmailVerifyRequest request, CancellationToken ct = default);
+    // PUT api/two-factor/email — 验证邮箱验证码并启用邮箱两步验证。
+    // 服务端成功响应把 enabled 序列化为字符串 "true"(email.rs:241),且该 body 无人消费,
+    // 故不解析响应体、返回 Task,避免 "true"→bool 反序列化抛异常使启用永远显示失败。
+    Task EnableEmailAsync(EmailVerifyRequest request, CancellationToken ct = default);
 
     // POST api/two-factor/get-recover — 获取恢复码，需主密码哈希。
     Task<RecoverResponse> GetRecoverAsync(PasswordVerifyRequest request, CancellationToken ct = default);

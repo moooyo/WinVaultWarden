@@ -356,10 +356,14 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
     public Task SendEmailAsync(SendEmailRequest request, CancellationToken ct = default)
         => SendWriteAsync(HttpMethod.Post, "api/two-factor/send-email", request, ApiJsonContext.Default.SendEmailRequest, ct);
 
-    public Task<EmailStatusResponse> EnableEmailAsync(EmailVerifyRequest request, CancellationToken ct = default)
-        => SendWriteReadAsync(
+    // 注意:PUT /api/two-factor/email 的成功响应把 enabled 序列化为字符串字面量 "true"
+    // (vaultwarden/src/api/core/two_factor/email.rs:241),与 get-email 的真 bool 不同。
+    // 该响应体无人消费(上层仅关心是否成功),故不解析 body——避免 "true"→bool 反序列化抛异常
+    // 导致启用邮箱2FA 永远显示失败(服务端其实已启用)。
+    public Task EnableEmailAsync(EmailVerifyRequest request, CancellationToken ct = default)
+        => SendWriteAsync(
             HttpMethod.Put, "api/two-factor/email", request,
-            ApiJsonContext.Default.EmailVerifyRequest, ApiJsonContext.Default.EmailStatusResponse, ct);
+            ApiJsonContext.Default.EmailVerifyRequest, ct);
 
     public Task<RecoverResponse> GetRecoverAsync(PasswordVerifyRequest request, CancellationToken ct = default)
         => SendWriteReadAsync(

@@ -75,11 +75,11 @@ public sealed class FakeTwoFactorApiClient : ITwoFactorApiClient
         return Task.CompletedTask;
     }
 
-    public Task<EmailStatusResponse> EnableEmailAsync(EmailVerifyRequest request, CancellationToken ct = default)
+    public Task EnableEmailAsync(EmailVerifyRequest request, CancellationToken ct = default)
     {
         if (Throw is not null) throw Throw;
         LastEnableEmail = request;
-        return Task.FromResult(new EmailStatusResponse(Email: request.Email, Enabled: true));
+        return Task.CompletedTask;
     }
 
     public Task<RecoverResponse> GetRecoverAsync(PasswordVerifyRequest request, CancellationToken ct = default)

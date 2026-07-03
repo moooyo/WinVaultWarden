@@ -312,4 +312,26 @@ public class ApiClientTests
         Assert.Equal(0, refreshCalls);
         Assert.Single(handler.Requests);
     }
+
+    // R2 回归:PUT /api/two-factor/email 成功响应把 enabled 序列化为字符串 "true"
+    // (vaultwarden email.rs:241)。EnableEmailAsync 不得因解析该 body 抛异常——
+    // 否则启用邮箱2FA 永远显示失败(服务端其实已启用)。
+    [Fact]
+    public async Task EnableEmail_ServerReturnsStringEnabled_DoesNotThrow()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
+            """{"email":"me@example.com","enabled":"true","object":"twoFactorEmail"}"""));
+        var client = new ApiClient(new HttpClient(handler));
+        client.SetBaseAddress("https://vault.example/");
+
+        // 不抛即通过(旧实现会因 "true"→bool 反序列化抛 JsonException)。
+        await client.EnableEmailAsync(
+            new EmailVerifyRequest("me@example.com", "TOKEN", "hash"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpMethod.Put, handler.Requests[0].Method);
+        Assert.Equal("/api/two-factor/email", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Contains("\"token\":\"TOKEN\"", handler.Bodies[0]);
+    }
 }
