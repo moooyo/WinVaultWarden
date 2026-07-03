@@ -32,9 +32,6 @@ public partial class SettingsViewModel : ObservableObject
     public partial bool MinimizeOnCopy { get; set; }
 
     [ObservableProperty]
-    public partial bool ShowIconsAndPasswordUrl { get; set; } = true;
-
-    [ObservableProperty]
     public partial bool ShowTrayIcon { get; set; } = AppPreferences.Current.ShowTrayIcon;
 
     [ObservableProperty]

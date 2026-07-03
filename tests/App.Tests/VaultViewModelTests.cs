@@ -848,6 +848,26 @@ public class VaultSelectionTests
     }
 
     [Fact]
+    public void SetItemSelected_TogglesSelectionAndUpdatesCounts()
+    {
+        var vm = new VaultViewModel(new MockVaultUiService());
+        vm.ToggleSelectionModeCommand.Execute(null);
+        var id = vm.FilteredItems[0].Id;
+
+        vm.SetItemSelected(id, selected: true);
+        Assert.Equal(1, vm.SelectedCount);
+        Assert.True(vm.HasSelection);
+
+        // 幂等:重复选中不重复计数。
+        vm.SetItemSelected(id, selected: true);
+        Assert.Equal(1, vm.SelectedCount);
+
+        vm.SetItemSelected(id, selected: false);
+        Assert.Equal(0, vm.SelectedCount);
+        Assert.False(vm.HasSelection);
+    }
+
+    [Fact]
     public async Task MoveSelectedToFolder_MovesAndExitsSelectionMode()
     {
         var vm = new VaultViewModel(new MockVaultUiService());

@@ -38,6 +38,27 @@ public sealed partial class VaultPage : Page
     public static ListViewSelectionMode SelectionModeFromBool(bool isSelectionMode) =>
         isSelectionMode ? ListViewSelectionMode.Multiple : ListViewSelectionMode.Single;
 
+    private void OnSelectAllClick(object sender, RoutedEventArgs e)
+    {
+        // 与 SelectAllCommand(填 _selectedIds)并行:让 ListView 也视觉全选,保持勾选与计数一致。
+        if (ViewModel.IsSelectionMode)
+            CipherList.SelectAll();
+    }
+
+    // 多选模式下把 ListView 的勾选/取消精确同步进 VM 的选中集。
+    // 此前 CipherList 只单向绑定 SelectedItem、无此接线,逐项勾选完全不被记录,批量操作全程禁用(R4)。
+    private void OnCipherSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ViewModel.IsSelectionMode)
+            return;
+        foreach (var removed in e.RemovedItems)
+            if (removed is CipherListItem item)
+                ViewModel.SetItemSelected(item.Id, selected: false);
+        foreach (var added in e.AddedItems)
+            if (added is CipherListItem item)
+                ViewModel.SetItemSelected(item.Id, selected: true);
+    }
+
     private static void SetRowActionsOpacity(object sender, double opacity)
     {
         if (sender is Grid root && root.FindName("RowActions") is FrameworkElement panel)
@@ -343,8 +364,17 @@ public sealed partial class VaultPage : Page
             return;
         }
 
-        var buffer = await Windows.Storage.FileIO.ReadBufferAsync(file);
-        await ViewModel.AddAttachmentAsync(item.Id, buffer.ToArray(), file.Name);
+        // 文件读取 + 上传:ReadBufferAsync 在 code-behind 内、不在 VM 的 try/catch 内,
+        // 文件被锁/网络盘掉线/拒绝访问会抛异常并从 async void 逸出——就地捕获并经 InfoBar 上报。
+        try
+        {
+            var buffer = await Windows.Storage.FileIO.ReadBufferAsync(file);
+            await ViewModel.AddAttachmentAsync(item.Id, buffer.ToArray(), file.Name);
+        }
+        catch (Exception ex)
+        {
+            ViewModel.OperationError = $"读取文件失败:{ex.Message}";
+        }
     }
 
     private async void OnDownloadAttachmentClick(object sender, RoutedEventArgs e)
@@ -370,7 +400,16 @@ public sealed partial class VaultPage : Page
         if (bytes is null)
             return;
 
-        await Windows.Storage.FileIO.WriteBytesAsync(file, bytes);
+        // 文件写入在 code-behind 内、不在 VM 的 try/catch 内:磁盘满/拒绝访问/网络盘掉线会抛异常
+        // 并从 async void 逸出——就地捕获并经 InfoBar 上报。
+        try
+        {
+            await Windows.Storage.FileIO.WriteBytesAsync(file, bytes);
+        }
+        catch (Exception ex)
+        {
+            ViewModel.OperationError = $"保存文件失败:{ex.Message}";
+        }
     }
 
     private async void OnDeleteAttachmentClick(object sender, RoutedEventArgs e)
