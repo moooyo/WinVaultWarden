@@ -152,7 +152,7 @@ public class AuthServicePinTests
         var decryptor = new VaultDecryptor(_crypto);
         var cache = new VaultCacheService(new FakeCacheStore(), decryptor, session);
         var bootstrapper = new VaultBootstrapper(new SyncService(api, decryptor, session, cache), api, session);
-        return new AuthService(api, api, _crypto, session, tokenStore, bootstrapper);
+        return new AuthService(api, api, _crypto, session, tokenStore, bootstrapper, cache);
     }
 
     private PinFixture CreatePinFixture()

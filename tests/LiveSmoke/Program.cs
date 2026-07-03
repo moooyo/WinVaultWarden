@@ -55,7 +55,7 @@ refresher = new TokenRefreshService(api, api, session, tokenStore);
 var decryptor = new VaultDecryptor(crypto);
 var cache = new VaultCacheService(new NullCacheStore(), decryptor, session);
 var bootstrapper = new VaultBootstrapper(new SyncService(api, decryptor, session, cache), api, session);
-var auth = new AuthService(api, api, crypto, session, tokenStore, bootstrapper);
+var auth = new AuthService(api, api, crypto, session, tokenStore, bootstrapper, cache);
 var sync = new SyncService(api, decryptor, session, cache);
 var encryptor = new CipherEncryptor(crypto);
 var writeService = new VaultWriteService(api, encryptor, sync, session);
@@ -1175,7 +1175,7 @@ BuildStack(string url)
     var dec = new VaultDecryptor(c);
     var cache2 = new VaultCacheService(new NullCacheStore(), dec, s);
     var boot = new VaultBootstrapper(new SyncService(a, dec, s, cache2), a, s);
-    var auth2 = new AuthService(a, a, c, s, ts, boot);
+    var auth2 = new AuthService(a, a, c, s, ts, boot, cache2);
     var sync2 = new SyncService(a, dec, s, cache2);
     var enc2 = new CipherEncryptor(c);
     var write2 = new VaultWriteService(a, enc2, sync2, s);

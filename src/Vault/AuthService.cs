@@ -20,6 +20,7 @@ public sealed class AuthService : IAuthService
     private readonly VaultSession _session;
     private readonly ITokenStore _tokenStore;
     private readonly VaultBootstrapper _bootstrapper;
+    private readonly VaultCacheService _cache;
     private PendingTwoFactorContext? _pendingTwoFactor;
 
     public AuthService(
@@ -28,7 +29,8 @@ public sealed class AuthService : IAuthService
         CryptoService crypto,
         VaultSession session,
         ITokenStore tokenStore,
-        VaultBootstrapper bootstrapper)
+        VaultBootstrapper bootstrapper,
+        VaultCacheService cache)
     {
         _api = api;
         _apiConfig = apiConfig;
@@ -36,6 +38,7 @@ public sealed class AuthService : IAuthService
         _session = session;
         _tokenStore = tokenStore;
         _bootstrapper = bootstrapper;
+        _cache = cache;
     }
 
     public async Task<AuthResult> LoginAsync(
@@ -96,9 +99,10 @@ public sealed class AuthService : IAuthService
 
     public async Task<AuthResult> UnlockAsync(string masterPassword, CancellationToken ct = default)
     {
-        if (!_tokenStore.TryLoad(out var persisted))
+        if (!_tokenStore.TryLoad(out var persisted) || string.IsNullOrEmpty(persisted.ProtectedUserKey))
             return new AuthResult.Failure("No saved session.");
 
+        SymmetricCryptoKey userKey;
         try
         {
             _apiConfig.SetBaseAddress(persisted.ServerUrl);
@@ -111,7 +115,6 @@ public sealed class AuthService : IAuthService
                 persisted.KdfIterations,
                 persisted.KdfMemory,
                 persisted.KdfParallelism);
-            SymmetricCryptoKey userKey;
             try
             {
                 userKey = _crypto.DecryptUserKey(stretchedKey, EncString.Parse(persisted.ProtectedUserKey));
@@ -121,29 +124,50 @@ public sealed class AuthService : IAuthService
                 // 拉伸子钥仅用于解包 UserKey,用完清零;存入 session 的 userKey 是独立数组,不受影响。
                 stretchedKey.Dispose();
             }
-
-            var refresh = await _api.ConnectTokenAsync(ConnectTokenRequest.Refresh(
-                persisted.RefreshToken,
-                persisted.DeviceIdentifier,
-                DeviceName), ct);
-
-            if (refresh is not ConnectTokenResult.Success success)
-            {
-                _session.Lock();
-                return ToFailure(refresh);
-            }
-
-            _session.SetTokens(success.Token.AccessToken, success.Token.RefreshToken);
-            _session.SetUnlockedKey(userKey);
-            _tokenStore.Save(persisted with { RefreshToken = success.Token.RefreshToken });
-            await _bootstrapper.BootstrapAsync(persisted.ServerUrl, ct);
-            return new AuthResult.Success();
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
         {
             _session.Lock();
             return new AuthResult.Failure(ex.Message);
         }
+
+        // 本地已可离线解锁:先落 UserKey,再尝试从加密缓存立即出数据;随后联网刷新 token + 整库同步
+        // (可能因断网/服务端不可达而失败——失败时按有无缓存分流,见 FinishUnlockOffline)。
+        _session.SetUnlockedKey(userKey);
+        var fromCache = _cache.TryLoadInto(persisted.Email, persisted.ServerUrl, userKey);
+
+        try
+        {
+            var refresh = await _api.ConnectTokenAsync(ConnectTokenRequest.Refresh(
+                persisted.RefreshToken,
+                persisted.DeviceIdentifier,
+                DeviceName), ct);
+
+            if (refresh is not ConnectTokenResult.Success success)
+                return FinishUnlockOffline(fromCache);
+
+            _session.SetTokens(success.Token.AccessToken, success.Token.RefreshToken);
+            _tokenStore.Save(persisted with { RefreshToken = success.Token.RefreshToken });
+            await _bootstrapper.BootstrapAsync(persisted.ServerUrl, ct);
+            return new AuthResult.Success();
+        }
+        catch (Exception ex) when (IsExpectedAuthException(ex))
+        {
+            return FinishUnlockOffline(fromCache);
+        }
+    }
+
+    // 网络刷新/整库同步失败后的收尾:有缓存 → 保持已解锁状态,快照来自缓存(DataStale 已由
+    // VaultCacheService.TryLoadInto 置 true),离线解锁成功;无缓存 → 回滚(Lock 清零 UserKey)并失败。
+    private AuthResult FinishUnlockOffline(bool fromCache)
+    {
+        if (fromCache)
+        {
+            _session.SetState(Core.Session.VaultState.Unlocked);
+            return new AuthResult.Success();
+        }
+        _session.Lock();
+        return new AuthResult.Failure("无法连接服务器,且无离线缓存,请联网后重试。");
     }
 
     public async Task<AuthResult> UnlockWithPinAsync(string pin, CancellationToken ct = default)
@@ -174,26 +198,34 @@ public sealed class AuthService : IAuthService
                 // 拉伸子钥用完清零;存入 session 的 userKey 是独立数组,不受影响。
                 stretchedKey.Dispose();
             }
+        }
+        catch (Exception ex) when (IsExpectedAuthException(ex))
+        {
+            _session.Lock();
+            return new AuthResult.Failure(ex.Message);
+        }
 
+        // 本地已可离线解锁:先落 UserKey,再尝试从加密缓存立即出数据;随后联网刷新 token + 整库同步
+        // (可能因断网/服务端不可达而失败——失败时按有无缓存分流,见 FinishUnlockOffline)。
+        _session.SetUnlockedKey(userKey);
+        var fromCache = _cache.TryLoadInto(persisted.Email, persisted.ServerUrl, userKey);
+
+        try
+        {
             var refresh = await _api.ConnectTokenAsync(ConnectTokenRequest.Refresh(
                 persisted.RefreshToken, persisted.DeviceIdentifier, DeviceName), ct);
 
             if (refresh is not ConnectTokenResult.Success success)
-            {
-                _session.Lock();
-                return ToFailure(refresh);
-            }
+                return FinishUnlockOffline(fromCache);
 
             _session.SetTokens(success.Token.AccessToken, success.Token.RefreshToken);
-            _session.SetUnlockedKey(userKey);
             _tokenStore.Save(persisted with { RefreshToken = success.Token.RefreshToken, PinFailedAttempts = 0 });
             await _bootstrapper.BootstrapAsync(persisted.ServerUrl, ct);
             return new AuthResult.Success();
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
         {
-            _session.Lock();
-            return new AuthResult.Failure(ex.Message);
+            return FinishUnlockOffline(fromCache);
         }
     }
 
@@ -220,6 +252,7 @@ public sealed class AuthService : IAuthService
         _tokenStore.Clear();
         _session.Clear();
         DisposePendingTwoFactor();
+        _cache.Clear();
         return Task.CompletedTask;
     }
 
