@@ -173,4 +173,73 @@ public class SignalRMessagePackTests
     {
         Assert.False(SignalRMessagePack.TryParseInvocation(ReadOnlySpan<byte>.Empty, out _));
     }
+
+    // ----------------------------------------------------------------
+    // S1: DoS 硬化回归
+    // ----------------------------------------------------------------
+
+    private static byte[] FrameOf(byte[] payload)
+    {
+        var outb = new List<byte>();
+        var len = payload.Length;
+        do
+        {
+            var x = (byte)(len & 0x7f);
+            len >>= 7;
+            if (len > 0) x |= 0x80;
+            outb.Add(x);
+        } while (len > 0);
+        outb.AddRange(payload);
+        return outb.ToArray();
+    }
+
+    private static byte[] Repeat(byte value, int count)
+    {
+        var a = new byte[count];
+        for (int i = 0; i < count; i++) a[i] = value;
+        return a;
+    }
+
+    [Fact]
+    public void ReadValue_DeeplyNested_ThrowsNotStackOverflow()
+    {
+        // 300 层嵌套 fixarray[1] (0x91) 远超 MaxDepth → 抛可捕获异常而非不可捕获的栈溢出。
+        var deep = Repeat(0x91, 300);
+        Assert.Throws<System.IO.InvalidDataException>(() =>
+        {
+            int pos = 0;
+            SignalRMessagePack.ReadValue(deep, ref pos);
+        });
+    }
+
+    [Fact]
+    public void TryParseInvocation_DeeplyNested_ReturnsFalseNotCrash()
+    {
+        var frame = FrameOf(Repeat(0x91, 300));
+        Assert.False(SignalRMessagePack.TryParseInvocation(frame, out _));
+    }
+
+    [Fact]
+    public void ReadValue_HugeArrayCount_ThrowsInsteadOfAllocating()
+    {
+        // array32 声明约 21 亿元素但缓冲仅几字节 → EnsureCount 抛异常,不预分配巨量数组(内存放大 DoS)。
+        var buf = new byte[] { 0xdd, 0x7f, 0xff, 0xff, 0xff };
+        Assert.Throws<System.IO.InvalidDataException>(() =>
+        {
+            int pos = 0;
+            SignalRMessagePack.ReadValue(buf, ref pos);
+        });
+    }
+
+    [Fact]
+    public void ReadValue_NegativeMapCount_Throws()
+    {
+        // map32 count 0xffffffff → (int)-1 → EnsureCount 抛异常。
+        var buf = new byte[] { 0xdf, 0xff, 0xff, 0xff, 0xff };
+        Assert.Throws<System.IO.InvalidDataException>(() =>
+        {
+            int pos = 0;
+            SignalRMessagePack.ReadValue(buf, ref pos);
+        });
+    }
 }
