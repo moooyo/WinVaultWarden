@@ -26,9 +26,9 @@ public sealed partial class RegisterPage : Page
 
         if (ViewModel.Registered)
         {
-            // 注册成功：跳转到登录页，并预填服务器 + 邮箱
-            var loginVm = global::App.App.Services.GetRequiredService<LoginViewModel>();
-            loginVm.PrepareAccount(ViewModel.RegisteredServerUrl, ViewModel.RegisteredEmail);
+            // 注册成功：把服务器 + 邮箱放入 AccountPrefill(DI 单例),再跳转登录页(新建的 LoginViewModel 会取用)。
+            global::App.App.Services.GetRequiredService<global::App.Services.AccountPrefill>()
+                .Set(ViewModel.RegisteredServerUrl, ViewModel.RegisteredEmail);
             global::App.App.Services.GetRequiredService<global::App.Services.INavigationService>().GoToLoginPage();
         }
     }

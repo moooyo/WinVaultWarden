@@ -59,11 +59,16 @@ public partial class LoginViewModel : ObservableObject
     {
     }
 
-    public LoginViewModel(IAuthService auth, IDemoVaultSessionService? demoVault, IPinService? pin = null)
+    public LoginViewModel(IAuthService auth, IDemoVaultSessionService? demoVault, IPinService? pin = null, AccountPrefill? prefill = null)
     {
         _auth = auth;
         _demoVault = demoVault;
         _pin = pin;
+
+        // 注册成功后经 AccountPrefill(DI 单例)把服务器/邮箱预填带到新建的 LoginViewModel(Transient,
+        // 注册页设置的实例会被登录页新建的实例取代,直接在旧实例上 PrepareAccount 会丢失,R10)。取用即清。
+        if (prefill?.Take() is { } p)
+            PrepareAccount(p.ServerUrl, p.Email);
     }
 
     public bool IsAccountStage => Stage == LoginStage.Account;
@@ -340,11 +345,32 @@ public partial class LoginViewModel : ObservableObject
                 Pin = string.Empty;
                 break;
             case AuthResult.Failure failure:
-                Status = failure.Message;
+                Status = LocalizeAuthMessage(failure.Message);
                 if (IsPinUnlockStage)
                     Pin = string.Empty;
                 break;
         }
+    }
+
+    // 把认证失败消息本地化为中文(R20):AuthService/服务端多为英文,且限流时消息为空会让登录页
+    // 毫无提示(疑似卡死)。空 → 中文兜底;已知英文 → 中文;其余(含服务端自定义)原样显示(总比空白好)。
+    private static string LocalizeAuthMessage(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return "登录失败,请稍后重试。";
+
+        if (message.Contains("Username or password is incorrect", StringComparison.OrdinalIgnoreCase))
+            return "用户名或主密码错误,请重试。";
+
+        return message switch
+        {
+            "No saved session." => "没有已保存的会话,请重新登录。",
+            "Authentication failed." => "认证失败,请检查凭据。",
+            "Two-factor authentication is still required." => "仍需完成两步验证。",
+            "No two-factor challenge is pending." => "没有待处理的两步验证请求。",
+            "Token response did not include a protected user key." => "服务器响应缺少用户密钥,登录失败。",
+            _ => message,
+        };
     }
 
     private string ResolveServerUrl()

@@ -112,6 +112,8 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
 
     private async Task HandleConnectionAsync(NamedPipeServerStream pipe, CancellationToken ct)
     {
+        // 本方法为 fire-and-forget(ListenAsync 里 _ = Task.Run(...)),必须**永不外抛**,
+        // 否则异常成为未观察的 Task 异常被静默(R12)。所有异常在此就地处理。
         await using (pipe)
         {
             BrowserPasskeyRequest? request = null;
@@ -125,16 +127,29 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
                 var response = await _handler.HandleAsync(request, ct);
                 await BrowserPasskeyMessageProtocol.WriteAsync(pipe, response, PasskeyJsonContext.Default.BrowserPasskeyResponse, ct);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (OperationCanceledException)
             {
-                if (request is not null && pipe.IsConnected)
+                // 关机/取消:正常路径,忽略。
+            }
+            catch (Exception ex)
+            {
+                // 尽力回一个错误响应(浏览器请求中途断开时 WriteAsync 可能再抛 IOException)——
+                // 整个方法不得外抛,故内层再包一层 catch 吞掉写回失败。
+                try
                 {
-                    var response = new BrowserPasskeyResponse(
-                        request.Id,
-                        "error",
-                        false,
-                        Error: new BrowserPasskeyError("bridge_error", ex.Message));
-                    await BrowserPasskeyMessageProtocol.WriteAsync(pipe, response, PasskeyJsonContext.Default.BrowserPasskeyResponse, CancellationToken.None);
+                    if (request is not null && pipe.IsConnected)
+                    {
+                        var response = new BrowserPasskeyResponse(
+                            request.Id,
+                            "error",
+                            false,
+                            Error: new BrowserPasskeyError("bridge_error", ex.Message));
+                        await BrowserPasskeyMessageProtocol.WriteAsync(pipe, response, PasskeyJsonContext.Default.BrowserPasskeyResponse, CancellationToken.None);
+                    }
+                }
+                catch
+                {
+                    // 回错误响应也失败(管道已断开等):吞掉,不外抛。
                 }
             }
         }
