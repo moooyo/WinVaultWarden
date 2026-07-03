@@ -23,6 +23,9 @@ public sealed class PinService : IPinService
 
     public void SetPin(string pin)
     {
+        if (!PinPolicy.IsValid(pin))
+            throw new ArgumentException($"PIN 至少需要 {PinPolicy.MinLength} 位。", nameof(pin));
+
         var userKey = _session.UserKey ?? throw new InvalidOperationException("Vault is locked.");
         if (!_tokenStore.TryLoad(out var p))
             throw new InvalidOperationException("No saved session.");
