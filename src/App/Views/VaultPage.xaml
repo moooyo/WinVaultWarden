@@ -23,7 +23,7 @@
                         <StackPanel Spacing="2">
                             <controls:FieldRow Label="用户名" Value="{x:Bind Username}" />
                             <controls:FieldRow Label="密码" Value="{x:Bind Password}" IsSecret="True" />
-                            <controls:TotpField Code="{x:Bind TotpSecret}" />
+                            <controls:TotpField Secret="{x:Bind TotpSecret}" />
                         </StackPanel>
                     </controls:DetailCard.CardContent>
                 </controls:DetailCard>

@@ -31,4 +31,34 @@ public class TotpGeneratorTests
         var ex = Assert.Throws<FormatException>(() => TotpGenerator.Generate("AAAA!AAA", 0));
         Assert.Contains("!", ex.Message);
     }
+
+    // ── S9: TryGenerate 从裸密钥 / otpauth URI 生成码;无法解析返回 false ──────
+
+    [Fact]
+    public void TryGenerate_BareBase32Secret_MatchesGenerate()
+    {
+        Assert.True(TotpGenerator.TryGenerate(Secret20, 59, out var code));
+        Assert.Equal("287082", code);
+    }
+
+    [Fact]
+    public void TryGenerate_OtpauthUri_ExtractsSecretAndGenerates()
+    {
+        var uri = $"otpauth://totp/Acme:alice@example.com?secret={Secret20}&issuer=Acme&digits=6&period=30";
+        Assert.True(TotpGenerator.TryGenerate(uri, 59, out var code));
+        Assert.Equal("287082", code);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("AAAA!AAA")]                       // 坏 Base32
+    [InlineData("otpauth://totp/x?issuer=Acme")]   // otpauth 缺 secret
+    [InlineData("otpauth://totp/x?secret=AAAA!A")] // otpauth 坏 secret
+    public void TryGenerate_Unparseable_ReturnsFalse(string? totp)
+    {
+        Assert.False(TotpGenerator.TryGenerate(totp, 59, out var code));
+        Assert.Equal(string.Empty, code);
+    }
 }

@@ -7,6 +7,64 @@ namespace Crypto;
 /// </summary>
 public static class TotpGenerator
 {
+    /// <summary>
+    /// 从 Bitwarden 的 Totp 字段生成当前验证码。该字段可能是裸 Base32 密钥,
+    /// 也可能是 otpauth://totp/...?secret=XXX&amp;digits=&amp;period= URI。
+    /// 解析成功时输出 6(或指定)位码并返回 true;空/坏密钥/坏 URI 返回 false——
+    /// 调用方据此显示占位,**绝不回退成把原始种子当验证码显示/复制**(S9)。
+    /// </summary>
+    public static bool TryGenerate(string? totp, long unixSeconds, out string code)
+    {
+        code = string.Empty;
+        if (string.IsNullOrWhiteSpace(totp))
+            return false;
+
+        var secret = totp.Trim();
+        int digits = 6, period = 30;
+
+        if (secret.StartsWith("otpauth://", StringComparison.OrdinalIgnoreCase)
+            && !TryParseOtpauth(secret, out secret, out digits, out period))
+            return false;
+
+        try
+        {
+            code = Generate(secret, unixSeconds, digits, period);
+            return true;
+        }
+        catch (Exception ex) when (ex is FormatException or ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    // 从 otpauth URI 的查询串提取 secret / digits / period。缺 secret 或参数越界 → false。
+    private static bool TryParseOtpauth(string uri, out string secret, out int digits, out int period)
+    {
+        secret = string.Empty;
+        digits = 6;
+        period = 30;
+
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed))
+            return false;
+
+        foreach (var part in parsed.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var kv = part.Split('=', 2);
+            if (kv.Length != 2)
+                continue;
+            var key = Uri.UnescapeDataString(kv[0]);
+            var val = Uri.UnescapeDataString(kv[1]);
+            if (key.Equals("secret", StringComparison.OrdinalIgnoreCase))
+                secret = val;
+            else if (key.Equals("digits", StringComparison.OrdinalIgnoreCase) && int.TryParse(val, out var d))
+                digits = d;
+            else if (key.Equals("period", StringComparison.OrdinalIgnoreCase) && int.TryParse(val, out var p))
+                period = p;
+        }
+
+        return !string.IsNullOrEmpty(secret) && digits is >= 1 and <= 9 && period > 0;
+    }
+
     public static string Generate(string base32Secret, long unixSeconds, int digits = 6, int period = 30)
     {
         ArgumentNullException.ThrowIfNull(base32Secret);
