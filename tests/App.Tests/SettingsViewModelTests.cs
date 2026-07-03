@@ -403,6 +403,7 @@ public class SettingsViewModelTests
         public AccountInfo Account { get; } =
             new("test@example.com", "https://vault.example.com", "T", "PBKDF2 · 600000");
         public int SkippedCipherCount => 0;
+        public bool DataStale => false;
     }
 
     private sealed class FakeVaultService : IVaultService

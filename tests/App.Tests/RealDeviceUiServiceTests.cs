@@ -45,5 +45,6 @@ public class RealDeviceUiServiceTests
             new DeviceInfo("d2", "Phone", 8, "d2", DateTimeOffset.Parse("2026-06-23T00:00:00Z"), false),
         ];
         public int SkippedCipherCount => 0;
+        public bool DataStale => false;
     }
 }
