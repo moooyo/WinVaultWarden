@@ -28,7 +28,9 @@ public sealed class VaultBootstrapper
 
         var devices = await _api.GetDevicesAsync(ct);
         _session.SetDevices(devices.Data.Select(MapDevice).ToArray());
-        _session.SetState(VaultState.Unlocked);
+        // 仅当未被并发锁定时才迁移到 Unlocked(S8):若解锁后首个整库同步期间被手动/托盘锁定,
+        // 不得把状态强行改回 Unlocked(那会与已清零的 UserKey 矛盾)。
+        _session.MarkUnlockedIfKeyPresent();
     }
 
     private static DeviceInfo MapDevice(Api.Dtos.DeviceDto device) => new(

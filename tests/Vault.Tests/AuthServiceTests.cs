@@ -51,6 +51,28 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task LoginAsync_BootstrapFails_LocksSessionAndReportsFailure()
+    {
+        // S7:凭据成功但初始整库同步失败(此处 sync 返回 500)。不得残留已解锁的 UserKey/tokens,
+        // 状态须收敛为 Locked(而非悬挂的 Error 或错误的 Unlocked)。
+        var fixture = CreateLoginFixture();
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, PreloginJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, TokenJson(fixture.ProtectedUserKey)));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.InternalServerError, "{}"));
+        var tokenStore = new MemoryTokenStore();
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, tokenStore);
+
+        var result = await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
+
+        Assert.IsType<AuthResult.Failure>(result);
+        Assert.Null(session.UserKey);           // 解锁密钥已清零,不残留内存
+        Assert.Null(session.AccessToken);
+        Assert.Equal(Core.Session.VaultState.Locked, session.State);
+    }
+
+    [Fact]
     public async Task LoginAsync_Argon2idSuccess_SavesSessionAndBootstrapsVault()
     {
         var fixture = CreateArgon2idLoginFixture();

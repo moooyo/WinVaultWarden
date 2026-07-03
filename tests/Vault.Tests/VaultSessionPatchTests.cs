@@ -1,6 +1,8 @@
+using System.Linq;
 using Core.Enums;
 using Core.Models;
 using Core.Session;
+using Crypto;
 using Vault;
 using Xunit;
 
@@ -20,6 +22,8 @@ public class VaultSessionPatchTests
         Folder[] folders)
     {
         var session = new VaultSession();
+        // SetSnapshot 现要求会话已解锁(S6:锁定态不得回灌明文快照),故先设 UserKey。
+        session.SetUnlockedKey(new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray()));
         session.SetSnapshot(new DecryptedVault(
             new AccountInfo("me@example.com", "https://vault.example", "M", "PBKDF2 600000"),
             folders,
