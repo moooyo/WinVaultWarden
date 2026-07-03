@@ -8,17 +8,54 @@ namespace App.Services;
 public sealed class PasskeyBridgeServer : IAsyncDisposable
 {
     private readonly BrowserPasskeyRequestHandler _handler;
-    private readonly CancellationTokenSource _shutdown = new();
+    private readonly object _gate = new();
+    private CancellationTokenSource? _shutdown;
     private Task? _listenTask;
 
     public PasskeyBridgeServer(BrowserPasskeyRequestHandler handler) => _handler = handler;
 
+    public bool IsRunning
+    {
+        get { lock (_gate) return _listenTask is not null; }
+    }
+
+    // 幂等启动。可重启:每次运行用独立 CTS,以便 StopAsync 后能再次 Start(浏览器集成开关运行时切换,S5)。
     public void Start()
     {
-        if (_listenTask is not null)
-            return;
+        lock (_gate)
+        {
+            if (_listenTask is not null)
+                return;
+            _shutdown = new CancellationTokenSource();
+            var token = _shutdown.Token;
+            _listenTask = Task.Run(() => ListenAsync(token));
+        }
+    }
 
-        _listenTask = Task.Run(() => ListenAsync(_shutdown.Token));
+    // 停止监听并等待排空,复位为可再次 Start 的状态。幂等。
+    public async Task StopAsync()
+    {
+        Task? listen;
+        CancellationTokenSource? cts;
+        lock (_gate)
+        {
+            if (_listenTask is null)
+                return;
+            listen = _listenTask;
+            cts = _shutdown;
+            _listenTask = null;
+            _shutdown = null;
+        }
+
+        cts!.Cancel();
+        try
+        {
+            await listen!;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        cts.Dispose();
     }
 
     private async Task ListenAsync(CancellationToken ct)
@@ -103,21 +140,5 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        _shutdown.Cancel();
-
-        if (_listenTask is not null)
-        {
-            try
-            {
-                await _listenTask;
-            }
-            catch (OperationCanceledException)
-            {
-            }
-        }
-
-        _shutdown.Dispose();
-    }
+    public async ValueTask DisposeAsync() => await StopAsync();
 }

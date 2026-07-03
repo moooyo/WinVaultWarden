@@ -103,6 +103,10 @@ public sealed partial class MainWindow : Window
         ApplyTrayIconSetting();
         ViewModels.SettingsViewModel.ShowTrayIconSettingChanged += OnShowTrayIconSettingChanged;
 
+        // 窗口捕获保护：按设置对窗口应用/解除 WDA_EXCLUDEFROMCAPTURE（S4）。开机即应用,并随设置变更即时更新。
+        ApplyScreenshotSetting(AppPreferences.Current.AllowScreenshots);
+        ViewModels.SettingsViewModel.AllowScreenshotsSettingChanged += OnAllowScreenshotsSettingChanged;
+
         // 关闭窗口 → 若「关闭到托盘」则取消关闭、隐藏（真实退出仅经托盘「退出」）。
         AppWindow.Closing += (_, e) =>
         {
@@ -110,6 +114,9 @@ public sealed partial class MainWindow : Window
                 Services.TrayPolicy.ShouldHideOnClose(AppPreferences.Current.ShowTrayIcon, AppPreferences.Current.CloseToTray))
             {
                 e.Cancel = true;
+                // 隐藏到托盘前先锁定(与最小化路径一致,更安全):否则走近无人值守机器单击托盘
+                // 即可看到明文整库,且已复制的密码仍留在剪贴板。LockNow 经 OnTimeoutRequested 连带清剪贴板(S2)。
+                _timeout.LockNow();
                 AppWindow.Hide();
             }
         };
@@ -118,6 +125,7 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             ViewModels.SettingsViewModel.ShowTrayIconSettingChanged -= OnShowTrayIconSettingChanged;
+            ViewModels.SettingsViewModel.AllowScreenshotsSettingChanged -= OnAllowScreenshotsSettingChanged;
             _tray?.Dispose();
             _tray = null;
         };
@@ -411,6 +419,18 @@ public sealed partial class MainWindow : Window
 
     private void OnShowTrayIconSettingChanged(bool value) =>
         DispatcherQueue.TryEnqueue(ApplyTrayIconSetting);
+
+    /// <summary>按 AllowScreenshots 设置对窗口应用/解除捕获保护（S4）。
+    /// 关闭"允许截图"→ WDA_EXCLUDEFROMCAPTURE：窗口内容在截图/录屏/屏幕共享中呈黑框。</summary>
+    private void ApplyScreenshotSetting(bool allow)
+    {
+        Interop.NativeMethods.SetWindowDisplayAffinity(
+            _hwnd,
+            allow ? Interop.NativeMethods.WDA_NONE : Interop.NativeMethods.WDA_EXCLUDEFROMCAPTURE);
+    }
+
+    private void OnAllowScreenshotsSettingChanged(bool value) =>
+        DispatcherQueue.TryEnqueue(() => ApplyScreenshotSetting(value));
 
     /// <summary>从托盘恢复窗口：显示、还原最小化、置前台。供托盘左键/「打开」与单实例重定向调用。</summary>
     public void RestoreFromTray()

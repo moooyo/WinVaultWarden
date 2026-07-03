@@ -32,7 +32,7 @@ public sealed partial class FieldRow : UserControl
     }
     public static readonly DependencyProperty ValueProperty =
         DependencyProperty.Register(nameof(Value), typeof(string), typeof(FieldRow),
-            new PropertyMetadata("", (d, e) => ((FieldRow)d).Render()));
+            new PropertyMetadata("", (d, e) => ((FieldRow)d).OnValueChanged()));
 
     public bool IsSecret
     {
@@ -65,11 +65,28 @@ public sealed partial class FieldRow : UserControl
     private void OnSecretChanged()
     {
         RevealButton.Visibility = IsSecret ? Visibility.Visible : Visibility.Collapsed;
-        _revealed = false;
-        RevealIcon.Glyph = GlyphView;
-        AutomationProperties.SetName(RevealButton, "显示");
-        ToolTipService.SetToolTip(RevealButton, "显示");
+        SetRevealed(false);
         Render();
+    }
+
+    // 值变更 = 切换到(可能不同的)条目字段。若此前点过"显示",必须复位为遮蔽——
+    // 否则同类型条目间切换时(FieldRow 可视树被复用、IsSecret 恒为 True 不再触发 OnSecretChanged),
+    // 新条目的密码/卡号/私钥会未经点击直接以明文渲染(S3:跨条目机密泄露)。
+    private void OnValueChanged()
+    {
+        if (IsSecret && _revealed)
+            SetRevealed(false);
+        Render();
+    }
+
+    // 统一设置揭示状态与揭示按钮的图标/无障碍名/提示,保证三者始终一致。
+    private void SetRevealed(bool revealed)
+    {
+        _revealed = revealed;
+        RevealIcon.Glyph = revealed ? GlyphHide : GlyphView;
+        var label = revealed ? "隐藏" : "显示";
+        AutomationProperties.SetName(RevealButton, label);
+        ToolTipService.SetToolTip(RevealButton, label);
     }
 
     private void Render()
@@ -88,11 +105,7 @@ public sealed partial class FieldRow : UserControl
 
     private void OnReveal(object sender, RoutedEventArgs e)
     {
-        _revealed = !_revealed;
-        RevealIcon.Glyph = _revealed ? GlyphHide : GlyphView;
-        var label = _revealed ? "隐藏" : "显示";
-        AutomationProperties.SetName(RevealButton, label);
-        ToolTipService.SetToolTip(RevealButton, label);
+        SetRevealed(!_revealed);
         Render();
     }
 
