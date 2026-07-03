@@ -10,4 +10,8 @@ public interface IClipboardService
     // 默认回退到 SetText,保证未覆写的实现(测试替身)仍可编译且能复制到值。
     // null = 用「清空剪贴板」设置;显式秒数 = 覆盖。默认接口方法回退到 SetText(不清)。
     void SetSecretText(string text, int? autoClearSeconds = null) => SetText(text);
+
+    // 锁定/登出时主动清除本应用写入剪贴板的密钥(compare-then-clear,只清仍是本应用写入的值)。
+    // 默认空实现,保证未覆写的实现(测试替身)仍可编译。
+    void ClearSecretsNow() { }
 }

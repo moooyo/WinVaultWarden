@@ -8,6 +8,8 @@ namespace App.Services;
 public sealed class ClipboardService : IClipboardService
 {
     private DispatcherQueueTimer? _clearTimer;
+    // 记录本应用最近一次写入剪贴板的密钥,供锁定/登出时 compare-then-clear。
+    private string? _lastSecret;
 
     public void SetText(string text)
     {
@@ -25,6 +27,9 @@ public sealed class ClipboardService : IClipboardService
             IsAllowedInHistory = false,
             IsRoamable = false,
         });
+
+        // 记录本次写入值:即便下方因 seconds<=0 提前返回,锁定/登出时仍能据此主动清除。
+        _lastSecret = text;
 
         // 取消上一个尚未触发的清除定时器。
         _clearTimer?.Stop();
@@ -46,6 +51,16 @@ public sealed class ClipboardService : IClipboardService
             _ = ClearIfUnchangedAsync(text);
         };
         _clearTimer.Start();
+    }
+
+    // 锁定/登出时主动清除:停掉自动清定时器,并把本应用写入的密钥立即从剪贴板清掉。
+    // compare-then-clear(ClearIfUnchangedAsync)只清仍是本应用写入的值,不误清用户随后复制的其他内容。
+    public void ClearSecretsNow()
+    {
+        _clearTimer?.Stop();
+        if (!string.IsNullOrEmpty(_lastSecret))
+            _ = ClearIfUnchangedAsync(_lastSecret);
+        _lastSecret = null;
     }
 
     // 仅当剪贴板当前文本仍是本次写入的密钥时才清除,避免清掉用户随后复制的其他内容。

@@ -128,6 +128,7 @@ public sealed partial class MainWindow : Window
 
     private async void OnTimeoutRequested(object? sender, VaultTimeoutAction action)
     {
+        ClearClipboardSecrets();
         try
         {
             if (action == VaultTimeoutAction.Logout)
@@ -142,6 +143,14 @@ public sealed partial class MainWindow : Window
         }
         catch { /* 宁可多锁一次:即便 auth 调用失败也导航到登录/解锁屏 */ }
         ShowLogin();
+    }
+
+    // 锁定/登出时主动清除本应用写入剪贴板的密钥(密码/TOTP/Send 链接)。空闲超时/最小化/
+    // 系统会话锁均经 OnTimeoutRequested 汇聚,故仅需在此与「lock」/「logout」/托盘锁三处调用。
+    private static void ClearClipboardSecrets()
+    {
+        try { global::App.App.Services.GetRequiredService<IClipboardService>().ClearSecretsNow(); }
+        catch { /* 剪贴板不可用不致命 */ }
     }
 
     private void OnSessionSwitch(object sender, Microsoft.Win32.SessionSwitchEventArgs e)
@@ -351,6 +360,7 @@ public sealed partial class MainWindow : Window
                 _nav.GoToSecurityReport();
                 break;
             case "lock":
+                ClearClipboardSecrets();
                 await global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
                 await global::App.App.Services.GetRequiredService<IAuthService>().LockAsync();
                 ShowLogin();
@@ -359,8 +369,11 @@ public sealed partial class MainWindow : Window
                 if (await global::App.Views.DialogHelper.ConfirmAsync(
                         Nav.XamlRoot, "退出登录", "确定退出登录?将清除本地会话,需重新登录。", "退出登录"))
                 {
+                    ClearClipboardSecrets();
                     _ = global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
                     await global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync();
+                    // 登出清空本地图标缓存(锁定不清:锁定保留账户,图标可复用)。
+                    global::App.App.Services.GetRequiredService<IFaviconCache>().Clear();
                     ShowLogin();
                 }
                 break;
@@ -405,6 +418,7 @@ public sealed partial class MainWindow : Window
     {
         DispatcherQueue.TryEnqueue(async () =>
         {
+            ClearClipboardSecrets();
             try
             {
                 await global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
