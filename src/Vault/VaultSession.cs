@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Core.Models;
 using Core.Session;
 using Crypto;
@@ -185,13 +184,8 @@ public sealed class VaultSession : IVaultSnapshot
 
     private void ClearSensitiveState()
     {
-        if (UserKey is not null)
-        {
-            CryptographicOperations.ZeroMemory(UserKey.FullKey);
-            CryptographicOperations.ZeroMemory(UserKey.EncKey);
-            if (UserKey.MacKey is not null)
-                CryptographicOperations.ZeroMemory(UserKey.MacKey);
-        }
+        // Dispose 清零 UserKey 的 FullKey/EncKey/MacKey 全部支撑数组(等价于原逐一 ZeroMemory,更简洁)。
+        UserKey?.Dispose();
 
         AccessToken = null;
         RefreshToken = null;

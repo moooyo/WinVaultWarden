@@ -111,7 +111,16 @@ public sealed class AuthService : IAuthService
                 persisted.KdfIterations,
                 persisted.KdfMemory,
                 persisted.KdfParallelism);
-            var userKey = _crypto.DecryptUserKey(stretchedKey, EncString.Parse(persisted.ProtectedUserKey));
+            SymmetricCryptoKey userKey;
+            try
+            {
+                userKey = _crypto.DecryptUserKey(stretchedKey, EncString.Parse(persisted.ProtectedUserKey));
+            }
+            finally
+            {
+                // 拉伸子钥仅用于解包 UserKey,用完清零;存入 session 的 userKey 是独立数组,不受影响。
+                stretchedKey.Dispose();
+            }
 
             var refresh = await _api.ConnectTokenAsync(ConnectTokenRequest.Refresh(
                 persisted.RefreshToken,
@@ -160,6 +169,11 @@ public sealed class AuthService : IAuthService
                 _session.Lock();
                 return HandleWrongPin(persisted);
             }
+            finally
+            {
+                // 拉伸子钥用完清零;存入 session 的 userKey 是独立数组,不受影响。
+                stretchedKey.Dispose();
+            }
 
             var refresh = await _api.ConnectTokenAsync(ConnectTokenRequest.Refresh(
                 persisted.RefreshToken, persisted.DeviceIdentifier, DeviceName), ct);
@@ -205,8 +219,15 @@ public sealed class AuthService : IAuthService
     {
         _tokenStore.Clear();
         _session.Clear();
-        _pendingTwoFactor = null;
+        DisposePendingTwoFactor();
         return Task.CompletedTask;
+    }
+
+    // 放弃/登出时清零并丢弃挂起 2FA 上下文里的拉伸主密钥。
+    private void DisposePendingTwoFactor()
+    {
+        _pendingTwoFactor?.StretchedKey.Dispose();
+        _pendingTwoFactor = null;
     }
 
     private async Task<AuthResult> HandleLoginResultAsync(
@@ -220,6 +241,10 @@ public sealed class AuthService : IAuthService
                 _pendingTwoFactor = null;
                 return await CompleteLoginAsync(context, success.Token, ct);
             case ConnectTokenResult.TwoFactorRequired twoFactor:
+                // 若已存在一个过期的 pending 2FA(其拉伸密钥与本次不是同一对象),先清零旧的再替换,防止泄漏。
+                // 2FA 重试时 context.StretchedKey 与旧 _pendingTwoFactor 是同一对象,ReferenceEquals 守卫避免误清。
+                if (_pendingTwoFactor is { } stale && !ReferenceEquals(stale.StretchedKey, context.StretchedKey))
+                    stale.StretchedKey.Dispose();
                 _pendingTwoFactor = context with { Providers = twoFactor.Providers.ToArray() };
                 return new AuthResult.TwoFactorRequired(twoFactor.Providers);
             default:
@@ -232,24 +257,32 @@ public sealed class AuthService : IAuthService
         TokenResponse token,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(token.Key))
-            return new AuthResult.Failure("Token response did not include a protected user key.");
+        try
+        {
+            if (string.IsNullOrWhiteSpace(token.Key))
+                return new AuthResult.Failure("Token response did not include a protected user key.");
 
-        var userKey = _crypto.DecryptUserKey(context.StretchedKey, EncString.Parse(token.Key));
-        _session.SetTokens(token.AccessToken, token.RefreshToken);
-        _session.SetUnlockedKey(userKey);
-        _tokenStore.Save(new PersistedSession(
-            context.ServerUrl,
-            context.Email,
-            context.DeviceIdentifier,
-            token.RefreshToken,
-            token.Key,
-            context.KdfType,
-            context.KdfIterations,
-            context.KdfMemory,
-            context.KdfParallelism));
-        await _bootstrapper.BootstrapAsync(context.ServerUrl, ct);
-        return new AuthResult.Success();
+            var userKey = _crypto.DecryptUserKey(context.StretchedKey, EncString.Parse(token.Key));
+            _session.SetTokens(token.AccessToken, token.RefreshToken);
+            _session.SetUnlockedKey(userKey);
+            _tokenStore.Save(new PersistedSession(
+                context.ServerUrl,
+                context.Email,
+                context.DeviceIdentifier,
+                token.RefreshToken,
+                token.Key,
+                context.KdfType,
+                context.KdfIterations,
+                context.KdfMemory,
+                context.KdfParallelism));
+            await _bootstrapper.BootstrapAsync(context.ServerUrl, ct);
+            return new AuthResult.Success();
+        }
+        finally
+        {
+            // 拉伸主密钥用完即弃:解包 UserKey 后不再需要,清零防止驻留内存(userKey 为独立数组,不受影响)。
+            context.StretchedKey.Dispose();
+        }
     }
 
     private PendingTwoFactorContext BuildLoginContext(

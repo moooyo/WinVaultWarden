@@ -19,7 +19,8 @@ public sealed class CipherEncryptor
 
     public CipherRequest Encrypt(Cipher cipher, SymmetricCryptoKey userKey)
     {
-        var cipherKey = new SymmetricCryptoKey(RandomNumberGenerator.GetBytes(64));
+        // using:构建完 CipherRequest(所有字段已加密成密文串)后清零每条目密钥,防止随机 Cipher Key 驻留内存。
+        using var cipherKey = new SymmetricCryptoKey(RandomNumberGenerator.GetBytes(64));
         var wrappedKey = _crypto.Encrypt(cipherKey.FullKey, userKey).ToString();
 
         return new CipherRequest
@@ -135,9 +136,20 @@ public sealed class CipherEncryptor
             ? null
             : fields.Select(f => new FieldRequest { Type = (int)f.Type, Name = Enc(f.Name, key), Value = Enc(f.Value, key) }).ToArray();
 
-    private string? Enc(string? value, SymmetricCryptoKey key) =>
-        string.IsNullOrEmpty(value) ? null : _crypto.Encrypt(Encoding.UTF8.GetBytes(value), key).ToString();
+    // 明文源 string 无法清零(不可变、可能被驻留),但加密用的临时 UTF-8 字节缓冲拷进密文后立即清零,减少额外驻留。
+    private string? Enc(string? value, SymmetricCryptoKey key)
+    {
+        if (string.IsNullOrEmpty(value))
+            return null;
+        var buffer = Encoding.UTF8.GetBytes(value);
+        try { return _crypto.Encrypt(buffer, key).ToString(); }
+        finally { CryptographicOperations.ZeroMemory(buffer); }
+    }
 
-    private string EncRequired(string value, SymmetricCryptoKey key) =>
-        _crypto.Encrypt(Encoding.UTF8.GetBytes(value ?? string.Empty), key).ToString();
+    private string EncRequired(string value, SymmetricCryptoKey key)
+    {
+        var buffer = Encoding.UTF8.GetBytes(value ?? string.Empty);
+        try { return _crypto.Encrypt(buffer, key).ToString(); }
+        finally { CryptographicOperations.ZeroMemory(buffer); }
+    }
 }

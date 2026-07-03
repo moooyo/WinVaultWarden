@@ -43,7 +43,9 @@ public sealed class AttachmentService : IAttachmentService
         var dto = await _api.GetCipherAsync(cipherId, ct);
         var itemKey = _decryptor.ResolveItemKey(dto, userKey);
 
-        var attKey = _crypto.GenerateAttachmentKey();
+        // 每附件随机 64 字节 attKey,仅在本方法内用于加密文件名/文件体并包裹进 key 字段;
+        // 用 using 保证用完清零(attKey 是新生成的独立密钥,不别名 itemKey/userKey)。
+        using var attKey = _crypto.GenerateAttachmentKey();
         var encName = _crypto.EncryptFileName(fileName, attKey);
         var buffer = _crypto.EncryptFile(plaintext, attKey);
         var wrapped = _crypto.WrapKey(attKey, itemKey);

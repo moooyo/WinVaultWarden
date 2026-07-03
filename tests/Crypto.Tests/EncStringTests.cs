@@ -47,4 +47,45 @@ public class EncStringTests
 
         Assert.Equal(s, EncString.Parse(s).ToString());
     }
+
+    // 健壮性:非数字类型前缀 → 干净 FormatException(而非其他异常)。
+    [Fact]
+    public void Parse_NonNumericPrefix_ThrowsFormatException()
+    {
+        var iv = Convert.ToBase64String(new byte[16]);
+        var ct = Convert.ToBase64String(new byte[16]);
+        Assert.Throws<FormatException>(() => EncString.Parse($"x.{iv}|{ct}"));
+    }
+
+    // 健壮性:超长(溢出 int)类型前缀 → FormatException,而非 int.Parse 的 OverflowException。
+    [Fact]
+    public void Parse_OverflowPrefix_ThrowsFormatException_NotOverflow()
+    {
+        var iv = Convert.ToBase64String(new byte[16]);
+        var ct = Convert.ToBase64String(new byte[16]);
+        var ex = Record.Exception(() => EncString.Parse($"99999999999999999999.{iv}|{ct}"));
+        Assert.IsType<FormatException>(ex);
+        Assert.IsNotType<OverflowException>(ex);
+    }
+
+    // 健壮性:type 2 只有 2 段(缺 mac) → FormatException,而非访问 parts[2] 的 IndexOutOfRangeException。
+    [Fact]
+    public void Parse_Type2_Truncated_ThrowsFormatException_NotIndexOutOfRange()
+    {
+        var iv = Convert.ToBase64String(new byte[16]);
+        var ct = Convert.ToBase64String(new byte[16]);
+        var ex = Record.Exception(() => EncString.Parse($"2.{iv}|{ct}"));
+        Assert.IsType<FormatException>(ex);
+        Assert.IsNotType<IndexOutOfRangeException>(ex);
+    }
+
+    // 健壮性:type 0 只有 1 段(缺 ct) → FormatException,而非访问 parts[1] 的 IndexOutOfRangeException。
+    [Fact]
+    public void Parse_Type0_Truncated_ThrowsFormatException_NotIndexOutOfRange()
+    {
+        var iv = Convert.ToBase64String(new byte[16]);
+        var ex = Record.Exception(() => EncString.Parse($"0.{iv}"));
+        Assert.IsType<FormatException>(ex);
+        Assert.IsNotType<IndexOutOfRangeException>(ex);
+    }
 }

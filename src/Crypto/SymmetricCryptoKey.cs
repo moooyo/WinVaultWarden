@@ -1,7 +1,9 @@
+using System.Security.Cryptography;
+
 namespace Crypto;
 
 // 对称密钥封装:32 字节(仅 EncKey)或 64 字节(EncKey 32 ‖ MacKey 32)。
-public sealed class SymmetricCryptoKey
+public sealed class SymmetricCryptoKey : IDisposable
 {
     public byte[] FullKey { get; }
     public byte[] EncKey { get; }
@@ -30,5 +32,16 @@ public sealed class SymmetricCryptoKey
         EncKey = encKey;
         MacKey = macKey;
         FullKey = [.. encKey, .. macKey];
+    }
+
+    // 清零全部支撑数组(FullKey、EncKey、非 null 的 MacKey),抹去内存中的密钥物料。
+    // 不同构造下这三者可能别名同一数组(32 字节构造:FullKey==EncKey);
+    // ZeroMemory 幂等,对别名数组重复清零无害,故无需去重。
+    public void Dispose()
+    {
+        CryptographicOperations.ZeroMemory(FullKey);
+        CryptographicOperations.ZeroMemory(EncKey);
+        if (MacKey is not null)
+            CryptographicOperations.ZeroMemory(MacKey);
     }
 }
