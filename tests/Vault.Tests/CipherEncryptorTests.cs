@@ -171,4 +171,108 @@ public class CipherEncryptorTests
         Assert.StartsWith("2.", name);
         Assert.Equal("Work", _crypto.DecryptToString(name, _userKey));
     }
+
+    // ---- R1: 编辑既有条目必须复用其条目密钥,不得轮换(否则损坏既有附件) ----
+
+    // 造一个"服务端已下发"的条目密钥及其 UserKey 包裹串。
+    private (SymmetricCryptoKey ItemKey, string Wrapped) IssueItemKey(int seed)
+    {
+        var itemKey = new SymmetricCryptoKey(Enumerable.Range(seed, 64).Select(i => (byte)i).ToArray());
+        var wrapped = _crypto.Encrypt(itemKey.FullKey, _userKey).ToString();
+        return (itemKey, wrapped);
+    }
+
+    [Fact]
+    public void Encrypt_ExistingCipherWithKey_ReusesItemKeyAndKeepsKeyUnchanged()
+    {
+        var (itemKey, wrapped) = IssueItemKey(100);
+        using (itemKey)
+        {
+            var source = new Cipher
+            {
+                Id = "c1",
+                Key = wrapped,
+                Type = CipherType.Login,
+                Name = "GitHub",
+                Login = new CipherLogin("octo", "secret", null, Array.Empty<CipherLoginUri>()),
+            };
+
+            var request = NewEncryptor().Encrypt(source, _userKey);
+
+            // 回发的 Key 与服务端下发的一致(未轮换)。
+            Assert.Equal(wrapped, request.Key);
+            // 字段用复用的同一条目密钥加密(可解),而非新随机密钥。
+            Assert.Equal("GitHub", _crypto.DecryptToString(request.Name, itemKey));
+            Assert.Equal("secret", _crypto.DecryptToString(request.Login!.Password, itemKey));
+        }
+    }
+
+    [Fact]
+    public void Encrypt_NewCipherWithoutKey_GeneratesFreshItemKeyEachTime()
+    {
+        var source = new Cipher
+        {
+            Type = CipherType.Login,
+            Name = "N",
+            Login = new CipherLogin("u", "p", null, Array.Empty<CipherLoginUri>()),
+        };
+
+        var r1 = NewEncryptor().Encrypt(source, _userKey);
+        var r2 = NewEncryptor().Encrypt(source, _userKey);
+
+        Assert.False(string.IsNullOrEmpty(r1.Key));
+        Assert.NotEqual(r1.Key, r2.Key); // 随机 IV + 随机密钥,每次不同
+        using var k = _crypto.DecryptItemKey(r1.Key!, _userKey);
+        Assert.Equal("N", _crypto.DecryptToString(r1.Name, k));
+    }
+
+    [Fact]
+    public void Encrypt_ExistingLegacyCipherWithoutKey_KeepsUserKeyEncryptionAndNullKey()
+    {
+        // 旧格式条目:有 Id 但服务端从未下发条目密钥,字段直接在 UserKey 下。编辑不得引入新条目密钥。
+        var source = new Cipher
+        {
+            Id = "legacy",
+            Type = CipherType.Login,
+            Name = "L",
+            Login = new CipherLogin("u", "p", null, Array.Empty<CipherLoginUri>()),
+        };
+
+        var request = NewEncryptor().Encrypt(source, _userKey);
+
+        Assert.Null(request.Key);
+        Assert.Equal("L", _crypto.DecryptToString(request.Name, _userKey));
+        Assert.Equal("p", _crypto.DecryptToString(request.Login!.Password, _userKey));
+    }
+
+    [Fact]
+    public void Encrypt_EditingCipherWithAttachment_KeepsAttachmentDecryptable()
+    {
+        // R1 回归:编辑带附件的条目后,附件(其 akey 包裹在原条目密钥下)仍必须可解。
+        var attCrypto = new AttachmentCryptoService(_crypto);
+        var (itemKey, wrappedItemKey) = IssueItemKey(7);
+        using (itemKey)
+        using (var attKey = attCrypto.GenerateAttachmentKey())
+        {
+            var wrappedAttKey = attCrypto.WrapKey(attKey, itemKey); // 附件密钥包裹在原条目密钥下
+            var encName = attCrypto.EncryptFileName("secret.txt", attKey);
+
+            // 用户对该条目做了一次编辑(改名/改密码),领域 Cipher 携带原 Key。
+            var edited = new Cipher
+            {
+                Id = "c1",
+                Key = wrappedItemKey,
+                Type = CipherType.Login,
+                Name = "renamed",
+                Login = new CipherLogin("u", "p2", null, Array.Empty<CipherLoginUri>()),
+            };
+
+            var request = NewEncryptor().Encrypt(edited, _userKey);
+
+            // 服务端会执行 cipher.key = request.Key。据此解析条目密钥,附件 akey 必须仍能解开。
+            using var resolvedItemKey = _crypto.DecryptItemKey(request.Key!, _userKey);
+            using var resolvedAttKey = attCrypto.UnwrapKey(wrappedAttKey, resolvedItemKey);
+            Assert.Equal("secret.txt", attCrypto.DecryptFileName(encName, resolvedAttKey));
+        }
+    }
 }

@@ -22,6 +22,8 @@ public static class CipherDraftMapper
             Id = original?.Id ?? string.Empty,
             Type = type,
             OrganizationId = original?.OrganizationId,
+            // 保留原条目的包裹密钥,让 CipherEncryptor 编辑时复用同一条目密钥(不轮换),避免损坏既有附件。
+            Key = original?.Key,
             FolderId = NullIfBlank(draft.FolderId),
             Favorite = draft.Favorite,
             Reprompt = draft.Reprompt,

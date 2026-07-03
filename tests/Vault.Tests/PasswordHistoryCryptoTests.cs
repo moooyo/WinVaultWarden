@@ -39,9 +39,10 @@ public class PasswordHistoryCryptoTests
         Assert.Equal("2026-01-02T03:04:05.0000000+00:00", reqEntry.LastUsedDate);
     }
 
-    // Encrypt 用随机 item key 包裹进 req.Key；解出它来验证历史密文
+    // 解析条目有效密钥,镜像 VaultDecryptor.ResolveItemKey:
+    // req.Key 为空(旧格式条目,字段在 userKey 下)→ userKey;否则解出条目密钥。
     private static SymmetricCryptoKey ResolveKey(CryptoService crypto, CipherRequest req, SymmetricCryptoKey userKey) =>
-        crypto.DecryptItemKey(req.Key!, userKey);
+        string.IsNullOrEmpty(req.Key) ? userKey : crypto.DecryptItemKey(req.Key, userKey);
 
     [Fact]
     public void Decrypt_SkipsEntryWithEmptyPassword()

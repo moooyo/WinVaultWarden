@@ -9,6 +9,10 @@ public sealed class Cipher
     public CipherType Type { get; init; }
     public string? OrganizationId { get; init; }
     public string? FolderId { get; init; }
+    // 服务端下发的、用 UserKey 包裹的条目密钥(EncString 密文,非明文)。
+    // 编辑时必须原样复用它回发——轮换条目密钥会使既有附件的 akey 失配、永久损坏附件。
+    // 空表示该条目字段直接以 UserKey 加密(旧格式,无每条目密钥)。
+    public string? Key { get; init; }
     public bool Favorite { get; init; }
     public bool Reprompt { get; init; }
     public string Name { get; init; } = string.Empty;
