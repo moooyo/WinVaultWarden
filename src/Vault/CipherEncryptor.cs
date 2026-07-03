@@ -8,8 +8,11 @@ using Crypto;
 namespace Vault;
 
 // 把解密后的领域 Cipher / 文件夹名编码成加密的写入请求。
-// 严格按 Bitwarden 每条目密钥模型:为每次写入生成随机 64 字节 Cipher Key,
-// 用它加密所有字段,再用 UserKey 包裹该 Cipher Key 放入 cipher.key。
+// Bitwarden 每条目密钥模型:
+//   - 新建条目:生成随机 64 字节 Cipher Key,用它加密所有字段,再用 UserKey 包裹放入 cipher.key;
+//   - 编辑既有条目:必须**复用**服务端原下发的 Cipher Key(cipher.Key 非空),原样回发——
+//     绝不轮换,否则该条目附件的 akey(包裹在旧条目密钥下)会失配、导致附件永久不可解(数据丢失);
+//   - 旧格式既有条目(无每条目密钥):字段沿用 UserKey 加密,Key 保持 null,不引入新条目密钥。
 // 文件夹无每项密钥,名称直接用 UserKey 加密。须与 VaultDecryptor 严格互逆。
 public sealed class CipherEncryptor
 {
@@ -19,31 +22,61 @@ public sealed class CipherEncryptor
 
     public CipherRequest Encrypt(Cipher cipher, SymmetricCryptoKey userKey)
     {
-        // using:构建完 CipherRequest(所有字段已加密成密文串)后清零每条目密钥,防止随机 Cipher Key 驻留内存。
-        using var cipherKey = new SymmetricCryptoKey(RandomNumberGenerator.GetBytes(64));
-        var wrappedKey = _crypto.Encrypt(cipherKey.FullKey, userKey).ToString();
-
-        return new CipherRequest
+        // 决定用于加密字段的条目有效密钥(itemKey)与要回发的 cipher.key。
+        // ownedKey:本方法自行创建、需在 finally 清零的密钥(复用解出的 / 新生成的);
+        // 旧格式分支下 itemKey 别名 userKey,不属本方法所有,不得释放。
+        SymmetricCryptoKey? ownedKey = null;
+        try
         {
-            Type = (int)cipher.Type,
-            Name = EncRequired(cipher.Name, cipherKey),
-            Notes = Enc(cipher.Notes, cipherKey),
-            FolderId = string.IsNullOrEmpty(cipher.FolderId) ? null : cipher.FolderId,
-            OrganizationId = cipher.OrganizationId,
-            Key = wrappedKey,
-            Favorite = cipher.Favorite,
-            Reprompt = cipher.Reprompt ? 1 : 0,
-            Fields = EncFields(cipher.Fields, cipherKey),
-            Login = cipher.Login is null ? null : EncLogin(cipher.Login, cipherKey),
-            Card = cipher.Card is null ? null : EncCard(cipher.Card, cipherKey),
-            Identity = cipher.Identity is null ? null : EncIdentity(cipher.Identity, cipherKey),
-            SecureNote = cipher.SecureNote is null ? null : new SecureNoteRequest { Type = cipher.SecureNote.Type },
-            SshKey = cipher.Ssh is null ? null : EncSsh(cipher.Ssh, cipherKey),
-            LastKnownRevisionDate = cipher.RevisionDate == default
-                ? null
-                : cipher.RevisionDate.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture),
-            PasswordHistory = EncPasswordHistory(cipher.PasswordHistory, cipherKey),
-        };
+            SymmetricCryptoKey itemKey;
+            string? wrappedKey;
+            if (!string.IsNullOrEmpty(cipher.Key))
+            {
+                // 编辑既有条目:复用原条目密钥,原样回发,不轮换。
+                ownedKey = _crypto.DecryptItemKey(cipher.Key, userKey);
+                itemKey = ownedKey;
+                wrappedKey = cipher.Key;
+            }
+            else if (string.IsNullOrEmpty(cipher.Id))
+            {
+                // 新建条目:生成随机每条目密钥。
+                ownedKey = new SymmetricCryptoKey(RandomNumberGenerator.GetBytes(64));
+                itemKey = ownedKey;
+                wrappedKey = _crypto.Encrypt(ownedKey.FullKey, userKey).ToString();
+            }
+            else
+            {
+                // 旧格式既有条目:字段沿用 UserKey,不引入每条目密钥(保持与既有附件一致)。
+                itemKey = userKey;
+                wrappedKey = null;
+            }
+
+            return new CipherRequest
+            {
+                Type = (int)cipher.Type,
+                Name = EncRequired(cipher.Name, itemKey),
+                Notes = Enc(cipher.Notes, itemKey),
+                FolderId = string.IsNullOrEmpty(cipher.FolderId) ? null : cipher.FolderId,
+                OrganizationId = cipher.OrganizationId,
+                Key = wrappedKey,
+                Favorite = cipher.Favorite,
+                Reprompt = cipher.Reprompt ? 1 : 0,
+                Fields = EncFields(cipher.Fields, itemKey),
+                Login = cipher.Login is null ? null : EncLogin(cipher.Login, itemKey),
+                Card = cipher.Card is null ? null : EncCard(cipher.Card, itemKey),
+                Identity = cipher.Identity is null ? null : EncIdentity(cipher.Identity, itemKey),
+                SecureNote = cipher.SecureNote is null ? null : new SecureNoteRequest { Type = cipher.SecureNote.Type },
+                SshKey = cipher.Ssh is null ? null : EncSsh(cipher.Ssh, itemKey),
+                LastKnownRevisionDate = cipher.RevisionDate == default
+                    ? null
+                    : cipher.RevisionDate.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture),
+                PasswordHistory = EncPasswordHistory(cipher.PasswordHistory, itemKey),
+            };
+        }
+        finally
+        {
+            ownedKey?.Dispose();
+        }
     }
 
     public string EncryptFolderName(string name, SymmetricCryptoKey userKey) => EncRequired(name, userKey);

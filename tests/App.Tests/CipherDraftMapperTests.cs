@@ -29,6 +29,7 @@ public class CipherDraftMapperTests
         var cipher = CipherDraftMapper.ToCipher(LoginDraft(), original: null);
 
         Assert.Equal("", cipher.Id);
+        Assert.Null(cipher.Key); // 新建条目无原密钥,由 CipherEncryptor 生成随机条目密钥
         Assert.Equal(CipherType.Login, cipher.Type);
         Assert.Equal("GitHub", cipher.Name);
         Assert.Equal("f1", cipher.FolderId);
@@ -69,6 +70,7 @@ public class CipherDraftMapperTests
             Id = "edit-1",
             Type = CipherType.Login,
             OrganizationId = "org-1",
+            Key = "2.wrapped-item-key",
             Name = "Old",
             CreationDate = DateTimeOffset.UnixEpoch,
             RevisionDate = DateTimeOffset.UnixEpoch.AddDays(3),
@@ -81,6 +83,8 @@ public class CipherDraftMapperTests
 
         Assert.Equal("edit-1", updated.Id);
         Assert.Equal("org-1", updated.OrganizationId);
+        // 编辑必须保留原条目的包裹密钥,供 CipherEncryptor 复用同一条目密钥(不轮换),否则损坏既有附件(R1)。
+        Assert.Equal("2.wrapped-item-key", updated.Key);
         Assert.Equal("New", updated.Name);
         Assert.Equal(original.CreationDate, updated.CreationDate);
         Assert.Equal(original.RevisionDate, updated.RevisionDate);

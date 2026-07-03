@@ -59,6 +59,8 @@ public sealed class VaultDecryptor
             Id = dto.Id,
             Type = type,
             OrganizationId = dto.OrganizationId,
+            // 原样携带服务端下发的包裹条目密钥,供编辑时复用(不轮换),避免损坏既有附件。
+            Key = dto.Key,
             FolderId = dto.FolderId,
             Favorite = dto.Favorite,
             Reprompt = dto.Reprompt == 1,

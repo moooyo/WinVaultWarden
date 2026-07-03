@@ -477,6 +477,38 @@ try
                 downloaded.AsSpan().SequenceEqual(attPayload),
                 $"{downloaded.Length} bytes vs {attPayload.Length}");
 
+            // R1 回归:编辑带附件的条目(改密码)后,附件仍必须可解、可下载。
+            // 若 CipherEncryptor 轮换条目密钥而不复用,服务端 cipher.key 被换,附件 akey 失配 → 永久损坏。
+            var editHost = (await sync.SyncAsync()).FirstOrDefault(c => c.Id == attHost.Id);
+            if (editHost is not null)
+            {
+                var editedPassword = $"att-pass-{run}-edited!";
+                var edited = new Cipher
+                {
+                    Id = editHost.Id,
+                    Key = editHost.Key,       // 复用服务端下发的条目密钥(R1 修复的关键)
+                    Type = editHost.Type,
+                    Name = editHost.Name,
+                    FolderId = editHost.FolderId,
+                    Favorite = editHost.Favorite,
+                    Reprompt = editHost.Reprompt,
+                    Notes = editHost.Notes,
+                    Login = editHost.Login is null ? null : editHost.Login with { Password = editedPassword },
+                };
+                await writeService.SaveCipherAsync(edited);
+
+                var afterEdit = (await sync.SyncAsync()).FirstOrDefault(c => c.Id == attHost.Id);
+                Step("attachment/edit: cipher password updated",
+                    afterEdit?.Login?.Password == editedPassword, afterEdit?.Login?.Password);
+                var attAfterEdit = afterEdit?.Attachments.FirstOrDefault(a => a.Id == uploaded.Id);
+                Step("attachment/edit: filename still decrypts after edit",
+                    attAfterEdit?.FileName == attFileName, attAfterEdit?.FileName);
+                var reDownloaded = await attachmentService.DownloadAsync(attHost.Id, uploaded.Id);
+                Step("attachment/edit: still downloadable byte-for-byte after edit (R1)",
+                    reDownloaded.AsSpan().SequenceEqual(attPayload),
+                    $"{reDownloaded.Length} bytes vs {attPayload.Length}");
+            }
+
             // Delete the attachment → it disappears from the cipher.
             var afterDelete = await attachmentService.DeleteAsync(attHost.Id, uploaded.Id);
             Step("attachment: deleted (not listed)", afterDelete.All(a => a.Id != uploaded.Id),
