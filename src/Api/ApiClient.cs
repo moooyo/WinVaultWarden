@@ -18,14 +18,14 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
 
     public async Task<ConfigResponse> GetConfigAsync(CancellationToken ct = default)
     {
-        var response = await _http.GetAsync(Url("api/config"), ct);
+        using var response = await _http.GetAsync(Url("api/config"), ct);
         await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.ConfigResponse, ct);
     }
 
     public async Task<PreloginResponse> PreloginAsync(string email, CancellationToken ct = default)
     {
-        var response = await _http.PostAsJsonAsync(
+        using var response = await _http.PostAsJsonAsync(
             Url("identity/accounts/prelogin"), new PreloginRequest(email),
             ApiJsonContext.Default.PreloginRequest, ct);
         await EnsureSuccessAsync(response, ct);
@@ -34,7 +34,7 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
 
     public async Task<ConnectTokenResult> ConnectTokenAsync(ConnectTokenRequest request, CancellationToken ct = default)
     {
-        var response = await _http.PostAsync(Url("identity/connect/token"), new FormUrlEncodedContent(ToForm(request)), ct);
+        using var response = await _http.PostAsync(Url("identity/connect/token"), new FormUrlEncodedContent(ToForm(request)), ct);
         if (response.IsSuccessStatusCode)
             return new ConnectTokenResult.Success(await ReadJson(response, ApiJsonContext.Default.TokenResponse, ct));
 
@@ -50,14 +50,14 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
 
     public async Task<SyncResponse> GetSyncAsync(CancellationToken ct = default)
     {
-        var response = await _http.GetAsync(Url("api/sync?excludeDomains=true"), ct);
+        using var response = await _http.GetAsync(Url("api/sync?excludeDomains=true"), ct);
         await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.SyncResponse, ct);
     }
 
     public async Task<ListResponse<DeviceDto>> GetDevicesAsync(CancellationToken ct = default)
     {
-        var response = await _http.GetAsync(Url("api/devices"), ct);
+        using var response = await _http.GetAsync(Url("api/devices"), ct);
         await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.ListResponseDeviceDto, ct);
     }
@@ -107,7 +107,7 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
 
     public async Task<FolderDto> GetFolderAsync(string folderId, CancellationToken ct = default)
     {
-        var response = await _http.GetAsync(Url($"api/folders/{folderId}"), ct);
+        using var response = await _http.GetAsync(Url($"api/folders/{folderId}"), ct);
         await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.FolderDto, ct);
     }
@@ -116,14 +116,14 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
 
     public async Task<SendListResponse> GetSendsAsync(CancellationToken ct = default)
     {
-        var response = await _http.GetAsync(Url("api/sends"), ct);
+        using var response = await _http.GetAsync(Url("api/sends"), ct);
         await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.SendListResponse, ct);
     }
 
     public async Task<SendResponseDto> GetSendAsync(string sendId, CancellationToken ct = default)
     {
-        var response = await _http.GetAsync(Url($"api/sends/{sendId}"), ct);
+        using var response = await _http.GetAsync(Url($"api/sends/{sendId}"), ct);
         await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.SendResponseDto, ct);
     }
@@ -182,7 +182,7 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
 
     public async Task<byte[]> DownloadSendFileBytesAsync(string downloadUrl, CancellationToken ct = default)
     {
-        var response = await _http.GetAsync(Url(NormalizeServerPath(downloadUrl)), ct);
+        using var response = await _http.GetAsync(Url(NormalizeServerPath(downloadUrl)), HttpCompletionOption.ResponseHeadersRead, ct);
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
@@ -191,7 +191,7 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
 
     public async Task<CipherDto> GetCipherAsync(string cipherId, CancellationToken ct = default)
     {
-        var response = await _http.GetAsync(Url($"api/ciphers/{cipherId}"), ct);
+        using var response = await _http.GetAsync(Url($"api/ciphers/{cipherId}"), ct);
         await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.CipherDto, ct);
     }
@@ -223,7 +223,7 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
 
     public async Task<byte[]> DownloadAttachmentBytesAsync(string downloadUrl, CancellationToken ct = default)
     {
-        var response = await _http.GetAsync(Url(NormalizeServerPath(downloadUrl)), ct);
+        using var response = await _http.GetAsync(Url(NormalizeServerPath(downloadUrl)), HttpCompletionOption.ResponseHeadersRead, ct);
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
@@ -330,7 +330,7 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
 
     public async Task<TwoFactorProvidersResponse> GetProvidersAsync(CancellationToken ct = default)
     {
-        var response = await _http.GetAsync(Url("api/two-factor"), ct);
+        using var response = await _http.GetAsync(Url("api/two-factor"), ct);
         await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.TwoFactorProvidersResponse, ct);
     }
@@ -377,7 +377,7 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
 
     public async Task<AuthRequestListResponse> GetPendingAsync(CancellationToken ct = default)
     {
-        var response = await _http.GetAsync(Url("api/auth-requests/pending"), ct);
+        using var response = await _http.GetAsync(Url("api/auth-requests/pending"), ct);
         await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.AuthRequestListResponse, ct);
     }
@@ -394,7 +394,7 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
 
     public async Task<AuthRequestResponse> GetResponseAsync(string id, string code, CancellationToken ct = default)
     {
-        var response = await _http.GetAsync(Url($"api/auth-requests/{id}/response?code={Uri.EscapeDataString(code)}"), ct);
+        using var response = await _http.GetAsync(Url($"api/auth-requests/{id}/response?code={Uri.EscapeDataString(code)}"), ct);
         await EnsureSuccessAsync(response, ct);
         return await ReadJson(response, ApiJsonContext.Default.AuthRequestResponse, ct);
     }

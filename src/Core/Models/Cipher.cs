@@ -29,6 +29,32 @@ public sealed class Cipher
     public IReadOnlyList<CipherField> Fields { get; init; } = Array.Empty<CipherField>();
     public IReadOnlyList<CipherAttachment> Attachments { get; init; } = Array.Empty<CipherAttachment>();
     public IReadOnlyList<PasswordHistoryEntry> PasswordHistory { get; init; } = Array.Empty<PasswordHistoryEntry>();
+
+    // 返回一个仅 FolderId 不同的副本(Cipher 为不可变 class,无 record 的 with)。
+    // 用于删除文件夹时把引用它的条目本地迁到"无文件夹"。新增属性时须同步此拷贝。
+    public Cipher WithFolderId(string? folderId) => new()
+    {
+        Id = Id,
+        Type = Type,
+        OrganizationId = OrganizationId,
+        FolderId = folderId,
+        Key = Key,
+        Favorite = Favorite,
+        Reprompt = Reprompt,
+        Name = Name,
+        Notes = Notes,
+        CreationDate = CreationDate,
+        RevisionDate = RevisionDate,
+        DeletedDate = DeletedDate,
+        Login = Login,
+        Card = Card,
+        Identity = Identity,
+        SecureNote = SecureNote,
+        Ssh = Ssh,
+        Fields = Fields,
+        Attachments = Attachments,
+        PasswordHistory = PasswordHistory,
+    };
 }
 
 public sealed record PasswordHistoryEntry(string Password, DateTimeOffset? LastUsedDate);

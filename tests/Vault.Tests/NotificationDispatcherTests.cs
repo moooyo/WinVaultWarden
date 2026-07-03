@@ -253,6 +253,13 @@ public class NotificationDispatcherTests
         // Arrange
         var session = NewUnlockedSession();
         session.UpsertFolder(new Folder { Id = "f-del", Name = "Bye" });
+        session.UpsertCipher(new Core.Models.Cipher
+        {
+            Id = "c-in-folder",
+            Type = Core.Enums.CipherType.Login,
+            Name = "X",
+            FolderId = "f-del",
+        });
 
         var readApi = new FakeNotificationReadonlyApiClient();
         var dispatcher = NewDispatcher(session, readApi: readApi);
@@ -270,6 +277,10 @@ public class NotificationDispatcherTests
 
         // Assert — 文件夹已移除
         Assert.Empty(session.Folders);
+
+        // Assert — 引用被删文件夹的条目迁到"无文件夹"(R8)
+        var cipher = Assert.Single(session.Ciphers);
+        Assert.Null(cipher.FolderId);
 
         // Assert — VaultChanged 触发
         Assert.Equal(1, vaultChangedCount);

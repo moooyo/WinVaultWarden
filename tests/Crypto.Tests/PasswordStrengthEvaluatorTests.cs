@@ -28,4 +28,13 @@ public class PasswordStrengthEvaluatorTests
 
     [Fact]
     public void Empty_ScoresZero() => Assert.Equal(0, _e.Evaluate("").Score);
+
+    [Fact]
+    public void UppercaseInDictionaryWord_IncreasesGuesses()
+    {
+        // R19:大写乘子必须真正生效——用原文子串判断而非已小写化的 m.Token(此前恒 false 是死代码)。
+        var lower = _e.Evaluate("password").Guesses;
+        var upper = _e.Evaluate("Password").Guesses;
+        Assert.True(upper > lower, $"含大写应提升猜测量: upper={upper} lower={lower}");
+    }
 }

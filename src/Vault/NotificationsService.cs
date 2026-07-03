@@ -162,6 +162,7 @@ public sealed class NotificationsService : INotificationsService
 
             // 3. 建立连接并读取消息
             var conn = _connectionFactory();
+            var connectionFailed = false;
             try
             {
                 await conn.ConnectAsync(serverUrl, accessToken, ct).ConfigureAwait(false);
@@ -171,7 +172,7 @@ public sealed class NotificationsService : INotificationsService
                 {
                     await _dispatcher.DispatchAsync(msg, ct).ConfigureAwait(false);
                 }
-                // ReadAsync 正常结束（连接关闭）→ 继续循环重连
+                // ReadAsync 正常结束（连接关闭）→ token 仍有效，继续循环重连
             }
             catch (OperationCanceledException)
             {
@@ -179,7 +180,7 @@ public sealed class NotificationsService : INotificationsService
             }
             catch
             {
-                // 连接错误 → 退避后重连
+                connectionFailed = true; // 连接错误（可能是 token 失效）→ 退避后重连
             }
             finally
             {
@@ -189,18 +190,23 @@ public sealed class NotificationsService : INotificationsService
             if (ct.IsCancellationRequested)
                 return;
 
-            // 4. 尝试刷新 token（best-effort）
-            try
+            // 4. 仅在连接因错误断开时才刷新 token（可能是 token 失效）。正常关闭无需刷新——token 仍有效，
+            //    否则每次良性重连都多一次 connect/token 调用 + session.bin 落盘（R15）。若 token 确已过期，
+            //    重连时 ConnectAsync 会失败 → 下一轮 connectionFailed=true 触发刷新，逻辑自愈。
+            if (connectionFailed)
             {
-                await _refresher.TryRefreshAsync(ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch
-            {
-                // best-effort
+                try
+                {
+                    await _refresher.TryRefreshAsync(ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch
+                {
+                    // best-effort
+                }
             }
 
             // 5. 退避等待后重连

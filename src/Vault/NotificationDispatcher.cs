@@ -155,6 +155,7 @@ public sealed class NotificationDispatcher : INotificationDispatcher
                     return;
 
                 _session.RemoveFolder(id);
+                _session.ClearFolderReference(id); // 引用被删文件夹的条目迁到"无文件夹"(R8)
                 VaultChanged?.Invoke();
                 break;
             }

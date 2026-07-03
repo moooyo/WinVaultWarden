@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Api;
 using Api.Dtos;
 using Core.Enums;
@@ -27,7 +28,17 @@ public sealed class SendService : ISendService
         var response = await _api.GetSendsAsync(ct);
         var result = new List<Send>();
         foreach (var dto in response.Data ?? Array.Empty<SendResponseDto>())
-            result.Add(Decrypt(dto, userKey));
+        {
+            try
+            {
+                result.Add(Decrypt(dto, userKey));
+            }
+            catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException or NullReferenceException)
+            {
+                // 单个损坏的 Send(空/坏 key 或坏 EncString)不连累其余:跳过它,保留正常 Send
+                // (与 VaultDecryptor 对坏 cipher 逐条跳过的健壮策略一致,R7)。
+            }
+        }
         return result;
     }
 

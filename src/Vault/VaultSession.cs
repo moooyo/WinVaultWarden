@@ -167,6 +167,21 @@ public sealed class VaultSession : IVaultSnapshot
         }
     }
 
+    // 删除文件夹时把引用它的条目本地迁到"无文件夹"(FolderId=null)。服务端删文件夹只推单条
+    // SyncFolderDelete、不逐条推 cipher,官方客户端需本地做此迁移,否则这些条目文件夹名渲染为空/
+    // 分组视图出现重复"无文件夹"头,直到下次整库同步才自愈(R8)。copy-on-write,持锁读一致。
+    public void ClearFolderReference(string folderId)
+    {
+        lock (_gate)
+        {
+            if (_ciphers.All(c => c.FolderId != folderId))
+                return;
+            _ciphers = _ciphers
+                .Select(c => c.FolderId == folderId ? c.WithFolderId(null) : c)
+                .ToArray();
+        }
+    }
+
     public void SetDevices(IReadOnlyList<DeviceInfo> devices)
     {
         lock (_gate)
