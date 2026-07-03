@@ -187,6 +187,13 @@ public sealed class VaultSession : IVaultSnapshot
         // Dispose 清零 UserKey 的 FullKey/EncKey/MacKey 全部支撑数组(等价于原逐一 ZeroMemory,更简洁)。
         UserKey?.Dispose();
 
+        // 【已知残余风险 — 托管明文残留】锁定/登出这里只能清零 UserKey 的字节数组(可变 byte[],
+        // 可就地 ZeroMemory)。而解密后的 Cipher 字段明文(用户名/密码/备注等)是不可变的
+        // System.String,CLR 不提供就地清零手段:即便把引用置空(下方 _ciphers = Empty),
+        // 明文字符串仍作为托管堆对象存在,直到 GC 回收并压缩堆之前一直残留在内存中。
+        // 因此锁定后、下一次 GC 前的内存转储仍可能包含明文。这是托管运行时的固有限制,
+        // Bitwarden 官方桌面客户端(基于同类托管/JS 运行时)也存在同样约束,属已知残余风险。
+        // (如需进一步缓解可在锁定后 GC.Collect(),但不能根除,本批不引入。)
         AccessToken = null;
         RefreshToken = null;
         UserKey = null;

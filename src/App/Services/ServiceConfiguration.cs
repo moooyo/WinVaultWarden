@@ -174,7 +174,10 @@ public static class ServiceConfiguration
                     global::App.App.MainWindow?.RefreshRequestsList()),
                 onLoggedOut: () => Dispatch(async () =>
                 {
+                    // 服务端推送登出:主动清剪贴板密钥,登出后清空本地图标缓存。
+                    try { sp.GetRequiredService<IClipboardService>().ClearSecretsNow(); } catch { }
                     await global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync();
+                    try { sp.GetRequiredService<IFaviconCache>().Clear(); } catch { }
                     global::App.App.MainWindow?.ShowLogin();
                 }));
         });

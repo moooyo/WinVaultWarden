@@ -101,6 +101,20 @@ public sealed class FaviconCache : IFaviconCache
 
     private static void TryDelete(string path) { try { if (File.Exists(path)) File.Delete(path); } catch { } }
 
+    // 登出时清空本地图标缓存:删除缓存目录下所有 .png/.none/.tmp 文件。
+    // best-effort:目录不存在/文件被占用等异常一律吞掉,绝不抛。
+    public void Clear()
+    {
+        try
+        {
+            if (!Directory.Exists(_cacheDir))
+                return;
+            foreach (var file in Directory.EnumerateFiles(_cacheDir))
+                TryDelete(file);
+        }
+        catch { /* 目录枚举失败(不存在/占用)忽略 */ }
+    }
+
     private static string Hash(string domain)
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(domain.ToLowerInvariant())));
 }

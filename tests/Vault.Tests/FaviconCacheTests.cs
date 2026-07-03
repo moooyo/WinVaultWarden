@@ -119,5 +119,34 @@ public class FaviconCacheTests : IDisposable
         Assert.Null(result);
     }
 
+    [Fact]
+    public void Clear_DeletesAllCacheFiles_LeavesDirectoryEmpty()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllBytes(Path.Combine(_dir, "a".PadRight(64, '0') + ".png"), new byte[] { 1, 2 });
+        File.WriteAllBytes(Path.Combine(_dir, "b".PadRight(64, '0') + ".png"), new byte[] { 3 });
+        File.WriteAllBytes(Path.Combine(_dir, "c".PadRight(64, '0') + ".none"), Array.Empty<byte>());
+        File.WriteAllBytes(Path.Combine(_dir, "d".PadRight(64, '0') + ".png.tmp"), new byte[] { 9 });
+
+        var handler = new StubHandler(_ => Png(new byte[] { 1 }));
+        var cache = new FaviconCache(new HttpClient(handler), Session(), _dir);
+
+        cache.Clear();
+
+        Assert.Empty(Directory.EnumerateFileSystemEntries(_dir));
+        Assert.Equal(0, handler.Calls); // Clear 不触网
+    }
+
+    [Fact]
+    public void Clear_MissingDirectory_DoesNotThrow()
+    {
+        // 缓存目录从未创建:Clear 应静默返回(best-effort,绝不抛)。
+        var handler = new StubHandler(_ => Png(new byte[] { 1 }));
+        var cache = new FaviconCache(new HttpClient(handler), Session(), _dir);
+
+        cache.Clear(); // must NOT throw
+        Assert.False(Directory.Exists(_dir));
+    }
+
     public void Dispose() { try { Directory.Delete(_dir, true); } catch { } }
 }
