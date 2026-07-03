@@ -30,10 +30,14 @@ public sealed class SyncService : ISyncService
         var userKey = _session.UserKey ?? throw new InvalidOperationException("Vault is locked.");
         var sync = await _api.GetSyncAsync(ct);
         var vault = _decryptor.Decrypt(sync, userKey, serverUrl);
-        _session.SetSnapshot(vault, dataStale: false);
-        _session.SetEncryptedPrivateKey(sync.Profile?.PrivateKey);
-        // 成功同步后刷新离线缓存(P1-1)。email 取自 profile,与解锁时的 persisted.Email 一致。
-        _cache.Save(sync, sync.Profile?.Email ?? string.Empty, serverUrl, DateTimeOffset.UtcNow);
+        // 若在途同步期间被并发 Lock/Clear(如登出),SetSnapshot 返回 false;此时**不得**再落盘缓存,
+        // 否则会把登出刚 Clear 掉的 vault-cache.bin 复写回来(I1)。仅在快照实际应用时刷新私钥+缓存。
+        if (_session.SetSnapshot(vault, dataStale: false))
+        {
+            _session.SetEncryptedPrivateKey(sync.Profile?.PrivateKey);
+            // 成功同步后刷新离线缓存(P1-1)。email 取自 profile,与解锁时的 persisted.Email 一致。
+            _cache.Save(sync, sync.Profile?.Email ?? string.Empty, serverUrl, DateTimeOffset.UtcNow);
+        }
         return vault.Ciphers;
     }
 }

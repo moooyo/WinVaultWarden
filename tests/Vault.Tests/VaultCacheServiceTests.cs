@@ -74,4 +74,25 @@ public class VaultCacheServiceTests
         session.SetUnlockedKey(UserKey);
         Assert.False(svc.TryLoadInto(Email, Server, UserKey));
     }
+
+    [Fact]
+    public void TryLoadInto_SchemaVersionMismatch_ReturnsFalse()
+    {
+        // 未来版本 schema → 忽略缓存,走联网(D5)。
+        var (svc, session, store) = New();
+        session.SetUnlockedKey(UserKey);
+        store.SaveVaultCache(new VaultCacheEntry(999, Email, Server, DateTimeOffset.UnixEpoch, "{}"));
+        Assert.False(svc.TryLoadInto(Email, Server, UserKey));
+    }
+
+    [Fact]
+    public void TryLoadInto_CorruptJson_ReturnsFalse()
+    {
+        // schema/email/server 都对,但 payload 损坏 → 反序列化失败,回退 false 而非外抛。
+        var (svc, session, store) = New();
+        session.SetUnlockedKey(UserKey);
+        store.SaveVaultCache(new VaultCacheEntry(
+            VaultCacheService.SchemaVersion, Email, Server, DateTimeOffset.UnixEpoch, "{not valid json"));
+        Assert.False(svc.TryLoadInto(Email, Server, UserKey));
+    }
 }
