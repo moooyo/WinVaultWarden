@@ -17,5 +17,6 @@
   <ItemGroup>
     <EmbeddedResource Include="PasswordStrength\passwords.txt" />
     <EmbeddedResource Include="PasswordStrength\english.txt" />
+    <EmbeddedResource Include="Resources\eff_large_wordlist.txt" />
   </ItemGroup>
 </Project>
