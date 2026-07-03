@@ -34,9 +34,23 @@ public sealed partial class GeneratorDialog : ContentDialog
 
     private void UpdatePrimaryButtonState() => IsPrimaryButtonEnabled = true;
 
-    private async void OnHistoryClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    // "查看历史"请求标志。WinUI 同一时刻只允许一个 ContentDialog 打开,
+    // 因此不能在本对话框仍打开时嵌套 ShowAsync 历史对话框(会抛 COMException 使整进程崩溃)。
+    private bool _historyRequested;
+
+    /// <summary>返回并清除"请求查看历史"标志,供宿主在本对话框关闭后决定是否打开历史对话框。</summary>
+    public bool ConsumeHistoryRequest()
     {
-        var dialog = new GeneratorHistoryDialog(ViewModel) { XamlRoot = XamlRoot };
-        await dialog.ShowAsync();
+        var requested = _historyRequested;
+        _historyRequested = false;
+        return requested;
+    }
+
+    // 置标志并关闭本对话框;由 MainWindow.ShowGeneratorDialogAsync 在关闭后打开历史对话框、再重开生成器。
+    // 不再嵌套 ShowAsync,故此处也无需 async void(消除其吞异常/崩溃风险)。
+    private void OnHistoryClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        _historyRequested = true;
+        Hide();
     }
 }
