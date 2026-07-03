@@ -45,7 +45,8 @@ public sealed record PasskeyGetPayload(
     PasskeyCredentialDescriptor[] AllowCredentials,
     string? UserVerification,
     string? Mediation,
-    int? Timeout);
+    int? Timeout,
+    bool CrossOrigin = false);
 
 public sealed record PasskeyRelyingParty(string? Id, string? Name);
 

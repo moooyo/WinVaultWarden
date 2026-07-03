@@ -38,7 +38,7 @@ public class BrowserExtensionTests
         Assert.Contains("native_host_unavailable", script);
         Assert.Contains("not_implemented", script);
         Assert.Contains("vault_locked", script);
-        Assert.Contains("credential_not_found", script);
+        Assert.Contains("no_credential", script);
         Assert.Contains("nativeCreate(options)", script);
         Assert.Contains("nativeGet(options)", script);
     }
@@ -53,6 +53,8 @@ public class BrowserExtensionTests
         Assert.Contains("winvaultwarden-native", script);
         Assert.Contains("chrome.runtime.sendMessage", script);
         Assert.Contains("window.postMessage", script);
+        // Content script pins the real frame origin (isolated world) over the page-reported one.
+        Assert.Contains("request.payload.origin = event.origin", script);
     }
 
     [Fact]

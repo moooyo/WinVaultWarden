@@ -121,7 +121,7 @@ public class BrowserPasskeyRequestHandlerTests
             TestContext.Current.CancellationToken);
 
         Assert.False(response.Ok);
-        Assert.Equal("no_credential_or_cancelled", response.Error?.Code);
+        Assert.Equal("user_cancelled", response.Error?.Code);
     }
 
     [Fact]
@@ -147,13 +147,13 @@ public class BrowserPasskeyRequestHandlerTests
             TestContext.Current.CancellationToken);
 
         Assert.False(response.Ok);
-        Assert.Equal("no_credential_or_cancelled", response.Error?.Code);
+        Assert.Equal("no_credential", response.Error?.Code);
         // The approval prompt must NOT have run for a missing credential.
         Assert.Null(approval.Request);
     }
 
     [Fact]
-    public async Task HandleAsync_GetAssertion_PresentButDeclined_ReturnsSameGenericError()
+    public async Task HandleAsync_GetAssertion_PresentButDeclined_ReturnsUserCancelled()
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var credential = Credential(key, WebAuthnCrypto.EncodeBase64Url([1, 2, 3, 4]));
@@ -186,8 +186,10 @@ public class BrowserPasskeyRequestHandlerTests
             TestContext.Current.CancellationToken);
 
         Assert.False(response.Ok);
-        // Same code as the no-credential case: error code alone reveals nothing.
-        Assert.Equal("no_credential_or_cancelled", response.Error?.Code);
+        // A present-but-declined credential reports user cancellation, distinct from the
+        // no-credential case: no_credential falls back to the platform authenticator,
+        // user_cancelled must surface as NotAllowedError (no fallback).
+        Assert.Equal("user_cancelled", response.Error?.Code);
     }
 
     private static CipherFido2Credential Credential(ECDsa key, string credentialId) => new(
