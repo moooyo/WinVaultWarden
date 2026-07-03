@@ -74,6 +74,13 @@ public sealed class CryptoService
     // AES-256-CBC 解密,先验 HMAC(覆盖 IV‖ct)。type 0 无 MAC 跳过验证。
     public byte[] Decrypt(EncString data, SymmetricCryptoKey key)
     {
+        // 拒绝 MAC 剥离降级:MAC-capable 密钥(用户/条目/附件/Send 密钥,全为 64 字节)
+        // 绝不解密无 MAC 的 type-0 密文——否则恶意/MITM 服务端可把认证的 type-2 字段改写成
+        // 无认证的 type-0,击穿 enc-then-MAC(完整性伪造 + CBC padding oracle)。
+        // 本代码库所有密钥都是 MAC-capable,此检查不拒绝任何合法数据。
+        if (key.MacKey is not null && data.Mac is null)
+            throw new CryptographicException("MAC 密钥不得解密无 MAC 密文(拒绝降级)");
+
         if (data.Mac is not null)
         {
             if (key.MacKey is null)
