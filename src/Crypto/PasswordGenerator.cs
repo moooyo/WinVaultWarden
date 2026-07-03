@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Security.Cryptography;
 
 namespace Crypto;
@@ -44,12 +45,27 @@ public static class PasswordGenerator
     private const string LowercaseUnmistakable = "abcdefghijkmnpqrstuvwxyz";
     private const string NumbersUnmistakable = "23456789";
 
-    private static readonly string[] Words =
-    [
-        "aware", "button", "chase", "dealt", "ditto", "enzyme", "football", "giddy",
-        "helium", "imperial", "jigsaw", "lantern", "marble", "nintendo", "orbit",
-        "powdery", "ripeness", "spongy", "steerable", "trifle", "unmasking", "wizard",
-    ];
+    // EFF long wordlist (7776 词,与 Bitwarden 一致),内嵌资源加载。
+    // 每词 log2(7776)=12.925 bits;默认 6 词口令 ≈ 77.5 bits(旧 22 词表仅 ~27 bits)。
+    private static readonly string[] Words = LoadWordlist();
+
+    private static string[] LoadWordlist()
+    {
+        var asm = typeof(PasswordGenerator).Assembly;
+        var name = asm.GetManifestResourceNames()
+            .Single(n => n.EndsWith("eff_large_wordlist.txt", StringComparison.Ordinal));
+        using var stream = asm.GetManifestResourceStream(name)!;
+        using var reader = new StreamReader(stream);
+        var list = new List<string>(7776);
+        string? line;
+        while ((line = reader.ReadLine()) is not null)
+        {
+            line = line.Trim();
+            if (line.Length > 0)
+                list.Add(line);
+        }
+        return list.ToArray();
+    }
 
     public static string Generate(PasswordGenerationOptions? options = null)
     {

@@ -133,6 +133,22 @@ public class PasswordGeneratorTests
     }
 
     [Fact]
+    public void GeneratePassphrase_DrawsFromLargeWordlist_HighDiversity()
+    {
+        // H1/L5: 词表须是大表(EFF 7776),不能是旧 22 词占位表。
+        // 收集大量单词,distinct 数远超 22 即证明词表已扩大(6 词 ≈ 77.5 bits 而非 ~27)。
+        var distinct = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < 200; i++)
+            foreach (var w in PasswordGenerator.GeneratePassphrase(
+                         new PassphraseGenerationOptions(WordCount: 10, Separator: "-", Capitalize: false, IncludeNumber: false))
+                     .Split('-'))
+                distinct.Add(w);
+
+        // 2000 次抽样:22 词表最多 22 个 distinct;大表应有数百个。
+        Assert.True(distinct.Count > 500, $"词表过小,distinct={distinct.Count}(疑似仍是占位表)");
+    }
+
+    [Fact]
     public void GeneratePassphrase_CapitalizeAndNumber_AppliesOptions()
     {
         var passphrase = PasswordGenerator.GeneratePassphrase(
