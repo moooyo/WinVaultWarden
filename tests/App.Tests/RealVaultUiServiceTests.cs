@@ -217,6 +217,7 @@ public class RealVaultUiServiceTests
         ];
 
         public int SkippedCipherCount => 0;
+        public bool DataStale => false;
     }
 }
 

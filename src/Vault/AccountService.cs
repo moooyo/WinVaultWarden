@@ -24,19 +24,22 @@ public sealed class AccountService : IAccountService
     private readonly VaultSession _session;
     private readonly ITokenStore _tokenStore;
     private readonly IAuthService _auth;
+    private readonly VaultCacheService _cache;
 
     public AccountService(
         CryptoService crypto,
         IAccountApiClient api,
         VaultSession session,
         ITokenStore tokenStore,
-        IAuthService auth)
+        IAuthService auth,
+        VaultCacheService cache)
     {
         _crypto = crypto;
         _api = api;
         _session = session;
         _tokenStore = tokenStore;
         _auth = auth;
+        _cache = cache;
     }
 
     // -----------------------------------------------------------------------
@@ -128,6 +131,8 @@ public sealed class AccountService : IAccountService
             MasterPasswordHint: hint,
             Key: wrappedKey), ct);
 
+        // 改密后旧缓存虽仍可被同一 userKey 解密,但为对齐 D2、避免与新 KDF/密码状态漂移,清缓存、下次同步重建。
+        _cache.Clear();
         await _auth.LogoutAsync(ct);
     }
 
@@ -223,6 +228,8 @@ public sealed class AccountService : IAccountService
             MasterPasswordHash: oldHash);
 
         await _api.ChangeKdfAsync(request, ct);
+        // 改 KDF 参数后旧缓存的 schema 头虽仍有效,但为对齐 D2、避免 KDF 参数漂移,清缓存、下次同步重建。
+        _cache.Clear();
         await _auth.LogoutAsync(ct);
     }
 

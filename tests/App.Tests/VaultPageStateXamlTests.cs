@@ -55,6 +55,20 @@ public class VaultPageStateXamlTests
         Assert.Contains("ViewModel.HasSkippedCiphers", infoBar.Attribute("IsOpen")?.Value);
     }
 
+    [Fact]
+    public void ListColumn_HasOfflineInfoBar_BoundToDataStale()
+    {
+        var document = LoadXaml();
+
+        var infoBar = document
+            .Descendants(Xaml + "InfoBar")
+            .Single(b => b.Attribute(X + "Name")?.Value == "VaultOfflineInfoBar");
+
+        Assert.Equal("Warning", infoBar.Attribute("Severity")?.Value);
+        Assert.Equal("False", infoBar.Attribute("IsClosable")?.Value);
+        Assert.Contains("ViewModel.DataStale", infoBar.Attribute("IsOpen")?.Value);
+    }
+
     private static XDocument LoadXaml()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

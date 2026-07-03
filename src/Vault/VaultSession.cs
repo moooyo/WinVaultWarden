@@ -18,6 +18,7 @@ public sealed class VaultSession : IVaultSnapshot
     public string? EncryptedPrivateKey { get; private set; }
     public AccountInfo Account { get; private set; } = AccountInfo.Empty;
     public int SkippedCipherCount { get; private set; }
+    public bool DataStale { get; private set; }
 
     public IReadOnlyList<Cipher> Ciphers
     {
@@ -76,18 +77,21 @@ public sealed class VaultSession : IVaultSnapshot
             EncryptedPrivateKey = encryptedPrivateKey;
     }
 
-    public void SetSnapshot(DecryptedVault vault)
+    /// <summary>写入快照。返回是否实际应用(false 表示会话已被并发 Lock/Clear,快照被丢弃)。</summary>
+    public bool SetSnapshot(DecryptedVault vault, bool dataStale = false)
     {
         lock (_gate)
         {
             // 并发锁定/登出防护(S6):若在途同步期间已被 Lock()/Clear()(UserKey 已在同一 _gate 下清零置空),
             // 不得把解密后的明文条目回灌进已锁定会话——否则会出现 State=Locked 却仍能读到整库明文的矛盾态。
             if (UserKey is null)
-                return;
+                return false;
             Account = vault.Account;
             _folders = vault.Folders;
             _ciphers = vault.Ciphers;
             SkippedCipherCount = vault.SkippedCipherCount;
+            DataStale = dataStale;
+            return true;
         }
     }
 
@@ -233,5 +237,6 @@ public sealed class VaultSession : IVaultSnapshot
         _devices = Array.Empty<DeviceInfo>();
         EncryptedPrivateKey = null;
         SkippedCipherCount = 0;
+        DataStale = false;
     }
 }

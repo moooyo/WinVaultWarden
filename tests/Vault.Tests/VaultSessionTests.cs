@@ -121,4 +121,25 @@ public class VaultSessionTests
         session.MarkUnlockedIfKeyPresent();
         Assert.Equal(Core.Session.VaultState.Locked, session.State);
     }
+
+    [Fact]
+    public void SetSnapshot_DataStaleFlag_ExposedAndResetOnLock()
+    {
+        var session = new VaultSession();
+        var key = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
+        var account = new AccountInfo("me@example.com", "https://vault.example", "M", "PBKDF2 600000");
+
+        session.SetUnlockedKey(key);
+        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 0), dataStale: true);
+        Assert.True(session.DataStale);
+
+        session.SetUnlockedKey(key);
+        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 0), dataStale: false);
+        Assert.False(session.DataStale);
+
+        session.SetUnlockedKey(key);
+        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 0), dataStale: true);
+        session.Lock();
+        Assert.False(session.DataStale);
+    }
 }

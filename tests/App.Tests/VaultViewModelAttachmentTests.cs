@@ -18,6 +18,7 @@ public class VaultViewModelAttachmentTests
         public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
         public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
         public int SkippedCipherCount => 0;
+        public bool DataStale => false;
 
         public CipherDetail GetDetail(string id)
         {

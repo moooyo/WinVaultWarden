@@ -256,5 +256,7 @@ public class BrowserPasskeyRequestHandlerTests
         public AccountInfo Account => AccountInfo.Empty;
 
         public int SkippedCipherCount => 0;
+
+        public bool DataStale => false;
     }
 }

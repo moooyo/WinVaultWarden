@@ -53,9 +53,10 @@ var api = new ApiClient(http);
 refresher = new TokenRefreshService(api, api, session, tokenStore);
 
 var decryptor = new VaultDecryptor(crypto);
-var bootstrapper = new VaultBootstrapper(new SyncService(api, decryptor, session), api, session);
-var auth = new AuthService(api, api, crypto, session, tokenStore, bootstrapper);
-var sync = new SyncService(api, decryptor, session);
+var cache = new VaultCacheService(new NullCacheStore(), decryptor, session);
+var bootstrapper = new VaultBootstrapper(new SyncService(api, decryptor, session, cache), api, session);
+var auth = new AuthService(api, api, crypto, session, tokenStore, bootstrapper, cache);
+var sync = new SyncService(api, decryptor, session, cache);
 var encryptor = new CipherEncryptor(crypto);
 var writeService = new VaultWriteService(api, encryptor, sync, session);
 
@@ -70,7 +71,7 @@ IAttachmentApiClient attachmentApi = api;
 var attachmentService = new AttachmentService(attachmentApi, attachmentCrypto, decryptor, session, sync);
 
 IAccountApiClient accountApi = api;
-var accountService = new AccountService(crypto, accountApi, session, tokenStore, auth);
+var accountService = new AccountService(crypto, accountApi, session, tokenStore, auth, cache);
 
 ITwoFactorApiClient twoFactorApi = api;
 var twoFactorService = new TwoFactorService(crypto, twoFactorApi, tokenStore);
@@ -1172,13 +1173,14 @@ BuildStack(string url)
     var a = new ApiClient(h);
     ref2 = new TokenRefreshService(a, a, s, ts);
     var dec = new VaultDecryptor(c);
-    var boot = new VaultBootstrapper(new SyncService(a, dec, s), a, s);
-    var auth2 = new AuthService(a, a, c, s, ts, boot);
-    var sync2 = new SyncService(a, dec, s);
+    var cache2 = new VaultCacheService(new NullCacheStore(), dec, s);
+    var boot = new VaultBootstrapper(new SyncService(a, dec, s, cache2), a, s);
+    var auth2 = new AuthService(a, a, c, s, ts, boot, cache2);
+    var sync2 = new SyncService(a, dec, s, cache2);
     var enc2 = new CipherEncryptor(c);
     var write2 = new VaultWriteService(a, enc2, sync2, s);
     IAccountApiClient acctApi = a;
-    var acct2 = new AccountService(c, acctApi, s, ts, auth2);
+    var acct2 = new AccountService(c, acctApi, s, ts, auth2, cache2);
     IEmergencyAccessApiClient eaApi = a;
     var ea2 = new EmergencyAccessService(eaApi, c, dec, s);
     a.SetBaseAddress(url);
@@ -1439,4 +1441,13 @@ async Task EmergencyAccessRoundTripAsync()
                 $"{ex.GetType().Name}: {ex.Message}");
         }
     }
+}
+
+// P1-1 占位:LiveSmoke 尚未接入 DPAPI 落盘缓存(Task 6 才引入 DpapiVaultCacheStore)。
+// 这里给 SyncService 的新增 cache 参数提供一个空操作实现,不做任何持久化,不影响冒烟测试语义。
+sealed class NullCacheStore : ICacheStore
+{
+    public void SaveVaultCache(VaultCacheEntry entry) { }
+    public bool TryLoadVaultCache(out VaultCacheEntry entry) { entry = null!; return false; }
+    public void ClearVaultCache() { }
 }

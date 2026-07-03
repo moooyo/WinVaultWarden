@@ -22,6 +22,7 @@ public class VaultRecycleBinTests
         public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();  // 含 Trash 节点
         public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
         public int SkippedCipherCount => 0;
+        public bool DataStale => false;
         public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => Task.FromResult("x");
         public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => Task.CompletedTask;
         public Task RestoreCipherAsync(string id, CancellationToken ct = default) => Task.CompletedTask;

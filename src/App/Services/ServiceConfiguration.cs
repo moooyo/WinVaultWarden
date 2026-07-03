@@ -20,6 +20,7 @@ public static class ServiceConfiguration
         services.AddSingleton<VaultSession>();
         services.AddSingleton<CryptoService>();
         services.AddSingleton<ITokenStore, DpapiTokenStore>();
+        services.AddSingleton<ICacheStore, DpapiVaultCacheStore>();
         services.AddSingleton(sp =>
         {
             var session = sp.GetRequiredService<VaultSession>();
@@ -45,6 +46,7 @@ public static class ServiceConfiguration
         services.AddSingleton<CipherEncryptor>();
         services.AddSingleton<IVaultWriteService, Vault.VaultWriteService>();
         services.AddSingleton<VaultDecryptor>();
+        services.AddSingleton<VaultCacheService>();
         services.AddSingleton<AttachmentCryptoService>();
         services.AddSingleton<VaultBootstrapper>();
         services.AddSingleton<VaultTimeoutService>();

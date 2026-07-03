@@ -10,4 +10,5 @@ public interface IVaultSnapshot
     IReadOnlyList<DeviceInfo> Devices { get; }
     AccountInfo Account { get; }
     int SkippedCipherCount { get; }
+    bool DataStale { get; }
 }
