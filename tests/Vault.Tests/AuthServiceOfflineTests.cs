@@ -95,6 +95,61 @@ public class AuthServiceOfflineTests
         Assert.Equal(Core.Session.VaultState.Locked, session.State);
     }
 
+    // B2:离线解锁成功后,必须把持久化 refresh token 种回内存,否则联网后 401 无法触发刷新。
+    [Fact]
+    public async Task UnlockAsync_OfflineFromCache_SeedsRefreshTokenForLaterRecovery()
+    {
+        var fixture = CreateLoginFixture();
+        var tokenStore = new MemoryTokenStore();
+        tokenStore.Save(new PersistedSession(Server, Email, "device-id", "stored-refresh",
+            fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => throw new HttpRequestException("offline")); // 刷新失败 → 走离线缓存分支
+        var session = new VaultSession();
+        var store = new FakeCacheStore();
+        var cache = PrePopulateCache(store, session, fixture.UserKey, "Cached");
+        var service = CreateAuthService(handler, session, tokenStore, cache);
+
+        var result = await service.UnlockAsync(Password, TestContext.Current.CancellationToken);
+
+        Assert.IsType<AuthResult.Success>(result);
+        Assert.Equal("stored-refresh", session.RefreshToken); // B2:refresh token 已回种
+        Assert.Null(session.AccessToken);                     // 离线仍无 access token
+    }
+
+    // B2:回种的 refresh token 让联网后的 TryRefreshAsync 能真实刷新、透明转在线。
+    [Fact]
+    public async Task UnlockAsync_OfflineThenNetworkRestored_TokenRefreshRecoversOnline()
+    {
+        var fixture = CreateLoginFixture();
+        var tokenStore = new MemoryTokenStore();
+        tokenStore.Save(new PersistedSession(Server, Email, "device-id", "stored-refresh",
+            fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
+
+        // 1) 离线解锁:刷新失败 → 从缓存出数据 + 回种 refresh token
+        var offlineHandler = new FakeHttpMessageHandler();
+        offlineHandler.Enqueue(_ => throw new HttpRequestException("offline"));
+        var session = new VaultSession();
+        var store = new FakeCacheStore();
+        var cache = PrePopulateCache(store, session, fixture.UserKey, "Cached");
+        var service = CreateAuthService(offlineHandler, session, tokenStore, cache);
+        Assert.IsType<AuthResult.Success>(await service.UnlockAsync(Password, TestContext.Current.CancellationToken));
+        Assert.True(session.DataStale);
+
+        // 2) 网络恢复:凭回种的 refresh token 触发真实刷新
+        var onlineHandler = new FakeHttpMessageHandler();
+        onlineHandler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
+            """{"access_token":"recovered-access","refresh_token":"rotated-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
+        var onlineApi = new ApiClient(new HttpClient(onlineHandler));
+        var refresher = new TokenRefreshService(onlineApi, onlineApi, session, tokenStore);
+
+        var refreshed = await refresher.TryRefreshAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(refreshed);
+        Assert.Equal("recovered-access", session.AccessToken);
+        Assert.Equal("rotated-refresh", session.RefreshToken);
+    }
+
     private AuthService CreateAuthService(
         FakeHttpMessageHandler handler, VaultSession session, MemoryTokenStore tokenStore, VaultCacheService cache)
     {

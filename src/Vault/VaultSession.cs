@@ -62,6 +62,14 @@ public sealed class VaultSession : IVaultSnapshot
         }
     }
 
+    // B2:离线解锁成功后把持久化 refresh token 种回内存(AccessToken 仍为 null)。
+    // 使后续手动/自动 Sync 撞 401 时 TokenRefreshService 能凭此触发真实刷新、透明转在线。
+    public void SetRefreshTokenOnly(string refreshToken)
+    {
+        lock (_gate)
+            RefreshToken = refreshToken;
+    }
+
     public void SetUnlockedKey(SymmetricCryptoKey userKey)
     {
         lock (_gate)
