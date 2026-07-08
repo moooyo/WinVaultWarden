@@ -10,6 +10,8 @@ public sealed class CryptoService
 {
     public byte[] DeriveMasterKey(string password, string email, KdfType kdfType, int iterations, int? memoryMiB, int? parallelism)
     {
+        ValidateKdfParameters(kdfType, iterations, memoryMiB, parallelism);
+
         var pw = Encoding.UTF8.GetBytes(password);
         var normalizedEmail = email.Trim().ToLowerInvariant();
 
@@ -28,6 +30,52 @@ public sealed class CryptoService
 
             _ => throw new ArgumentOutOfRangeException(nameof(kdfType)),
         };
+    }
+
+    // ── KDF 参数安全下限/上限校验(C2) ───────────────────────────────────────
+    // 不可信(恶意 / MITM)服务端可通过 prelogin 下发极弱参数(如 iterations=1)弱化整条派生链,
+    // 再据其下发的 MasterPasswordHash 离线爆破主密码。故派生前**拒绝**越界参数并抛 CryptographicException。
+    // 绝不 clamp:clamp 会改变派生出的密钥,与服务端存储的 wrappedKey 不匹配,导致合法登录失败。
+    // CryptographicException 已被 AuthService.IsExpectedAuthException 捕获,登录/解锁/改密/改 KDF 各路径
+    // 均经 DeriveMasterKey,共用此校验。
+    private const int MinPbkdf2Iterations = 100_000;   // Bitwarden 默认 600000
+    private const int MinArgon2Iterations = 2;
+    private const int MinArgon2MemoryMiB = 15;
+    private const int MaxArgon2MemoryMiB = 1024;        // DoS 上限
+    private const int MinArgon2Parallelism = 1;
+
+    private static void ValidateKdfParameters(KdfType kdfType, int iterations, int? memoryMiB, int? parallelism)
+    {
+        switch (kdfType)
+        {
+            case KdfType.Pbkdf2:
+                if (iterations < MinPbkdf2Iterations)
+                    throw new CryptographicException(
+                        $"服务器返回的 PBKDF2 迭代次数({iterations})低于安全下限 {MinPbkdf2Iterations},拒绝派生密钥(服务器 KDF 参数不可信)。");
+                break;
+
+            case KdfType.Argon2id:
+                if (iterations < MinArgon2Iterations)
+                    throw new CryptographicException(
+                        $"服务器返回的 Argon2id 迭代次数({iterations})低于安全下限 {MinArgon2Iterations},拒绝派生密钥(服务器 KDF 参数不可信)。");
+                // memory/parallelism 为 null(缺参数)交由 DeriveArgon2idMasterKey 抛 ArgumentException;
+                // 此处仅对已给出的值做边界校验,以保持既有 null 行为不变。
+                if (memoryMiB is int mem)
+                {
+                    if (mem < MinArgon2MemoryMiB)
+                        throw new CryptographicException(
+                            $"服务器返回的 Argon2id 内存({mem} MiB)低于安全下限 {MinArgon2MemoryMiB} MiB,拒绝派生密钥。");
+                    if (mem > MaxArgon2MemoryMiB)
+                        throw new CryptographicException(
+                            $"服务器返回的 Argon2id 内存({mem} MiB)超过上限 {MaxArgon2MemoryMiB} MiB,拒绝派生密钥(防 DoS)。");
+                }
+                if (parallelism is int par && par < MinArgon2Parallelism)
+                    throw new CryptographicException(
+                        $"服务器返回的 Argon2id 并行度({par})低于安全下限 {MinArgon2Parallelism},拒绝派生密钥。");
+                break;
+
+            // 未知 kdfType 不在此处拦截,交由 DeriveMasterKey 主 switch 的 ArgumentOutOfRangeException 处理。
+        }
     }
 
     public string ComputeMasterPasswordHash(byte[] masterKey, string password)
