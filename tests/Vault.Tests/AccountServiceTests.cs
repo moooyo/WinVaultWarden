@@ -306,6 +306,66 @@ public class AccountServiceTests
 
         Assert.False(await svc.VerifyMasterPasswordAsync("WRONG-PASSWORD", TestContext.Current.CancellationToken));
     }
+
+    // ---- Test 10: VerifyMasterPassword 校验后释放派生密钥物料(无泄露)----
+
+    [Fact]
+    public async Task VerifyMasterPassword_disposes_derived_key_material()
+    {
+        var recording = new RecordingCryptoService();
+
+        // 用真实派生逻辑(recording 透传 base)构造 protectedUserKey
+        var masterKey = recording.DeriveMasterKey(OldPassword, Email, KdfType.Pbkdf2, Iterations, null, null);
+        using var stretched = recording.StretchMasterKey(masterKey);
+        CryptographicOperations.ZeroMemory(masterKey);
+        var userKey = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
+        var protectedUserKey = recording.Encrypt(userKey.FullKey, stretched).ToString();
+
+        var store = new MemoryTokenStore();
+        store.Save(new PersistedSession(
+            "https://vault.example", Email, "device-id", "refresh",
+            protectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
+
+        var session = new VaultSession();
+        session.SetTokens("access", "refresh");
+        session.SetUnlockedKey(userKey);
+
+        var cacheStore = new FakeCacheStore();
+        var cache = new VaultCacheService(cacheStore, new VaultDecryptor(recording), session);
+        var svc = new AccountService(recording, new FakeAccountApiClient(),
+            session, store, new FakeAuthService(session, store), cache);
+
+        // 清掉 setup 阶段记录的 key,只观察 Verify 内部(ValidateCurrentPassword)产生的密钥
+        recording.Issued.Clear();
+
+        Assert.True(await svc.VerifyMasterPasswordAsync(OldPassword, TestContext.Current.CancellationToken));
+
+        // Verify 内部产生 stretchedKey + 解密出的 userKey;修复后二者都应被 using 释放(Dispose 清零支撑数组)。
+        Assert.NotEmpty(recording.Issued);
+        Assert.All(recording.Issued, k => Assert.True(
+            k.FullKey.All(b => b == 0), "派生密钥物料在校验后未被清零(泄露)"));
+    }
+}
+
+// ---- RecordingCryptoService: 记录 Stretch/DecryptUserKey 交出的密钥实例,供泄露测试断言其被释放 ----
+
+public sealed class RecordingCryptoService : CryptoService
+{
+    public List<SymmetricCryptoKey> Issued { get; } = new();
+
+    public override SymmetricCryptoKey StretchMasterKey(byte[] masterKey)
+    {
+        var key = base.StretchMasterKey(masterKey);
+        Issued.Add(key);
+        return key;
+    }
+
+    public override SymmetricCryptoKey DecryptUserKey(SymmetricCryptoKey stretchedKey, EncString protectedUserKey)
+    {
+        var key = base.DecryptUserKey(stretchedKey, protectedUserKey);
+        Issued.Add(key);
+        return key;
+    }
 }
 
 // ---- FakeAuthService: 追踪 LogoutAsync 调用，并真实清除 session/store ----
