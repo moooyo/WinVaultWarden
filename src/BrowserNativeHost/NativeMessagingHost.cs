@@ -77,9 +77,6 @@ public static class NativeMessagingHost
         if (!PasskeyRequestParser.TryParse(bridgeRequest, out _, out var error))
             return new NativeResponse(request.Id, "error", false, Error: ToNativeError(error));
 
-        if (request.Type == "passkey.create")
-            return Error(request, "not_implemented", "Passkey creation is not implemented yet.");
-
         try
         {
             var response = await appBridge.SendAsync(bridgeRequest, ct);

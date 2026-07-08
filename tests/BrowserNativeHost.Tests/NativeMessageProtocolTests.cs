@@ -92,8 +92,19 @@ public class NativeMessageProtocolTests
     }
 
     [Fact]
-    public async Task HandleAsync_PasskeyCreate_ReturnsNotImplemented()
+    public async Task HandleAsync_PasskeyCreate_ForwardsToAppBridge()
     {
+        var attestationPayload = new PasskeyCreateAttestationPayload(
+            "BQYH", "client", "attestation", "authData", "publicKey", -7, ["internal"], null);
+        var bridge = new FakeAppPasskeyBridgeClient
+        {
+            Response = new BrowserPasskeyResponse(
+                "req-create",
+                "passkey.create",
+                true,
+                JsonSerializer.SerializeToElement(attestationPayload, PasskeyJsonContext.Default.PasskeyCreateAttestationPayload)),
+        };
+
         var response = await NativeMessagingHost.HandleAsync(new NativeRequest("req-create", "passkey.create", JsonDocument.Parse(
             """
             {
@@ -107,11 +118,13 @@ public class NativeMessageProtocolTests
               "user": { "id": "BQYH", "name": "octo@example.com", "displayName": "Octo" },
               "timeout": 60000
             }
-            """).RootElement), new FakeAppPasskeyBridgeClient(), TestContext.Current.CancellationToken);
+            """).RootElement), bridge, TestContext.Current.CancellationToken);
 
-        Assert.False(response.Ok);
-        Assert.Equal("error", response.Type);
-        Assert.Equal("not_implemented", response.Error?.Code);
+        Assert.True(response.Ok);
+        Assert.Equal("passkey.create", response.Type);
+        Assert.NotNull(bridge.Request);
+        Assert.Equal("req-create", bridge.Request!.Id);
+        Assert.Equal("passkey.create", bridge.Request.Type);
     }
 
     [Fact]
