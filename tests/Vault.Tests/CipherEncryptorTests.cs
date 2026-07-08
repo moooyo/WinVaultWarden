@@ -74,13 +74,22 @@ public class CipherEncryptorTests
     [Fact]
     public void Encrypt_Login_RoundTripsFido2Credentials()
     {
+        // K4 守卫测试:CipherFido2Credential 的全部 13 个字段都必须在
+        // 加密(EncFido2)→解密(DecryptFido2Credentials)往返后与原值一致,
+        // 这是 K5 passkey 保存链路的前置保证。
         var credential = Assert.Single(RoundTrip(LoginSource()).Login!.Fido2Credentials);
 
         Assert.Equal("cred-id", credential.CredentialId);
         Assert.Equal("public-key", credential.KeyType);
+        Assert.Equal("ECDSA", credential.KeyAlgorithm);
         Assert.Equal("P-256", credential.KeyCurve);
+        Assert.Equal("priv-val", credential.KeyValue);
         Assert.Equal("github.com", credential.RpId);
+        Assert.Equal("user-handle", credential.UserHandle);
+        Assert.Equal("octo@x", credential.UserName);
         Assert.Equal(42, credential.Counter);
+        Assert.Equal("GitHub", credential.RpName);
+        Assert.Equal("Octo", credential.UserDisplayName);
         Assert.True(credential.Discoverable);
         Assert.Equal(DateTimeOffset.Parse("2026-06-24T00:00:00Z"), credential.CreationDate);
     }
