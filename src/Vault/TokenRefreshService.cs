@@ -46,15 +46,19 @@ public sealed class TokenRefreshService : ITokenRefresher
             var result = await _api.ConnectTokenAsync(
                 ConnectTokenRequest.Refresh(refreshToken, persisted.DeviceIdentifier, DeviceName), ct);
 
-            if (result is not ConnectTokenResult.Success success)
+            if (result is ConnectTokenResult.Success success)
             {
-                _session.Lock();
-                return false;
+                _session.SetTokens(success.Token.AccessToken, success.Token.RefreshToken);
+                _tokenStore.Save(persisted with { RefreshToken = success.Token.RefreshToken });
+                return true;
             }
 
-            _session.SetTokens(success.Token.AccessToken, success.Token.RefreshToken);
-            _tokenStore.Save(persisted with { RefreshToken = success.Token.RefreshToken });
-            return true;
+            // B1:仅当服务端明确判定 refresh token 失效(invalid_grant,见 vaultwarden identity.rs:145/157)
+            // 才锁库;瞬时故障(HTTP 5xx/429/408、反代 HTML、网络异常)不锁,返回 false,待下次 401/重连重试。
+            // 网络异常由下方 catch 处理(同样不锁)。
+            if (result is ConnectTokenResult.Error { ErrorCode: "invalid_grant" })
+                _session.Lock();
+            return false;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {

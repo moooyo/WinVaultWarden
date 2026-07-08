@@ -119,4 +119,56 @@ public class TokenRefreshServiceTests
         Assert.Single(handler.Requests); // 单飞:只发一次刷新
         Assert.Equal("new-access", session.AccessToken);
     }
+
+    [Fact]
+    public async Task TryRefreshAsync_ServerError5xx_ReturnsFalseWithoutLocking()
+    {
+        var handler = new FakeHttpMessageHandler();
+        // 反代 502 常见:非 JSON 的 HTML 体。ReadJsonOrNull 解析失败 → ErrorCode 为 null → 视为瞬时。
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadGateway, "<html>502 Bad Gateway</html>"));
+        var session = new VaultSession();
+        session.SetTokens("old-access", "old-refresh");
+        session.SetState(VaultState.Unlocked);
+        var service = Create(handler, session, StoreWithSession());
+
+        var ok = await service.TryRefreshAsync(TestContext.Current.CancellationToken);
+
+        Assert.False(ok);
+        Assert.NotEqual(VaultState.Locked, session.State);
+        Assert.Equal("old-access", session.AccessToken); // Lock() 会清空 AccessToken → 证明未锁
+    }
+
+    [Fact]
+    public async Task TryRefreshAsync_RateLimited429_ReturnsFalseWithoutLocking()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.TooManyRequests, "{}"));
+        var session = new VaultSession();
+        session.SetTokens("old-access", "old-refresh");
+        session.SetState(VaultState.Unlocked);
+        var service = Create(handler, session, StoreWithSession());
+
+        var ok = await service.TryRefreshAsync(TestContext.Current.CancellationToken);
+
+        Assert.False(ok);
+        Assert.NotEqual(VaultState.Locked, session.State);
+        Assert.Equal("old-access", session.AccessToken);
+    }
+
+    [Fact]
+    public async Task TryRefreshAsync_NetworkException_ReturnsFalseWithoutLocking()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => throw new HttpRequestException("connection refused"));
+        var session = new VaultSession();
+        session.SetTokens("old-access", "old-refresh");
+        session.SetState(VaultState.Unlocked);
+        var service = Create(handler, session, StoreWithSession());
+
+        var ok = await service.TryRefreshAsync(TestContext.Current.CancellationToken);
+
+        Assert.False(ok);
+        Assert.NotEqual(VaultState.Locked, session.State);
+        Assert.Equal("old-access", session.AccessToken);
+    }
 }
