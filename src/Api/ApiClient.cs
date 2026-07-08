@@ -45,7 +45,13 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
             return new ConnectTokenResult.TwoFactorRequired(error?.TwoFactorProviders ?? Array.Empty<int>());
         }
 
-        return new ConnectTokenResult.Error(error?.ErrorDescription ?? error?.Error ?? response.ReasonPhrase ?? "Request failed");
+        // 错误文案回退链:error_description(非空) → message → error → HTTP ReasonPhrase。
+        // vaultwarden 默认错误体把 error/error_description 置空串,真实文案只在 message
+        // (error.rs:227/239-240),故不能只读 error_description。HttpStatus/ErrorCode 供刷新逻辑分类。
+        var message = FirstNonEmpty(error?.ErrorDescription, error?.Message, error?.Error, response.ReasonPhrase)
+            ?? "Request failed";
+        var errorCode = string.IsNullOrEmpty(error?.Error) ? null : error!.Error;
+        return new ConnectTokenResult.Error(message, (int)response.StatusCode, errorCode);
     }
 
     public async Task<SyncResponse> GetSyncAsync(CancellationToken ct = default)
@@ -521,6 +527,14 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
             response.StatusCode,
             serverMsg,
             $"请求失败 ({(int)response.StatusCode} {response.ReasonPhrase}): {serverMsg ?? response.ReasonPhrase}");
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        return null;
     }
 
     private static async Task<T> ReadJson<T>(HttpResponseMessage response, JsonTypeInfo<T> typeInfo, CancellationToken ct)
