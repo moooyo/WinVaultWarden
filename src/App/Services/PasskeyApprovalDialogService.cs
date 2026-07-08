@@ -51,8 +51,45 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         }
     }
 
-    public Task<PasskeyCreateApprovalResult> ConfirmCreateAsync(PasskeyCreateApprovalRequest request, CancellationToken ct = default) =>
-        Task.FromResult(new PasskeyCreateApprovalResult(false, false, null));
+    public async Task<PasskeyCreateApprovalResult> ConfirmCreateAsync(PasskeyCreateApprovalRequest request, CancellationToken ct = default)
+    {
+        // 与 ConfirmUseAsync 共用同一把闸门:WinUI 同一 XamlRoot 下不能同时展示两个 ContentDialog,
+        // 必须串行化,避免“使用 passkey”与“创建 passkey”弹窗并发触发时抛异常。
+        await _dialogGate.WaitAsync(ct);
+
+        try
+        {
+            var window = global::App.App.MainWindow;
+            if (window is null)
+                return new PasskeyCreateApprovalResult(false, false, null);
+
+            if (window.DispatcherQueue.HasThreadAccess)
+                return await ShowCreateDialogAsync(window, request);
+
+            var result = new TaskCompletionSource<PasskeyCreateApprovalResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!window.DispatcherQueue.TryEnqueue(async () =>
+                {
+                    try
+                    {
+                        result.SetResult(await ShowCreateDialogAsync(window, request));
+                    }
+                    catch (Exception ex)
+                    {
+                        result.SetException(ex);
+                    }
+                }))
+            {
+                return new PasskeyCreateApprovalResult(false, false, null);
+            }
+
+            using var registration = ct.Register(() => result.TrySetCanceled(ct));
+            return await result.Task;
+        }
+        finally
+        {
+            _dialogGate.Release();
+        }
+    }
 
     private static async Task<bool> ShowDialogAsync(MainWindow window, PasskeyApprovalRequest request)
     {
@@ -74,6 +111,84 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
 
         var result = await dialog.ShowAsync();
         return result == ContentDialogResult.Primary;
+    }
+
+    private static async Task<PasskeyCreateApprovalResult> ShowCreateDialogAsync(MainWindow window, PasskeyCreateApprovalRequest request)
+    {
+        if (window.Content is not FrameworkElement root || root.XamlRoot is null)
+            return new PasskeyCreateApprovalResult(false, false, null);
+
+        window.Activate();
+
+        var displayName = string.IsNullOrWhiteSpace(request.RpName) ? request.RpId : request.RpName;
+
+        var existingCombo = new ComboBox
+        {
+            ItemsSource = request.ExistingLogins,
+            DisplayMemberPath = nameof(PasskeyLoginTarget.Name),
+            IsEnabled = false,
+            MinWidth = 240,
+            Margin = new Thickness(28, 0, 0, 0),
+        };
+        if (request.ExistingLogins.Count > 0)
+            existingCombo.SelectedIndex = 0;
+
+        var newRadio = new RadioButton
+        {
+            GroupName = "PasskeyCreateTarget",
+            Content = $"新建条目「{displayName}」",
+            IsChecked = true,
+        };
+        newRadio.Checked += (_, _) => existingCombo.IsEnabled = false;
+
+        var attachRadio = new RadioButton
+        {
+            GroupName = "PasskeyCreateTarget",
+            Content = "挂到已有条目",
+            // 库中没有任何 Login 条目时无处可挂,禁用该选项,避免选中后无法提交。
+            IsEnabled = request.ExistingLogins.Count > 0,
+        };
+        attachRadio.Checked += (_, _) => existingCombo.IsEnabled = true;
+
+        var panel = new StackPanel
+        {
+            Spacing = 12,
+            MaxWidth = 420,
+        };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "浏览器正在请求为此网站创建一个新的 passkey。",
+            TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(CreateDetailLine("网站", displayName));
+        panel.Children.Add(CreateDetailLine("账户", DisplayAccount(request)));
+        panel.Children.Add(newRadio);
+        panel.Children.Add(attachRadio);
+        panel.Children.Add(existingCombo);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = root.XamlRoot,
+            Title = "创建通行密钥",
+            PrimaryButtonText = "创建",
+            CloseButtonText = "取消",
+            // 与 ConfirmUseAsync 一致:默认按钮为“取消”,创建凭据同样是安全敏感操作,须显式点击“创建”。
+            DefaultButton = ContentDialogButton.Close,
+            Content = panel,
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary)
+            return new PasskeyCreateApprovalResult(false, false, null);
+
+        if (newRadio.IsChecked == true)
+            return new PasskeyCreateApprovalResult(true, true, null);
+
+        if (existingCombo.SelectedItem is PasskeyLoginTarget target)
+            return new PasskeyCreateApprovalResult(true, false, target.CipherId);
+
+        // 选择了“挂到已有条目”却没有具体选中项:按取消处理,不回退为静默新建。
+        return new PasskeyCreateApprovalResult(false, false, null);
     }
 
     private static UIElement CreateDialogContent(PasskeyApprovalRequest request)
@@ -132,6 +247,9 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
     }
 
     private static string DisplayAccount(PasskeyApprovalRequest request) =>
+        FirstNonEmpty(request.UserDisplayName, request.UserName) ?? "未命名账户";
+
+    private static string DisplayAccount(PasskeyCreateApprovalRequest request) =>
         FirstNonEmpty(request.UserDisplayName, request.UserName) ?? "未命名账户";
 
     private static string? FirstNonEmpty(params string?[] values) =>
