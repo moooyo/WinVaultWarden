@@ -258,6 +258,68 @@ public sealed class AuthService : IAuthService
         return new AuthResult.Failure($"PIN 错误，还可尝试 {5 - n} 次。");
     }
 
+    public async Task<AuthResult> UnlockWithHelloAsync(byte[] signature, CancellationToken ct = default)
+    {
+        if (!_tokenStore.TryLoad(out var persisted) || string.IsNullOrEmpty(persisted.HelloProtectedUserKey))
+        {
+            CryptographicOperations.ZeroMemory(signature);
+            return new AuthResult.Failure("未启用 Windows Hello。");
+        }
+
+        SymmetricCryptoKey userKey;
+        try
+        {
+            _apiConfig.SetBaseAddress(persisted.ServerUrl);
+            _session.SetState(Core.Session.VaultState.Unlocking);
+
+            using var helloKey = _crypto.DeriveKeyFromSecret(signature);
+            try
+            {
+                userKey = _crypto.DecryptUserKey(helloKey, EncString.Parse(persisted.HelloProtectedUserKey));
+            }
+            catch (Exception ex) when (ex is CryptographicException or FormatException)
+            {
+                _session.Lock();
+                // Hello 凭据失效(重录/移除)或数据损坏 → 清除 Hello,回退主密码。
+                _tokenStore.Save(persisted with { HelloProtectedUserKey = null, HelloChallenge = null });
+                return new AuthResult.Failure("Windows Hello 解锁失败，请用主密码解锁。");
+            }
+        }
+        catch (Exception ex) when (IsExpectedAuthException(ex))
+        {
+            _session.Lock();
+            return new AuthResult.Failure(ex.Message);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(signature);
+        }
+
+        // 本地已可离线解锁:先落 UserKey,再尝试从加密缓存立即出数据;随后联网刷新 token + 整库同步
+        // (可能因断网/服务端不可达而失败——失败时按有无缓存分流,见 FinishUnlockOffline)。收尾与
+        // UnlockWithPinAsync 完全一致。
+        _session.SetUnlockedKey(userKey);
+        var fromCache = _cache.TryLoadInto(persisted.Email, persisted.ServerUrl, userKey);
+
+        try
+        {
+            var refresh = await _api.ConnectTokenAsync(ConnectTokenRequest.Refresh(
+                persisted.RefreshToken, persisted.DeviceIdentifier, DeviceName), ct);
+
+            if (refresh is not ConnectTokenResult.Success success)
+                return FinishUnlockOffline(fromCache, persisted.RefreshToken);
+
+            _session.SetTokens(success.Token.AccessToken, success.Token.RefreshToken);
+            _tokenStore.Save(persisted with { RefreshToken = success.Token.RefreshToken });
+            await _bootstrapper.BootstrapAsync(persisted.ServerUrl, ct);
+            return new AuthResult.Success();
+        }
+        catch (Exception ex) when (IsExpectedAuthException(ex))
+        {
+            return FinishUnlockOffline(fromCache, persisted.RefreshToken);
+        }
+    }
+
     public Task LockAsync(CancellationToken ct = default)
     {
         _session.Lock();

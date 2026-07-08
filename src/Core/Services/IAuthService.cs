@@ -7,6 +7,7 @@ public interface IAuthService
     Task<bool> ResendTwoFactorEmailAsync(CancellationToken ct = default);
     Task<AuthResult> UnlockAsync(string masterPassword, CancellationToken ct = default);
     Task<AuthResult> UnlockWithPinAsync(string pin, CancellationToken ct = default);
+    Task<AuthResult> UnlockWithHelloAsync(byte[] signature, CancellationToken ct = default);
     Task LockAsync(CancellationToken ct = default);
     Task LogoutAsync(CancellationToken ct = default);
 }
