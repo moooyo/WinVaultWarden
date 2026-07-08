@@ -7,6 +7,8 @@ namespace Core.Models;
 public sealed class SendDraftModel
 {
     public string? Id { get; init; }
+    // 编辑既有文件 Send 时,原 wrapped seed(akey)。写入层复用它解出的 seed 以保持服务端文件可解密。
+    public string? Key { get; init; }
     public SendType Type { get; init; }
     public string Name { get; init; } = "";
     public string? Notes { get; init; }

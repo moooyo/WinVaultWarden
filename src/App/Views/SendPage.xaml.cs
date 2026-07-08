@@ -64,8 +64,14 @@ public sealed partial class SendPage : Page
         if (item is null)
             return;
 
+        // F1:打开编辑器前拉取完整解密 Send 并水合 draft(而非仅用列表项的 thin 字段),
+        // 避免保存时把备注/密码/次数/过期/隐藏邮箱/文本等未加载字段覆盖为默认值。
+        var draft = await ViewModel.GetEditDraftAsync(item.Id);
+        if (draft is null)
+            return;
+
         var root = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot;
-        var dialog = new SendEditorDialog(item) { XamlRoot = root };
+        var dialog = new SendEditorDialog(draft) { XamlRoot = root };
         await dialog.ShowAsync();
         if (dialog.Saved)
             await ViewModel.UpdateSendFromDraftAsync(item, dialog.Draft, dialog.Draft.FileBytes);

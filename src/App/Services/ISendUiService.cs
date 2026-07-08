@@ -10,6 +10,9 @@ public interface ISendUiService
     Task DeleteSendAsync(string id, CancellationToken ct = default);
     string? CopyShareLink(SendListItem item);
     Task<SendReceivedResult> OpenReceivedLinkAsync(string url, string? password, CancellationToken ct = default);
+
+    // 编辑打开路径:按 id 拉取完整解密 Send 并水合成可编辑 draft(F1)。找不到返回 null。
+    Task<SendEditorDraft?> GetEditDraftAsync(string id, CancellationToken ct = default);
 }
 
 public sealed record SendReceivedResult(

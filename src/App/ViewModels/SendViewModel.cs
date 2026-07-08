@@ -85,6 +85,10 @@ public partial class SendViewModel : ObservableObject
         SelectedFilterTag = tag is "send:text" or "send:file" or "send:all" ? tag : "send:all";
     }
 
+    // 编辑打开路径:取完整 Send 水合 draft(F1)。找不到返回 null。
+    public Task<SendEditorDraft?> GetEditDraftAsync(string id, CancellationToken ct = default) =>
+        _service.GetEditDraftAsync(id, ct);
+
     partial void OnSelectedFilterTagChanged(string value) => ApplyFilter();
 
     private void ApplyFilter()
