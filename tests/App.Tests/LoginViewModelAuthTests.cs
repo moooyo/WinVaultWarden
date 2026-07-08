@@ -219,6 +219,73 @@ public class LoginViewModelAuthTests
         Assert.False(vm.ShowResendEmailCode);
     }
 
+    [Fact]
+    public async Task TwoFactor_MultipleTypedProviders_SelectionPassedToSubmit()
+    {
+        var auth = new FakeAuthService
+        {
+            LoginResult = new AuthResult.TwoFactorRequired([0, 1]),
+            SubmitResult = new AuthResult.Success(),
+        };
+        var vm = new LoginViewModel(auth)
+        {
+            SelectedServerOptionIndex = 2,
+            ServerUrl = "https://vault.example",
+            Email = "me@example.com",
+            MasterPassword = "password",
+        };
+
+        await vm.LoginCommand.ExecuteAsync(null);
+        vm.MasterPassword = "password";
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.True(vm.IsTwoFactorStage);
+        Assert.Equal(2, vm.TwoFactorProviderOptions.Count);
+        Assert.True(vm.ShowTwoFactorProviderPicker);
+
+        vm.SelectedTwoFactorProviderIndex = 1; // 选 Email
+        vm.TwoFactorCode = "123456";
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, auth.SubmitProvider);
+        Assert.Equal("123456", auth.SubmitCode);
+    }
+
+    [Fact]
+    public async Task TwoFactor_SingleTypedProvider_HidesPicker()
+    {
+        var auth = new FakeAuthService { LoginResult = new AuthResult.TwoFactorRequired([0]) };
+        var vm = new LoginViewModel(auth)
+        {
+            SelectedServerOptionIndex = 2, ServerUrl = "https://vault.example", Email = "me@example.com", MasterPassword = "password",
+        };
+
+        await vm.LoginCommand.ExecuteAsync(null);
+        vm.MasterPassword = "password";
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.True(vm.IsTwoFactorStage);
+        Assert.Single(vm.TwoFactorProviderOptions);
+        Assert.False(vm.ShowTwoFactorProviderPicker);
+    }
+
+    [Fact]
+    public async Task TwoFactor_OnlyUnsupportedProviders_ShowsUnsupportedMessageAndStaysOnPassword()
+    {
+        var auth = new FakeAuthService { LoginResult = new AuthResult.TwoFactorRequired([7]) }; // WebAuthn
+        var vm = new LoginViewModel(auth)
+        {
+            SelectedServerOptionIndex = 2, ServerUrl = "https://vault.example", Email = "me@example.com", MasterPassword = "password",
+        };
+
+        await vm.LoginCommand.ExecuteAsync(null);
+        vm.MasterPassword = "password";
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.False(vm.IsTwoFactorStage);
+        Assert.Contains("暂不支持", vm.Status);
+    }
+
     private sealed class FakeAuthService : IAuthService
     {
         public AuthResult LoginResult { get; init; } = new AuthResult.Failure("not set");

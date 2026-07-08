@@ -43,6 +43,12 @@ public partial class LoginViewModel : ObservableObject
     public partial string TwoFactorCode { get; set; } = string.Empty;
 
     [ObservableProperty]
+    public partial IReadOnlyList<TwoFactorProviderOption> TwoFactorProviderOptions { get; set; } = Array.Empty<TwoFactorProviderOption>();
+
+    [ObservableProperty]
+    public partial int SelectedTwoFactorProviderIndex { get; set; }
+
+    [ObservableProperty]
     public partial string Status { get; set; } = string.Empty;
 
     [ObservableProperty]
@@ -87,6 +93,26 @@ public partial class LoginViewModel : ObservableObject
     public bool ShowResendEmailCode => IsTwoFactorStage && _twoFactorProviders.Contains(EmailTwoFactorProvider);
 
     public bool CanResendEmailCode => ShowResendEmailCode && !IsBusy;
+
+    public bool ShowTwoFactorProviderPicker => TwoFactorProviderOptions.Count > 1;
+
+    private static bool IsTypedCodeProvider(int provider) => provider is 0 or 1; // Authenticator / Email
+
+    private static string ProviderDisplayName(int provider) => provider switch
+    {
+        0 => "身份验证器 App",
+        1 => "电子邮件",
+        _ => $"其他方式 ({provider})",
+    };
+
+    private int ResolveSelectedTwoFactorProvider()
+    {
+        var options = TwoFactorProviderOptions;
+        if (options.Count == 0)
+            return _twoFactorProviders.FirstOrDefault();
+        var index = Math.Clamp(SelectedTwoFactorProviderIndex, 0, options.Count - 1);
+        return options[index].Type;
+    }
 
     public bool CanEditServer => IsAccountStage && !IsBusy;
 
@@ -209,7 +235,7 @@ public partial class LoginViewModel : ObservableObject
                 : IsUnlockStage
                     ? await _auth.UnlockAsync(MasterPassword)
                     : IsTwoFactorStage
-                        ? await _auth.SubmitTwoFactorAsync(TwoFactorCode.Trim(), _twoFactorProviders.FirstOrDefault(), rememberDevice: RememberDevice)
+                        ? await _auth.SubmitTwoFactorAsync(TwoFactorCode.Trim(), ResolveSelectedTwoFactorProvider(), rememberDevice: RememberDevice)
                         : await _auth.LoginAsync(ResolveServerUrl(), Email.Trim(), MasterPassword);
 
             HandleResult(result);
@@ -349,12 +375,24 @@ public partial class LoginViewModel : ObservableObject
                 break;
             case AuthResult.TwoFactorRequired twoFactor:
                 _twoFactorProviders = twoFactor.Providers;
+                var typed = twoFactor.Providers.Where(IsTypedCodeProvider).ToList();
+                if (typed.Count == 0)
+                {
+                    // WebAuthn(7)/Duo(2,6) 等断言/重定向流程留待 P2;此处明确提示而非静默失败(停留在密码阶段)。
+                    Status = "暂不支持该两步验证方式（如 WebAuthn / Duo），请使用官方客户端完成两步验证。";
+                    break;
+                }
+                TwoFactorProviderOptions = typed
+                    .Select(p => new TwoFactorProviderOption(p, ProviderDisplayName(p)))
+                    .ToList();
+                SelectedTwoFactorProviderIndex = 0;
                 Stage = LoginStage.TwoFactor;
                 MasterPassword = string.Empty;
                 TwoFactorCode = string.Empty;
                 Status = "请输入两步验证码。";
                 OnPropertyChanged(nameof(ShowResendEmailCode));
                 OnPropertyChanged(nameof(CanResendEmailCode));
+                OnPropertyChanged(nameof(ShowTwoFactorProviderPicker));
                 ResendEmailCodeCommand.NotifyCanExecuteChanged();
                 break;
             case AuthResult.PinCleared pinCleared:
@@ -470,3 +508,5 @@ public partial class LoginViewModel : ObservableObject
         ResendEmailCodeCommand.NotifyCanExecuteChanged();
     }
 }
+
+public sealed record TwoFactorProviderOption(int Type, string DisplayName);
