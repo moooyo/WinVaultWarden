@@ -192,6 +192,15 @@ public class BrowserPasskeyRequestHandlerTests
         Assert.Equal("user_cancelled", response.Error?.Code);
     }
 
+    [Fact]
+    public void ConfirmCreateResult_RecordShape_Compiles()
+    {
+        var r = new PasskeyCreateApprovalResult(Approved: true, CreateNew: true, CipherId: null);
+        Assert.True(r.Approved);
+        Assert.True(r.CreateNew);
+        Assert.Null(r.CipherId);
+    }
+
     private static CipherFido2Credential Credential(ECDsa key, string credentialId) => new(
         credentialId,
         "public-key",
@@ -215,10 +224,20 @@ public class BrowserPasskeyRequestHandlerTests
 
         public PasskeyApprovalRequest? Request { get; private set; }
 
+        public PasskeyCreateApprovalRequest? CreateRequest { get; private set; }
+
+        public PasskeyCreateApprovalResult CreateResult { get; set; } = new(true, true, null);
+
         public Task<bool> ConfirmUseAsync(PasskeyApprovalRequest request, CancellationToken ct = default)
         {
             Request = request;
             return Task.FromResult(_approve);
+        }
+
+        public Task<PasskeyCreateApprovalResult> ConfirmCreateAsync(PasskeyCreateApprovalRequest request, CancellationToken ct = default)
+        {
+            CreateRequest = request;
+            return Task.FromResult(CreateResult);
         }
     }
 

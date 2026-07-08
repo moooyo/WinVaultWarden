@@ -51,6 +51,9 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         }
     }
 
+    public Task<PasskeyCreateApprovalResult> ConfirmCreateAsync(PasskeyCreateApprovalRequest request, CancellationToken ct = default) =>
+        Task.FromResult(new PasskeyCreateApprovalResult(false, false, null));
+
     private static async Task<bool> ShowDialogAsync(MainWindow window, PasskeyApprovalRequest request)
     {
         if (window.Content is not FrameworkElement root || root.XamlRoot is null)
