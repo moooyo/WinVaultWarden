@@ -65,6 +65,16 @@ public sealed record SendEmailRequest(
     [property: JsonPropertyName("otp")] string? Otp = null);
 
 /// <summary>
+/// 登录期（未认证）请求发送邮箱验证码。
+/// POST /api/two-factor/send-email-login，请求体 {email, masterPasswordHash, deviceIdentifier}
+/// （vaultwarden src/api/core/two_factor/email.rs:26-40 SendEmailLoginData，camelCase；ClientHeaders 无需 Bearer）。
+/// </summary>
+public sealed record SendEmailLoginRequest(
+    [property: JsonPropertyName("email")] string Email,
+    [property: JsonPropertyName("masterPasswordHash")] string MasterPasswordHash,
+    [property: JsonPropertyName("deviceIdentifier")] string DeviceIdentifier);
+
+/// <summary>
 /// 验证邮箱验证码并启用邮箱两步验证。
 /// POST /api/two-factor/email。
 /// </summary>

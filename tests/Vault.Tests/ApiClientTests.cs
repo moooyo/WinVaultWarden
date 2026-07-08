@@ -392,4 +392,22 @@ public class ApiClientTests
         Assert.Equal(429, error.HttpStatus);
         Assert.Null(error.ErrorCode);
     }
+
+    [Fact]
+    public async Task SendTwoFactorEmailLogin_PostsUnauthenticatedLoginEndpointWithBody()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
+        var client = new ApiClient(new HttpClient(handler));
+        client.SetBaseAddress("https://vault.example/");
+
+        await client.SendTwoFactorEmailLoginAsync(
+            "me@example.com", "hash-abc", "device-1", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
+        Assert.Equal("/api/two-factor/send-email-login", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Contains("\"email\":\"me@example.com\"", handler.Bodies[0]);
+        Assert.Contains("\"masterPasswordHash\":\"hash-abc\"", handler.Bodies[0]);
+        Assert.Contains("\"deviceIdentifier\":\"device-1\"", handler.Bodies[0]);
+    }
 }

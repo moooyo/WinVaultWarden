@@ -362,6 +362,13 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
     public Task SendEmailAsync(SendEmailRequest request, CancellationToken ct = default)
         => SendWriteAsync(HttpMethod.Post, "api/two-factor/send-email", request, ApiJsonContext.Default.SendEmailRequest, ct);
 
+    // POST api/two-factor/send-email-login — 未认证的登录期发码（vaultwarden email.rs:40 ClientHeaders）。
+    // 与已认证的 send-email（设置页）不同：登录尚未拿到 token 时可用。请求体 {email, masterPasswordHash, deviceIdentifier}。
+    public Task SendTwoFactorEmailLoginAsync(string email, string masterPasswordHash, string deviceIdentifier, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Post, "api/two-factor/send-email-login",
+            new SendEmailLoginRequest(email, masterPasswordHash, deviceIdentifier),
+            ApiJsonContext.Default.SendEmailLoginRequest, ct);
+
     // 注意:PUT /api/two-factor/email 的成功响应把 enabled 序列化为字符串字面量 "true"
     // (vaultwarden/src/api/core/two_factor/email.rs:241),与 get-email 的真 bool 不同。
     // 该响应体无人消费(上层仅关心是否成功),故不解析 body——避免 "true"→bool 反序列化抛异常

@@ -607,6 +607,8 @@ public sealed class FakeNotificationReadonlyApiClient : IReadonlyApiClient
         => throw new NotImplementedException();
     public Task<Api.Dtos.SendResponseDto> GetSendAsync(string sendId, CancellationToken ct = default)
         => throw new NotImplementedException();
+    public Task SendTwoFactorEmailLoginAsync(string email, string masterPasswordHash, string deviceIdentifier, CancellationToken ct = default)
+        => throw new NotImplementedException();
 }
 
 /// <summary>
