@@ -106,6 +106,7 @@ public sealed class SendUiService : ISendUiService
     private SendDraftModel ToDraftModel(SendEditorDraft draft, string? id) => new()
     {
         Id = id,
+        Key = draft.WrappedKey,
         Type = MapType(draft.Type),
         Name = draft.Name.Trim(),
         Notes = NullIfBlank(draft.Notes),
