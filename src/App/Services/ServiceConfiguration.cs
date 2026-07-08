@@ -73,6 +73,8 @@ public static class ServiceConfiguration
         services.AddSingleton<IAuthRequestService, Vault.AuthRequestService>();
         services.AddSingleton<IEmergencyAccessService, Vault.EmergencyAccessService>();
         services.AddSingleton<IPinService, Vault.PinService>();
+        services.AddSingleton<IHelloUnlockService, HelloUnlockService>();
+        services.AddSingleton<IWindowsHelloAuthenticator, WindowsHelloAuthenticator>();
         services.AddSingleton<ITwoFactorUiService>(sp =>
             new TwoFactorUiService(sp.GetRequiredService<ITwoFactorService>()));
         services.AddSingleton<IAuthRequestUiService>(sp =>
