@@ -58,7 +58,10 @@ public sealed class AuthRequestUiService : IAuthRequestUiService
             r.DeviceTypeName,
             r.IpAddress,
             FormatCreatedLabel(r.CreationDate),
-            r.PublicKey);
+            r.PublicKey)
+        {
+            FingerprintPhrase = r.FingerprintPhrase,
+        };
 
     private static string FormatCreatedLabel(string creationDate)
     {
