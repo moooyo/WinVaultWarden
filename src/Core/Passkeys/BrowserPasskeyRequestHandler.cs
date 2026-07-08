@@ -10,11 +10,13 @@ namespace Core.Passkeys;
 public sealed class BrowserPasskeyRequestHandler
 {
     private readonly IVaultService _vault;
+    private readonly IVaultWriteService _write;
     private readonly IPasskeyApprovalService _approval;
 
-    public BrowserPasskeyRequestHandler(IVaultService vault, IPasskeyApprovalService approval)
+    public BrowserPasskeyRequestHandler(IVaultService vault, IVaultWriteService write, IPasskeyApprovalService approval)
     {
         _vault = vault;
+        _write = write;
         _approval = approval;
     }
 
@@ -28,9 +30,59 @@ public sealed class BrowserPasskeyRequestHandler
         return parsed!.Type switch
         {
             "passkey.get" => await HandleGetAsync(request.Id, (PasskeyGetPayload)parsed.Payload, ct),
-            "passkey.create" => Error(request.Id, "not_implemented", "Passkey creation is not implemented yet."),
+            "passkey.create" => await HandleCreateAsync(request.Id, (PasskeyCreatePayload)parsed.Payload, ct),
             _ => Error(request.Id, "unsupported_passkey_type", "Unsupported passkey request type."),
         };
+    }
+
+    private async Task<BrowserPasskeyResponse> HandleCreateAsync(string? requestId, PasskeyCreatePayload payload, CancellationToken ct)
+    {
+        if (_vault.Snapshot.State != VaultState.Unlocked)
+            return Error(requestId, "vault_locked", "Unlock WinVaultWarden before creating passkeys.");
+        if (!TryGetEffectiveRpId(payload.Origin, payload.Rp?.Id ?? payload.RpId, out var rpId, out var rpError))
+            return Error(requestId, rpError!);
+
+        var algorithms = (payload.PubKeyCredParams ?? []).Select(p => p.Alg).ToArray();
+
+        // excludeCredentials:若本库已有该 rpId 的凭据且其 CredentialId 在排除列表 → InvalidStateError。
+        var excluded = (payload.ExcludeCredentials ?? []).Select(c => c.Id).Where(x => !string.IsNullOrWhiteSpace(x)).ToHashSet(StringComparer.Ordinal);
+        if (excluded.Count > 0 && ExistingCredentialsForRp(rpId!).Any(c => excluded.Contains(c.CredentialId!)))
+            return Error(requestId, "credential_excluded", "A passkey already exists for this site.");
+
+        var existingLogins = _vault.GetCiphers()
+            .Where(c => !c.IsDeleted && c.Type == CipherType.Login)
+            .Select(c => new PasskeyLoginTarget(c.Id, c.Name))
+            .ToArray();
+
+        var approval = await _approval.ConfirmCreateAsync(new PasskeyCreateApprovalRequest(
+            requestId ?? string.Empty, payload.Origin, rpId!, payload.Rp?.Name,
+            payload.User?.Name, payload.User?.DisplayName, existingLogins), ct);
+        if (!approval.Approved)
+            return Error(requestId, "user_cancelled", "The passkey creation was cancelled.");
+
+        try
+        {
+            var result = WebAuthnRegistrationService.CreateAttestation(new WebAuthnMakeCredentialRequest(
+                payload.Origin, payload.Challenge, rpId, payload.Rp?.Name,
+                payload.User!.Id, payload.User.Name, payload.User.DisplayName,
+                algorithms, UserVerification: RequiresUserVerificationForCreate(payload.AuthenticatorSelection),
+                CredProps: HasCredProps(payload.Extensions)));
+
+            var cipher = approval.CreateNew
+                ? BuildNewLoginCipher(payload.Rp?.Name ?? rpId!, result.Credential)
+                : AttachToExisting(approval.CipherId!, result.Credential);
+            if (cipher is null)
+                return Error(requestId, "cipher_not_found", "The selected item was not found.");
+
+            await _write.SaveCipherAsync(cipher, ct);
+
+            return new BrowserPasskeyResponse(requestId, "passkey.create", true,
+                JsonSerializer.SerializeToElement(result.Payload, PasskeyJsonContext.Default.PasskeyCreateAttestationPayload));
+        }
+        catch (Exception ex) when (ex is FormatException or InvalidOperationException or OverflowException or CryptographicException)
+        {
+            return Error(requestId, "credential_unusable", ex.Message);
+        }
     }
 
     private async Task<BrowserPasskeyResponse> HandleGetAsync(
@@ -109,6 +161,75 @@ public sealed class BrowserPasskeyRequestHandler
                 && !string.IsNullOrWhiteSpace(candidate.Credential.CredentialId)
                 && (allowed is null || allowed.Contains(candidate.Credential.CredentialId!)));
     }
+
+    // 返回本地密码库中属于该 rpId 的全部 Fido2 凭据(用于 excludeCredentials 排重判断)。
+    private IEnumerable<CipherFido2Credential> ExistingCredentialsForRp(string rpId) =>
+        _vault.GetCiphers()
+            .Where(cipher => !cipher.IsDeleted && cipher.Type == CipherType.Login && cipher.Login?.HasFido2Credentials == true)
+            .SelectMany(cipher => cipher.Login!.Fido2Credentials)
+            .Where(credential => string.Equals(credential.RpId, rpId, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(credential.CredentialId));
+
+    // 新建一个仅含该 passkey 凭据的 Login 条目;其余字段留空,交由用户后续在库中补全。
+    private static Cipher BuildNewLoginCipher(string name, CipherFido2Credential credential) => new()
+    {
+        Type = CipherType.Login,
+        Name = name,
+        Login = new CipherLogin(credential.UserName, null, null, [])
+        {
+            Fido2Credentials = [credential],
+        },
+    };
+
+    // 将新凭据附加到既有 Login 条目;找不到条目或条目不是 Login 时返回 null(由调用方转为错误响应)。
+    private Cipher? AttachToExisting(string cipherId, CipherFido2Credential credential)
+    {
+        var existing = _vault.GetCiphers().FirstOrDefault(c => !c.IsDeleted && c.Id == cipherId);
+        if (existing?.Login is null)
+            return null;
+
+        return new Cipher
+        {
+            Id = existing.Id,
+            Type = existing.Type,
+            OrganizationId = existing.OrganizationId,
+            FolderId = existing.FolderId,
+            Key = existing.Key,
+            Favorite = existing.Favorite,
+            Reprompt = existing.Reprompt,
+            Name = existing.Name,
+            Notes = existing.Notes,
+            CreationDate = existing.CreationDate,
+            RevisionDate = existing.RevisionDate,
+            DeletedDate = existing.DeletedDate,
+            Login = existing.Login with
+            {
+                Fido2Credentials = [.. existing.Login.Fido2Credentials, credential],
+            },
+            Card = existing.Card,
+            Identity = existing.Identity,
+            SecureNote = existing.SecureNote,
+            Ssh = existing.Ssh,
+            Fields = existing.Fields,
+            Attachments = existing.Attachments,
+            PasswordHistory = existing.PasswordHistory,
+        };
+    }
+
+    // authenticatorSelection.userVerification 为 required/preferred 时要求认证器完成用户验证。
+    private static bool RequiresUserVerificationForCreate(JsonElement? authenticatorSelection)
+    {
+        if (authenticatorSelection is not { } element || element.ValueKind != JsonValueKind.Object)
+            return false;
+
+        return element.TryGetProperty("userVerification", out var uv)
+            && uv.ValueKind == JsonValueKind.String
+            && RequiresUserVerification(uv.GetString());
+    }
+
+    // extensions.credProps 存在即代表浏览器请求了 credProps 扩展结果。
+    private static bool HasCredProps(JsonElement? extensions) =>
+        extensions is { } element && element.ValueKind == JsonValueKind.Object && element.TryGetProperty("credProps", out _);
 
     private static bool TryGetEffectiveRpId(
         string origin,

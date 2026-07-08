@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Formats.Cbor;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -62,5 +63,76 @@ public static class WebAuthnCrypto
         if (userVerified)
             flags |= 0x04;
         return flags;
+    }
+
+    // 生成 ES256(P-256) 密钥对:返回 (PKCS8 私钥 base64url, COSE_Key 字节, SPKI DER 字节)。
+    public static (string Pkcs8PrivateKeyB64Url, byte[] CoseKey, byte[] SpkiDer) GenerateEs256KeyPair()
+    {
+        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var pkcs8 = ecdsa.ExportPkcs8PrivateKey();
+        var spki = ecdsa.ExportSubjectPublicKeyInfo();
+        var p = ecdsa.ExportParameters(false);
+        var cose = EncodeCoseEc2(LeftPad32(p.Q.X!), LeftPad32(p.Q.Y!));
+        return (EncodeBase64Url(pkcs8), cose, spki);
+    }
+
+    // authData(注册):rpIdHash(32)‖flags(1)‖counter(4)‖aaguid(16)‖credIdLen(2,BE)‖credId‖coseKey。
+    public static byte[] BuildAttestedAuthenticatorData(
+        string rpId, uint counter, bool userPresent, bool userVerified,
+        byte[] aaguid, byte[] credentialId, byte[] coseKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rpId);
+        if (aaguid.Length != 16) throw new ArgumentException("aaguid must be 16 bytes.", nameof(aaguid));
+
+        var head = new byte[37];
+        SHA256.HashData(Encoding.UTF8.GetBytes(rpId), head.AsSpan(0, 32));
+        head[32] = (byte)(BuildFlags(userPresent, userVerified) | 0x40); // + AT
+        BinaryPrimitives.WriteUInt32BigEndian(head.AsSpan(33, 4), counter);
+
+        var credLen = new byte[2];
+        BinaryPrimitives.WriteUInt16BigEndian(credLen, (ushort)credentialId.Length);
+
+        var total = new byte[head.Length + aaguid.Length + credLen.Length + credentialId.Length + coseKey.Length];
+        var o = 0;
+        foreach (var part in new[] { head, aaguid, credLen, credentialId, coseKey })
+        {
+            part.CopyTo(total.AsSpan(o));
+            o += part.Length;
+        }
+        return total;
+    }
+
+    // attestationObject: CBOR {"fmt":"none","attStmt":{},"authData":<bstr>}。
+    public static byte[] BuildNoneAttestationObject(byte[] authenticatorData)
+    {
+        var w = new CborWriter();
+        w.WriteStartMap(3);
+        w.WriteTextString("fmt"); w.WriteTextString("none");
+        w.WriteTextString("attStmt"); w.WriteStartMap(0); w.WriteEndMap();
+        w.WriteTextString("authData"); w.WriteByteString(authenticatorData);
+        w.WriteEndMap();
+        return w.Encode();
+    }
+
+    private static byte[] EncodeCoseEc2(byte[] x, byte[] y)
+    {
+        var w = new CborWriter();
+        w.WriteStartMap(5);
+        w.WriteInt32(1); w.WriteInt32(2);    // kty: EC2
+        w.WriteInt32(3); w.WriteInt32(-7);   // alg: ES256
+        w.WriteInt32(-1); w.WriteInt32(1);   // crv: P-256
+        w.WriteInt32(-2); w.WriteByteString(x);
+        w.WriteInt32(-3); w.WriteByteString(y);
+        w.WriteEndMap();
+        return w.Encode();
+    }
+
+    private static byte[] LeftPad32(byte[] value)
+    {
+        if (value.Length == 32) return value;
+        if (value.Length > 32) throw new ArgumentException("EC coordinate longer than 32 bytes.");
+        var padded = new byte[32];
+        value.CopyTo(padded.AsSpan(32 - value.Length));
+        return padded;
     }
 }
