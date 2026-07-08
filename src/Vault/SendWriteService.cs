@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using Api;
 using Api.Dtos;
 using Core.Enums;
@@ -44,6 +45,35 @@ public sealed class SendWriteService : ISendWriteService
     public async Task SaveFileSendAsync(SendDraftModel draft, byte[] fileBytes, CancellationToken ct = default)
     {
         var userKey = RequireUserKey();
+
+        // 更新既有文件 Send:服务端文件字节不可变(PUT /api/sends/{id} 收 File=null、不改 send.data,
+        // 只更新元数据;没有任何端点能替换既有 Send 的文件字节 —— 与 Bitwarden 官方客户端一致)。
+        // 关键:必须【复用原 seed】。put_send 会执行 send.akey = data.key,若此处生成新 seed 改写 akey,
+        // 服务端上仍以旧 seed 加密的文件与文件名将永久无法解密(随后被 GetSendsAsync 当损坏项跳过)。
+        // WrapSeed 每次 IV 随机,但重新包裹同一 seed 解出的仍是同一 seed,故文件保持可解密。
+        // 注意:即便调用方重选了文件(fileBytes 非空),服务端也无法替换字节,故此分支只更新元数据。
+        if (!string.IsNullOrEmpty(draft.Id))
+        {
+            if (string.IsNullOrEmpty(draft.Key))
+                throw new InvalidOperationException("更新文件 Send 需要其原始的 wrapped key。");
+
+            var existingSeed = _crypto.UnwrapSeed(draft.Key, userKey);
+            try
+            {
+                var existingCryptoKey = _crypto.DeriveCryptoKey(existingSeed);
+                var updateRequest = BuildBaseRequest(draft, existingSeed, existingCryptoKey, userKey);
+                updateRequest.Type = (int)SendType.File;
+                // File / FileLength 更新时被服务端忽略(文件不可变),保持 null。
+                await _api.UpdateSendAsync(draft.Id, updateRequest, ct);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(existingSeed);
+            }
+            return;
+        }
+
+        // 创建新文件 Send:v2 建记录拿上传 URL → multipart 上传加密字节。
         var seed = _crypto.GenerateSeed();
         var cryptoKey = _crypto.DeriveCryptoKey(seed);
 

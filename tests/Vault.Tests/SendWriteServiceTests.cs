@@ -148,6 +148,58 @@ public class SendWriteServiceTests
     }
 
     [Fact]
+    public async Task SaveFileSend_Existing_NoNewBytes_UpdatesViaPut_NotCreate_AndPreservesSeed()
+    {
+        // F2:编辑既有文件 Send 必须走 PUT /api/sends/{id}(update),绝不 create-file-v2/upload,
+        // 否则会新建重复件并留下空文件;且回传的 key 必须仍包裹【同一个 seed】,保持服务端文件可解密。
+        var (service, api, crypto, userKey) = NewService();
+        var originalSeed = crypto.GenerateSeed();
+        var wrappedKey = crypto.WrapSeed(originalSeed, userKey);
+        var draft = new SendDraftModel
+        {
+            Id = "s-11",
+            Type = SendType.File,
+            Name = "renamed doc",
+            Notes = "updated notes",
+            FileName = "report.pdf",
+            Key = wrappedKey,
+            DeletionDate = DateTimeOffset.UtcNow.AddDays(5),
+        };
+
+        await service.SaveFileSendAsync(draft, Array.Empty<byte>(), TestContext.Current.CancellationToken);
+
+        Assert.Equal("update", Assert.Single(api.Calls));
+        Assert.DoesNotContain("create-file-v2", api.Calls);
+        Assert.DoesNotContain("upload", api.Calls);
+        Assert.Equal("s-11", api.LastUpdateId);
+        Assert.Equal((int)SendType.File, api.LastUpdate!.Type);
+        // key 仍解回同一 seed —— 服务端既有文件/文件名(旧 seed 加密)保持可解密。
+        var sentSeed = crypto.UnwrapSeed(api.LastUpdate!.Key, userKey);
+        Assert.Equal(originalSeed, sentSeed);
+        // name 是用原 seed 派生的 cryptoKey 加密的 EncString(密文,非明文)。
+        Assert.StartsWith("2.", api.LastUpdate.Name);
+        Assert.NotEqual("renamed doc", api.LastUpdate.Name);
+    }
+
+    [Fact]
+    public async Task SaveFileSend_Existing_MissingWrappedKey_Throws()
+    {
+        // 没有原 wrapped key 无法复用 seed,必须显式失败而非静默用新 seed 破坏文件。
+        var (service, _, _, _) = NewService();
+        var draft = new SendDraftModel
+        {
+            Id = "s-1",
+            Type = SendType.File,
+            Name = "x",
+            FileName = "x.bin",
+            DeletionDate = DateTimeOffset.UtcNow.AddDays(3),
+        };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SaveFileSendAsync(draft, Array.Empty<byte>(), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task DeleteSend_CallsDelete()
     {
         var (service, api, _, _) = NewService();
