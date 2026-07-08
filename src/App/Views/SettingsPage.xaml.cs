@@ -15,6 +15,7 @@ public sealed partial class SettingsPage : Page
     public SettingsViewModel ViewModel { get; }
 
     private bool _suppressPinToggle;
+    private bool _suppressHelloToggle;
 
     public SettingsPage()
     {
@@ -29,6 +30,24 @@ public sealed partial class SettingsPage : Page
         _suppressPinToggle = true;
         PinToggle.IsOn = ViewModel.IsPinSet;
         _suppressPinToggle = false;
+
+        _suppressHelloToggle = true;
+        HelloToggle.IsOn = ViewModel.IsWindowsHelloEnabled;
+        _suppressHelloToggle = false;
+
+        _ = LoadWindowsHelloAvailabilityAsync();
+    }
+
+    private async Task LoadWindowsHelloAvailabilityAsync()
+    {
+        await ViewModel.RefreshWindowsHelloAvailabilityAsync();
+
+        _suppressHelloToggle = true;
+        HelloToggle.IsEnabled = ViewModel.IsWindowsHelloAvailable;
+        HelloCard.Description = ViewModel.IsWindowsHelloAvailable
+            ? "使用 Windows Hello 快速解锁密码库"
+            : "此设备未启用 Windows Hello";
+        _suppressHelloToggle = false;
     }
 
     private void OnExportDiagnosticsClick(object sender, RoutedEventArgs e)
@@ -290,6 +309,38 @@ public sealed partial class SettingsPage : Page
             }
 
             return pin;
+        }
+    }
+
+    // ── Windows Hello 解锁 ──────────────────────────────────────────────────
+
+    private async void OnHelloToggleToggled(object sender, RoutedEventArgs e)
+    {
+        if (_suppressHelloToggle)
+            return;
+
+        if (HelloToggle.IsOn)
+        {
+            var ok = await ViewModel.EnableWindowsHelloAsync();
+            if (!ok)
+            {
+                _suppressHelloToggle = true;
+                HelloToggle.IsOn = false;
+                _suppressHelloToggle = false;
+
+                var dialog = new ContentDialog
+                {
+                    Title = "Windows Hello",
+                    Content = new TextBlock { Text = "未能启用 Windows Hello", TextWrapping = TextWrapping.Wrap },
+                    CloseButtonText = "关闭",
+                    XamlRoot = XamlRoot,
+                };
+                await dialog.ShowAsync();
+            }
+        }
+        else
+        {
+            ViewModel.DisableWindowsHello();
         }
     }
 

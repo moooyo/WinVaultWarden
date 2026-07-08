@@ -119,7 +119,9 @@ public static class ServiceConfiguration
             new SettingsViewModel(
                 sp.GetRequiredService<IAccountUiService>(),
                 sp.GetRequiredService<ITwoFactorUiService>(),
-                sp.GetRequiredService<IPinService>()));
+                sp.GetRequiredService<IPinService>(),
+                sp.GetRequiredService<IWindowsHelloAuthenticator>(),
+                sp.GetRequiredService<IHelloUnlockService>()));
         services.AddTransient<DevicesViewModel>(sp =>
             new DevicesViewModel(
                 sp.GetRequiredService<IDeviceUiService>(),

@@ -1,4 +1,5 @@
 using App.Services;
+using Core.Abstractions;
 using Core.Models;
 using Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -15,6 +16,8 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IAccountUiService? _accountUi;
     private readonly ITwoFactorUiService? _twoFactorUi;
     private readonly IPinService? _pin;
+    private readonly IWindowsHelloAuthenticator? _hello;
+    private readonly IHelloUnlockService? _helloUnlock;
 
     [ObservableProperty]
     public partial int SelectedSessionTimeoutIndex { get; set; } = AppPreferences.Current.SessionTimeoutIndex;
@@ -146,11 +149,25 @@ public partial class SettingsViewModel : ObservableObject
 
     public SettingsViewModel(IPinService pin) => _pin = pin;
 
-    public SettingsViewModel(IAccountUiService accountUi, ITwoFactorUiService twoFactorUi, IPinService? pin = null)
+    // 供 Windows Hello 相关测试直接注入两个协作者，无需 accountUi/twoFactorUi/pin 假件。
+    public SettingsViewModel(IWindowsHelloAuthenticator hello, IHelloUnlockService helloUnlock)
+    {
+        _hello = hello;
+        _helloUnlock = helloUnlock;
+    }
+
+    public SettingsViewModel(
+        IAccountUiService accountUi,
+        ITwoFactorUiService twoFactorUi,
+        IPinService? pin = null,
+        IWindowsHelloAuthenticator? hello = null,
+        IHelloUnlockService? helloUnlock = null)
     {
         _accountUi = accountUi;
         _twoFactorUi = twoFactorUi;
         _pin = pin;
+        _hello = hello;
+        _helloUnlock = helloUnlock;
     }
 
     public string AccountEmail => _accountUi?.GetAccount().Email ?? string.Empty;
@@ -163,6 +180,38 @@ public partial class SettingsViewModel : ObservableObject
     public bool IsPinSet => _pin?.IsPinSet ?? false;
     public void SetPin(string pin) => _pin?.SetPin(pin);
     public void ClearPin() => _pin?.ClearPin();
+
+    // ── Windows Hello 解锁 ───────────────────────────────────────────────────
+
+    [ObservableProperty]
+    public partial bool IsWindowsHelloAvailable { get; set; }
+
+    public bool IsWindowsHelloEnabled => _helloUnlock?.IsHelloSet ?? false;
+
+    public async Task RefreshWindowsHelloAvailabilityAsync()
+        => IsWindowsHelloAvailable = _hello is not null && await _hello.IsAvailableAsync();
+
+    // 启用:生成 32 字节随机挑战 → Hello 创建密钥并签名 → SetHello。取消/失败返回 false(开关回弹)。
+    public async Task<bool> EnableWindowsHelloAsync()
+    {
+        if (_hello is null || _helloUnlock is null)
+            return false;
+
+        var challenge = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+        var signature = await _hello.CreateProtectorAsync(challenge);
+        if (signature is null)
+            return false;
+
+        _helloUnlock.SetHello(signature, challenge);
+        OnPropertyChanged(nameof(IsWindowsHelloEnabled));
+        return true;
+    }
+
+    public void DisableWindowsHello()
+    {
+        _helloUnlock?.ClearHello();
+        OnPropertyChanged(nameof(IsWindowsHelloEnabled));
+    }
 
     // ── 账户操作 ─────────────────────────────────────────────────────────────
 

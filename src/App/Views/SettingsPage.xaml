@@ -87,6 +87,15 @@
                                   Toggled="OnPinToggleToggled" />
                 </tk:SettingsCard>
 
+                <tk:SettingsCard x:Name="HelloCard" Header="Windows Hello 解锁" Description="使用 Windows Hello 快速解锁密码库">
+                    <tk:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE815;" />
+                    </tk:SettingsCard.HeaderIcon>
+                    <ToggleSwitch x:Name="HelloToggle"
+                                  AutomationProperties.AutomationId="HelloToggle"
+                                  Toggled="OnHelloToggleToggled" />
+                </tk:SettingsCard>
+
                 <tk:SettingsCard Header="双重验证"
                                  Description="管理两步验证方式（TOTP、邮箱验证码）"
                                  IsClickEnabled="True"
