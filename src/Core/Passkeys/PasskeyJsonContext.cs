@@ -11,5 +11,8 @@ namespace Core.Passkeys;
 [JsonSerializable(typeof(PasskeyCreatePayload))]
 [JsonSerializable(typeof(PasskeyGetPayload))]
 [JsonSerializable(typeof(PasskeyGetAssertionPayload))]
+[JsonSerializable(typeof(PasskeyCreateAttestationPayload))]
 [JsonSerializable(typeof(ClientDataJson))]
+[JsonSerializable(typeof(CredPropsResult))]
+[JsonSerializable(typeof(CredPropsExtensions))]
 public partial class PasskeyJsonContext : JsonSerializerContext;

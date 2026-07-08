@@ -65,6 +65,16 @@ public sealed record PasskeyGetAssertionPayload(
     [property: JsonPropertyName("signature")] string Signature,
     [property: JsonPropertyName("userHandle")] string? UserHandle);
 
+public sealed record PasskeyCreateAttestationPayload(
+    [property: JsonPropertyName("credentialId")] string CredentialId,
+    [property: JsonPropertyName("clientDataJSON")] string ClientDataJson,
+    [property: JsonPropertyName("attestationObject")] string AttestationObject,
+    [property: JsonPropertyName("authData")] string AuthData,
+    [property: JsonPropertyName("publicKey")] string PublicKey,
+    [property: JsonPropertyName("publicKeyAlgorithm")] int PublicKeyAlgorithm,
+    [property: JsonPropertyName("transports")] string[] Transports,
+    [property: JsonPropertyName("extensions")] JsonElement? Extensions);
+
 public static class PasskeyRequestParser
 {
     public static bool TryParse(
