@@ -13,6 +13,8 @@ namespace Vault;
 public sealed class AuthService : IAuthService
 {
     private const string DeviceName = "WinVaultWarden";
+    // Bitwarden TwoFactorProviderType.Email。启用邮箱 2FA 的账户在此值出现于 providers 时需登录期发码。
+    private const int EmailTwoFactorProvider = 1;
 
     private readonly IReadonlyApiClient _api;
     private readonly IApiEndpointConfig _apiConfig;
@@ -63,7 +65,7 @@ public sealed class AuthService : IAuthService
                 DeviceName,
                 null), ct);
 
-            return await HandleLoginResultAsync(context, result, ct);
+            return await HandleLoginResultAsync(context, result, ct, autoSendEmail: true);
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
         {
@@ -268,7 +270,8 @@ public sealed class AuthService : IAuthService
     private async Task<AuthResult> HandleLoginResultAsync(
         PendingTwoFactorContext context,
         ConnectTokenResult result,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool autoSendEmail = false)
     {
         switch (result)
         {
@@ -280,10 +283,43 @@ public sealed class AuthService : IAuthService
                 // 2FA 重试时 context.StretchedKey 与旧 _pendingTwoFactor 是同一对象,ReferenceEquals 守卫避免误清。
                 if (_pendingTwoFactor is { } stale && !ReferenceEquals(stale.StretchedKey, context.StretchedKey))
                     stale.StretchedKey.Dispose();
-                _pendingTwoFactor = context with { Providers = twoFactor.Providers.ToArray() };
+                var pending = context with { Providers = twoFactor.Providers.ToArray() };
+                _pendingTwoFactor = pending;
+                // 仅在首次进入验证码阶段(LoginAsync 路径)自动发码;2FA 提交失败再次挑战时不重复发信(避免每次错码都发一封)。
+                if (autoSendEmail && twoFactor.Providers.Contains(EmailTwoFactorProvider))
+                    await TrySendTwoFactorEmailAsync(pending, ct);
                 return new AuthResult.TwoFactorRequired(twoFactor.Providers);
             default:
                 return ToFailure(result);
+        }
+    }
+
+    // 登录期发码:best-effort。失败(服务端未启用邮箱2FA / 网络抖动)不阻断进入验证码阶段,用户可点"重发"重试。
+    private async Task TrySendTwoFactorEmailAsync(PendingTwoFactorContext context, CancellationToken ct)
+    {
+        try
+        {
+            await _api.SendTwoFactorEmailLoginAsync(context.Email, context.PasswordHash, context.DeviceIdentifier, ct);
+        }
+        catch (Exception ex) when (IsExpectedAuthException(ex))
+        {
+        }
+    }
+
+    public async Task<bool> ResendTwoFactorEmailAsync(CancellationToken ct = default)
+    {
+        if (_pendingTwoFactor is not { } context)
+            return false;
+
+        try
+        {
+            _apiConfig.SetBaseAddress(context.ServerUrl);
+            await _api.SendTwoFactorEmailLoginAsync(context.Email, context.PasswordHash, context.DeviceIdentifier, ct);
+            return true;
+        }
+        catch (Exception ex) when (IsExpectedAuthException(ex))
+        {
+            return false;
         }
     }
 

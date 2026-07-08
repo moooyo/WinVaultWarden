@@ -200,6 +200,15 @@ public class LoginViewModelAuthTests
             return Task.FromResult(SubmitResult);
         }
 
+        public int ResendEmailCalls { get; private set; }
+        public bool ResendResult { get; init; } = true;
+
+        public Task<bool> ResendTwoFactorEmailAsync(CancellationToken ct = default)
+        {
+            ResendEmailCalls++;
+            return Task.FromResult(ResendResult);
+        }
+
         public Task<AuthResult> UnlockAsync(string masterPassword, CancellationToken ct = default)
         {
             UnlockPassword = masterPassword;

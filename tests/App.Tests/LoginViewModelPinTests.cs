@@ -137,6 +137,8 @@ public class LoginViewModelPinTests
             return Task.FromResult(SubmitResult);
         }
 
+        public Task<bool> ResendTwoFactorEmailAsync(CancellationToken ct = default) => Task.FromResult(false);
+
         public Task<AuthResult> UnlockAsync(string masterPassword, CancellationToken ct = default)
         {
             UnlockPassword = masterPassword;

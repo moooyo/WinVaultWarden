@@ -331,6 +331,8 @@ public sealed class FakeAuthService : IAuthService
     public Task<AuthResult> SubmitTwoFactorAsync(string code, CancellationToken ct = default, bool rememberDevice = true)
         => Task.FromResult<AuthResult>(new AuthResult.Failure("not implemented"));
 
+    public Task<bool> ResendTwoFactorEmailAsync(CancellationToken ct = default) => Task.FromResult(false);
+
     public Task<AuthResult> UnlockAsync(string masterPassword, CancellationToken ct = default)
         => Task.FromResult<AuthResult>(new AuthResult.Failure("not implemented"));
 

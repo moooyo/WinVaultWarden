@@ -177,6 +177,70 @@ public class AuthServiceTests
         Assert.Empty(handler.Requests);
     }
 
+    [Fact]
+    public async Task LoginAsync_EmailTwoFactorRequired_AutoSendsLoginEmail()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, PreloginJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"error":"invalid_grant","error_description":"Two factor required.","TwoFactorProviders":["1"]}"""));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}")); // send-email-login
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, new MemoryTokenStore());
+
+        var result = await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
+
+        Assert.IsType<AuthResult.TwoFactorRequired>(result);
+        Assert.Equal(3, handler.Requests.Count); // prelogin + connect/token + send-email-login
+        Assert.Equal("/api/two-factor/send-email-login", handler.Requests[2].RequestUri!.AbsolutePath);
+        Assert.Contains("\"email\":\"me@example.com\"", handler.Bodies[2]);
+    }
+
+    [Fact]
+    public async Task LoginAsync_AuthenticatorOnly_DoesNotSendEmail()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, PreloginJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"error":"invalid_grant","error_description":"Two factor required.","TwoFactorProviders":["0"]}"""));
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, new MemoryTokenStore());
+
+        await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, handler.Requests.Count); // 无 send-email-login
+    }
+
+    [Fact]
+    public async Task ResendTwoFactorEmailAsync_AfterChallenge_PostsSendEmailLoginAgain()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, PreloginJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"error":"invalid_grant","error_description":"Two factor required.","TwoFactorProviders":["1"]}"""));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}")); // auto-send on entering stage
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}")); // resend
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, new MemoryTokenStore());
+
+        await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
+        var sent = await service.ResendTwoFactorEmailAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(sent);
+        Assert.Equal(4, handler.Requests.Count);
+        Assert.Equal("/api/two-factor/send-email-login", handler.Requests[3].RequestUri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task ResendTwoFactorEmailAsync_NoPendingChallenge_ReturnsFalse()
+    {
+        var handler = new FakeHttpMessageHandler();
+        var service = CreateAuthService(handler, new VaultSession(), new MemoryTokenStore());
+
+        Assert.False(await service.ResendTwoFactorEmailAsync(TestContext.Current.CancellationToken));
+        Assert.Empty(handler.Requests);
+    }
+
     private AuthService CreateAuthService(FakeHttpMessageHandler handler, VaultSession session, MemoryTokenStore tokenStore)
     {
         var api = new ApiClient(new HttpClient(handler));
