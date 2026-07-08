@@ -165,6 +165,44 @@ public class RealSendUiServiceTests
         Assert.True(r.WrongPassword);
     }
 
+    [Fact]
+    public async Task GetEditDraftAsync_FetchesFullSend_AndHydratesDraft()
+    {
+        var full = new Send
+        {
+            Id = "s7",
+            AccessId = "acc7",
+            Type = CoreSendType.Text,
+            Name = "编辑我",
+            Notes = "备注",
+            Text = new SendText("正文", true),
+            MaxAccessCount = 4,
+            HideEmail = true,
+            Disabled = true,
+            DeletionDate = DateTimeOffset.UtcNow.AddDays(6),
+            Key = "2.wrapped==",
+        };
+        var svc = new SendUiService(new FakeSendService(full), new FakeSendWriteService(), new FakeSendAccessService());
+
+        var draft = await svc.GetEditDraftAsync("s7", CancellationToken.None);
+
+        Assert.NotNull(draft);
+        Assert.Equal("编辑我", draft!.Name);
+        Assert.Equal("正文", draft.Text);
+        Assert.Equal("备注", draft.Notes);
+        Assert.True(draft.HideTextByDefault);
+        Assert.Equal(4, draft.MaxAccessCount);
+        Assert.Equal("2.wrapped==", draft.WrappedKey);
+    }
+
+    [Fact]
+    public async Task GetEditDraftAsync_UnknownId_ReturnsNull()
+    {
+        var svc = new SendUiService(new FakeSendService(), new FakeSendWriteService(), new FakeSendAccessService());
+
+        Assert.Null(await svc.GetEditDraftAsync("nope", CancellationToken.None));
+    }
+
     private sealed class FakeSendService : ISendService
     {
         private readonly Send[] _sends;

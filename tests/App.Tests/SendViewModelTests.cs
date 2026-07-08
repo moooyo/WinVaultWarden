@@ -36,6 +36,17 @@ public class SendViewModelTests
         public Task<IReadOnlyList<SendListItem>> GetSendsAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<SendListItem>>(Sends.ToList());
 
+        public string? LastEditDraftId { get; private set; }
+        public Task<SendEditorDraft?> GetEditDraftAsync(string id, CancellationToken ct = default)
+        {
+            LastEditDraftId = id;
+            var send = Sends.FirstOrDefault(s => s.Id == id);
+            if (send is null) return Task.FromResult<SendEditorDraft?>(null);
+            var draft = SendEditorDraft.CreateDefault(send.Type);
+            draft.Name = send.Name;
+            return Task.FromResult<SendEditorDraft?>(draft);
+        }
+
         public Task<SendListItem> CreateSendAsync(SendEditorDraft draft, byte[]? fileBytes, CancellationToken ct = default)
         {
             LastCreateDraft = draft;
@@ -348,6 +359,8 @@ public class SendViewModelTests
         public Task DeleteSendAsync(string id, CancellationToken ct = default) => throw new InvalidOperationException();
         public string? CopyShareLink(SendListItem item) => item.Link;
         public Task<SendReceivedResult> OpenReceivedLinkAsync(string url, string? password, CancellationToken ct = default) =>
+            throw new InvalidOperationException();
+        public Task<SendEditorDraft?> GetEditDraftAsync(string id, CancellationToken ct = default) =>
             throw new InvalidOperationException();
     }
 }

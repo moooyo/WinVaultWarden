@@ -28,6 +28,13 @@ public sealed class SendUiService : ISendUiService
         return sends.Select(ToListItem).ToList();
     }
 
+    public async Task<SendEditorDraft?> GetEditDraftAsync(string id, CancellationToken ct = default)
+    {
+        var sends = await _read.GetSendsAsync(ct);
+        var send = sends.FirstOrDefault(s => s.Id == id);
+        return send is null ? null : SendEditorDraft.FromExisting(send);
+    }
+
     public async Task<SendListItem> CreateSendAsync(SendEditorDraft draft, byte[]? fileBytes, CancellationToken ct = default)
     {
         var model = ToDraftModel(draft, id: null);
