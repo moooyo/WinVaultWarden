@@ -57,4 +57,26 @@ public class DpapiTokenStoreTests
         Assert.True(store.TryLoad(out var loaded));
         Assert.Equal("refresh-2", loaded.RefreshToken);
     }
+
+    [Fact]
+    public void SaveLoad_RoundTripsTwoFactorToken_Encrypted()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var path = Path.Combine(Path.GetTempPath(), "WinVaultWarden.Tests", Guid.NewGuid().ToString("N"), "session.bin");
+        var store = new DpapiTokenStore(path);
+        var session = new PersistedSession(
+            "https://vault.example", "me@example.com", "device-id",
+            "refresh", "puk", KdfType.Pbkdf2, 600_000, null, null)
+        {
+            TwoFactorToken = "remember-jwt",
+        };
+
+        store.Save(session);
+
+        Assert.True(store.TryLoad(out var loaded));
+        Assert.Equal("remember-jwt", loaded.TwoFactorToken);
+        Assert.DoesNotContain("remember-jwt", File.ReadAllText(path)); // DPAPI 加密,不留明文
+    }
 }
