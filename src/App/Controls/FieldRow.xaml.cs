@@ -43,6 +43,16 @@ public sealed partial class FieldRow : UserControl
         DependencyProperty.Register(nameof(IsSecret), typeof(bool), typeof(FieldRow),
             new PropertyMetadata(false, (d, e) => ((FieldRow)d).OnSecretChanged()));
 
+    // 该字段所属条目是否标记了"主密码重提示"。为 true 且是机密字段时,首次揭示/复制前需验主密码。
+    public bool RepromptRequired
+    {
+        get => (bool)GetValue(RepromptRequiredProperty);
+        set => SetValue(RepromptRequiredProperty, value);
+    }
+    public static readonly DependencyProperty RepromptRequiredProperty =
+        DependencyProperty.Register(nameof(RepromptRequired), typeof(bool), typeof(FieldRow),
+            new PropertyMetadata(false));
+
     public bool ShowOpen
     {
         get => (bool)GetValue(ShowOpenProperty);
@@ -103,14 +113,55 @@ public sealed partial class FieldRow : UserControl
             : Visibility.Visible;
     }
 
-    private void OnReveal(object sender, RoutedEventArgs e)
+    // 机密字段 + RepromptRequired + 本会话未验证时,弹主密码对话框验证;通过返回 true。
+    // 复用 App.App.Services 服务定位(与下方 OnCopy 解析 IClipboardService 同一模式)。
+    private async Task<bool> PassesRepromptAsync()
     {
+        if (!IsSecret || !RepromptRequired)
+            return true;
+        var gate = global::App.App.Services?.GetService<global::App.Services.IMasterPasswordReprompt>();
+        if (gate is null || gate.IsSessionVerified)
+            return true;
+
+        var passwordBox = new PasswordBox { PlaceholderText = "主密码", MinWidth = 320 };
+        var errorText = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
+        errorText.SetValue(TextBlock.ForegroundProperty, Application.Current.Resources["SystemFillColorCriticalBrush"]);
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(new TextBlock { Text = "该条目要求主密码重提示", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(passwordBox);
+        panel.Children.Add(errorText);
+        var dialog = new ContentDialog
+        {
+            Title = "验证主密码",
+            Content = panel,
+            PrimaryButtonText = "确认",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+        };
+        while (true)
+        {
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                return false;
+            if (await gate.VerifyAsync(passwordBox.Password))
+                return true;
+            errorText.Text = "主密码不正确";
+            errorText.Visibility = Visibility.Visible;
+        }
+    }
+
+    private async void OnReveal(object sender, RoutedEventArgs e)
+    {
+        if (!_revealed && !await PassesRepromptAsync())
+            return; // 仅揭示(遮蔽→明文)需验证;隐藏(明文→遮蔽)无需
         SetRevealed(!_revealed);
         Render();
     }
 
-    private void OnCopy(object sender, RoutedEventArgs e)
+    private async void OnCopy(object sender, RoutedEventArgs e)
     {
+        if (!await PassesRepromptAsync())
+            return;
         var value = Value ?? string.Empty;
         var clipboard = global::App.App.Services?.GetService<global::App.Services.IClipboardService>();
         if (clipboard is null)

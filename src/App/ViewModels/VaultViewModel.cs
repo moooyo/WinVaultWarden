@@ -12,6 +12,7 @@ public partial class VaultViewModel : ObservableObject
     private readonly IClipboardService? _clipboard;
     private readonly IAttachmentUiService? _attachments;
     private readonly ISavedSearchStore? _savedStore;
+    private readonly IMasterPasswordReprompt? _reprompt;
     private string? _editingId;
     private bool _suppressApply;
     private readonly HashSet<string> _selectedIds = new(StringComparer.Ordinal);
@@ -149,12 +150,13 @@ public partial class VaultViewModel : ObservableObject
     };
 
     public VaultViewModel(IVaultUiService service, IClipboardService? clipboard = null, IAttachmentUiService? attachments = null,
-        ISavedSearchStore? savedStore = null)
+        ISavedSearchStore? savedStore = null, IMasterPasswordReprompt? reprompt = null)
     {
         _service = service;
         _clipboard = clipboard;
         _attachments = attachments;
         _savedStore = savedStore;
+        _reprompt = reprompt;
         foreach (var it in service.GetItems()) Items.Add(it);
         foreach (var f in service.GetFilters()) Filters.Add(f);
         SkippedCipherCount = service.SkippedCipherCount;
@@ -724,6 +726,21 @@ public partial class VaultViewModel : ObservableObject
         SshDetail s => s.PublicKey,
         _ => detail.Name,
     };
+
+    // ── 主密码重提示门禁(会话级)────────────────────────────────────────────────
+    // 判定对某条目揭示/复制机密前是否需要主密码验证:条目 Reprompt==true 且本次解锁会话尚未通过
+    // 验证时为 true。无门禁服务(设计时/未注册)时恒 false,保持旧行为。会话标志经 VaultSession
+    // (E1b)承载,作用域故意收窄在会话级,日后可平滑收紧到条目级。
+    public bool RequiresReprompt(CipherDetail? detail) =>
+        _reprompt is not null && detail is { Reprompt: true } && !_reprompt.IsSessionVerified;
+
+    public bool RequiresRepromptFor(string? id) =>
+        !string.IsNullOrEmpty(id) && RequiresReprompt(_service.GetDetail(id));
+
+    // 供 code-behind 在弹出主密码对话框后回填校验:通过则由门禁服务置会话级标志。
+    // 无门禁服务时视为已通过(不阻断)。
+    public Task<bool> VerifyRepromptAsync(string password, CancellationToken ct = default) =>
+        _reprompt is null ? Task.FromResult(true) : _reprompt.VerifyAsync(password, ct);
 
     public Task<bool> ToggleFavoriteAsync(string id) =>
         RunWriteAsync(async () =>

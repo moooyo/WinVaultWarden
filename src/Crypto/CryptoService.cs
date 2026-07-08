@@ -6,7 +6,7 @@ using Konscious.Security.Cryptography;
 namespace Crypto;
 
 // Bitwarden 加密链实现。严格遵循安全白皮书 + 独立实现核实。
-public sealed class CryptoService
+public class CryptoService
 {
     public byte[] DeriveMasterKey(string password, string email, KdfType kdfType, int iterations, int? memoryMiB, int? parallelism)
     {
@@ -91,7 +91,7 @@ public sealed class CryptoService
     }
 
     // 由 MasterKey 拉伸出 EncKey/MacKey(各一次独立 HKDF-Expand,SHA256)。
-    public SymmetricCryptoKey StretchMasterKey(byte[] masterKey)
+    public virtual SymmetricCryptoKey StretchMasterKey(byte[] masterKey)
     {
         var enc = HKDF.Expand(HashAlgorithmName.SHA256, masterKey, 32, "enc"u8.ToArray());
         var mac = HKDF.Expand(HashAlgorithmName.SHA256, masterKey, 32, "mac"u8.ToArray());
@@ -113,7 +113,7 @@ public sealed class CryptoService
     }
 
     // 用拉伸子钥解开 protected user key,得到真正的 UserKey。
-    public SymmetricCryptoKey DecryptUserKey(SymmetricCryptoKey stretchedKey, EncString protectedUserKey)
+    public virtual SymmetricCryptoKey DecryptUserKey(SymmetricCryptoKey stretchedKey, EncString protectedUserKey)
     {
         var plain = Decrypt(protectedUserKey, stretchedKey);
         return new SymmetricCryptoKey(plain);

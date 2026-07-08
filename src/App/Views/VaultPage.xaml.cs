@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using System.ComponentModel;
+using App.Controls;
 using App.ViewModels;
 using App.ViewModels.Models;
 using Microsoft.Extensions.DependencyInjection;
@@ -76,10 +77,54 @@ public sealed partial class VaultPage : Page
     private static CipherListItem? RowItem(object sender) =>
         (sender as FrameworkElement)?.DataContext as CipherListItem;
 
-    private void OnRowCopyPrimaryClick(object sender, RoutedEventArgs e)
+    private async void OnRowCopyPrimaryClick(object sender, RoutedEventArgs e)
     {
-        if (RowItem(sender) is { } item)
-            ViewModel.CopyPrimaryCommand.Execute(item.Id);
+        if (RowItem(sender) is not { } item)
+            return;
+        if (ViewModel.RequiresRepromptFor(item.Id) && !await PromptAndVerifyRepromptAsync())
+            return;
+        ViewModel.CopyPrimaryCommand.Execute(item.Id);
+    }
+
+    // 弹主密码对话框并回填 ViewModel.VerifyRepromptAsync;通过返回 true。与 ImportExportPage 的
+    // 主密码确认对话框同一模式(循环重试、错误提示、SystemFillColorCriticalBrush)。
+    private async Task<bool> PromptAndVerifyRepromptAsync()
+    {
+        var passwordBox = new PasswordBox { PlaceholderText = "主密码", MinWidth = 320 };
+        var errorText = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
+        errorText.SetValue(TextBlock.ForegroundProperty, Application.Current.Resources["SystemFillColorCriticalBrush"]);
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(new TextBlock { Text = "该条目要求主密码重提示", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(passwordBox);
+        panel.Children.Add(errorText);
+        var dialog = new ContentDialog
+        {
+            Title = "验证主密码",
+            Content = panel,
+            PrimaryButtonText = "确认",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+        };
+        while (true)
+        {
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                return false;
+            if (await ViewModel.VerifyRepromptAsync(passwordBox.Password))
+                return true;
+            errorText.Text = "主密码不正确";
+            errorText.Visibility = Visibility.Visible;
+        }
+    }
+
+    // PasswordHistoryItem/CustomField 行嵌套在子级 DataTemplate 内,其 DataContext 类型不携带
+    // Reprompt——WinUI 的 x:Bind 与经典 ElementName Binding 均无法跨 DataTemplate 边界读取外层
+    // Page 的属性(命名空间作用域限制),因此改为在 DataContext 就位/复用(含虚拟化容器回收)时
+    // 由代码隐藏直接从 ViewModel.Detail 回填,而非尝试跨模板绑定。
+    private void OnSecretFieldRowDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+    {
+        if (sender is FieldRow row)
+            row.RepromptRequired = ViewModel.Detail?.Reprompt ?? false;
     }
 
     private void OnRemoveCustomFieldClick(object sender, RoutedEventArgs e)

@@ -286,8 +286,12 @@ public sealed class AccountService : IAccountService
     /// </summary>
     private void ValidateCurrentPassword(byte[] masterKey, string protectedUserKey)
     {
-        var stretchedKey = _crypto.StretchMasterKey(masterKey);
+        // stretchedKey 与解密出的 userKey 都是敏感派生物料;用 using 确保校验后立即 Dispose(清零其
+        // FullKey/EncKey/MacKey),不残留在托管堆。密码错误时 DecryptUserKey 抛 CryptographicException,
+        // userKey 未赋值,stretchedKey 的 using 仍会在异常回溯中释放。VerifyMasterPasswordAsync /
+        // ChangePasswordAsync / ChangeKdfAsync 三条路径共用本方法,一并覆盖。
+        using var stretchedKey = _crypto.StretchMasterKey(masterKey);
         var encString = EncString.Parse(protectedUserKey);
-        _crypto.DecryptUserKey(stretchedKey, encString); // throws CryptographicException if wrong
+        using var userKey = _crypto.DecryptUserKey(stretchedKey, encString); // throws CryptographicException if wrong
     }
 }

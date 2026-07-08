@@ -67,6 +67,8 @@ public static class ServiceConfiguration
         services.AddSingleton<ISendAccessService, Vault.SendAccessService>();
         services.AddSingleton<IAttachmentService, Vault.AttachmentService>();
         services.AddSingleton<IAccountService, Vault.AccountService>();
+        // 主密码重提示门禁(E1d):依赖 IAccountService + VaultSession,二者均已单例注册。
+        services.AddSingleton<IMasterPasswordReprompt, MasterPasswordReprompt>();
         services.AddSingleton<ITwoFactorService, Vault.TwoFactorService>();
         services.AddSingleton<IAuthRequestService, Vault.AuthRequestService>();
         services.AddSingleton<IEmergencyAccessService, Vault.EmergencyAccessService>();
