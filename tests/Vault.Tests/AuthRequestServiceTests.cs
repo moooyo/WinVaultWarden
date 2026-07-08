@@ -49,6 +49,8 @@ public class AuthRequestServiceTests
 
     private VaultSession MakeLockedSession() => new VaultSession(); // UserKey == null
 
+    private readonly FingerprintService _fingerprint = new();
+
     private AuthRequestService MakeService(
         FakeAuthRequestApiClient api,
         VaultSession? session = null,
@@ -58,7 +60,8 @@ public class AuthRequestServiceTests
             api,
             _crypto,
             session ?? MakeUnlockedSession(),
-            tokenStore ?? MakeTokenStore());
+            tokenStore ?? MakeTokenStore(),
+            _fingerprint);
     }
 
     // ── (a) ApproveAsync：encType-4 密钥可通过对应私钥解密还原 UserKey.FullKey ──────
@@ -157,5 +160,36 @@ public class AuthRequestServiceTests
         Assert.Equal("10.0.0.2", item.IpAddress);
         Assert.Equal("2024-06-01T12:00:00Z", item.CreationDate);
         Assert.Equal("pubKeyBase64==", item.PublicKey);
+    }
+
+    // ── (e) ListPendingAsync 应用 (登录邮箱 + 请求方公钥) 派生指纹短语 ────────────
+    // 邮箱取自持久化会话("test@example.com"); publicKey = 256 个 0 字节。
+    // 端到端向量 → "visitor-precision-relight-irritate-request"。
+    [Fact]
+    public async Task ListPending_DerivesFingerprintPhrase_FromSessionEmailAndPublicKey()
+    {
+        var pk256 = Convert.ToBase64String(new byte[256]);
+        var resp = new AuthRequestListResponse(
+            Data: new List<AuthRequestResponse>
+            {
+                new(
+                    Id: "req-fp",
+                    PublicKey: pk256,
+                    RequestDeviceType: "Android",
+                    RequestIpAddress: "10.0.0.9",
+                    Key: null,
+                    MasterPasswordHash: null,
+                    CreationDate: "2024-06-01T12:00:00Z",
+                    ResponseDate: null,
+                    RequestApproved: null,
+                    Origin: null),
+            });
+        var api = new FakeAuthRequestApiClient { PendingResult = resp };
+        var service = MakeService(api);
+
+        var result = await service.ListPendingAsync(TestContext.Current.CancellationToken);
+
+        var item = Assert.Single(result);
+        Assert.Equal("visitor-precision-relight-irritate-request", item.FingerprintPhrase);
     }
 }

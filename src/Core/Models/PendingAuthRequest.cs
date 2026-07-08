@@ -11,4 +11,8 @@ public record PendingAuthRequest(
     string DeviceTypeName,
     string IpAddress,
     string CreationDate,
-    string PublicKey);
+    string PublicKey)
+{
+    /// <summary>Bitwarden 指纹短语（5 词以 '-' 连接），审批前供用户与请求设备核对。派生失败时为空串。</summary>
+    public string FingerprintPhrase { get; init; } = "";
+}

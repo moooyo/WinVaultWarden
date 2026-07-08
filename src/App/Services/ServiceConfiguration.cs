@@ -19,6 +19,7 @@ public static class ServiceConfiguration
 
         services.AddSingleton<VaultSession>();
         services.AddSingleton<CryptoService>();
+        services.AddSingleton<FingerprintService>();
         services.AddSingleton<ITokenStore, DpapiTokenStore>();
         services.AddSingleton<ICacheStore, DpapiVaultCacheStore>();
         services.AddSingleton(sp =>

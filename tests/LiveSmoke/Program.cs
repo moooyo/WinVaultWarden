@@ -77,7 +77,8 @@ ITwoFactorApiClient twoFactorApi = api;
 var twoFactorService = new TwoFactorService(crypto, twoFactorApi, tokenStore);
 
 IAuthRequestApiClient authRequestApi = api;
-var authRequestService = new AuthRequestService(authRequestApi, crypto, session, tokenStore);
+var fingerprint = new FingerprintService();
+var authRequestService = new AuthRequestService(authRequestApi, crypto, session, tokenStore, fingerprint);
 
 try
 {
