@@ -82,6 +82,7 @@ public sealed class SendService : ISendService
             HideEmail = dto.HideEmail,
             HasPassword = !string.IsNullOrEmpty(dto.Password),
             ShareUrl = shareUrl,
+            Key = dto.Key,
         };
     }
 }

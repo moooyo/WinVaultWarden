@@ -129,6 +129,7 @@ public sealed class SendWriteService : ISendWriteService
             Disabled = dto.Disabled,
             HideEmail = dto.HideEmail,
             HasPassword = !string.IsNullOrEmpty(dto.Password),
+            Key = dto.Key,
         };
     }
 

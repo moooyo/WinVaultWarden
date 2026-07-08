@@ -164,4 +164,22 @@ public class SendServiceTests
         var single = Assert.Single(sends);
         Assert.Equal("Good", single.Name);
     }
+
+    [Fact]
+    public async Task GetSends_CarriesWrappedKey_ForFileSendEditing()
+    {
+        // F1a:领域 Send 必须保留服务端的 wrapped key(akey),供编辑文件 Send 时复用原 seed,
+        // 否则更新时改写 akey 会让服务端上以旧 seed 加密的文件与文件名永久无法解密。
+        var (service, api, crypto, userKey) = NewService();
+        var dto = BuildEncryptedDto(crypto, userKey, 1, "File Send", null, null, "report.pdf");
+        api.ListResult = new SendListResponse(Data: new[] { dto }, Object: "list");
+
+        var send = Assert.Single(await service.GetSendsAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal(dto.Key, send.Key);
+        Assert.False(string.IsNullOrEmpty(send.Key));
+        // 复用该 wrapped key 能解回一个有效 seed。
+        var seed = crypto.UnwrapSeed(send.Key!, userKey);
+        Assert.Equal(16, seed.Length);
+    }
 }

@@ -21,6 +21,9 @@ public sealed class Send
     public bool HasPassword { get; init; }
     // 完整分享 URL（含 seed 片段），仅存于内存，不可落盘或发往服务端。
     public string ShareUrl { get; init; } = "";
+    // 服务端存储的 wrapped seed(akey / JSON "key")。密文,仅存内存(与 ShareUrl 一样不可落盘/发日志)。
+    // 编辑文件 Send 更新元数据时必须复用它包裹的 seed,以保持服务端既有文件可解密。
+    public string? Key { get; init; }
 }
 
 public sealed record SendText(string? Content, bool Hidden);
