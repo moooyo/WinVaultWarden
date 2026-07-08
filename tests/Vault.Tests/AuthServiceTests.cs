@@ -115,7 +115,7 @@ public class AuthServiceTests
         var challenge = Assert.IsType<AuthResult.TwoFactorRequired>(first);
         Assert.Equal([0], challenge.Providers);
 
-        var second = await service.SubmitTwoFactorAsync("123456", TestContext.Current.CancellationToken, rememberDevice: false);
+        var second = await service.SubmitTwoFactorAsync("123456", provider: 0, TestContext.Current.CancellationToken, rememberDevice: false);
 
         Assert.IsType<AuthResult.Success>(second);
         Assert.Equal(fixture.UserKey.FullKey, session.UserKey!.FullKey);
@@ -124,6 +124,59 @@ public class AuthServiceTests
         Assert.Equal("123456", form["two_factor_token"]);
         Assert.Equal("0", form["two_factor_remember"]);
         Assert.Equal(fixture.PasswordHash, form["password"]);
+    }
+
+    [Fact]
+    public async Task LoginAsync_WithPersistedRememberToken_ReusesDeviceAndSendsRememberPayload()
+    {
+        var fixture = CreateLoginFixture();
+        var tokenStore = new MemoryTokenStore();
+        tokenStore.Save(new PersistedSession(
+            "https://vault.example", Email, "device-remembered", "old-refresh",
+            fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null)
+        {
+            TwoFactorToken = "remember-jwt",
+        });
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, PreloginJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, TokenJson(fixture.ProtectedUserKey)));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, SyncJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, DevicesJson()));
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, tokenStore);
+
+        var result = await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
+
+        Assert.IsType<AuthResult.Success>(result);
+        var form = ParseForm(handler.Bodies[1]);
+        Assert.Equal("device-remembered", form["device_identifier"]);
+        Assert.Equal("5", form["two_factor_provider"]);
+        Assert.Equal("remember-jwt", form["two_factor_token"]);
+        Assert.Equal("0", form["two_factor_remember"]);
+    }
+
+    [Fact]
+    public async Task SubmitTwoFactor_ServerReturnsTwoFactorToken_PersistsIt()
+    {
+        var fixture = CreateLoginFixture();
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, PreloginJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"error":"invalid_grant","error_description":"Two factor required.","TwoFactorProviders":["0"]}"""));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
+            TokenJsonWithTwoFactorToken(fixture.ProtectedUserKey, "new-remember-jwt")));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, SyncJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, DevicesJson()));
+        var tokenStore = new MemoryTokenStore();
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, tokenStore);
+
+        await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
+        var result = await service.SubmitTwoFactorAsync("123456", provider: 0, TestContext.Current.CancellationToken, rememberDevice: true);
+
+        Assert.IsType<AuthResult.Success>(result);
+        Assert.True(tokenStore.TryLoad(out var persisted));
+        Assert.Equal("new-remember-jwt", persisted.TwoFactorToken);
     }
 
     [Fact]
@@ -177,6 +230,98 @@ public class AuthServiceTests
         Assert.Empty(handler.Requests);
     }
 
+    [Fact]
+    public async Task LoginAsync_EmailTwoFactorRequired_AutoSendsLoginEmail()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, PreloginJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"error":"invalid_grant","error_description":"Two factor required.","TwoFactorProviders":["1"]}"""));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}")); // send-email-login
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, new MemoryTokenStore());
+
+        var result = await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
+
+        Assert.IsType<AuthResult.TwoFactorRequired>(result);
+        Assert.Equal(3, handler.Requests.Count); // prelogin + connect/token + send-email-login
+        Assert.Equal("/api/two-factor/send-email-login", handler.Requests[2].RequestUri!.AbsolutePath);
+        Assert.Contains("\"email\":\"me@example.com\"", handler.Bodies[2]);
+    }
+
+    [Fact]
+    public async Task LoginAsync_AuthenticatorOnly_DoesNotSendEmail()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, PreloginJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"error":"invalid_grant","error_description":"Two factor required.","TwoFactorProviders":["0"]}"""));
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, new MemoryTokenStore());
+
+        await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, handler.Requests.Count); // 无 send-email-login
+    }
+
+    [Fact]
+    public async Task ResendTwoFactorEmailAsync_AfterChallenge_PostsSendEmailLoginAgain()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, PreloginJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"error":"invalid_grant","error_description":"Two factor required.","TwoFactorProviders":["1"]}"""));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}")); // auto-send on entering stage
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}")); // resend
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, new MemoryTokenStore());
+
+        await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
+        var sent = await service.ResendTwoFactorEmailAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(sent);
+        Assert.Equal(4, handler.Requests.Count);
+        Assert.Equal("/api/two-factor/send-email-login", handler.Requests[3].RequestUri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task ResendTwoFactorEmailAsync_NoPendingChallenge_ReturnsFalse()
+    {
+        var handler = new FakeHttpMessageHandler();
+        var service = CreateAuthService(handler, new VaultSession(), new MemoryTokenStore());
+
+        Assert.False(await service.ResendTwoFactorEmailAsync(TestContext.Current.CancellationToken));
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task SubmitTwoFactorAsync_SendsSelectedProvider_NotFirst()
+    {
+        var fixture = CreateLoginFixture();
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, PreloginJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"error":"invalid_grant","error_description":"Two factor required.","TwoFactorProviders":["0","1"]}"""));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}")); // auto send-email-login (email present)
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, TokenJson(fixture.ProtectedUserKey)));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, SyncJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, DevicesJson()));
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, new MemoryTokenStore());
+
+        await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
+        var result = await service.SubmitTwoFactorAsync("123456", provider: 1, TestContext.Current.CancellationToken, rememberDevice: false);
+
+        Assert.IsType<AuthResult.Success>(result);
+        // 仅提交请求带 two_factor_provider(初始 connect 无、send-email-login 是 JSON) → 唯一命中即提交体。
+        var submitForm = handler.Bodies
+            .Where(b => b.Contains("two_factor_provider"))
+            .Select(ParseForm)
+            .Single();
+        Assert.Equal("1", submitForm["two_factor_provider"]);
+        Assert.Equal("123456", submitForm["two_factor_token"]);
+    }
+
     private AuthService CreateAuthService(FakeHttpMessageHandler handler, VaultSession session, MemoryTokenStore tokenStore)
     {
         var api = new ApiClient(new HttpClient(handler));
@@ -211,6 +356,9 @@ public class AuthServiceTests
 
     private static string TokenJson(string protectedUserKey) =>
         $$"""{"access_token":"access","refresh_token":"refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access","Key":"{{protectedUserKey}}","PrivateKey":null,"Kdf":0,"KdfIterations":{{Iterations}}}""";
+
+    private static string TokenJsonWithTwoFactorToken(string protectedUserKey, string twoFactorToken) =>
+        $$"""{"access_token":"access","refresh_token":"refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access","Key":"{{protectedUserKey}}","PrivateKey":null,"Kdf":0,"KdfIterations":{{Iterations}},"TwoFactorToken":"{{twoFactorToken}}"}""";
 
     private static string SyncJson() =>
         """{"object":"sync","profile":{"id":"u1","email":"me@example.com","name":"Me"},"folders":[],"ciphers":[]}""";

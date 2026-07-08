@@ -13,6 +13,10 @@ namespace Vault;
 public sealed class AuthService : IAuthService
 {
     private const string DeviceName = "WinVaultWarden";
+    // Bitwarden TwoFactorProviderType.Email。启用邮箱 2FA 的账户在此值出现于 providers 时需登录期发码。
+    private const int EmailTwoFactorProvider = 1;
+    // Bitwarden TwoFactorProviderType.Remember。二次登录带此 provider + 记住令牌可免交互 2FA。
+    private const int RememberTwoFactorProvider = 5;
 
     private readonly IReadonlyApiClient _api;
     private readonly IApiEndpointConfig _apiConfig;
@@ -55,15 +59,27 @@ public sealed class AuthService : IAuthService
 
             var prelogin = await _api.PreloginAsync(email, ct);
 
-            var context = BuildLoginContext(normalizedServerUrl, email, masterPassword, prelogin, NewDeviceIdentifier());
+            // 同一账户二次登录:复用上次的 device identifier(服务端把"记住此设备"令牌按 device 存储,
+            // 换新 id 会令令牌失效),并带上已存的 remember 令牌免交互 2FA。
+            var deviceIdentifier = NewDeviceIdentifier();
+            TwoFactorPayload? rememberPayload = null;
+            if (_tokenStore.TryLoad(out var existing)
+                && string.Equals(existing.Email, email, StringComparison.OrdinalIgnoreCase))
+            {
+                deviceIdentifier = existing.DeviceIdentifier;
+                if (!string.IsNullOrEmpty(existing.TwoFactorToken))
+                    rememberPayload = new TwoFactorPayload(RememberTwoFactorProvider, existing.TwoFactorToken, false);
+            }
+
+            var context = BuildLoginContext(normalizedServerUrl, email, masterPassword, prelogin, deviceIdentifier);
             var result = await _api.ConnectTokenAsync(ConnectTokenRequest.Password(
                 email,
                 context.PasswordHash,
                 context.DeviceIdentifier,
                 DeviceName,
-                null), ct);
+                rememberPayload), ct);
 
-            return await HandleLoginResultAsync(context, result, ct);
+            return await HandleLoginResultAsync(context, result, ct, autoSendEmail: true);
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
         {
@@ -72,14 +88,13 @@ public sealed class AuthService : IAuthService
         }
     }
 
-    public async Task<AuthResult> SubmitTwoFactorAsync(string code, CancellationToken ct = default, bool rememberDevice = true)
+    public async Task<AuthResult> SubmitTwoFactorAsync(string code, int provider, CancellationToken ct = default, bool rememberDevice = true)
     {
         if (_pendingTwoFactor is not { } context)
             return new AuthResult.Failure("No two-factor challenge is pending.");
 
         try
         {
-            var provider = context.Providers.FirstOrDefault();
             _apiConfig.SetBaseAddress(context.ServerUrl);
             var result = await _api.ConnectTokenAsync(ConnectTokenRequest.Password(
                 context.Email,
@@ -268,7 +283,8 @@ public sealed class AuthService : IAuthService
     private async Task<AuthResult> HandleLoginResultAsync(
         PendingTwoFactorContext context,
         ConnectTokenResult result,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool autoSendEmail = false)
     {
         switch (result)
         {
@@ -280,10 +296,43 @@ public sealed class AuthService : IAuthService
                 // 2FA 重试时 context.StretchedKey 与旧 _pendingTwoFactor 是同一对象,ReferenceEquals 守卫避免误清。
                 if (_pendingTwoFactor is { } stale && !ReferenceEquals(stale.StretchedKey, context.StretchedKey))
                     stale.StretchedKey.Dispose();
-                _pendingTwoFactor = context with { Providers = twoFactor.Providers.ToArray() };
+                var pending = context with { Providers = twoFactor.Providers.ToArray() };
+                _pendingTwoFactor = pending;
+                // 仅在首次进入验证码阶段(LoginAsync 路径)自动发码;2FA 提交失败再次挑战时不重复发信(避免每次错码都发一封)。
+                if (autoSendEmail && twoFactor.Providers.Contains(EmailTwoFactorProvider))
+                    await TrySendTwoFactorEmailAsync(pending, ct);
                 return new AuthResult.TwoFactorRequired(twoFactor.Providers);
             default:
                 return ToFailure(result);
+        }
+    }
+
+    // 登录期发码:best-effort。失败(服务端未启用邮箱2FA / 网络抖动)不阻断进入验证码阶段,用户可点"重发"重试。
+    private async Task TrySendTwoFactorEmailAsync(PendingTwoFactorContext context, CancellationToken ct)
+    {
+        try
+        {
+            await _api.SendTwoFactorEmailLoginAsync(context.Email, context.PasswordHash, context.DeviceIdentifier, ct);
+        }
+        catch (Exception ex) when (IsExpectedAuthException(ex))
+        {
+        }
+    }
+
+    public async Task<bool> ResendTwoFactorEmailAsync(CancellationToken ct = default)
+    {
+        if (_pendingTwoFactor is not { } context)
+            return false;
+
+        try
+        {
+            _apiConfig.SetBaseAddress(context.ServerUrl);
+            await _api.SendTwoFactorEmailLoginAsync(context.Email, context.PasswordHash, context.DeviceIdentifier, ct);
+            return true;
+        }
+        catch (Exception ex) when (IsExpectedAuthException(ex))
+        {
+            return false;
         }
     }
 
@@ -298,6 +347,14 @@ public sealed class AuthService : IAuthService
                 return new AuthResult.Failure("Token response did not include a protected user key.");
 
             var userKey = _crypto.DecryptUserKey(context.StretchedKey, EncString.Parse(token.Key));
+            // 保存"记住此设备"令牌:本次响应有则用之;remember 登录时服务端不回新令牌(返回 null),此时保留旧值不清空。
+            var rememberToken = token.TwoFactorToken;
+            if (rememberToken is null
+                && _tokenStore.TryLoad(out var prior)
+                && string.Equals(prior.Email, context.Email, StringComparison.OrdinalIgnoreCase))
+            {
+                rememberToken = prior.TwoFactorToken;
+            }
             _session.SetTokens(token.AccessToken, token.RefreshToken);
             _session.SetUnlockedKey(userKey);
             _tokenStore.Save(new PersistedSession(
@@ -309,7 +366,10 @@ public sealed class AuthService : IAuthService
                 context.KdfType,
                 context.KdfIterations,
                 context.KdfMemory,
-                context.KdfParallelism));
+                context.KdfParallelism)
+            {
+                TwoFactorToken = rememberToken,
+            });
             try
             {
                 await _bootstrapper.BootstrapAsync(context.ServerUrl, ct);

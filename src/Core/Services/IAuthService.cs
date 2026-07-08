@@ -3,7 +3,8 @@ namespace Core.Services;
 public interface IAuthService
 {
     Task<AuthResult> LoginAsync(string serverUrl, string email, string masterPassword, CancellationToken ct = default);
-    Task<AuthResult> SubmitTwoFactorAsync(string code, CancellationToken ct = default, bool rememberDevice = true);
+    Task<AuthResult> SubmitTwoFactorAsync(string code, int provider, CancellationToken ct = default, bool rememberDevice = true);
+    Task<bool> ResendTwoFactorEmailAsync(CancellationToken ct = default);
     Task<AuthResult> UnlockAsync(string masterPassword, CancellationToken ct = default);
     Task<AuthResult> UnlockWithPinAsync(string pin, CancellationToken ct = default);
     Task LockAsync(CancellationToken ct = default);

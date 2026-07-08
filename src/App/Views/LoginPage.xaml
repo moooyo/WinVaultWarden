@@ -158,6 +158,15 @@
                                 Margin="0,18,0,0"
                                 Spacing="14"
                                 Visibility="{x:Bind ViewModel.IsTwoFactorStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <ComboBox x:Name="TwoFactorProviderBox"
+                                  Header="验证方式"
+                                  HorizontalAlignment="Stretch"
+                                  MinHeight="38"
+                                  ItemsSource="{x:Bind ViewModel.TwoFactorProviderOptions, Mode=OneWay}"
+                                  DisplayMemberPath="DisplayName"
+                                  SelectedIndex="{x:Bind ViewModel.SelectedTwoFactorProviderIndex, Mode=TwoWay}"
+                                  Visibility="{x:Bind ViewModel.ShowTwoFactorProviderPicker, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
                         <TextBox x:Name="TwoFactorCodeTextBox"
                                  Header="验证码"
                                  PlaceholderText="000000"
@@ -167,6 +176,12 @@
 
                         <CheckBox Content="记住此设备"
                                   IsChecked="{x:Bind ViewModel.RememberDevice, Mode=TwoWay}" />
+
+                        <HyperlinkButton x:Name="ResendEmailCodeButton"
+                                         Content="重发验证码"
+                                         HorizontalAlignment="Center"
+                                         Command="{x:Bind ViewModel.ResendEmailCodeCommand, Mode=OneWay}"
+                                         Visibility="{x:Bind ViewModel.ShowResendEmailCode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                     </StackPanel>
 
                     <StackPanel x:Name="LoginUnlockStage"

@@ -158,6 +158,27 @@ public class TwoFactorWireTests
         Assert.Contains("\"enabled\":false", json);
     }
 
+    // ── SendEmailLoginRequest (未认证登录期发码) ──────────────────────────────
+
+    [Fact]
+    public void SendEmailLoginRequest_serialises_email_masterPasswordHash_deviceIdentifier()
+    {
+        var req = new SendEmailLoginRequest("user@example.com", "hash-abc", "device-1");
+        var json = JsonSerializer.Serialize(req, Web);
+        Assert.Contains("\"email\":\"user@example.com\"", json);
+        Assert.Contains("\"masterPasswordHash\":\"hash-abc\"", json);
+        Assert.Contains("\"deviceIdentifier\":\"device-1\"", json);
+    }
+
+    [Fact]
+    public void SendEmailLoginRequest_context_matches_reflection()
+    {
+        var req = new SendEmailLoginRequest("user@example.com", "hash-abc", "device-1");
+        Assert.Equal(
+            JsonSerializer.Serialize(req, Web),
+            JsonSerializer.Serialize(req, ApiJsonContext.Default.SendEmailLoginRequest));
+    }
+
     // ── AOT / Source-gen 等价断言 ────────────────────────────────────────────
 
     [Fact]
