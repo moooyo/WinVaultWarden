@@ -128,6 +128,16 @@ public class DevicesPageXamlTests
     }
 
     [Fact]
+    public void PendingSection_ShowsFingerprintPhrase()
+    {
+        var doc = Load();
+        var textBlock = doc.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "TextBlock"
+                && e.Attribute("Text")?.Value == "{x:Bind FingerprintPhrase}");
+        Assert.NotNull(textBlock);
+    }
+
+    [Fact]
     public void PendingSection_EmptyStateTextBlock_BoundToHasNoPendingRequests()
     {
         var doc = Load();

@@ -110,6 +110,14 @@
                                                    Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
                                         <TextBlock Text="{x:Bind CreatedLabel}"
                                                    Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                                        <TextBlock Text="指纹短语（请与请求设备核对一致）"
+                                                   Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                                                   Margin="0,4,0,0" />
+                                        <TextBlock Text="{x:Bind FingerprintPhrase}"
+                                                   FontFamily="Consolas"
+                                                   IsTextSelectionEnabled="True"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                         <Button AutomationProperties.AutomationId="DevicesApproveRequestButton"
