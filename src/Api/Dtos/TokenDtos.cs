@@ -14,7 +14,8 @@ public sealed record TokenResponse(
     [property: JsonPropertyName("Kdf")] KdfType Kdf,
     [property: JsonPropertyName("KdfIterations")] int KdfIterations,
     [property: JsonPropertyName("KdfMemory")] int? KdfMemory = null,
-    [property: JsonPropertyName("KdfParallelism")] int? KdfParallelism = null);
+    [property: JsonPropertyName("KdfParallelism")] int? KdfParallelism = null,
+    [property: JsonPropertyName("TwoFactorToken")] string? TwoFactorToken = null);
 
 public sealed record ConnectTokenRequest(
     string GrantType,

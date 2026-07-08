@@ -48,4 +48,23 @@ public class TokenResponseWireTests
         Assert.Equal("Two factor required.", error.ErrorDescription);
         Assert.Equal(new[] { 0 }, error.TwoFactorProviders);
     }
+
+    [Fact]
+    public void Deserializes_TwoFactorToken_pascalcase()
+    {
+        const string json = """
+        {"access_token":"at","refresh_token":"rt","expires_in":3600,"token_type":"Bearer",
+         "scope":"api offline_access","Key":"2.abc","Kdf":0,"KdfIterations":600000,"TwoFactorToken":"remember-jwt"}
+        """;
+        var token = JsonSerializer.Deserialize<TokenResponse>(json, Web)!;
+        Assert.Equal("remember-jwt", token.TwoFactorToken);
+    }
+
+    [Fact]
+    public void TwoFactorToken_absent_defaults_null()
+    {
+        const string json = """{"access_token":"at","refresh_token":"rt","expires_in":3600,"Kdf":0,"KdfIterations":600000}""";
+        var token = JsonSerializer.Deserialize<TokenResponse>(json, Web)!;
+        Assert.Null(token.TwoFactorToken);
+    }
 }
