@@ -169,7 +169,7 @@ public class DevicesViewModelTests
         await vm.RefreshRequestsAsync();
         var item = vm.PendingRequests.Single();
 
-        await vm.ApproveAsync(item);
+        await vm.ApproveAsync(item, _ => Task.FromResult(true));
 
         Assert.Empty(vm.PendingRequests);
         Assert.Contains("r1", fake.ApprovedIds);
@@ -186,7 +186,7 @@ public class DevicesViewModelTests
         vm.Error = "旧错误";
         var item = vm.PendingRequests.Single();
 
-        await vm.ApproveAsync(item);
+        await vm.ApproveAsync(item, _ => Task.FromResult(true));
 
         Assert.Null(vm.Error);
     }
@@ -200,7 +200,7 @@ public class DevicesViewModelTests
         var item = new AuthRequestItem("r1", "Android", "1.1.1.1", "2025/1/1 10:00", "pk");
         vm.PendingRequests.Add(item);
 
-        await vm.ApproveAsync(item);
+        await vm.ApproveAsync(item, _ => Task.FromResult(true));
 
         Assert.NotNull(vm.Error);
         Assert.Single(vm.PendingRequests); // item 未被移除
@@ -213,10 +213,58 @@ public class DevicesViewModelTests
         var item = new AuthRequestItem("r1", "Android", "1.1.1.1", "2025/1/1 10:00", "pk");
         vm.PendingRequests.Add(item);
 
-        await vm.ApproveAsync(item);
+        await vm.ApproveAsync(item, _ => Task.FromResult(true));
 
         Assert.NotNull(vm.Error);
         Assert.False(string.IsNullOrEmpty(vm.Error));
+    }
+
+    // 用户在指纹确认弹窗点“取消” → 绝不加密下发，条目保留。
+    [Fact]
+    public async Task ApproveAsync_WhenConfirmationDeclined_DoesNotApprove_AndItemStays()
+    {
+        var fake = new FakeAuthRequestService();
+        fake.AddRequest(new PendingAuthRequest("r1", "Android", "1.2.3.4", "2025-01-01T10:00:00Z", "pk"));
+        var vm = new DevicesViewModel(new MockDeviceUiService(), new AuthRequestUiService(fake));
+        await vm.RefreshRequestsAsync();
+        var item = vm.PendingRequests.Single();
+
+        await vm.ApproveAsync(item, _ => Task.FromResult(false)); // 取消
+
+        Assert.Empty(fake.ApprovedIds);            // 未调用 approve/加密
+        Assert.Single(vm.PendingRequests);         // 条目未移除
+    }
+
+    // 用户确认指纹一致 → 正常加密下发并移除条目。
+    [Fact]
+    public async Task ApproveAsync_WhenConfirmed_Approves_AndRemovesItem()
+    {
+        var fake = new FakeAuthRequestService();
+        fake.AddRequest(new PendingAuthRequest("r1", "Android", "1.2.3.4", "2025-01-01T10:00:00Z", "pubkey-abc"));
+        var vm = new DevicesViewModel(new MockDeviceUiService(), new AuthRequestUiService(fake));
+        await vm.RefreshRequestsAsync();
+        var item = vm.PendingRequests.Single();
+
+        await vm.ApproveAsync(item, _ => Task.FromResult(true));
+
+        Assert.Contains("r1", fake.ApprovedIds);
+        Assert.Empty(vm.PendingRequests);
+    }
+
+    // 确认回调抛出异常（例如弹窗被强制关闭/取消令牌）→ 同样必须走拒绝路径，绝不下发。
+    [Fact]
+    public async Task ApproveAsync_WhenConfirmationThrowsOperationCanceled_DoesNotApprove_AndItemStays()
+    {
+        var fake = new FakeAuthRequestService();
+        fake.AddRequest(new PendingAuthRequest("r1", "Android", "1.2.3.4", "2025-01-01T10:00:00Z", "pk"));
+        var vm = new DevicesViewModel(new MockDeviceUiService(), new AuthRequestUiService(fake));
+        await vm.RefreshRequestsAsync();
+        var item = vm.PendingRequests.Single();
+
+        await vm.ApproveAsync(item, _ => throw new OperationCanceledException());
+
+        Assert.Empty(fake.ApprovedIds);
+        Assert.Single(vm.PendingRequests);
     }
 
     // ── DenyAsync ────────────────────────────────────────────────────────────

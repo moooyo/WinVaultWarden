@@ -70,8 +70,15 @@ public partial class DevicesViewModel : ObservableObject
         }
     }
 
-    /// <summary>批准指定的设备登录请求，成功后从列表移除。</summary>
-    public async Task ApproveAsync(AuthRequestItem item, CancellationToken ct = default)
+    /// <summary>
+    /// 批准指定的设备登录请求。审批前必须让用户确认指纹短语与请求设备一致
+    /// (<paramref name="confirmAsync"/> 返回 true)；取消/拒绝则绝不加密下发 UserKey。
+    /// 成功后从列表移除。
+    /// </summary>
+    public async Task ApproveAsync(
+        AuthRequestItem item,
+        Func<AuthRequestItem, Task<bool>> confirmAsync,
+        CancellationToken ct = default)
     {
         if (_authRequests is null)
         {
@@ -79,6 +86,19 @@ public partial class DevicesViewModel : ObservableObject
             return;
         }
         if (IsBusy)
+            return;
+
+        // D1: 指纹短语确认关卡。未确认（取消/关闭）绝不进入加密下发。
+        bool confirmed;
+        try
+        {
+            confirmed = await confirmAsync(item);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        if (!confirmed)
             return;
 
         IsBusy = true;
