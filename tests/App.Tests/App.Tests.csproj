@@ -45,6 +45,8 @@
     <Compile Include="..\..\src\App\ViewModels\LoginViewModel.cs" Link="ViewModels\LoginViewModel.cs" />
     <Compile Include="..\..\src\App\Services\VaultNavItemBuilder.cs" Link="Services\VaultNavItemBuilder.cs" />
     <Compile Include="..\..\src\App\Services\IClipboardService.cs" Link="Services\IClipboardService.cs" />
+    <Compile Include="..\..\src\App\Services\IMasterPasswordReprompt.cs" Link="Services\IMasterPasswordReprompt.cs" />
+    <Compile Include="..\..\src\App\Services\MasterPasswordReprompt.cs" Link="Services\MasterPasswordReprompt.cs" />
     <Compile Include="..\..\src\App\ViewModels\VaultViewModel.cs" Link="ViewModels\VaultViewModel.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\SendListItem.cs" Link="Models\SendListItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\SendEditorDraft.cs" Link="Models\SendEditorDraft.cs" />
