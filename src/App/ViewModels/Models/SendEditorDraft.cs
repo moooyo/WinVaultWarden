@@ -76,13 +76,6 @@ public sealed partial class SendEditorDraft : ObservableObject
 
     public static SendEditorDraft CreateDefault(SendType type) => new() { Type = type };
 
-    public static SendEditorDraft FromExisting(SendListItem item) => new()
-    {
-        Type = item.Type,
-        Name = item.Name,
-        FileName = item.Type == SendType.File ? item.Name : string.Empty,
-    };
-
     // 从完整解密 Send 水合可编辑草稿(F1)。复制全部元数据字段,避免保存时把未加载字段覆盖为默认。
     public static SendEditorDraft FromExisting(Core.Models.Send send) => new()
     {

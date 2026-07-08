@@ -12,7 +12,6 @@ public sealed partial class SendEditorDialog : ContentDialog
     public SendEditorDraft Draft { get; }
     public bool Saved { get; private set; }
     public bool IsEditMode { get; }
-    private readonly SendListItem? _existing;
 
     public string DialogTitle => IsEditMode
         ? "编辑 Send"
@@ -36,11 +35,11 @@ public sealed partial class SendEditorDialog : ContentDialog
         Loaded += (_, _) => _canUpdateBindings = true;
     }
 
-    public SendEditorDialog(SendListItem existing)
+    // 编辑模式:接收已由 SendUiService/FromExisting 水合好完整字段的 draft(F1)。
+    public SendEditorDialog(SendEditorDraft draft)
     {
-        _existing = existing;
         IsEditMode = true;
-        Draft = SendEditorDraft.FromExisting(existing);
+        Draft = draft;
         InitializeComponent();
         PrimaryButtonText = "保存";
         Loaded += (_, _) =>
@@ -49,8 +48,6 @@ public sealed partial class SendEditorDialog : ContentDialog
             Bindings?.Update();
         };
     }
-
-    public SendListItem? Existing => _existing;
 
     private void OnTextChecked(object sender, RoutedEventArgs e) => SetType(SendType.Text);
 
