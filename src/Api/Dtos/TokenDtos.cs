@@ -66,11 +66,12 @@ public abstract record ConnectTokenResult
 {
     public sealed record Success(TokenResponse Token) : ConnectTokenResult;
     public sealed record TwoFactorRequired(IReadOnlyList<int> Providers) : ConnectTokenResult;
-    public sealed record Error(string Message) : ConnectTokenResult;
+    public sealed record Error(string Message, int? HttpStatus = null, string? ErrorCode = null) : ConnectTokenResult;
 }
 
 public sealed record ConnectTokenErrorResponse(
     [property: JsonPropertyName("error")] string? Error,
     [property: JsonPropertyName("error_description")] string? ErrorDescription,
     [property: JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
-    [property: JsonPropertyName("TwoFactorProviders")] int[]? TwoFactorProviders);
+    [property: JsonPropertyName("TwoFactorProviders")] int[]? TwoFactorProviders,
+    [property: JsonPropertyName("message")] string? Message = null);

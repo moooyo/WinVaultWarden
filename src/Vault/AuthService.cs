@@ -144,7 +144,7 @@ public sealed class AuthService : IAuthService
                 DeviceName), ct);
 
             if (refresh is not ConnectTokenResult.Success success)
-                return FinishUnlockOffline(fromCache);
+                return FinishUnlockOffline(fromCache, persisted.RefreshToken);
 
             _session.SetTokens(success.Token.AccessToken, success.Token.RefreshToken);
             _tokenStore.Save(persisted with { RefreshToken = success.Token.RefreshToken });
@@ -153,16 +153,18 @@ public sealed class AuthService : IAuthService
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
         {
-            return FinishUnlockOffline(fromCache);
+            return FinishUnlockOffline(fromCache, persisted.RefreshToken);
         }
     }
 
     // 网络刷新/整库同步失败后的收尾:有缓存 → 保持已解锁状态,快照来自缓存(DataStale 已由
     // VaultCacheService.TryLoadInto 置 true),离线解锁成功;无缓存 → 回滚(Lock 清零 UserKey)并失败。
-    private AuthResult FinishUnlockOffline(bool fromCache)
+    private AuthResult FinishUnlockOffline(bool fromCache, string refreshToken)
     {
         if (fromCache)
         {
+            // B2:把持久化 refresh token 种回内存,使联网后 401 能触发真实刷新、透明转在线。
+            _session.SetRefreshTokenOnly(refreshToken);
             _session.SetState(Core.Session.VaultState.Unlocked);
             return new AuthResult.Success();
         }
@@ -216,7 +218,7 @@ public sealed class AuthService : IAuthService
                 persisted.RefreshToken, persisted.DeviceIdentifier, DeviceName), ct);
 
             if (refresh is not ConnectTokenResult.Success success)
-                return FinishUnlockOffline(fromCache);
+                return FinishUnlockOffline(fromCache, persisted.RefreshToken);
 
             _session.SetTokens(success.Token.AccessToken, success.Token.RefreshToken);
             _tokenStore.Save(persisted with { RefreshToken = success.Token.RefreshToken, PinFailedAttempts = 0 });
@@ -225,7 +227,7 @@ public sealed class AuthService : IAuthService
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
         {
-            return FinishUnlockOffline(fromCache);
+            return FinishUnlockOffline(fromCache, persisted.RefreshToken);
         }
     }
 

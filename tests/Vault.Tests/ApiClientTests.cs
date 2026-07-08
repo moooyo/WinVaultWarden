@@ -334,4 +334,62 @@ public class ApiClientTests
         Assert.Equal("/api/two-factor/email", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Contains("\"token\":\"TOKEN\"", handler.Bodies[0]);
     }
+
+    // A2:vaultwarden 默认错误体把 error/error_description 置空串,真实文案只在 message
+    // (error.rs:227/239-240)。旧实现只读 error_description → 显示空白。回退到 message。
+    [Fact]
+    public async Task ConnectToken_PasswordError_FallsBackToMessageField()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"message":"Username or password is incorrect. Try again","validationErrors":{"":["Username or password is incorrect. Try again"]},"errorModel":{"message":"Username or password is incorrect. Try again","object":"error"},"error":"","error_description":"","object":"error"}"""));
+        var client = new ApiClient(new HttpClient(handler));
+        client.SetBaseAddress("https://vault.example");
+
+        var result = await client.ConnectTokenAsync(
+            ConnectTokenRequest.Password("me@example.com", "hash", "d", "n", null),
+            TestContext.Current.CancellationToken);
+
+        var error = Assert.IsType<ConnectTokenResult.Error>(result);
+        Assert.Equal("Username or password is incorrect. Try again", error.Message);
+        Assert.Equal((int)HttpStatusCode.BadRequest, error.HttpStatus);
+        Assert.Null(error.ErrorCode); // error 字段为空串 → 无可辨识错误码
+    }
+
+    // A2/B1 支撑:刷新失效体 {"error":"invalid_grant"} 需把 ErrorCode 暴露给 TokenRefreshService。
+    [Fact]
+    public async Task ConnectToken_RefreshInvalidGrant_ExposesErrorCode()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"error":"invalid_grant"}"""));
+        var client = new ApiClient(new HttpClient(handler));
+        client.SetBaseAddress("https://vault.example");
+
+        var result = await client.ConnectTokenAsync(
+            ConnectTokenRequest.Refresh("stale-refresh", "d", "n"),
+            TestContext.Current.CancellationToken);
+
+        var error = Assert.IsType<ConnectTokenResult.Error>(result);
+        Assert.Equal("invalid_grant", error.ErrorCode);
+        Assert.Equal((int)HttpStatusCode.BadRequest, error.HttpStatus);
+    }
+
+    // A2:限流(429)可通过 HttpStatus 辨识,与密码错(400)区分。
+    [Fact]
+    public async Task ConnectToken_RateLimited_ExposesStatus429()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.TooManyRequests, "{}"));
+        var client = new ApiClient(new HttpClient(handler));
+        client.SetBaseAddress("https://vault.example");
+
+        var result = await client.ConnectTokenAsync(
+            ConnectTokenRequest.Password("me@example.com", "hash", "d", "n", null),
+            TestContext.Current.CancellationToken);
+
+        var error = Assert.IsType<ConnectTokenResult.Error>(result);
+        Assert.Equal(429, error.HttpStatus);
+        Assert.Null(error.ErrorCode);
+    }
 }
