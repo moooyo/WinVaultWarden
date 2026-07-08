@@ -72,4 +72,68 @@ public class SendEditorDraftTests
         Assert.Equal("secret", draft.Password);
         Assert.True(draft.Disabled);
     }
+
+    [Fact]
+    public void FromExisting_TextSend_HydratesAllFields()
+    {
+        var expiration = DateTimeOffset.UtcNow.AddDays(3);
+        var deletion = DateTimeOffset.UtcNow.AddDays(10);
+        var send = new Core.Models.Send
+        {
+            Id = "s1",
+            AccessId = "acc1",
+            Type = Core.Enums.SendType.Text,
+            Name = "一次性口令",
+            Notes = "内部备注",
+            Text = new Core.Models.SendText("秘密正文", true),
+            MaxAccessCount = 5,
+            AccessCount = 2,
+            HideEmail = true,
+            Disabled = true,
+            HasPassword = true,
+            ExpirationDate = expiration,
+            DeletionDate = deletion,
+            Key = "2.origwrapped==",
+        };
+
+        var draft = SendEditorDraft.FromExisting(send);
+
+        Assert.Equal(SendType.Text, draft.Type);
+        Assert.Equal("一次性口令", draft.Name);
+        Assert.Equal("秘密正文", draft.Text);
+        Assert.True(draft.HideTextByDefault);
+        Assert.Equal("内部备注", draft.Notes);
+        Assert.Equal(5, draft.MaxAccessCount);
+        Assert.True(draft.HideEmail);
+        Assert.True(draft.Disabled);
+        Assert.Equal(expiration, draft.ExpirationDate);
+        Assert.Equal(deletion, draft.DeletionDate);
+        // 绝对删除日期 → 走"自定义",ToDeletionDate 使用 DeletionDate 而非相对天数默认。
+        Assert.Equal("自定义", draft.DeletionDateLabel);
+        Assert.Equal("2.origwrapped==", draft.WrappedKey);
+        // 密码只有 PBKDF2 证明、无法还原明文,故留空;更新时服务端保留原密码。
+        Assert.Equal(string.Empty, draft.Password);
+    }
+
+    [Fact]
+    public void FromExisting_FileSend_HydratesFileNameTypeAndKey()
+    {
+        var send = new Core.Models.Send
+        {
+            Id = "s2",
+            AccessId = "acc2",
+            Type = Core.Enums.SendType.File,
+            Name = "季度报告",
+            File = new Core.Models.SendFile("报告.pdf", 2048, "2 KB", "f1"),
+            DeletionDate = DateTimeOffset.UtcNow.AddDays(7),
+            Key = "2.filewrapped==",
+        };
+
+        var draft = SendEditorDraft.FromExisting(send);
+
+        Assert.Equal(SendType.File, draft.Type);
+        Assert.Equal("季度报告", draft.Name);
+        Assert.Equal("报告.pdf", draft.FileName);
+        Assert.Equal("2.filewrapped==", draft.WrappedKey);
+    }
 }
