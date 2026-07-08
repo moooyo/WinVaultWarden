@@ -23,6 +23,10 @@ public sealed class FakeAttachmentApiClient : IAttachmentApiClient
         new(AttachmentId: "att-new", Url: "/ciphers/c-1/attachment/att-new", FileUploadType: 0);
     public byte[] DownloadBytes { get; set; } = Array.Empty<byte>();
 
+    // G1:注入第二步上传/补偿删除的失败,验证孤儿清理与原始异常保真。
+    public Exception? UploadThrows { get; set; }
+    public Exception? DeleteThrows { get; set; }
+
     public Task<CipherDto> GetCipherAsync(string cipherId, CancellationToken ct = default)
     {
         Calls.Add("get-cipher");
@@ -45,15 +49,17 @@ public sealed class FakeAttachmentApiClient : IAttachmentApiClient
         LastUploadUrl = uploadUrl;
         LastUploadFileName = encryptedFileName;
         LastUploadBuffer = encryptedBuffer;
-        return Task.CompletedTask;
+        return UploadThrows is not null ? Task.FromException(UploadThrows) : Task.CompletedTask;
     }
 
     public Task DeleteAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default)
     {
+        // 若调用方误用已取消的 token 做补偿删除,这里会先抛 → 测试可据此断言补偿走 CancellationToken.None。
+        ct.ThrowIfCancellationRequested();
         Calls.Add("delete");
         LastDeleteCipherId = cipherId;
         LastDeleteAttachmentId = attachmentId;
-        return Task.CompletedTask;
+        return DeleteThrows is not null ? Task.FromException(DeleteThrows) : Task.CompletedTask;
     }
 
     public Task<byte[]> DownloadAttachmentBytesAsync(string downloadUrl, CancellationToken ct = default)

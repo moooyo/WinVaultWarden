@@ -265,4 +265,79 @@ public class AttachmentServiceTests
         Assert.Equal(100L * 1024 * 1024, Core.Services.AttachmentLimits.MaxPlaintextBytes);
         Assert.Equal(Core.Services.AttachmentLimits.MaxPlaintextBytes, AttachmentService.MaxPlaintextBytes);
     }
+
+    [Fact]
+    public async Task Upload_WhenDataUploadFails_DeletesOrphanAndRethrowsOriginal()
+    {
+        var session = NewUnlockedSession();
+        var boom = new InvalidOperationException("network died mid-upload");
+        var api = new FakeAttachmentApiClient
+        {
+            GetCipherResult = BuildCipherDto("c-1", cipherKeyEnc: null),
+            CreateResult = new AttachmentUploadV2Response(
+                AttachmentId: "att-orphan", Url: "/ciphers/c-1/attachment/att-orphan", FileUploadType: 0),
+            UploadThrows = boom,
+        };
+        var sync = new FakeSync(session, null);
+        var service = new AttachmentService(api, _attCrypto, _decryptor, session, sync);
+
+        // 第二步上传抛异常 → 原始异常按原样重抛(不被包成 VaultRefreshException)。
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UploadAsync("c-1", "report.pdf", Encoding.UTF8.GetBytes("data"), TestContext.Current.CancellationToken));
+        Assert.Same(boom, ex);
+
+        // 触发一次补偿删除,针对第一步 create 返回的 attachmentId。
+        Assert.Equal(new[] { "get-cipher", "create-v2", "upload", "delete" }, api.Calls);
+        Assert.Equal("c-1", api.LastDeleteCipherId);
+        Assert.Equal("att-orphan", api.LastDeleteAttachmentId);
+        // 上传失败后不应再重同步。
+        Assert.Equal(0, sync.Calls);
+    }
+
+    [Fact]
+    public async Task Upload_WhenCancelledDuringDataUpload_StillDeletesOrphanWithNoneToken()
+    {
+        var session = NewUnlockedSession();
+        var api = new FakeAttachmentApiClient
+        {
+            GetCipherResult = BuildCipherDto("c-2", cipherKeyEnc: null),
+            CreateResult = new AttachmentUploadV2Response(
+                AttachmentId: "att-2", Url: "/ciphers/c-2/attachment/att-2", FileUploadType: 0),
+            UploadThrows = new OperationCanceledException(),
+        };
+        var service = new AttachmentService(api, _attCrypto, _decryptor, session, new FakeSync(session, null));
+
+        // 用已取消的 token 调用:若补偿删除误用同一 token,fake 的 ThrowIfCancellationRequested 会先抛、
+        // "delete" 不会被记录。补偿删除必须用 CancellationToken.None,清理才会真正执行。
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            service.UploadAsync("c-2", "f.bin", new byte[] { 1, 2, 3 }, cts.Token));
+
+        Assert.Contains("delete", api.Calls);
+        Assert.Equal("att-2", api.LastDeleteAttachmentId);
+    }
+
+    [Fact]
+    public async Task Upload_WhenCompensatingDeleteAlsoFails_RethrowsOriginalNotDeleteError()
+    {
+        var session = NewUnlockedSession();
+        var original = new TimeoutException("upload timed out");
+        var api = new FakeAttachmentApiClient
+        {
+            GetCipherResult = BuildCipherDto("c-3", cipherKeyEnc: null),
+            CreateResult = new AttachmentUploadV2Response(
+                AttachmentId: "att-3", Url: "/ciphers/c-3/attachment/att-3", FileUploadType: 0),
+            UploadThrows = original,
+            DeleteThrows = new InvalidOperationException("compensating delete also failed"),
+        };
+        var service = new AttachmentService(api, _attCrypto, _decryptor, session, new FakeSync(session, null));
+
+        // 补偿删除自身失败不得掩盖原始上传异常:上抛的仍是原始 TimeoutException,而非 delete 的异常。
+        var ex = await Assert.ThrowsAsync<TimeoutException>(() =>
+            service.UploadAsync("c-3", "f.bin", new byte[] { 1 }, TestContext.Current.CancellationToken));
+        Assert.Same(original, ex);
+        Assert.Contains("delete", api.Calls); // 补偿删除确有尝试
+    }
 }

@@ -52,7 +52,29 @@ public sealed class AttachmentService : IAttachmentService
 
         var resp = await _api.CreateAttachmentV2Async(
             cipherId, new AttachmentUploadRequest(wrapped, encName, buffer.LongLength), ct);
-        await _api.UploadAttachmentDataAsync(resp.Url, encName, buffer, ct);
+
+        // 两步上传:第一步(post_attachment_v2)已在服务端落库一条附件记录,之后才传文件体。
+        // 第二步(文件体)失败或被取消时,若不清理会留下下不动的孤儿附件记录、持续占用配额。
+        // 因此包裹第二步:任何异常(含 OperationCanceledException)都 best-effort 删除刚建的记录,再原样重抛。
+        try
+        {
+            await _api.UploadAttachmentDataAsync(resp.Url, encName, buffer, ct);
+        }
+        catch
+        {
+            // 补偿删除用 CancellationToken.None:即便原始失败源自 ct 取消,清理仍须执行完成。
+            // 删除自身失败绝不能掩盖原始异常——吞掉补偿异常,由下方 throw 原样重抛原始异常。
+            try
+            {
+                await _api.DeleteAttachmentAsync(cipherId, resp.AttachmentId, CancellationToken.None);
+            }
+            catch
+            {
+                // best-effort:补偿删除失败无法进一步处理,忽略以保真原始异常。
+            }
+
+            throw;
+        }
 
         await ResyncAsync(ct);
         return CurrentAttachments(cipherId);
