@@ -266,6 +266,9 @@ public partial class LoginViewModel : ObservableObject
     [RelayCommand]
     private async Task UnlockWithHelloAsync()
     {
+        if (IsBusy)
+            return;
+
         if (_hello is null || _helloUnlock is null)
             return;
 
@@ -273,15 +276,24 @@ public partial class LoginViewModel : ObservableObject
         if (challenge is null)
             return;
 
-        var signature = await _hello.GetProtectorAsync(challenge);
-        if (signature is null)
+        try
         {
-            Status = "Windows Hello 未完成。";
-            return;
-        }
+            IsBusy = true;
 
-        var result = await _auth.UnlockWithHelloAsync(signature);
-        HandleResult(result); // 复用现有解锁结果处理(导航/提示),与 LoginAsync 一致
+            var signature = await _hello.GetProtectorAsync(challenge);
+            if (signature is null)
+            {
+                Status = "Windows Hello 未完成。";
+                return;
+            }
+
+            var result = await _auth.UnlockWithHelloAsync(signature);
+            HandleResult(result); // 复用现有解锁结果处理(导航/提示),与 LoginAsync 一致
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanUseDemoVault))]

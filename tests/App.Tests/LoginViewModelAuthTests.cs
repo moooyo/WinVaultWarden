@@ -316,6 +316,35 @@ public class LoginViewModelAuthTests
         Assert.False(auth.UnlockHelloCalled);
     }
 
+    // H7 review fix: UnlockWithHelloAsync must participate in the IsBusy guard so it can't
+    // run concurrently with LoginAsync's master-password/PIN unlock (shared session/token state).
+    [Fact]
+    public async Task UnlockWithHello_GuardsWithIsBusy()
+    {
+        var auth = new FakeAuthService { UnlockHelloResult = new AuthResult.Success() };
+        var hello = new FakeHello { GetResult = Enumerable.Repeat((byte)7, 256).ToArray() };
+        var unlock = new FakeHelloUnlock { Set = true };
+        var vm = new LoginViewModel(auth, null, hello: hello, helloUnlock: unlock);
+        vm.PrepareUnlock("https://vault.example", "me@example.com");
+
+        await vm.UnlockWithHelloCommand.ExecuteAsync(null);
+
+        Assert.True(auth.UnlockHelloCalled);
+        Assert.False(vm.IsBusy); // cleared in `finally` after completion
+
+        // While a Hello (or master-password/PIN) unlock is already in flight, re-entering must
+        // be a no-op: no second call into Hello/auth, and IsBusy stays as the caller left it.
+        var auth2 = new FakeAuthService { UnlockHelloResult = new AuthResult.Success() };
+        var vm2 = new LoginViewModel(auth2, null, hello: hello, helloUnlock: unlock);
+        vm2.PrepareUnlock("https://vault.example", "me@example.com");
+        vm2.IsBusy = true;
+
+        await vm2.UnlockWithHelloCommand.ExecuteAsync(null);
+
+        Assert.False(auth2.UnlockHelloCalled);
+        Assert.True(vm2.IsBusy);
+    }
+
     private sealed class FakeHello : IWindowsHelloAuthenticator
     {
         public bool Available { get; set; } = true;
