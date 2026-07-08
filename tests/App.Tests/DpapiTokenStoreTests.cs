@@ -79,4 +79,28 @@ public class DpapiTokenStoreTests
         Assert.Equal("remember-jwt", loaded.TwoFactorToken);
         Assert.DoesNotContain("remember-jwt", File.ReadAllText(path)); // DPAPI 加密,不留明文
     }
+
+    [Fact]
+    public void SaveLoad_RoundTripsHelloFields_Encrypted()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var path = Path.Combine(Path.GetTempPath(), "WinVaultWarden.Tests", Guid.NewGuid().ToString("N"), "session.bin");
+        var store = new DpapiTokenStore(path);
+        var session = new PersistedSession(
+            "https://vault.example", "me@example.com", "device-id",
+            "refresh", "puk", KdfType.Pbkdf2, 600_000, null, null)
+        {
+            HelloProtectedUserKey = "2.hellowrapped==",
+            HelloChallenge = "Y2hhbGxlbmdl",
+        };
+
+        store.Save(session);
+
+        Assert.True(store.TryLoad(out var loaded));
+        Assert.Equal("2.hellowrapped==", loaded.HelloProtectedUserKey);
+        Assert.Equal("Y2hhbGxlbmdl", loaded.HelloChallenge);
+        Assert.DoesNotContain("2.hellowrapped==", File.ReadAllText(path)); // DPAPI 加密,不留明文
+    }
 }

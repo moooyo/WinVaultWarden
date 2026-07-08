@@ -219,6 +219,14 @@
                                      MinHeight="38"
                                      Password="{x:Bind ViewModel.MasterPassword, Mode=TwoWay}" />
 
+                        <Button x:Name="HelloUnlockButton"
+                                AutomationProperties.AutomationId="HelloUnlockButton"
+                                Content="用 Windows Hello 解锁"
+                                Command="{x:Bind ViewModel.UnlockWithHelloCommand, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.ShowHelloUnlock, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                MinHeight="36"
+                                HorizontalAlignment="Stretch" />
+
                         <Button x:Name="SwitchAccountButton"
                                 Content="切换账户"
                                 Command="{x:Bind ViewModel.SwitchAccountCommand, Mode=OneWay}"
@@ -262,6 +270,14 @@
                                      MinHeight="38"
                                      InputScope="NumericPin"
                                      Password="{x:Bind ViewModel.Pin, Mode=TwoWay}" />
+
+                        <Button x:Name="PinHelloUnlockButton"
+                                AutomationProperties.AutomationId="PinHelloUnlockButton"
+                                Content="用 Windows Hello 解锁"
+                                Command="{x:Bind ViewModel.UnlockWithHelloCommand, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.ShowHelloUnlock, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                MinHeight="36"
+                                HorizontalAlignment="Stretch" />
 
                         <HyperlinkButton x:Name="UseMasterPasswordButton"
                                          AutomationProperties.AutomationId="UseMasterPasswordButton"

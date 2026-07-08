@@ -20,4 +20,8 @@ public sealed record PersistedSession(
     /// <summary>服务端"记住此设备"令牌(identity.rs:563 TwoFactorToken)。null = 未记住/未返回。
     /// 二次登录以 provider=Remember(5) 回传,免交互 2FA。</summary>
     public string? TwoFactorToken { get; init; }
+    /// <summary>Windows Hello 派生密钥包住的 UserKey(EncString 文本)。null = 未启用 Hello。</summary>
+    public string? HelloProtectedUserKey { get; init; }
+    /// <summary>启用 Hello 时生成的随机挑战(base64)。解锁时对同一挑战重新签名。非机密。</summary>
+    public string? HelloChallenge { get; init; }
 }

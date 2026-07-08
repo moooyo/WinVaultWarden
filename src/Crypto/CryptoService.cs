@@ -98,6 +98,16 @@ public class CryptoService
         return new SymmetricCryptoKey(enc, mac);
     }
 
+    // 由外部机密(Windows Hello 对固定挑战的签名)派生 64 字节对称密钥(EncKey32‖MacKey32)。
+    // 与 StretchMasterKey 同构:两次独立 HKDF-Expand(SHA256),info 分别为 "enc"/"mac"。
+    // 签名对同一挑战确定 → 派生密钥稳定,可跨会话解开 Hello 包住的 UserKey。
+    public SymmetricCryptoKey DeriveKeyFromSecret(byte[] secret)
+    {
+        var enc = HKDF.Expand(HashAlgorithmName.SHA256, secret, 32, "enc"u8.ToArray());
+        var mac = HKDF.Expand(HashAlgorithmName.SHA256, secret, 32, "mac"u8.ToArray());
+        return new SymmetricCryptoKey(enc, mac);
+    }
+
     // 用新主密钥拉伸后重新包裹现有 UserKey(type-2),DecryptUserKey 的逆;UserKey 本体不变。
     // stretched key 仅在此方法内存活，用完立即清零，防止在 GC 之前泄漏到堆上。
     public EncString ProtectUserKey(byte[] masterKey, SymmetricCryptoKey userKey)

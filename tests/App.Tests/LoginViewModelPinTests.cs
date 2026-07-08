@@ -117,11 +117,13 @@ public class LoginViewModelPinTests
         public AuthResult SubmitResult { get; init; } = new AuthResult.Failure("not set");
         public AuthResult UnlockResult { get; init; } = new AuthResult.Failure("not set");
         public AuthResult UnlockWithPinResult { get; init; } = new AuthResult.Failure("not set");
+        public AuthResult UnlockHelloResult { get; init; } = new AuthResult.Failure("not set");
         public (string ServerUrl, string Email, string Password)? LoginCall { get; private set; }
         public string? SubmitCode { get; private set; }
         public bool? SubmitRememberDevice { get; private set; }
         public string? UnlockPassword { get; private set; }
         public string? UnlockPin { get; private set; }
+        public bool UnlockHelloCalled { get; private set; }
         public bool LoggedOut { get; private set; }
 
         public Task<AuthResult> LoginAsync(string serverUrl, string email, string masterPassword, CancellationToken ct = default)
@@ -149,6 +151,12 @@ public class LoginViewModelPinTests
         {
             UnlockPin = pin;
             return Task.FromResult(UnlockWithPinResult);
+        }
+
+        public Task<AuthResult> UnlockWithHelloAsync(byte[] signature, CancellationToken ct = default)
+        {
+            UnlockHelloCalled = true;
+            return Task.FromResult(UnlockHelloResult);
         }
 
         public Task LockAsync(CancellationToken ct = default) => Task.CompletedTask;
