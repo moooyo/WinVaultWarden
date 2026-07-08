@@ -163,7 +163,7 @@ public class LoginViewModelPrepareAccountTests
         public Task<AuthResult> LoginAsync(string serverUrl, string email, string masterPassword, CancellationToken ct = default)
             => Task.FromResult<AuthResult>(new AuthResult.Success());
 
-        public Task<AuthResult> SubmitTwoFactorAsync(string code, CancellationToken ct = default, bool rememberDevice = true)
+        public Task<AuthResult> SubmitTwoFactorAsync(string code, int provider, CancellationToken ct = default, bool rememberDevice = true)
             => Task.FromResult<AuthResult>(new AuthResult.Success());
 
         public Task<bool> ResendTwoFactorEmailAsync(CancellationToken ct = default) => Task.FromResult(false);

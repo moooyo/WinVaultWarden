@@ -227,6 +227,7 @@ public class LoginViewModelAuthTests
         public AuthResult UnlockWithPinResult { get; init; } = new AuthResult.Failure("not set");
         public (string ServerUrl, string Email, string Password)? LoginCall { get; private set; }
         public string? SubmitCode { get; private set; }
+        public int? SubmitProvider { get; private set; }
         public bool? SubmitRememberDevice { get; private set; }
         public string? UnlockPassword { get; private set; }
         public string? UnlockPin { get; private set; }
@@ -238,9 +239,10 @@ public class LoginViewModelAuthTests
             return Task.FromResult(LoginResult);
         }
 
-        public Task<AuthResult> SubmitTwoFactorAsync(string code, CancellationToken ct = default, bool rememberDevice = true)
+        public Task<AuthResult> SubmitTwoFactorAsync(string code, int provider, CancellationToken ct = default, bool rememberDevice = true)
         {
             SubmitCode = code;
+            SubmitProvider = provider;
             SubmitRememberDevice = rememberDevice;
             return Task.FromResult(SubmitResult);
         }

@@ -130,7 +130,7 @@ public class LoginViewModelPinTests
             return Task.FromResult(LoginResult);
         }
 
-        public Task<AuthResult> SubmitTwoFactorAsync(string code, CancellationToken ct = default, bool rememberDevice = true)
+        public Task<AuthResult> SubmitTwoFactorAsync(string code, int provider, CancellationToken ct = default, bool rememberDevice = true)
         {
             SubmitCode = code;
             SubmitRememberDevice = rememberDevice;

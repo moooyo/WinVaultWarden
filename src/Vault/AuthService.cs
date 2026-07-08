@@ -88,14 +88,13 @@ public sealed class AuthService : IAuthService
         }
     }
 
-    public async Task<AuthResult> SubmitTwoFactorAsync(string code, CancellationToken ct = default, bool rememberDevice = true)
+    public async Task<AuthResult> SubmitTwoFactorAsync(string code, int provider, CancellationToken ct = default, bool rememberDevice = true)
     {
         if (_pendingTwoFactor is not { } context)
             return new AuthResult.Failure("No two-factor challenge is pending.");
 
         try
         {
-            var provider = context.Providers.FirstOrDefault();
             _apiConfig.SetBaseAddress(context.ServerUrl);
             var result = await _api.ConnectTokenAsync(ConnectTokenRequest.Password(
                 context.Email,

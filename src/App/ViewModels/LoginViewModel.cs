@@ -209,7 +209,7 @@ public partial class LoginViewModel : ObservableObject
                 : IsUnlockStage
                     ? await _auth.UnlockAsync(MasterPassword)
                     : IsTwoFactorStage
-                        ? await _auth.SubmitTwoFactorAsync(TwoFactorCode.Trim(), rememberDevice: RememberDevice)
+                        ? await _auth.SubmitTwoFactorAsync(TwoFactorCode.Trim(), _twoFactorProviders.FirstOrDefault(), rememberDevice: RememberDevice)
                         : await _auth.LoginAsync(ResolveServerUrl(), Email.Trim(), MasterPassword);
 
             HandleResult(result);

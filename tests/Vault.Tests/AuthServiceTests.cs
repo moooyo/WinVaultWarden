@@ -115,7 +115,7 @@ public class AuthServiceTests
         var challenge = Assert.IsType<AuthResult.TwoFactorRequired>(first);
         Assert.Equal([0], challenge.Providers);
 
-        var second = await service.SubmitTwoFactorAsync("123456", TestContext.Current.CancellationToken, rememberDevice: false);
+        var second = await service.SubmitTwoFactorAsync("123456", provider: 0, TestContext.Current.CancellationToken, rememberDevice: false);
 
         Assert.IsType<AuthResult.Success>(second);
         Assert.Equal(fixture.UserKey.FullKey, session.UserKey!.FullKey);
@@ -172,7 +172,7 @@ public class AuthServiceTests
         var service = CreateAuthService(handler, session, tokenStore);
 
         await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
-        var result = await service.SubmitTwoFactorAsync("123456", TestContext.Current.CancellationToken, rememberDevice: true);
+        var result = await service.SubmitTwoFactorAsync("123456", provider: 0, TestContext.Current.CancellationToken, rememberDevice: true);
 
         Assert.IsType<AuthResult.Success>(result);
         Assert.True(tokenStore.TryLoad(out var persisted));
@@ -292,6 +292,34 @@ public class AuthServiceTests
 
         Assert.False(await service.ResendTwoFactorEmailAsync(TestContext.Current.CancellationToken));
         Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task SubmitTwoFactorAsync_SendsSelectedProvider_NotFirst()
+    {
+        var fixture = CreateLoginFixture();
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, PreloginJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"error":"invalid_grant","error_description":"Two factor required.","TwoFactorProviders":["0","1"]}"""));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}")); // auto send-email-login (email present)
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, TokenJson(fixture.ProtectedUserKey)));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, SyncJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, DevicesJson()));
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, new MemoryTokenStore());
+
+        await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
+        var result = await service.SubmitTwoFactorAsync("123456", provider: 1, TestContext.Current.CancellationToken, rememberDevice: false);
+
+        Assert.IsType<AuthResult.Success>(result);
+        // 仅提交请求带 two_factor_provider(初始 connect 无、send-email-login 是 JSON) → 唯一命中即提交体。
+        var submitForm = handler.Bodies
+            .Where(b => b.Contains("two_factor_provider"))
+            .Select(ParseForm)
+            .Single();
+        Assert.Equal("1", submitForm["two_factor_provider"]);
+        Assert.Equal("123456", submitForm["two_factor_token"]);
     }
 
     private AuthService CreateAuthService(FakeHttpMessageHandler handler, VaultSession session, MemoryTokenStore tokenStore)
