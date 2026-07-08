@@ -111,7 +111,15 @@ public static class ServiceConfiguration
             new RegisterViewModel(sp.GetRequiredService<IRegisterUiService>()));
 
         services.AddSingleton<AccountPrefill>(); // 注册→登录 的一次性预填暂存(R10)
-        services.AddTransient<LoginViewModel>();
+        // 显式工厂(而非裸 AddTransient<LoginViewModel>()):确保 Hello 服务被真正注入,
+        // 否则登录页解锁阶段的 Windows Hello 按钮在生产环境永远不会显示(H7)。
+        services.AddTransient<LoginViewModel>(sp => new LoginViewModel(
+            sp.GetRequiredService<IAuthService>(),
+            sp.GetService<IDemoVaultSessionService>(),
+            sp.GetRequiredService<IPinService>(),
+            sp.GetRequiredService<AccountPrefill>(),
+            sp.GetRequiredService<IWindowsHelloAuthenticator>(),
+            sp.GetRequiredService<IHelloUnlockService>()));
         services.AddTransient<VaultViewModel>();
         services.AddTransient<SendViewModel>();
         services.AddTransient<GeneratorViewModel>();

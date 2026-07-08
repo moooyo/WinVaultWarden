@@ -1,6 +1,7 @@
 using App.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Abstractions;
 using Core.Services;
 
 namespace App.ViewModels;
@@ -24,6 +25,8 @@ public partial class LoginViewModel : ObservableObject
     private readonly IAuthService _auth;
     private readonly IDemoVaultSessionService? _demoVault;
     private readonly IPinService? _pin;
+    private readonly IWindowsHelloAuthenticator? _hello;
+    private readonly IHelloUnlockService? _helloUnlock;
     private Action? _onSuccess;
     private IReadOnlyList<int> _twoFactorProviders = Array.Empty<int>();
 
@@ -68,11 +71,19 @@ public partial class LoginViewModel : ObservableObject
     {
     }
 
-    public LoginViewModel(IAuthService auth, IDemoVaultSessionService? demoVault, IPinService? pin = null, AccountPrefill? prefill = null)
+    public LoginViewModel(
+        IAuthService auth,
+        IDemoVaultSessionService? demoVault,
+        IPinService? pin = null,
+        AccountPrefill? prefill = null,
+        IWindowsHelloAuthenticator? hello = null,
+        IHelloUnlockService? helloUnlock = null)
     {
         _auth = auth;
         _demoVault = demoVault;
         _pin = pin;
+        _hello = hello;
+        _helloUnlock = helloUnlock;
 
         // 注册成功后经 AccountPrefill(DI 单例)把服务器/邮箱预填带到新建的 LoginViewModel(Transient,
         // 注册页设置的实例会被登录页新建的实例取代,直接在旧实例上 PrepareAccount 会丢失,R10)。取用即清。
@@ -89,6 +100,12 @@ public partial class LoginViewModel : ObservableObject
     public bool IsUnlockStage => Stage == LoginStage.Unlock;
 
     public bool IsPinUnlockStage => Stage == LoginStage.PinUnlock;
+
+    public bool IsWindowsHelloAvailable { get; private set; }
+
+    // 解锁阶段(主密码或 PIN)+ 已启用 Hello + 设备可用 → 显示 Hello 解锁入口。
+    public bool ShowHelloUnlock => (IsUnlockStage || IsPinUnlockStage)
+        && (_helloUnlock?.IsHelloSet ?? false) && IsWindowsHelloAvailable;
 
     public bool ShowResendEmailCode => IsTwoFactorStage && _twoFactorProviders.Contains(EmailTwoFactorProvider);
 
@@ -244,6 +261,27 @@ public partial class LoginViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    [RelayCommand]
+    private async Task UnlockWithHelloAsync()
+    {
+        if (_hello is null || _helloUnlock is null)
+            return;
+
+        var challenge = _helloUnlock.LoadChallenge();
+        if (challenge is null)
+            return;
+
+        var signature = await _hello.GetProtectorAsync(challenge);
+        if (signature is null)
+        {
+            Status = "Windows Hello 未完成。";
+            return;
+        }
+
+        var result = await _auth.UnlockWithHelloAsync(signature);
+        HandleResult(result); // 复用现有解锁结果处理(导航/提示),与 LoginAsync 一致
     }
 
     [RelayCommand(CanExecute = nameof(CanUseDemoVault))]
@@ -479,7 +517,20 @@ public partial class LoginViewModel : ObservableObject
 
     partial void OnIsBusyChanged(bool value) => NotifyStageProperties();
 
-    partial void OnStageChanged(LoginStage value) => NotifyStageProperties();
+    partial void OnStageChanged(LoginStage value)
+    {
+        NotifyStageProperties();
+        if (value is LoginStage.Unlock or LoginStage.PinUnlock)
+            _ = RefreshWindowsHelloAvailabilityAsync();
+    }
+
+    // 进入解锁阶段(主密码/PIN)时探测本机 Hello 可用性;结果就绪后再通知一次 ShowHelloUnlock
+    // (fake 场景下 IsAvailableAsync 已完成的 Task 会同步跑完,真实 WinRT 调用则是真异步)。
+    private async Task RefreshWindowsHelloAvailabilityAsync()
+    {
+        IsWindowsHelloAvailable = _hello is not null && await _hello.IsAvailableAsync();
+        OnPropertyChanged(nameof(ShowHelloUnlock));
+    }
 
     private void NotifyServerProperties()
     {
@@ -495,6 +546,7 @@ public partial class LoginViewModel : ObservableObject
         OnPropertyChanged(nameof(IsTwoFactorStage));
         OnPropertyChanged(nameof(IsUnlockStage));
         OnPropertyChanged(nameof(IsPinUnlockStage));
+        OnPropertyChanged(nameof(ShowHelloUnlock));
         OnPropertyChanged(nameof(CanEditServer));
         OnPropertyChanged(nameof(CanGoBack));
         OnPropertyChanged(nameof(CanUsePrimaryAction));

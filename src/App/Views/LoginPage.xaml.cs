@@ -11,6 +11,7 @@ public sealed partial class LoginPage : Page
 {
     public LoginViewModel ViewModel { get; }
     private bool _isWindowFitQueued;
+    private LoginStage? _helloAutoPromptedForStage;
 
     public LoginPage()
     {
@@ -37,7 +38,13 @@ public sealed partial class LoginPage : Page
         await ViewModel.LoginCommand.ExecuteAsync(null);
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e) => QueueFitWindowToContent();
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        QueueFitWindowToContent();
+        // 保存的会话在构造函数里已 PrepareUnlock(早于下面的 PropertyChanged 订阅),
+        // 若 Hello 可用性探测在此之前就已就绪(理论上极快的场景),Loaded 时补一次检查。
+        TryAutoPromptHello();
+    }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
@@ -55,6 +62,31 @@ public sealed partial class LoginPage : Page
     {
         if (IsLayoutAffectingProperty(e.PropertyName))
             QueueFitWindowToContent();
+
+        if (e.PropertyName is nameof(LoginViewModel.Stage) or nameof(LoginViewModel.ShowHelloUnlock))
+            TryAutoPromptHello();
+    }
+
+    // 解锁阶段(主密码/PIN)首次出现且 Hello 已启用并可用时,自动发起一次 Hello 手势。
+    // 按"已为哪个 Stage 值自动尝试过"去重(而非"是否收到过 Stage 事件")——
+    // 可用性探测在真机上可能同步完成,单次 Stage 赋值仍会连续触发多个 PropertyChanged
+    // (NotifyStageProperties 里的 ShowHelloUnlock、探测完成后的 ShowHelloUnlock、最后的 Stage 本身),
+    // 若按"收到 Stage 事件就重置"会在同一次进入解锁阶段时重复弹出手势。离开解锁阶段则清空,
+    // 下次重新进入(含切换 PIN/主密码)按新 Stage 值再次自动尝试。
+    private void TryAutoPromptHello()
+    {
+        if (!(ViewModel.IsUnlockStage || ViewModel.IsPinUnlockStage))
+        {
+            _helloAutoPromptedForStage = null;
+            return;
+        }
+
+        var stage = ViewModel.Stage;
+        if (_helloAutoPromptedForStage == stage || !ViewModel.ShowHelloUnlock)
+            return;
+
+        _helloAutoPromptedForStage = stage;
+        _ = ViewModel.UnlockWithHelloCommand.ExecuteAsync(null);
     }
 
     private void QueueFitWindowToContent()
@@ -78,6 +110,7 @@ public sealed partial class LoginPage : Page
         propertyName is null
         or nameof(LoginViewModel.Stage)
         or nameof(LoginViewModel.ShowCustomServerUrl)
+        or nameof(LoginViewModel.ShowHelloUnlock)
         or nameof(LoginViewModel.HasStatus)
         or nameof(LoginViewModel.Status)
         or nameof(LoginViewModel.IsBusy)
