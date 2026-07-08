@@ -137,4 +137,47 @@ public class KdfTests
 
         Assert.Equal(expectedTag, tag);
     }
+
+    // ── C2: KDF 参数下限校验(拒绝,不 clamp)。不可信服务端下发极弱参数弱化派生链。 ──
+
+    [Fact]
+    public void DeriveMasterKey_Pbkdf2_RejectsIterationsBelowFloor()
+    {
+        var svc = new CryptoService();
+        // iterations=1:恶意/MITM 服务端弱化派生链 → 拒绝派生,抛 CryptographicException(不 clamp)。
+        var ex = Assert.Throws<CryptographicException>(() =>
+            svc.DeriveMasterKey(Password, Email, KdfType.Pbkdf2, 1, null, null));
+        Assert.Contains("100000", ex.Message);
+    }
+
+    [Fact]
+    public void DeriveMasterKey_Pbkdf2_AcceptsFloorAndDefault()
+    {
+        var svc = new CryptoService();
+        // 恰好下限(100000)与默认(600000)均放行,不抛异常。
+        _ = svc.DeriveMasterKey(Password, Email, KdfType.Pbkdf2, 100_000, null, null);
+        _ = svc.DeriveMasterKey(Password, Email, KdfType.Pbkdf2, 600_000, null, null);
+    }
+
+    [Theory]
+    [InlineData(1, 64, 4)]     // iterations < 2
+    [InlineData(3, 14, 4)]     // memoryMiB < 15
+    [InlineData(3, 1025, 4)]   // memoryMiB > 1024 (DoS 上限)
+    [InlineData(3, 64, 0)]     // parallelism < 1
+    public void DeriveMasterKey_Argon2id_RejectsOutOfBoundsParameters(int iterations, int memoryMiB, int parallelism)
+    {
+        var svc = new CryptoService();
+        Assert.Throws<CryptographicException>(() =>
+            svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, iterations, memoryMiB, parallelism));
+    }
+
+    [Fact]
+    public void DeriveMasterKey_Argon2id_AcceptsInBoundsParameters()
+    {
+        var svc = new CryptoService();
+        // 边界内(iterations>=2, 15<=memory<=1024, parallelism>=1)不抛异常。
+        // 仅用廉价内存参数实际派生,避免 1024MiB 分配拖慢/撑爆 CI。
+        _ = svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, 2, 15, 1);
+        _ = svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, 3, 64, 4);
+    }
 }
