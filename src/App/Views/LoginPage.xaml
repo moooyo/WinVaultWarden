@@ -167,6 +167,12 @@
 
                         <CheckBox Content="记住此设备"
                                   IsChecked="{x:Bind ViewModel.RememberDevice, Mode=TwoWay}" />
+
+                        <HyperlinkButton x:Name="ResendEmailCodeButton"
+                                         Content="重发验证码"
+                                         HorizontalAlignment="Center"
+                                         Command="{x:Bind ViewModel.ResendEmailCodeCommand, Mode=OneWay}"
+                                         Visibility="{x:Bind ViewModel.ShowResendEmailCode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                     </StackPanel>
 
                     <StackPanel x:Name="LoginUnlockStage"

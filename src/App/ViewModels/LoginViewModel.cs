@@ -19,10 +19,13 @@ public partial class LoginViewModel : ObservableObject
     private const string BitwardenUsUrl = "https://vault.bitwarden.com";
     private const string BitwardenEuUrl = "https://vault.bitwarden.eu";
 
+    private const int EmailTwoFactorProvider = 1;
+
     private readonly IAuthService _auth;
     private readonly IDemoVaultSessionService? _demoVault;
     private readonly IPinService? _pin;
     private Action? _onSuccess;
+    private IReadOnlyList<int> _twoFactorProviders = Array.Empty<int>();
 
     [ObservableProperty]
     public partial string ServerUrl { get; set; } = BitwardenUsUrl;
@@ -80,6 +83,10 @@ public partial class LoginViewModel : ObservableObject
     public bool IsUnlockStage => Stage == LoginStage.Unlock;
 
     public bool IsPinUnlockStage => Stage == LoginStage.PinUnlock;
+
+    public bool ShowResendEmailCode => IsTwoFactorStage && _twoFactorProviders.Contains(EmailTwoFactorProvider);
+
+    public bool CanResendEmailCode => ShowResendEmailCode && !IsBusy;
 
     public bool CanEditServer => IsAccountStage && !IsBusy;
 
@@ -246,6 +253,13 @@ public partial class LoginViewModel : ObservableObject
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanResendEmailCode))]
+    private async Task ResendEmailCodeAsync()
+    {
+        var sent = await _auth.ResendTwoFactorEmailAsync();
+        Status = sent ? "验证码已重新发送，请查收邮箱。" : "验证码发送失败，请稍后重试。";
+    }
+
     [RelayCommand]
     private void UseMasterPassword()
     {
@@ -333,11 +347,15 @@ public partial class LoginViewModel : ObservableObject
                     Stage = LoginStage.Password;
                 _onSuccess?.Invoke();
                 break;
-            case AuthResult.TwoFactorRequired:
+            case AuthResult.TwoFactorRequired twoFactor:
+                _twoFactorProviders = twoFactor.Providers;
                 Stage = LoginStage.TwoFactor;
                 MasterPassword = string.Empty;
                 TwoFactorCode = string.Empty;
                 Status = "请输入两步验证码。";
+                OnPropertyChanged(nameof(ShowResendEmailCode));
+                OnPropertyChanged(nameof(CanResendEmailCode));
+                ResendEmailCodeCommand.NotifyCanExecuteChanged();
                 break;
             case AuthResult.PinCleared pinCleared:
                 Status = pinCleared.Message;
@@ -447,5 +465,8 @@ public partial class LoginViewModel : ObservableObject
         OnPropertyChanged(nameof(FormTitle));
         OnPropertyChanged(nameof(FormSubtitle));
         OnPropertyChanged(nameof(StepText));
+        OnPropertyChanged(nameof(ShowResendEmailCode));
+        OnPropertyChanged(nameof(CanResendEmailCode));
+        ResendEmailCodeCommand.NotifyCanExecuteChanged();
     }
 }

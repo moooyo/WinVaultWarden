@@ -174,6 +174,51 @@ public class LoginViewModelAuthTests
         Assert.True(vm.CanUseDemoVault);
     }
 
+    [Fact]
+    public async Task TwoFactor_EmailProvider_ShowsResendAndResendCommandCallsAuth()
+    {
+        var auth = new FakeAuthService { LoginResult = new AuthResult.TwoFactorRequired([1]) };
+        var vm = new LoginViewModel(auth)
+        {
+            SelectedServerOptionIndex = 2,
+            ServerUrl = "https://vault.example",
+            Email = "me@example.com",
+            MasterPassword = "password",
+        };
+
+        await vm.LoginCommand.ExecuteAsync(null);   // Account → Password
+        vm.MasterPassword = "password";
+        await vm.LoginCommand.ExecuteAsync(null);   // Password → 2FA (email)
+
+        Assert.True(vm.IsTwoFactorStage);
+        Assert.True(vm.ShowResendEmailCode);
+
+        await vm.ResendEmailCodeCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, auth.ResendEmailCalls);
+        Assert.Equal("验证码已重新发送，请查收邮箱。", vm.Status);
+    }
+
+    [Fact]
+    public async Task TwoFactor_AuthenticatorOnly_HidesResend()
+    {
+        var auth = new FakeAuthService { LoginResult = new AuthResult.TwoFactorRequired([0]) };
+        var vm = new LoginViewModel(auth)
+        {
+            SelectedServerOptionIndex = 2,
+            ServerUrl = "https://vault.example",
+            Email = "me@example.com",
+            MasterPassword = "password",
+        };
+
+        await vm.LoginCommand.ExecuteAsync(null);
+        vm.MasterPassword = "password";
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.True(vm.IsTwoFactorStage);
+        Assert.False(vm.ShowResendEmailCode);
+    }
+
     private sealed class FakeAuthService : IAuthService
     {
         public AuthResult LoginResult { get; init; } = new AuthResult.Failure("not set");
