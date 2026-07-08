@@ -23,6 +23,39 @@ public sealed class FingerprintService
     private const int PhraseWords = 5;  // ceil(64 / log2(7776)) = 5
     private static readonly string[] Words = LoadWordList();
 
+    /// <summary>
+    /// 由请求设备公钥(SPKI DER)+ 指纹材料派生 5 个词。material 按原样使用(不改大小写)。
+    /// prk = SHA-256(publicKeyDer); okm = HKDF-Expand(prk, UTF-8(material), 32, SHA256)。
+    /// </summary>
+    public string[] GetFingerprint(byte[] publicKeyDer, string material)
+    {
+        ArgumentNullException.ThrowIfNull(publicKeyDer);
+        ArgumentNullException.ThrowIfNull(material);
+
+        var prk = SHA256.HashData(publicKeyDer);
+        var okm = HKDF.Expand(HashAlgorithmName.SHA256, prk, 32, Encoding.UTF8.GetBytes(material));
+        try
+        {
+            return HashPhrase(okm);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(prk);
+            CryptographicOperations.ZeroMemory(okm);
+        }
+    }
+
+    /// <summary>
+    /// 展示形式:material = email.ToLowerInvariant(),5 词以 '-' 连接。
+    /// 与 bitwarden getFingerprintPhrase(email.toLowerCase()).join("-") 一致,
+    /// 使本端短语与请求设备显示的短语逐字相同。
+    /// </summary>
+    public string GetFingerprintPhrase(byte[] publicKeyDer, string email)
+    {
+        ArgumentNullException.ThrowIfNull(email);
+        return string.Join('-', GetFingerprint(publicKeyDer, email.ToLowerInvariant()));
+    }
+
     /// <summary>把 32 字节哈希切成 5 个 EFF wordlist 词(base-256 大端 → 逐次 mod/div 7776)。</summary>
     public static string[] HashPhrase(byte[] hash)
     {

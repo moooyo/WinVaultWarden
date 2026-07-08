@@ -20,4 +20,31 @@ public class FingerprintServiceTests
             new[] { "predefine", "hunting", "pastime", "enrich", "unhearing" },
             words);
     }
+
+    // 端到端向量(由三个已核实原语复算,可独立复现,见任务说明):
+    //   publicKey = 256 个 0 字节; material = "test@example.com"
+    //   prk = SHA-256(publicKey); okm = HKDF-Expand(prk, utf8(material), 32, SHA256)
+    //   hashPhrase(okm) → "visitor-precision-relight-irritate-request"
+    [Fact]
+    public void GetFingerprintPhrase_EndToEnd_MatchesReproducibleVector()
+    {
+        var svc = new FingerprintService();
+        var publicKey = new byte[256];
+
+        var phrase = svc.GetFingerprintPhrase(publicKey, "test@example.com");
+
+        Assert.Equal("visitor-precision-relight-irritate-request", phrase);
+    }
+
+    // bitwarden getFingerprintPhrase 先做 email.toLowerCase();大小写不得影响结果。
+    [Fact]
+    public void GetFingerprintPhrase_LowercasesEmail()
+    {
+        var svc = new FingerprintService();
+        var publicKey = new byte[256];
+
+        Assert.Equal(
+            svc.GetFingerprintPhrase(publicKey, "test@example.com"),
+            svc.GetFingerprintPhrase(publicKey, "TEST@Example.COM"));
+    }
 }
