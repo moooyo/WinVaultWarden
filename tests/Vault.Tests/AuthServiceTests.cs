@@ -127,6 +127,59 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task LoginAsync_WithPersistedRememberToken_ReusesDeviceAndSendsRememberPayload()
+    {
+        var fixture = CreateLoginFixture();
+        var tokenStore = new MemoryTokenStore();
+        tokenStore.Save(new PersistedSession(
+            "https://vault.example", Email, "device-remembered", "old-refresh",
+            fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null)
+        {
+            TwoFactorToken = "remember-jwt",
+        });
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, PreloginJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, TokenJson(fixture.ProtectedUserKey)));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, SyncJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, DevicesJson()));
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, tokenStore);
+
+        var result = await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
+
+        Assert.IsType<AuthResult.Success>(result);
+        var form = ParseForm(handler.Bodies[1]);
+        Assert.Equal("device-remembered", form["device_identifier"]);
+        Assert.Equal("5", form["two_factor_provider"]);
+        Assert.Equal("remember-jwt", form["two_factor_token"]);
+        Assert.Equal("0", form["two_factor_remember"]);
+    }
+
+    [Fact]
+    public async Task SubmitTwoFactor_ServerReturnsTwoFactorToken_PersistsIt()
+    {
+        var fixture = CreateLoginFixture();
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, PreloginJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"error":"invalid_grant","error_description":"Two factor required.","TwoFactorProviders":["0"]}"""));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
+            TokenJsonWithTwoFactorToken(fixture.ProtectedUserKey, "new-remember-jwt")));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, SyncJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, DevicesJson()));
+        var tokenStore = new MemoryTokenStore();
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, tokenStore);
+
+        await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
+        var result = await service.SubmitTwoFactorAsync("123456", TestContext.Current.CancellationToken, rememberDevice: true);
+
+        Assert.IsType<AuthResult.Success>(result);
+        Assert.True(tokenStore.TryLoad(out var persisted));
+        Assert.Equal("new-remember-jwt", persisted.TwoFactorToken);
+    }
+
+    [Fact]
     public async Task UnlockAsync_WithPersistedSession_RefreshesTokenAndBootstraps()
     {
         var fixture = CreateLoginFixture();
@@ -275,6 +328,9 @@ public class AuthServiceTests
 
     private static string TokenJson(string protectedUserKey) =>
         $$"""{"access_token":"access","refresh_token":"refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access","Key":"{{protectedUserKey}}","PrivateKey":null,"Kdf":0,"KdfIterations":{{Iterations}}}""";
+
+    private static string TokenJsonWithTwoFactorToken(string protectedUserKey, string twoFactorToken) =>
+        $$"""{"access_token":"access","refresh_token":"refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access","Key":"{{protectedUserKey}}","PrivateKey":null,"Kdf":0,"KdfIterations":{{Iterations}},"TwoFactorToken":"{{twoFactorToken}}"}""";
 
     private static string SyncJson() =>
         """{"object":"sync","profile":{"id":"u1","email":"me@example.com","name":"Me"},"folders":[],"ciphers":[]}""";
