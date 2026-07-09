@@ -6,12 +6,21 @@ namespace Vault;
 
 public sealed class VaultHealthService : IVaultHealthService
 {
+    // 演示会话(VaultSession.IsDemo)已知泄露密码 → 命中次数,供 CheckExposedAsync 离线返回,
+    // 不触网(演示会话未配置服务端地址,任何 HIBP 请求都会抛「An invalid request URI was provided…」)。
+    private static readonly Dictionary<string, int> DemoBreachCounts = new(StringComparer.Ordinal)
+    {
+        ["123456"] = 37359195, ["password"] = 9659365, ["qwerty"] = 3912816,
+        ["admin"] = 56789, ["Summer2024"] = 872, ["linkedin123"] = 1502, ["adobe123"] = 4211,
+    };
+
     private readonly IVaultService _vault;
     private readonly PasswordStrengthEvaluator _evaluator;
     private readonly IPwnedPasswordsClient _pwned;
+    private readonly VaultSession? _session;
 
-    public VaultHealthService(IVaultService vault, PasswordStrengthEvaluator evaluator, IPwnedPasswordsClient pwned)
-    { _vault = vault; _evaluator = evaluator; _pwned = pwned; }
+    public VaultHealthService(IVaultService vault, PasswordStrengthEvaluator evaluator, IPwnedPasswordsClient pwned, VaultSession? session = null)
+    { _vault = vault; _evaluator = evaluator; _pwned = pwned; _session = session; }
 
     private IEnumerable<Cipher> ActiveLogins() =>
         _vault.GetCiphers().Where(c => !c.IsDeleted && c.Login is not null);
@@ -48,6 +57,15 @@ public sealed class VaultHealthService : IVaultHealthService
     // Task 7
     public async Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(CancellationToken ct = default)
     {
+        // 演示/离线会话:不发起任何 HIBP 请求,直接从内置已知泄露密码表离线判定(Task 3)。
+        if (_session?.IsDemo == true)
+        {
+            return ActiveLogins()
+                .Where(c => !string.IsNullOrEmpty(c.Login!.Password) && DemoBreachCounts.ContainsKey(c.Login!.Password!))
+                .Select(c => new ExposedFinding(Ref(c), DemoBreachCounts[c.Login!.Password!]))
+                .ToArray();
+        }
+
         var logins = ActiveLogins().Where(c => !string.IsNullOrEmpty(c.Login!.Password)).ToList();
         var unique = logins.Select(c => c.Login!.Password!).Distinct(StringComparer.Ordinal).ToList();
 
