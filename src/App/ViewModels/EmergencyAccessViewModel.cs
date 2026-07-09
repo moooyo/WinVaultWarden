@@ -4,12 +4,14 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Core.Models;
 using Core.Services;
+using Vault;
 
 namespace App.ViewModels;
 
 public partial class EmergencyAccessViewModel : ObservableObject
 {
     private readonly IEmergencyAccessUiService _service;
+    private readonly VaultSession? _session;
 
     // ── 两个显示集合 ──────────────────────────────────────────────────────────
 
@@ -77,9 +79,10 @@ public partial class EmergencyAccessViewModel : ObservableObject
 
     // ── 构造 ──────────────────────────────────────────────────────────────────
 
-    public EmergencyAccessViewModel(IEmergencyAccessUiService service)
+    public EmergencyAccessViewModel(IEmergencyAccessUiService service, VaultSession? session = null)
     {
         _service = service;
+        _session = session;
     }
 
     // ── 加载 ──────────────────────────────────────────────────────────────────
@@ -87,6 +90,15 @@ public partial class EmergencyAccessViewModel : ObservableObject
     /// <summary>加载两个集合（授予方联系人 + 受托方列表）。</summary>
     public async Task LoadAsync(CancellationToken ct = default)
     {
+        // 演示/离线会话没有服务端:短路为空的两个集合(展示干净的空状态),不触网、不报错。
+        if (_session?.IsDemo == true)
+        {
+            MyContacts.Clear();
+            TrustedByOthers.Clear();
+            OperationError = null;
+            return;
+        }
+
         if (IsBusy)
             return;
 
