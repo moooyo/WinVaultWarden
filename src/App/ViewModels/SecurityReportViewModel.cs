@@ -6,6 +6,14 @@ using Core.Models;
 
 namespace App.ViewModels;
 
+/// <summary>密码库安全体检的整体严重程度，用于 Hero 卡片配色/图标。</summary>
+public enum SecuritySeverity
+{
+    Good,
+    Caution,
+    Critical
+}
+
 public partial class SecurityReportViewModel : ObservableObject
 {
     private readonly IVaultHealthUiService _service;
@@ -57,16 +65,53 @@ public partial class SecurityReportViewModel : ObservableObject
     /// <summary>存在已暴露密码条目时为 true。</summary>
     public bool HasExposed => ExposedItems.Count > 0;
 
+    // ── 聚合摘要属性（Hero 卡片） ──────────────────────────────────────────────
+
+    /// <summary>重复密码分组数。</summary>
+    public int ReusedCount => ReusedGroups.Count;
+
+    /// <summary>弱密码条目数。</summary>
+    public int WeakCount => WeakItems.Count;
+
+    /// <summary>不安全 HTTP 条目数。</summary>
+    public int UnsecuredCount => UnsecuredItems.Count;
+
+    /// <summary>已暴露密码条目数。</summary>
+    public int ExposedCount => ExposedItems.Count;
+
+    /// <summary>四类问题的总数。</summary>
+    public int TotalIssueCount => ReusedCount + WeakCount + UnsecuredCount + ExposedCount;
+
+    /// <summary>存在任意一类问题时为 true。</summary>
+    public bool HasAnyIssue => TotalIssueCount > 0;
+
+    /// <summary>Hero 卡片摘要文案。</summary>
+    public string SummaryText => TotalIssueCount > 0 ? $"发现 {TotalIssueCount} 项可改进" : "未发现问题";
+
+    /// <summary>整体严重程度：弱密码/已暴露 视为 Critical；仅重复/不安全 URL 视为 Caution；均无则 Good。</summary>
+    public SecuritySeverity OverallSeverity =>
+        (WeakCount > 0 || ExposedCount > 0) ? SecuritySeverity.Critical :
+        (ReusedCount > 0 || UnsecuredCount > 0) ? SecuritySeverity.Caution :
+        SecuritySeverity.Good;
+
     // ── 构造 ────────────────────────────────────────────────────────────────────
 
     public SecurityReportViewModel(IVaultHealthUiService service)
     {
         _service = service;
 
-        ReusedGroups.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasReused));
-        WeakItems.CollectionChanged    += (_, _) => OnPropertyChanged(nameof(HasWeak));
-        UnsecuredItems.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasUnsecured));
-        ExposedItems.CollectionChanged  += (_, _) => OnPropertyChanged(nameof(HasExposed));
+        ReusedGroups.CollectionChanged += (_, _) => { OnPropertyChanged(nameof(HasReused)); NotifyAggregates(); };
+        WeakItems.CollectionChanged    += (_, _) => { OnPropertyChanged(nameof(HasWeak)); NotifyAggregates(); };
+        UnsecuredItems.CollectionChanged += (_, _) => { OnPropertyChanged(nameof(HasUnsecured)); NotifyAggregates(); };
+        ExposedItems.CollectionChanged  += (_, _) => { OnPropertyChanged(nameof(HasExposed)); NotifyAggregates(); };
+    }
+
+    private void NotifyAggregates()
+    {
+        OnPropertyChanged(nameof(ReusedCount)); OnPropertyChanged(nameof(WeakCount));
+        OnPropertyChanged(nameof(UnsecuredCount)); OnPropertyChanged(nameof(ExposedCount));
+        OnPropertyChanged(nameof(TotalIssueCount)); OnPropertyChanged(nameof(HasAnyIssue));
+        OnPropertyChanged(nameof(SummaryText)); OnPropertyChanged(nameof(OverallSeverity));
     }
 
     // ── 离线分析 ────────────────────────────────────────────────────────────────
