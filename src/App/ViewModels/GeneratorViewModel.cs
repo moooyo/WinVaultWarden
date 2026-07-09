@@ -4,6 +4,7 @@ using App.ViewModels.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Crypto;
+using Crypto.PasswordStrength;
 
 namespace App.ViewModels;
 
@@ -17,6 +18,7 @@ public enum GeneratorMode
 public partial class GeneratorViewModel : ObservableObject
 {
     private readonly IClipboardService? _clipboard;
+    private readonly PasswordStrengthEvaluator? _strength;
 
     private int _length = 14;
     private bool _includeUppercase = true;
@@ -27,6 +29,7 @@ public partial class GeneratorViewModel : ObservableObject
     private int _minSpecial;
     private bool _avoidAmbiguous;
     private string _generatedPassword = string.Empty;
+    private int _strengthScore;
 
     public ObservableCollection<GeneratorHistoryItem> History { get; } = new();
 
@@ -152,6 +155,21 @@ public partial class GeneratorViewModel : ObservableObject
         private set => SetProperty(ref _generatedPassword, value);
     }
 
+    public int StrengthScore => _strengthScore;
+
+    public bool ShowStrength => Mode != GeneratorMode.Username;
+
+    public double StrengthFraction => (_strengthScore + 1) / 5.0;
+
+    public string StrengthLabel => _strengthScore switch
+    {
+        0 => "很弱",
+        1 => "弱",
+        2 => "中",
+        3 => "强",
+        _ => "很强",
+    };
+
     public double LengthValue
     {
         get => Length;
@@ -182,9 +200,10 @@ public partial class GeneratorViewModel : ObservableObject
         set => UsernameType = (UsernameGenerationType)Math.Clamp(value, 0, 3);
     }
 
-    public GeneratorViewModel(IClipboardService? clipboard = null)
+    public GeneratorViewModel(IClipboardService? clipboard = null, PasswordStrengthEvaluator? strength = null)
     {
         _clipboard = clipboard;
+        _strength = strength;
         Regenerate();
     }
 
@@ -213,6 +232,20 @@ public partial class GeneratorViewModel : ObservableObject
                 UsernameIncludeNumber)),
             _ => PasswordGenerator.Generate(BuildOptions()),
         };
+        UpdateStrength();
+    }
+
+    private void UpdateStrength()
+    {
+        var score = (_strength is not null && Mode != GeneratorMode.Username && !string.IsNullOrEmpty(GeneratedPassword))
+            ? _strength.Evaluate(GeneratedPassword).Score : 0;
+        if (score != _strengthScore)
+        {
+            _strengthScore = score;
+            OnPropertyChanged(nameof(StrengthScore));
+            OnPropertyChanged(nameof(StrengthFraction));
+            OnPropertyChanged(nameof(StrengthLabel));
+        }
     }
 
     [RelayCommand]
@@ -251,7 +284,12 @@ public partial class GeneratorViewModel : ObservableObject
         GeneratedPassword = string.Empty;
     }
 
-    partial void OnModeChanged(GeneratorMode value) => Regenerate();
+    partial void OnModeChanged(GeneratorMode value)
+    {
+        OnPropertyChanged(nameof(ShowStrength));
+        Regenerate();
+        UpdateStrength();
+    }
     partial void OnPassphraseWordCountChanged(int value)
     {
         OnPropertyChanged(nameof(PassphraseWordCountValue));
