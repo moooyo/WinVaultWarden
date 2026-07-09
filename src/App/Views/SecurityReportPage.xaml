@@ -18,6 +18,8 @@
                   HorizontalScrollMode="Disabled"
                   HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollBarVisibility="Auto">
+        <!-- Grid wrapper works around SettingsExpander expand glitch under a MaxWidth StackPanel (microsoft-ui-xaml#3842) -->
+        <Grid>
         <StackPanel Spacing="4" MaxWidth="820" HorizontalAlignment="Stretch">
 
             <!-- 页面标题 -->
@@ -37,7 +39,7 @@
                     </Grid.ColumnDefinitions>
 
                     <FontIcon Grid.Column="0"
-                              Glyph="&#xEA18;"
+                              Glyph="&#xE72E;"
                               FontSize="28"
                               VerticalAlignment="Center"
                               Foreground="{x:Bind ViewModel.OverallSeverity, Mode=OneWay,
@@ -187,6 +189,7 @@
             <!-- ── 4. 暴露密码 (HIBP) ─────────────────────────────────── -->
             <tk:SettingsExpander Header="暴露密码"
                                  Description="在已知数据泄露事件中出现的密码,建议立即修改"
+                                 IsExpanded="True"
                                  ItemsSource="{x:Bind ViewModel.ExposedItems, Mode=OneWay}">
                 <tk:SettingsExpander.HeaderIcon>
                     <FontIcon Glyph="&#xEA18;" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
@@ -248,5 +251,6 @@
             </tk:SettingsExpander>
 
         </StackPanel>
+        </Grid>
     </ScrollViewer>
 </Page>
