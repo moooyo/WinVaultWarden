@@ -15,7 +15,7 @@
                   HorizontalScrollMode="Disabled"
                   HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="16" MaxWidth="720" HorizontalAlignment="Stretch">
+        <StackPanel Spacing="16" MaxWidth="1000" HorizontalAlignment="Stretch">
             <TextBlock Text="设备管理" Style="{ThemeResource TitleTextBlockStyle}" />
             <InfoBar x:Name="DevicesErrorInfoBar"
                      IsClosable="True"
@@ -46,6 +46,7 @@
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="models:DeviceItem">
                         <tk:SettingsCard Margin="0,0,0,8"
+                                         HorizontalAlignment="Stretch"
                                          Description="{x:Bind LastActive}">
                             <tk:SettingsCard.HeaderIcon>
                                 <FontIcon Glyph="{x:Bind Glyph}" />
