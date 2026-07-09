@@ -114,6 +114,14 @@ try
     var ciphers0 = await sync.SyncAsync();
     Step("sync returned", true, $"{ciphers0.Count} ciphers, {session.Folders.Count} folders, {session.Devices.Count} devices");
 
+    // WVW_LOGIN_ONLY=1: 只验证 config→register(幂等)→login→sync,随后干净退出,
+    // 不执行后续的建条目/改密/改KDF 等破坏性用例(用于快速核验账户凭据可用,零污染风险)。
+    if (Environment.GetEnvironmentVariable("WVW_LOGIN_ONLY") == "1")
+    {
+        Console.WriteLine($"[login-only] OK — 登录成功 {session.Account.Email}，sync 返回 {ciphers0.Count} 条 cipher。跳过破坏性用例。");
+        return 0;
+    }
+
     // ── 5. Create folder ─────────────────────────────────────────────────────
     Console.WriteLine("[5] Create folder");
     var folderName = $"WVW-Folder-{run}";
