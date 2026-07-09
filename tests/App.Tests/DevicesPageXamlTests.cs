@@ -18,23 +18,35 @@ public class DevicesPageXamlTests
     }
 
     [Fact]
-    public void DeviceCard_UsesPaddingToken()
+    public void DeviceCard_UsesSettingsCard()
     {
         var doc = Load();
-        var card = doc.Descendants().First(e => e.Name.LocalName == "Border"
+        var repeater = doc.Descendants().First(e => e.Name.LocalName == "ItemsRepeater"
+            && e.Attribute("ItemsSource")?.Value == "{x:Bind ViewModel.Devices}");
+        var card = repeater.Descendants().FirstOrDefault(e => e.Name.LocalName == "SettingsCard");
+        Assert.NotNull(card);
+
+        // 不再是裸 Border 卡片
+        Assert.DoesNotContain(repeater.Descendants(), e => e.Name.LocalName == "Border"
             && e.Attribute("Background")?.Value == "{ThemeResource CardBackgroundFillColorDefaultBrush}");
-        Assert.Equal("{StaticResource CardContentPadding}", card.Attribute("Padding")?.Value);
     }
 
     [Fact]
-    public void LastActive_UsesCaptionSecondaryStyle_NoInlineFontSize()
+    public void DeviceCard_DescriptionBoundToLastActive()
     {
         var doc = Load();
-        var lastActive = doc.Descendants().First(e => e.Name.LocalName == "TextBlock"
-            && e.Attribute("Text")?.Value == "{x:Bind LastActive}");
-        Assert.Equal("{StaticResource CaptionSecondaryTextBlockStyle}", lastActive.Attribute("Style")?.Value);
-        Assert.Null(lastActive.Attribute("FontSize"));
-        Assert.Null(lastActive.Attribute("Foreground"));
+        var card = doc.Descendants().First(e => e.Name.LocalName == "SettingsCard"
+            && e.Attribute("Description")?.Value == "{x:Bind LastActive}");
+        Assert.NotNull(card);
+    }
+
+    [Fact]
+    public void HasCommunityToolkitNamespace_Declared()
+    {
+        var doc = Load();
+        var tkNamespace = doc.Root?.Attributes()
+            .FirstOrDefault(a => a.Name.LocalName == "tk" && a.Value == "using:CommunityToolkit.WinUI.Controls");
+        Assert.NotNull(tkNamespace);
     }
 
     [Fact]
@@ -101,10 +113,11 @@ public class DevicesPageXamlTests
     public void PendingSection_ShowsDeviceTypeName()
     {
         var doc = Load();
-        var textBlock = doc.Descendants()
-            .FirstOrDefault(e => e.Name.LocalName == "TextBlock"
-                && e.Attribute("Text")?.Value == "{x:Bind DeviceTypeName}");
-        Assert.NotNull(textBlock);
+        // DeviceTypeName 现在绑定为 SettingsCard 的 Header
+        var card = doc.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "SettingsCard"
+                && e.Attribute("Header")?.Value == "{x:Bind DeviceTypeName}");
+        Assert.NotNull(card);
     }
 
     [Fact]
