@@ -506,7 +506,7 @@
         <!-- 详情 -->
         <Grid Grid.Column="1">
         <ScrollViewer Padding="16">
-            <StackPanel Spacing="12" MaxWidth="720" HorizontalAlignment="Left">
+            <StackPanel Spacing="12" MaxWidth="720" HorizontalAlignment="Stretch">
                 <StackPanel x:Name="CipherEditorPanel"
                             x:Load="{x:Bind ViewModel.IsEditing, Mode=OneWay}"
                             Spacing="12"
