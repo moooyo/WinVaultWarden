@@ -3,6 +3,7 @@ using App.ViewModels;
 using App.ViewModels.Models;
 using Core.Models;
 using Core.Services;
+using Vault;
 using Xunit;
 
 namespace App.Tests;
@@ -155,6 +156,23 @@ public class DevicesViewModelTests
 
         Assert.NotNull(vm.Error);
         Assert.False(string.IsNullOrEmpty(vm.Error));
+    }
+
+    [Fact]
+    public async Task RefreshRequestsAsync_InDemoMode_ShowsEmptyPending_WithoutHittingNetworkOrError()
+    {
+        // 演示/离线会话:不得调用底层授权服务(否则 ThrowingAuthRequestService 会抛),
+        // 且展示干净的空状态(无 Error)——而非在演示页留下「操作失败」提示。
+        var session = new VaultSession();
+        session.MarkDemo();
+        var throwing = new AuthRequestUiService(new ThrowingAuthRequestService("network must not run"));
+        var vm = new DevicesViewModel(new MockDeviceUiService(), throwing, session);
+
+        await vm.RefreshRequestsAsync();
+
+        Assert.Empty(vm.PendingRequests);
+        Assert.True(vm.HasNoPendingRequests);
+        Assert.Null(vm.Error);
     }
 
     // ── ApproveAsync ─────────────────────────────────────────────────────────

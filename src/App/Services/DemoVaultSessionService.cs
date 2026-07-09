@@ -30,6 +30,10 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
         [
             new DeviceInfo("demo-device", "WinVaultWarden Dev", 6, "demo-device", DemoDate(24, 9, 0), false),
         ]);
+        // 演示 Send 存入会话内存,并把会话标记为演示/离线——SendUiService 据此从内存取值,
+        // 避免在未配置服务端地址的演示会话里对 /api/sends 发起相对 URI 请求而抛异常。
+        _session.SetSends(BuildSends());
+        _session.MarkDemo();
         return Task.CompletedTask;
     }
 
@@ -158,4 +162,36 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
 
     private static DateTimeOffset DemoDate(int day, int hour, int minute) =>
         new(2026, 6, day, hour, minute, 0, TimeSpan.Zero);
+
+    // 本地演示 Send(一条文本 + 一条文件)。ShareUrl 为占位链接(仅用于「复制链接」演示,不可访问),
+    // 删除日期设在演示叙事的近未来。均只存内存,不上传服务器。
+    private static IReadOnlyList<Send> BuildSends() =>
+    [
+        new Send
+        {
+            Id = "demo-send-text",
+            AccessId = "demo-send-text",
+            Type = SendType.Text,
+            Name = "周会纪要",
+            Notes = "本地演示 Send，不会上传到服务器。",
+            Text = new SendText("周会要点：1. 发布计划 2. 演示评审 3. 下周排期", false),
+            AccessCount = 2,
+            DeletionDate = DemoSendDeletionDate,
+            ShareUrl = "https://demo.local/#/send/demo-send-text/demoAccessKey",
+        },
+        new Send
+        {
+            Id = "demo-send-file",
+            AccessId = "demo-send-file",
+            Type = SendType.File,
+            Name = "设计稿.pdf",
+            File = new SendFile("设计稿.pdf", 348_160, "340 KB", "demo-file-1"),
+            HasPassword = true,
+            DeletionDate = DemoSendDeletionDate,
+            ShareUrl = "https://demo.local/#/send/demo-send-file/demoAccessKey",
+        },
+    ];
+
+    private static DateTimeOffset DemoSendDeletionDate =>
+        new(2026, 7, 15, 12, 0, 0, TimeSpan.Zero);
 }

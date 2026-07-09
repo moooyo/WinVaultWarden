@@ -89,7 +89,8 @@ public static class ServiceConfiguration
         services.AddSingleton<ISendUiService>(sp => new SendUiService(
             sp.GetRequiredService<ISendService>(),
             sp.GetRequiredService<ISendWriteService>(),
-            sp.GetRequiredService<ISendAccessService>()));
+            sp.GetRequiredService<ISendAccessService>(),
+            sp.GetRequiredService<VaultSession>()));
         services.AddSingleton<IAttachmentUiService>(sp =>
             new AttachmentUiService(sp.GetRequiredService<IAttachmentService>()));
         services.AddTransient<IDeviceUiService>(sp =>
@@ -133,7 +134,8 @@ public static class ServiceConfiguration
         services.AddTransient<DevicesViewModel>(sp =>
             new DevicesViewModel(
                 sp.GetRequiredService<IDeviceUiService>(),
-                sp.GetRequiredService<IAuthRequestUiService>()));
+                sp.GetRequiredService<IAuthRequestUiService>(),
+                sp.GetRequiredService<VaultSession>()));
 
         // ── Vault 健康报告 ──────────────────────────────────────────────────────
         services.AddSingleton<PasswordStrengthEvaluator>(_ =>

@@ -36,5 +36,11 @@ public class DemoVaultSessionServiceTests
             new WebAuthnGetAssertionRequest("http://localhost:8787", "AQIDBA", "localhost", [], false)).Signature));
         Assert.Single(session.Folders);
         Assert.Single(session.Devices);
+
+        // 演示会话被标记为离线,并预置演示 Send(文本 + 文件),供 Send 页展示且不触网。
+        Assert.True(session.IsDemo);
+        Assert.Contains(session.Sends, s => s.Type == Core.Enums.SendType.Text);
+        Assert.Contains(session.Sends, s => s.Type == Core.Enums.SendType.File);
+        Assert.All(session.Sends, s => Assert.False(string.IsNullOrWhiteSpace(s.ShareUrl)));
     }
 }

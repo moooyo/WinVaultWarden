@@ -10,6 +10,7 @@ public sealed class VaultSession : IVaultSnapshot
     private IReadOnlyList<Cipher> _ciphers = Array.Empty<Cipher>();
     private IReadOnlyList<Folder> _folders = Array.Empty<Folder>();
     private IReadOnlyList<DeviceInfo> _devices = Array.Empty<DeviceInfo>();
+    private IReadOnlyList<Send> _sends = Array.Empty<Send>();
 
     public VaultState State { get; private set; } = VaultState.LoggedOut;
     public string? AccessToken { get; private set; }
@@ -19,6 +20,11 @@ public sealed class VaultSession : IVaultSnapshot
     public AccountInfo Account { get; private set; } = AccountInfo.Empty;
     public int SkippedCipherCount { get; private set; }
     public bool DataStale { get; private set; }
+
+    // 演示/离线会话标记(DEBUG「使用演示保险库」入口置位)。为 true 时,网络回读路径改从会话内存中
+    // 的离线数据取值,不发起任何 HTTP 请求——演示会话没有配置服务端地址,任何相对 URI 请求都会抛
+    // 「An invalid request URI was provided…」。Lock()/Clear() 经 ClearSensitiveState 复位。
+    public bool IsDemo { get; private set; }
 
     // 会话级主密码重提示标志:本次解锁后首次对 Reprompt==true 条目验证主密码通过后置位,
     // 之后本次解锁会话内不再重复要求。Lock()/Clear() 经 ClearSensitiveState 复位。
@@ -38,6 +44,13 @@ public sealed class VaultSession : IVaultSnapshot
     public IReadOnlyList<DeviceInfo> Devices
     {
         get { lock (_gate) return _devices; }
+    }
+
+    // 演示/离线会话的 Send 列表(明文领域模型,仅存内存,不落盘/发日志——与 ShareUrl/Key 同约束)。
+    // 在线会话不使用此列表:Send 始终经 SendService 实时从 /api/sends 拉取并解密。
+    public IReadOnlyList<Send> Sends
+    {
+        get { lock (_gate) return _sends; }
     }
 
     public void SetState(VaultState state)
@@ -205,6 +218,59 @@ public sealed class VaultSession : IVaultSnapshot
             _devices = devices;
     }
 
+    // ── 演示/离线 Send 存储(仅演示会话使用)──────────────────────────────────────
+    // 标记本会话为演示/离线会话。之后 Send 的读写走会话内存,不触网(见 IsDemo 注释)。
+    public void MarkDemo()
+    {
+        lock (_gate)
+            IsDemo = true;
+    }
+
+    public void SetSends(IReadOnlyList<Send> sends)
+    {
+        lock (_gate)
+            _sends = sends;
+    }
+
+    // copy-on-write 插入/替换(按 Id),与 UpsertCipher/UpsertFolder 一致的健壮策略。
+    public void UpsertSend(Send send)
+    {
+        lock (_gate)
+        {
+            var list = new List<Send>(_sends.Count + 1);
+            var replaced = false;
+            foreach (var existing in _sends)
+            {
+                if (existing.Id == send.Id)
+                {
+                    list.Add(send);
+                    replaced = true;
+                }
+                else
+                {
+                    list.Add(existing);
+                }
+            }
+            if (!replaced)
+                list.Add(send);
+            _sends = list;
+        }
+    }
+
+    public void RemoveSend(string id)
+    {
+        lock (_gate)
+        {
+            var list = new List<Send>(_sends.Count);
+            foreach (var existing in _sends)
+            {
+                if (existing.Id != id)
+                    list.Add(existing);
+            }
+            _sends = list;
+        }
+    }
+
     public void SetAccount(AccountInfo account)
     {
         lock (_gate)
@@ -254,6 +320,8 @@ public sealed class VaultSession : IVaultSnapshot
         _ciphers = Array.Empty<Cipher>();
         _folders = Array.Empty<Folder>();
         _devices = Array.Empty<DeviceInfo>();
+        _sends = Array.Empty<Send>();
+        IsDemo = false;
         EncryptedPrivateKey = null;
         SkippedCipherCount = 0;
         DataStale = false;
