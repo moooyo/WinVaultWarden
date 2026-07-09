@@ -122,6 +122,83 @@ try
         return 0;
     }
 
+    // WVW_SEED=1: 往账户播种一批真实、可测的数据(登录/卡/身份/笔记/SSH + 文件夹),
+    // 走真实 Crypto+API 加密写入,不做清理。特意包含重复/弱/HTTP/已泄露口令,让安全报告(真实 HIBP)点亮。
+    // 幂等:按名称去重,重复运行不会造成重复条目。
+    if (Environment.GetEnvironmentVariable("WVW_SEED") == "1")
+    {
+        Console.WriteLine("[seed] 播种真实测试数据 …");
+        var existing = ciphers0.Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
+        int made = 0, skipped = 0;
+
+        async Task<string?> EnsureFolder(string name)
+        {
+            var f = session.Folders.FirstOrDefault(x => x.Name == name);
+            if (f is null) { await writeService.SaveFolderAsync(null, name); f = session.Folders.FirstOrDefault(x => x.Name == name); }
+            return f?.Id;
+        }
+        async Task Add(Cipher c)
+        {
+            if (existing.Contains(c.Name)) { skipped++; Console.WriteLine($"  skip (exists): {c.Name}"); return; }
+            await writeService.SaveCipherAsync(c);
+            made++; Console.WriteLine($"  + {c.Name}");
+        }
+        Cipher L(string name, string? folder, string user, string pass, string uri, string? totp = null, string? notes = null) => new()
+        {
+            Type = CipherType.Login, Name = name, FolderId = folder, Notes = notes,
+            Login = new CipherLogin(user, pass, totp, new[] { new CipherLoginUri(uri, null) }),
+        };
+
+        var work = await EnsureFolder("工作");
+        var personal = await EnsureFolder("个人");
+        var finance = await EnsureFolder("财务");
+
+        // 强口令(正常项)
+        await Add(L("Google", personal, "demo.user@gmail.com", "G7#kL2$mN9pQ", "https://accounts.google.com", "JBSWY3DPEHPK3PXP", "个人主邮箱,已开两步验证。"));
+        await Add(L("GitHub", work, "demo-dev", "Zx8!wR4^tB1v", "https://github.com", null, "工作代码仓库。"));
+        await Add(L("招商银行", finance, "demo_cmb", "T8w#nL5^rQ2q", "https://cmbchina.com"));
+        await Add(L("Netflix", personal, "demo@home.com", "Zj4!pW9&xM1c", "https://netflix.com"));
+        // 弱口令(点亮"弱密码")
+        await Add(L("Amazon", personal, "shopper@example.com", "Amazon2019", "https://amazon.com"));
+        // 重复口令组 Summer2024 ×3(点亮"重复密码" + 弱)
+        await Add(L("Reddit", personal, "reddituser", "Summer2024", "https://reddit.com"));
+        await Add(L("Instagram", personal, "demo.ig", "Summer2024", "https://instagram.com"));
+        await Add(L("老论坛账号", personal, "oldforum", "Summer2024", "https://bbs.example.com"));
+        // 弱 + HTTP(点亮"不安全网站")
+        await Add(L("家用路由器", personal, "admin", "admin", "http://192.168.1.1", null, "后台管理页。"));
+        await Add(L("群晖 NAS", personal, "nas-admin", "123456", "http://192.168.1.10"));
+        await Add(L("旧邮箱", personal, "me@old.com", "qwerty", "https://mail.old.com"));
+        // 已泄露口令(真实 HIBP 会点亮"暴露密码")
+        await Add(L("LinkedIn", work, "demo@work.com", "linkedin123", "https://linkedin.com"));
+        await Add(L("Adobe", work, "demo@work.com", "adobe123", "https://adobe.com"));
+
+        // 卡
+        await Add(new Cipher { Type = CipherType.Card, Name = "招商 Visa 借记卡", FolderId = finance,
+            Card = new CipherCard("Demo User", "4111111111111111", "08", "2030", "123", "Visa") });
+        await Add(new Cipher { Type = CipherType.Card, Name = "招商 Mastercard 信用卡", FolderId = finance,
+            Card = new CipherCard("Demo User", "5200828282828210", "11", "2029", "456", "Mastercard") });
+        // 身份
+        await Add(new Cipher { Type = CipherType.Identity, Name = "个人身份", FolderId = personal,
+            Identity = new CipherIdentity("Mr", "Demo", null, "User", "demo.user", "WinVaultWarden",
+                "110101199001011234", "P12345678", null, "demo.user@gmail.com", "13800000000",
+                "科技路 1 号", null, null, "上海", null, "200000", "中国") });
+        // 安全笔记
+        await Add(new Cipher { Type = CipherType.SecureNote, Name = "家庭 WiFi 密码", FolderId = personal,
+            Notes = "SSID: DemoHome-5G\n密码: wifi-demo-8888\n访客网络: DemoGuest / guest-2026", SecureNote = new CipherSecureNote(0) });
+        await Add(new Cipher { Type = CipherType.SecureNote, Name = "保险柜密码", FolderId = personal,
+            Notes = "客厅保险柜: 12-34-56", SecureNote = new CipherSecureNote(0) });
+        // SSH
+        await Add(new Cipher { Type = CipherType.SshKey, Name = "部署服务器 SSH Key", FolderId = work,
+            Ssh = new CipherSsh(
+                "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA-demo-only\n-----END OPENSSH PRIVATE KEY-----",
+                "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDemoSeedKey deploy@winvaultwarden",
+                "SHA256:demoSeed1234567890abcdef") });
+
+        var final = await sync.SyncAsync();
+        Console.WriteLine($"[seed] 完成:新建 {made} 条,跳过 {skipped} 条。当前保险库共 {final.Count} 条 cipher,{session.Folders.Count} 个文件夹。");
+        return 0;
+    }
+
     // ── 5. Create folder ─────────────────────────────────────────────────────
     Console.WriteLine("[5] Create folder");
     var folderName = $"WVW-Folder-{run}";
