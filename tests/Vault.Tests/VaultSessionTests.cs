@@ -166,4 +166,44 @@ public class VaultSessionTests
         session.Clear();
         Assert.False(session.RepromptSatisfied); // 登出重置
     }
+
+    private static Send DemoSend(string id) => new()
+    {
+        Id = id,
+        AccessId = "acc-" + id,
+        Type = SendType.Text,
+        Name = "演示分享",
+        Text = new SendText("body", false),
+        DeletionDate = DateTimeOffset.Parse("2026-07-15T00:00:00Z"),
+    };
+
+    [Fact]
+    public void IsDemo_And_Sends_ResetByLock()
+    {
+        var session = new VaultSession();
+        session.MarkDemo();
+        session.SetSends([DemoSend("s1")]);
+        Assert.True(session.IsDemo);
+        Assert.Single(session.Sends);
+
+        session.Lock();
+
+        Assert.False(session.IsDemo);
+        Assert.Empty(session.Sends);
+    }
+
+    [Fact]
+    public void IsDemo_And_Sends_ResetByClear()
+    {
+        var session = new VaultSession();
+        session.MarkDemo();
+        session.SetSends([DemoSend("s1")]);
+        Assert.True(session.IsDemo);
+        Assert.Single(session.Sends);
+
+        session.Clear();
+
+        Assert.False(session.IsDemo);
+        Assert.Empty(session.Sends);
+    }
 }

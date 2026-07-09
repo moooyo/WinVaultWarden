@@ -8,7 +8,7 @@ using CoreSendType = Core.Enums.SendType;
 namespace App.Services;
 
 // 真实 Send UI 服务:把 App 层 SendEditorDraft/SendListItem(SendType Text=0,File=1)
-// 映射到 Core 领域(SendDraftModel + Core.Enums.SendType Text=1,File=2),并委派给
+// 映射到 Core 领域(SendDraftModel + Core.Enums.SendType Text=0,File=1),并委派给
 // ISendService / ISendWriteService / ISendAccessService。删除日期相对标签在此转绝对时间(<=31 天)。
 //
 // 演示/离线会话(VaultSession.IsDemo)特判:该会话未配置服务端地址,任何走网络的 Send 读写都会抛
@@ -51,7 +51,7 @@ public sealed class SendUiService : ISendUiService
     {
         if (IsDemo)
         {
-            var created = BuildDemoSend(draft, fileBytes, id: Guid.NewGuid().ToString("N"));
+            var created = BuildDemoSend(draft, fileBytes, id: Guid.NewGuid().ToString("N"), existing: null);
             _session!.UpsertSend(created);
             return ToListItem(created);
         }
@@ -68,7 +68,8 @@ public sealed class SendUiService : ISendUiService
     {
         if (IsDemo)
         {
-            var updated = BuildDemoSend(draft, fileBytes, id);
+            var existing = _session!.Sends.FirstOrDefault(s => s.Id == id);
+            var updated = BuildDemoSend(draft, fileBytes, id, existing);
             _session!.UpsertSend(updated);
             return ToListItem(updated);
         }
@@ -165,11 +166,26 @@ public sealed class SendUiService : ISendUiService
     private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
     // 演示/离线会话:直接把可编辑草稿映射成内存 Send 领域模型(不加密、不上传)。ShareUrl 为占位链接,
-    // 仅供「复制链接」演示。文件 Send 用选中字节的长度作为大小展示。
-    private static Send BuildDemoSend(SendEditorDraft draft, byte[]? fileBytes, string id)
+    // 仅供「复制链接」演示。文件 Send 若未重新选取文件(fileBytes==null)则复用既有 File 元数据
+    // (Size/SizeName/FileId/FileName),避免 FromExisting 不带文件字节导致的大小归零;
+    // HasPassword 同理在草稿未填新密码时沿用既有值(FromExisting 不回填明文密码)。
+    private static Send BuildDemoSend(SendEditorDraft draft, byte[]? fileBytes, string id, Send? existing)
     {
         var type = MapType(draft.Type);
-        long fileSize = fileBytes?.Length ?? 0;
+        SendFile? file = null;
+        if (type == CoreSendType.File)
+        {
+            if (fileBytes is null && existing?.File is not null)
+            {
+                file = existing.File;
+            }
+            else
+            {
+                long fileSize = fileBytes?.Length ?? 0;
+                file = new SendFile(NullIfBlank(draft.FileName) ?? draft.Name.Trim(), fileSize, HumanSize(fileSize), id);
+            }
+        }
+
         return new Send
         {
             Id = id,
@@ -178,15 +194,13 @@ public sealed class SendUiService : ISendUiService
             Name = draft.Name.Trim(),
             Notes = NullIfBlank(draft.Notes),
             Text = type == CoreSendType.Text ? new SendText(draft.Text, draft.HideTextByDefault) : null,
-            File = type == CoreSendType.File
-                ? new SendFile(NullIfBlank(draft.FileName) ?? draft.Name.Trim(), fileSize, HumanSize(fileSize), id)
-                : null,
+            File = file,
             MaxAccessCount = draft.MaxAccessCount,
             ExpirationDate = draft.ExpirationDate,
             DeletionDate = draft.ToDeletionDate(),
             Disabled = draft.Disabled,
             HideEmail = draft.HideEmail,
-            HasPassword = !string.IsNullOrWhiteSpace(draft.Password),
+            HasPassword = !string.IsNullOrWhiteSpace(draft.Password) || (existing?.HasPassword ?? false),
             ShareUrl = $"https://demo.local/#/send/{id}/demoAccessKey",
         };
     }

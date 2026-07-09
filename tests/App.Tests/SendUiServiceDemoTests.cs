@@ -149,7 +149,37 @@ public class SendUiServiceDemoTests
 
         Assert.False(r.Ok);
         Assert.False(r.WrongPassword);
-        Assert.False(string.IsNullOrWhiteSpace(r.Error));
+        Assert.Equal("演示保险库为本地离线数据，无法打开外部 Send 链接。", r.Error);
+    }
+
+    [Fact]
+    public async Task UpdateSendAsync_InDemo_FileSend_NameOnlyEdit_PreservesSizeAndPassword()
+    {
+        var existing = new Send
+        {
+            Id = "f1",
+            AccessId = "acc-f1",
+            Type = CoreSendType.File,
+            Name = "doc",
+            File = new SendFile("doc.pdf", 348160, "340 KB", "file-1"),
+            HasPassword = true,
+            DeletionDate = DateTimeOffset.Parse("2026-07-15T00:00:00Z"),
+        };
+        var session = DemoSessionWith(existing);
+        var svc = DemoService(session);
+
+        var draft = SendEditorDraft.FromExisting(existing);
+        draft.Name = "doc2";
+
+        await svc.UpdateSendAsync("f1", draft, fileBytes: null, CancellationToken.None);
+
+        var stored = Assert.Single(session.Sends);
+        Assert.Equal("f1", stored.Id);
+        Assert.Equal("doc2", stored.Name);
+        Assert.Equal(348160, stored.File!.Size);
+        Assert.Equal("file-1", stored.File.FileId);
+        Assert.Equal("doc.pdf", stored.File.FileName);
+        Assert.True(stored.HasPassword);
     }
 
     [Fact]
