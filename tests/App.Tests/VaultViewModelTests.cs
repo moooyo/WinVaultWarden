@@ -576,6 +576,28 @@ public class VaultViewModelTests
     }
 
     [Fact]
+    public void EditorSelectedFolder_RoundTripsWithDraftFolderId()
+    {
+        var vm = NewVm();
+        vm.BeginAdd(VaultItemKind.Login);
+
+        // 初始无文件夹 → 选中项为 null(ComboBox 显示占位符)。
+        Assert.Null(vm.EditorSelectedFolder);
+
+        // 选中某文件夹节点 → 写回 draft.FolderId。
+        var folder = vm.FolderFilters.First();
+        vm.EditorSelectedFolder = folder;
+        Assert.Equal(folder.FolderId, vm.EditorDraft!.FolderId);
+
+        // getter 依 draft.FolderId 反查回 FolderFilters 中同一实例(引用相等,保证 SelectedItem 能命中)。
+        Assert.Same(folder, vm.EditorSelectedFolder);
+
+        // 清空选择 → draft.FolderId 变 null。
+        vm.EditorSelectedFolder = null;
+        Assert.Null(vm.EditorDraft.FolderId);
+    }
+
+    [Fact]
     public async Task SaveDraft_PersistsInSharedMockServiceAcrossViewModels()
     {
         var service = new MockVaultUiService();

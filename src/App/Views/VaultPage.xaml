@@ -14,8 +14,8 @@
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <conv:EmptyStringToCollapsedConverter x:Key="EmptyToCollapsed" />
         <CollectionViewSource x:Name="GroupedItemsSource"
-                              IsSourceGrouped="True"
-                              ItemsPath="Items" />
+                              IsSourceGrouped="True" />
+        <!-- 分组对象(VaultListGroup)自身即条目集合,故不设 ItemsPath(反射式路径,AOT 不安全)。 -->
         <DataTemplate x:Key="LoginTemplate" x:DataType="models:LoginDetail">
             <StackPanel Spacing="12">
                 <controls:DetailCard Title="登录信息">
@@ -258,31 +258,8 @@
                          IsClosable="True"
                          IsOpen="{x:Bind ViewModel.HasSkippedCiphers, Mode=OneWay}"
                          Message="{x:Bind ViewModel.SkippedCipherMessage, Mode=OneWay}" />
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <ToggleButton Content="含TOTP"
-                                  IsChecked="{x:Bind ViewModel.FacetTotp, Mode=TwoWay}"
-                                  AutomationProperties.Name="按含 TOTP 筛选"
-                                  AutomationProperties.AutomationId="VaultFacetTotpToggle" />
-                    <ToggleButton Content="含附件"
-                                  IsChecked="{x:Bind ViewModel.FacetAttachment, Mode=TwoWay}"
-                                  AutomationProperties.Name="按含附件筛选"
-                                  AutomationProperties.AutomationId="VaultFacetAttachmentToggle" />
-                    <ToggleButton Content="含网址"
-                                  IsChecked="{x:Bind ViewModel.FacetUri, Mode=TwoWay}"
-                                  AutomationProperties.Name="按含网址筛选"
-                                  AutomationProperties.AutomationId="VaultFacetUriToggle" />
-                    <ToggleButton Content="仅收藏"
-                                  IsChecked="{x:Bind ViewModel.FacetFavoriteOnly, Mode=TwoWay}"
-                                  AutomationProperties.Name="仅显示收藏"
-                                  AutomationProperties.AutomationId="VaultFacetFavoriteOnlyToggle" />
-                </StackPanel>
-                <Grid ColumnSpacing="8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+                <!-- 紧凑单行:排序 + 筛选(分面下拉,含激活计数徽标) + 视图(已保存视图 + 保存当前视图) -->
+                <StackPanel Orientation="Horizontal" Spacing="8">
                     <ComboBox x:Name="SortComboBox"
                               MinWidth="130"
                               SelectedIndex="{x:Bind ViewModel.SelectedSortIndex, Mode=TwoWay}"
@@ -293,28 +270,80 @@
                         <ComboBoxItem Content="最近修改" />
                         <ComboBoxItem Content="创建时间" />
                     </ComboBox>
-                    <DropDownButton x:Name="SavedViewsButton"
-                                    Grid.Column="1"
-                                    Content="已保存视图"
-                                    AutomationProperties.Name="已保存视图"
-                                    AutomationProperties.AutomationId="VaultSavedViewsButton">
+
+                    <DropDownButton x:Name="FacetFilterButton"
+                                    AutomationProperties.Name="筛选"
+                                    AutomationProperties.AutomationId="VaultFacetFilterButton">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE71C;" FontSize="14" />
+                            <TextBlock Text="筛选" />
+                            <InfoBadge Value="{x:Bind ViewModel.ActiveFacetCount, Mode=OneWay}"
+                                       VerticalAlignment="Center"
+                                       Visibility="{x:Bind ViewModel.HasActiveFacets, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
                         <DropDownButton.Flyout>
-                            <MenuFlyout x:Name="SavedViewsFlyout" Opening="OnSavedViewsFlyoutOpening" />
+                            <Flyout>
+                                <StackPanel Spacing="6" MinWidth="200">
+                                    <ToggleButton Content="含TOTP"
+                                                  HorizontalAlignment="Stretch"
+                                                  HorizontalContentAlignment="Left"
+                                                  IsChecked="{x:Bind ViewModel.FacetTotp, Mode=TwoWay}"
+                                                  AutomationProperties.Name="按含 TOTP 筛选"
+                                                  AutomationProperties.AutomationId="VaultFacetTotpToggle" />
+                                    <ToggleButton Content="含附件"
+                                                  HorizontalAlignment="Stretch"
+                                                  HorizontalContentAlignment="Left"
+                                                  IsChecked="{x:Bind ViewModel.FacetAttachment, Mode=TwoWay}"
+                                                  AutomationProperties.Name="按含附件筛选"
+                                                  AutomationProperties.AutomationId="VaultFacetAttachmentToggle" />
+                                    <ToggleButton Content="含网址"
+                                                  HorizontalAlignment="Stretch"
+                                                  HorizontalContentAlignment="Left"
+                                                  IsChecked="{x:Bind ViewModel.FacetUri, Mode=TwoWay}"
+                                                  AutomationProperties.Name="按含网址筛选"
+                                                  AutomationProperties.AutomationId="VaultFacetUriToggle" />
+                                    <ToggleButton Content="仅收藏"
+                                                  HorizontalAlignment="Stretch"
+                                                  HorizontalContentAlignment="Left"
+                                                  IsChecked="{x:Bind ViewModel.FacetFavoriteOnly, Mode=TwoWay}"
+                                                  AutomationProperties.Name="仅显示收藏"
+                                                  AutomationProperties.AutomationId="VaultFacetFavoriteOnlyToggle" />
+                                    <Border Height="1" Margin="0,2"
+                                            Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                    <Button Content="清除全部筛选"
+                                            HorizontalAlignment="Stretch"
+                                            Click="OnClearFiltersClick"
+                                            Visibility="{x:Bind ViewModel.HasActiveRefinement, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                                            AutomationProperties.Name="清除筛选"
+                                            AutomationProperties.AutomationId="VaultClearFiltersButton" />
+                                </StackPanel>
+                            </Flyout>
                         </DropDownButton.Flyout>
                     </DropDownButton>
-                    <Button Grid.Column="3"
-                            Content="清除筛选"
-                            Click="OnClearFiltersClick"
-                            Visibility="{x:Bind ViewModel.HasActiveRefinement, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                            AutomationProperties.Name="清除筛选"
-                            AutomationProperties.AutomationId="VaultClearFiltersButton" />
-                </Grid>
-                <Button x:Name="SaveCurrentViewButton"
-                        Content="保存当前视图"
-                        HorizontalAlignment="Left"
-                        Click="OnSaveCurrentViewClick"
-                        AutomationProperties.Name="保存当前视图"
-                        AutomationProperties.AutomationId="VaultSaveCurrentViewButton" />
+
+                    <DropDownButton x:Name="SavedViewsButton"
+                                    AutomationProperties.Name="视图"
+                                    AutomationProperties.AutomationId="VaultSavedViewsButton">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE8A9;" FontSize="14" />
+                            <TextBlock Text="视图" />
+                        </StackPanel>
+                        <DropDownButton.Flyout>
+                            <MenuFlyout x:Name="SavedViewsFlyout" Opening="OnSavedViewsFlyoutOpening">
+                                <MenuFlyoutSeparator x:Name="SavedViewsStaticSeparator" />
+                                <MenuFlyoutItem x:Name="SaveCurrentViewMenuItem"
+                                                Text="保存当前视图…"
+                                                Click="OnSaveCurrentViewClick"
+                                                AutomationProperties.Name="保存当前视图"
+                                                AutomationProperties.AutomationId="VaultSaveCurrentViewButton">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE74E;" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                            </MenuFlyout>
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+                </StackPanel>
 
                 <InfoBar Severity="Informational" IsClosable="False" IsOpen="True"
                          Message="回收站中的项目不计入密码库，可恢复或永久删除。"
@@ -500,7 +529,8 @@
         </Grid>
 
         <!-- 详情 -->
-        <ScrollViewer Grid.Column="1" Padding="16">
+        <Grid Grid.Column="1">
+        <ScrollViewer Padding="16">
             <StackPanel Spacing="12" MaxWidth="720" HorizontalAlignment="Left">
                 <StackPanel x:Name="CipherEditorPanel"
                             x:Load="{x:Bind ViewModel.IsEditing, Mode=OneWay}"
@@ -560,10 +590,14 @@
                                           Header="文件夹"
                                           HorizontalAlignment="Stretch"
                                           ItemsSource="{x:Bind ViewModel.FolderFilters, Mode=OneWay}"
-                                          DisplayMemberPath="Label"
-                                          SelectedValuePath="FolderId"
-                                          SelectedValue="{x:Bind ViewModel.EditorDraft.FolderId, Mode=TwoWay}"
-                                          PlaceholderText="-- 选择 --" />
+                                          SelectedItem="{x:Bind ViewModel.EditorSelectedFolder, Mode=TwoWay}"
+                                          PlaceholderText="-- 选择 --">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="models:FilterNode">
+                                            <TextBlock Text="{x:Bind Label}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
                                 <CheckBox IsChecked="{x:Bind ViewModel.EditorDraft.Favorite, Mode=TwoWay}">
                                     <TextBlock Text="收藏" />
                                 </CheckBox>
@@ -907,24 +941,27 @@
                         </Button>
                     </Grid>
                 </StackPanel>
-
-                <StackPanel Visibility="{x:Bind ViewModel.NoSelection, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                            HorizontalAlignment="Center"
-                            Spacing="{StaticResource SpacingMedium}"
-                            Margin="0,72,0,0">
-                    <FontIcon Glyph="&#xE8F1;" FontSize="44"
-                              Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                              HorizontalAlignment="Center" />
-                    <TextBlock Text="未选择任何项目"
-                               Style="{ThemeResource SubtitleTextBlockStyle}"
-                               HorizontalAlignment="Center" />
-                    <TextBlock Text="从左侧列表选择一个条目以查看详情。"
-                               Style="{StaticResource CaptionSecondaryTextBlockStyle}"
-                               TextAlignment="Center"
-                               HorizontalAlignment="Center" />
-                </StackPanel>
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>
+
+            <!-- 空状态浮层:在整个右栏内水平+垂直居中(不再随详情内容靠左偏上) -->
+            <StackPanel x:Name="VaultNoSelectionPanel"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Spacing="{StaticResource SpacingMedium}"
+                        Visibility="{x:Bind ViewModel.ShowNoSelectionPlaceholder, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <FontIcon Glyph="&#xE8F1;" FontSize="44"
+                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                          HorizontalAlignment="Center" />
+                <TextBlock Text="未选择任何项目"
+                           Style="{ThemeResource SubtitleTextBlockStyle}"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="从左侧列表选择一个条目以查看详情。"
+                           Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                           TextAlignment="Center"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+        </Grid>
     </Grid>
 </Page>

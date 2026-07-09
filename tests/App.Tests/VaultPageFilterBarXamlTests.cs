@@ -97,4 +97,14 @@ public class VaultPageFilterBarXamlTests
         Assert.Contains("AutomationProperties.AutomationId=\"VaultFacetUriToggle\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"VaultFacetFavoriteOnlyToggle\"", xaml);
     }
+
+    [Fact]
+    public void FacetFilterButton_ShowsActiveFacetCountBadge()
+    {
+        var xaml = LoadText();
+        // 分面收进“筛选 ▾”下拉,按钮上用 InfoBadge 显示激活分面数量。
+        Assert.Contains("AutomationProperties.AutomationId=\"VaultFacetFilterButton\"", xaml);
+        Assert.Contains("Value=\"{x:Bind ViewModel.ActiveFacetCount, Mode=OneWay}\"", xaml);
+        Assert.Contains("ViewModel.HasActiveFacets", xaml);
+    }
 }

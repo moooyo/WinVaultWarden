@@ -471,14 +471,21 @@ public sealed partial class VaultPage : Page
 
     private void OnSavedViewsFlyoutOpening(object sender, object e)
     {
-        SavedViewsFlyout.Items.Clear();
+        // 只清理上次动态插入的视图项(位于列表顶部,静态分隔线之前),保留末尾静态的
+        // 分隔线 + “保存当前视图…”(声明在 XAML,带 Click=OnSaveCurrentViewClick)。
+        while (SavedViewsFlyout.Items.Count > 0
+               && !ReferenceEquals(SavedViewsFlyout.Items[0], SavedViewsStaticSeparator))
+        {
+            SavedViewsFlyout.Items.RemoveAt(0);
+        }
 
         if (ViewModel.SavedViews.Count == 0)
         {
-            SavedViewsFlyout.Items.Add(new MenuFlyoutItem { Text = "暂无已保存视图", IsEnabled = false });
+            SavedViewsFlyout.Items.Insert(0, new MenuFlyoutItem { Text = "暂无已保存视图", IsEnabled = false });
             return;
         }
 
+        var insertAt = 0;
         foreach (var view in ViewModel.SavedViews)
         {
             var applyItem = new MenuFlyoutItem { Text = view.Name };
@@ -487,8 +494,8 @@ public sealed partial class VaultPage : Page
             var deleteItem = new MenuFlyoutItem { Text = $"删除“{view.Name}”" };
             deleteItem.Click += (_, _) => ViewModel.DeleteViewCommand.Execute(view.Name);
 
-            SavedViewsFlyout.Items.Add(applyItem);
-            SavedViewsFlyout.Items.Add(deleteItem);
+            SavedViewsFlyout.Items.Insert(insertAt++, applyItem);
+            SavedViewsFlyout.Items.Insert(insertAt++, deleteItem);
         }
     }
 

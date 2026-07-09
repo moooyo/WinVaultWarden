@@ -69,6 +69,23 @@ public class VaultPageStateXamlTests
         Assert.Contains("ViewModel.DataStale", infoBar.Attribute("IsOpen")?.Value);
     }
 
+    [Fact]
+    public void DetailColumn_NoSelectionPanel_IsCenteredAndBoundToPlaceholderFlag()
+    {
+        var document = LoadXaml();
+
+        var panel = document
+            .Descendants(Xaml + "StackPanel")
+            .Single(p => p.Attribute(X + "Name")?.Value == "VaultNoSelectionPanel");
+
+        // 居中修复:右栏空状态须在整个右栏内水平+垂直居中(取代旧的靠左 + 固定上边距)。
+        Assert.Equal("Center", panel.Attribute("VerticalAlignment")?.Value);
+        Assert.Equal("Center", panel.Attribute("HorizontalAlignment")?.Value);
+        // 可见性绑定到 ShowNoSelectionPlaceholder(排除“新建条目”编辑态)。
+        Assert.Contains("ViewModel.ShowNoSelectionPlaceholder", panel.Attribute("Visibility")?.Value);
+        Assert.Contains("BoolToVis", panel.Attribute("Visibility")?.Value);
+    }
+
     private static XDocument LoadXaml()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

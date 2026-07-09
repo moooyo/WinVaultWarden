@@ -83,6 +83,17 @@ public sealed class MockSendUiService : ISendUiService
         return Task.CompletedTask;
     }
 
+    // 编辑打开路径:内存替身按 id 找条目并水合成默认 draft;找不到返回 null。
+    public Task<SendEditorDraft?> GetEditDraftAsync(string id, CancellationToken ct = default)
+    {
+        var send = _sends.FirstOrDefault(s => s.Id == id);
+        if (send is null)
+            return Task.FromResult<SendEditorDraft?>(null);
+        var draft = SendEditorDraft.CreateDefault(send.Type);
+        draft.Name = send.Name;
+        return Task.FromResult<SendEditorDraft?>(draft);
+    }
+
     public string? CopyShareLink(SendListItem item) => item.Link;
 
     public Task<SendReceivedResult> OpenReceivedLinkAsync(string url, string? password, CancellationToken ct = default) =>

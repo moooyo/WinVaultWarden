@@ -69,15 +69,19 @@ public class CipherEditorXamlTests
     }
 
     [Fact]
-    public void VaultPage_FolderComboBox_BindsToFolderFiltersAndDraftFolderId()
+    public void VaultPage_FolderComboBox_BindsToFolderFiltersAndSelectedFolder()
     {
         var document = LoadVaultPageXaml();
         var folderBox = RequireByName(document, "CipherEditorFolderBox");
 
         Assert.Contains("FolderFilters", folderBox.Attribute("ItemsSource")?.Value);
-        Assert.Equal("Label", folderBox.Attribute("DisplayMemberPath")?.Value);
-        Assert.Equal("FolderId", folderBox.Attribute("SelectedValuePath")?.Value);
-        Assert.Contains("EditorDraft.FolderId", folderBox.Attribute("SelectedValue")?.Value);
+        // AOT 安全:用编译绑定的 ItemTemplate + SelectedItem 取代反射式 DisplayMemberPath/SelectedValuePath。
+        Assert.Null(folderBox.Attribute("DisplayMemberPath"));
+        Assert.Null(folderBox.Attribute("SelectedValuePath"));
+        Assert.Contains("EditorSelectedFolder", folderBox.Attribute("SelectedItem")?.Value);
+        // ItemTemplate 用 x:Bind Label 展示文件夹名(编译绑定,无反射)。
+        var templateText = folderBox.Descendants().First(e => e.Name.LocalName == "TextBlock");
+        Assert.Contains("Label", templateText.Attribute("Text")?.Value);
         Assert.Equal("Stretch", folderBox.Attribute("HorizontalAlignment")?.Value);
     }
 

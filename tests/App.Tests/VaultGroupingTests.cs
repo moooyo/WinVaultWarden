@@ -33,7 +33,7 @@ public class VaultGroupingTests
         Assert.NotEmpty(vm.GroupedItems);
         Assert.All(vm.GroupedItems, g => Assert.True(g.ShowHeader));
         foreach (var g in vm.GroupedItems)
-            Assert.Single(g.Items.Select(i => i.FolderId).Distinct());
+            Assert.Single(g.Select(i => i.FolderId).Distinct());
         Assert.Equal(vm.FilteredItems.Select(i => i.FolderId).Distinct().Count(), vm.GroupedItems.Count);
         var noFolder = vm.GroupedItems.FirstOrDefault(g => g.Key == "无文件夹");
         if (noFolder is not null)
@@ -59,6 +59,6 @@ public class VaultGroupingTests
         vm.SearchText = "百度";
 
         Assert.Equal(vm.FilteredItems.Count, vm.GroupedItems.Sum(g => g.Count));
-        Assert.All(vm.GroupedItems, g => Assert.NotEmpty(g.Items));
+        Assert.All(vm.GroupedItems, g => Assert.NotEmpty(g));
     }
 }

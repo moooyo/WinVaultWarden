@@ -36,24 +36,38 @@ public partial class VaultViewModel : ObservableObject
     public partial CipherListItem? SelectedItem { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowNoSelectionPlaceholder))]
     public partial CipherDetail? Detail { get; set; }
 
     [ObservableProperty]
     public partial string SearchText { get; set; } = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ActiveFacetCount))]
+    [NotifyPropertyChangedFor(nameof(HasActiveFacets))]
     public partial bool FacetTotp { get; set; }
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ActiveFacetCount))]
+    [NotifyPropertyChangedFor(nameof(HasActiveFacets))]
     public partial bool FacetAttachment { get; set; }
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ActiveFacetCount))]
+    [NotifyPropertyChangedFor(nameof(HasActiveFacets))]
     public partial bool FacetUri { get; set; }
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ActiveFacetCount))]
+    [NotifyPropertyChangedFor(nameof(HasActiveFacets))]
     public partial bool FacetFavoriteOnly { get; set; }
     [ObservableProperty]
     public partial VaultSortKey SelectedSort { get; set; } = VaultSortKey.NameAsc;
 
     public VaultFacets CurrentFacets => new(FacetTotp, FacetAttachment, FacetUri, FacetFavoriteOnly);
     public bool HasActiveRefinement => CurrentFacets.Any || !string.IsNullOrWhiteSpace(SearchText);
+
+    // 分面筛选徽标:激活的分面个数(0–4)与是否有激活分面,供“筛选 ▾”按钮的 InfoBadge 显示。
+    public int ActiveFacetCount =>
+        (FacetTotp ? 1 : 0) + (FacetAttachment ? 1 : 0) + (FacetUri ? 1 : 0) + (FacetFavoriteOnly ? 1 : 0);
+    public bool HasActiveFacets => CurrentFacets.Any;
 
     /// <summary>供排序 ComboBox.SelectedIndex 双向绑定使用（顺序与 VaultSortKey 枚举一致）。</summary>
     public int SelectedSortIndex
@@ -76,10 +90,27 @@ public partial class VaultViewModel : ObservableObject
     public partial FilterNode? SelectedFilter { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowNoSelectionPlaceholder))]
     public partial bool IsEditing { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EditorSelectedFolder))]
     public partial CipherEditorDraft? EditorDraft { get; set; }
+
+    // 文件夹选择:以 FilterNode 形式暴露给 ComboBox 的 SelectedItem,内部映射到 EditorDraft.FolderId。
+    // 用 x:Bind + SelectedItem 取代反射式 DisplayMemberPath/SelectedValuePath(AOT 下反射会抛
+    // NotSupportedException)。getter 返回的是 FolderFilters 中的同一实例,故 SelectedItem 能按引用命中。
+    public FilterNode? EditorSelectedFolder
+    {
+        get => EditorDraft is null
+            ? null
+            : FolderFilters.FirstOrDefault(f => f.FolderId == EditorDraft.FolderId);
+        set
+        {
+            if (EditorDraft is not null)
+                EditorDraft.FolderId = value?.FolderId;
+        }
+    }
 
     [ObservableProperty]
     public partial string EditorError { get; set; } = string.Empty;
@@ -117,6 +148,9 @@ public partial class VaultViewModel : ObservableObject
 
     public bool HasDetailSelected => Detail is not null;
     public bool NoSelection => Detail is null;
+
+    // 右栏“未选择任何项目”空状态浮层:无选中且不在编辑(新建条目时 Detail 为空但在编辑,需排除)。
+    public bool ShowNoSelectionPlaceholder => Detail is null && !IsEditing;
 
     // 详情头 favicon 域名(仅登录详情有值)。
     public string? DetailIconDomain =>
@@ -330,7 +364,7 @@ public partial class VaultViewModel : ObservableObject
         {
             if (FilteredItems.Count == 0) return;
             var flat = new VaultListGroup { Key = string.Empty, ShowHeader = false };
-            foreach (var i in FilteredItems) flat.Items.Add(i);
+            foreach (var i in FilteredItems) flat.Add(i);
             GroupedItems.Add(flat);
             return;
         }
@@ -341,7 +375,7 @@ public partial class VaultViewModel : ObservableObject
             if (FilteredItems.Count == 0)
                 return;
             var single = new VaultListGroup { Key = SelectedFilter.Label, ShowHeader = false };
-            foreach (var i in FilteredItems) single.Items.Add(i);
+            foreach (var i in FilteredItems) single.Add(i);
             GroupedItems.Add(single);
             return;
         }
@@ -356,7 +390,7 @@ public partial class VaultViewModel : ObservableObject
             foreach (var g in byFolder)
             {
                 var group = new VaultListGroup { Key = FolderNameFor(g.Key), ShowHeader = true };
-                foreach (var i in g) group.Items.Add(i);
+                foreach (var i in g) group.Add(i);
                 GroupedItems.Add(group);
             }
             return;
@@ -369,7 +403,7 @@ public partial class VaultViewModel : ObservableObject
             if (items.Count == 0)
                 continue;
             var group = new VaultListGroup { Key = TypeDisplayName(kind), ShowHeader = true };
-            foreach (var i in items) group.Items.Add(i);
+            foreach (var i in items) group.Add(i);
             GroupedItems.Add(group);
         }
     }

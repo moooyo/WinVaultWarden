@@ -115,7 +115,7 @@ public class VaultViewModelFilterTests
 
         var group = Assert.Single(vm.GroupedItems);
         Assert.False(group.ShowHeader);
-        Assert.Equal(new[] { "2", "3", "1" }, group.Items.Select(i => i.Id));
+        Assert.Equal(new[] { "2", "3", "1" }, group.Select(i => i.Id));
     }
 
     [Fact]

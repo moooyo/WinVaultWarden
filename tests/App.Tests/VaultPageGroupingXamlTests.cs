@@ -26,7 +26,9 @@ public class VaultPageGroupingXamlTests
         var cvs = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "CollectionViewSource");
         Assert.NotNull(cvs);
         Assert.Equal("True", cvs!.Attribute("IsSourceGrouped")?.Value);
-        Assert.Equal("Items", cvs.Attribute("ItemsPath")?.Value);
+        // 分组对象(VaultListGroup)自身即条目集合,不再用反射式 ItemsPath —— AOT 下反射读属性会抛
+        // NotSupportedException。故 ItemsPath 必须缺省。
+        Assert.Null(cvs.Attribute("ItemsPath"));
 
         Assert.Contains(doc.Descendants(), e => e.Name.LocalName == "ItemsStackPanel"
             && e.Attribute("AreStickyGroupHeadersEnabled")?.Value == "True");
