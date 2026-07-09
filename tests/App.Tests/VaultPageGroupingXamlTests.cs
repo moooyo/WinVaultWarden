@@ -19,19 +19,26 @@ public class VaultPageGroupingXamlTests
     }
 
     [Fact]
-    public void List_UsesGroupedCollectionViewSource_WithStickyHeaders()
+    public void List_UsesFlatFilteredItems_NoCollectionViewSourceGrouping()
     {
+        // 回归:Native AOT 下 CollectionViewSource(IsSourceGrouped)只建组不渲染子项
+        // (microsoft-ui-xaml #10881),再叠加 GroupStyle HidesIfEmpty 导致整份保险库列表不可见。
+        // 因此列表改为平铺绑定 ViewModel.FilteredItems(纯 x:Bind,AOT 安全,必然渲染)。
         var doc = LoadVaultPageXaml();
 
-        var cvs = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "CollectionViewSource");
-        Assert.NotNull(cvs);
-        Assert.Equal("True", cvs!.Attribute("IsSourceGrouped")?.Value);
-        // 分组对象(VaultListGroup)自身即条目集合,不再用反射式 ItemsPath —— AOT 下反射读属性会抛
-        // NotSupportedException。故 ItemsPath 必须缺省。
-        Assert.Null(cvs.Attribute("ItemsPath"));
+        // 不得再出现分组用的 CollectionViewSource。
+        Assert.DoesNotContain(doc.Descendants(), e => e.Name.LocalName == "CollectionViewSource");
+        Assert.DoesNotContain(doc.Descendants(), e => e.Name.LocalName == "GroupStyle");
 
-        Assert.Contains(doc.Descendants(), e => e.Name.LocalName == "ItemsStackPanel"
-            && e.Attribute("AreStickyGroupHeadersEnabled")?.Value == "True");
-        Assert.Contains(doc.Descendants(), e => e.Name.LocalName == "GroupStyle");
+        // CipherList 直接绑定平铺的 FilteredItems。
+        var list = doc.Descendants().FirstOrDefault(e =>
+            e.Name.LocalName == "ListView" && e.Attribute(Xaml.X + "Name")?.Value == "CipherList");
+        Assert.NotNull(list);
+        Assert.Contains("ViewModel.FilteredItems", list!.Attribute("ItemsSource")?.Value ?? "");
     }
+}
+
+internal static class Xaml
+{
+    public static readonly XNamespace X = "http://schemas.microsoft.com/winfx/2006/xaml";
 }

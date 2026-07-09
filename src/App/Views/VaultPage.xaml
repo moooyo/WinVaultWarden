@@ -13,9 +13,6 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <conv:EmptyStringToCollapsedConverter x:Key="EmptyToCollapsed" />
-        <CollectionViewSource x:Name="GroupedItemsSource"
-                              IsSourceGrouped="True" />
-        <!-- 分组对象(VaultListGroup)自身即条目集合,故不设 ItemsPath(反射式路径,AOT 不安全)。 -->
         <DataTemplate x:Key="LoginTemplate" x:DataType="models:LoginDetail">
             <StackPanel Spacing="12">
                 <controls:DetailCard Title="登录信息">
@@ -366,32 +363,10 @@
 
             <ListView Grid.Row="5"
                       x:Name="CipherList"
-                      ItemsSource="{x:Bind GroupedItemsSource.View, Mode=OneWay}"
+                      ItemsSource="{x:Bind ViewModel.FilteredItems, Mode=OneWay}"
                       SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
                       SelectionChanged="OnCipherSelectionChanged"
                       SelectionMode="{x:Bind local:VaultPage.SelectionModeFromBool(ViewModel.IsSelectionMode), Mode=OneWay}">
-                <ListView.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <ItemsStackPanel AreStickyGroupHeadersEnabled="True" />
-                    </ItemsPanelTemplate>
-                </ListView.ItemsPanel>
-                <ListView.GroupStyle>
-                    <GroupStyle HidesIfEmpty="True">
-                        <GroupStyle.HeaderTemplate>
-                            <DataTemplate x:DataType="models:VaultListGroup">
-                                <StackPanel Orientation="Horizontal"
-                                            Spacing="8"
-                                            Margin="4,8,0,2"
-                                            Visibility="{x:Bind local:VaultPage.VisibleIfTrue(ShowHeader)}">
-                                    <TextBlock Text="{x:Bind Key}" Style="{StaticResource SectionHeaderTextBlockStyle}" />
-                                    <TextBlock Text="{x:Bind Count}"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                               VerticalAlignment="Center" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </GroupStyle.HeaderTemplate>
-                    </GroupStyle>
-                </ListView.GroupStyle>
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="models:CipherListItem">
                         <Grid x:Name="RowRoot"
