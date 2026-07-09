@@ -1,5 +1,6 @@
 using App.Services;
 using App.ViewModels;
+using Crypto.PasswordStrength;
 using Xunit;
 
 namespace App.Tests;
@@ -241,5 +242,37 @@ public class GeneratorViewModelTests
 
         Assert.Equal(5, vm.PassphraseWordCount);            // no clamp-driven mutation
         Assert.Equal(5, vm.GeneratedPassword.Split('-').Length);
+    }
+
+    private static PasswordStrengthEvaluator CreateEvaluator() =>
+        new(new Omnimatch(new DictionaryMatcher(FrequencyDictionaries.Load())));
+
+    [Fact]
+    public void PasswordMode_WithEvaluator_ExposesStrength()
+    {
+        var vm = new GeneratorViewModel(clipboard: null, strength: CreateEvaluator());
+
+        Assert.True(vm.ShowStrength);
+        Assert.InRange(vm.StrengthScore, 0, 4);
+        Assert.False(string.IsNullOrEmpty(vm.StrengthLabel));
+        Assert.InRange(vm.StrengthFraction, 0.0 + double.Epsilon, 1.0);
+
+        vm.Mode = GeneratorMode.Username;
+
+        Assert.False(vm.ShowStrength);
+    }
+
+    [Fact]
+    public void WithoutEvaluator_ShowStrengthReflectsMode_ButScoreStaysZero()
+    {
+        var vm = new GeneratorViewModel();
+
+        Assert.True(vm.ShowStrength);
+        Assert.Equal(0, vm.StrengthScore);
+
+        vm.Mode = GeneratorMode.Username;
+
+        Assert.False(vm.ShowStrength);
+        Assert.Equal(0, vm.StrengthScore);
     }
 }

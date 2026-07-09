@@ -165,6 +165,45 @@ public class SecurityReportViewModelTests
         Assert.False(vm.HasExposed);
     }
 
+    // ── 聚合摘要属性（Hero 卡片） ──────────────────────────────────────────────
+
+    [Fact]
+    public void Aggregates_ReflectThreeIssues_SeverityCritical()
+    {
+        var stub = new StubHealthUiService();
+        stub.Report = new HealthReport(
+            Reused: [new ReusedGroup(2, [new HealthItemRef("c1", "GitHub", "a@b.com"), new HealthItemRef("c2", "Twitter", "a@b.com")])],
+            Weak: [new WeakFinding(new HealthItemRef("c3", "OldBank", null), 12)],
+            Unsecured: [new UnsecuredFinding(new HealthItemRef("c3", "OldBank", null), "http://oldbank.example.com/login")]);
+
+        var vm = new SecurityReportViewModel(stub);
+        vm.LoadOffline();
+
+        Assert.Equal(1, vm.ReusedCount);
+        Assert.Equal(1, vm.WeakCount);
+        Assert.Equal(1, vm.UnsecuredCount);
+        Assert.Equal(0, vm.ExposedCount);
+        Assert.Equal(3, vm.TotalIssueCount);
+        Assert.Equal("发现 3 项可改进", vm.SummaryText);
+        Assert.True(vm.HasAnyIssue);
+        Assert.Equal(SecuritySeverity.Critical, vm.OverallSeverity);
+    }
+
+    [Fact]
+    public void Aggregates_EmptyReport_SeverityGood()
+    {
+        var stub = new StubHealthUiService();
+        // stub.Report defaults to empty
+
+        var vm = new SecurityReportViewModel(stub);
+        vm.LoadOffline();
+
+        Assert.Equal(0, vm.TotalIssueCount);
+        Assert.Equal("未发现问题", vm.SummaryText);
+        Assert.False(vm.HasAnyIssue);
+        Assert.Equal(SecuritySeverity.Good, vm.OverallSeverity);
+    }
+
     // ── Fakes ──────────────────────────────────────────────────────────────────
 
     private sealed class StubHealthUiService : IVaultHealthUiService

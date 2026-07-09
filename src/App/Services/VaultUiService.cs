@@ -2,9 +2,13 @@ using App.ViewModels.Models;
 using Core.Enums;
 using Core.Models;
 using Core.Services;
+using Vault;
 
 namespace App.Services;
 
+// 演示/离线会话(VaultSession.IsDemo)特判:该会话未配置服务端地址,任何走网络的写入/同步都会抛
+// 「An invalid request URI was provided…」。故 IsDemo 时全部改走会话内存中的离线数据(建/改/删/移动/同步),
+// 完全不触网。session 为 null(设计时/旧构造)时按在线路径处理。
 public sealed class VaultUiService : IVaultUiService
 {
     private const string GlyphAllItems = "\uE71D";
@@ -20,13 +24,20 @@ public sealed class VaultUiService : IVaultUiService
     private readonly IVaultService _vault;
     private readonly IVaultWriteService _writeService;
     private readonly ISyncService _sync;
+    private readonly VaultSession? _session;
 
-    public VaultUiService(IVaultService vault, IVaultWriteService writeService, ISyncService sync)
+    public VaultUiService(IVaultService vault, IVaultWriteService writeService, ISyncService sync, VaultSession? session = null)
     {
         _vault = vault;
         _writeService = writeService;
         _sync = sync;
+        _session = session;
     }
+
+    private bool IsDemo => _session?.IsDemo == true;
+    private static DateTimeOffset Now => DateTimeOffset.UtcNow;
+
+    private Cipher Find(string id) => _vault.GetCiphers().First(c => c.Id == id);
 
     public int SkippedCipherCount => _vault.Snapshot.SkippedCipherCount;
     public bool DataStale => _vault.Snapshot.DataStale;
@@ -45,6 +56,15 @@ public sealed class VaultUiService : IVaultUiService
             : _vault.GetCiphers().FirstOrDefault(c => c.Id == editingId);
         var cipher = CipherDraftMapper.ToCipher(draft, original);
 
+        if (IsDemo)
+        {
+            cipher = original is null
+                ? cipher.WithMetadata(Guid.NewGuid().ToString("N"), Now, Now)
+                : cipher.WithMetadata(cipher.Id, cipher.CreationDate, Now);
+            _session!.UpsertCipher(cipher);
+            return cipher.Id;
+        }
+
         if (original is null)
         {
             // 新建:写前/写后 cipher id 差集定位新条目(re-sync 已重建快照)。
@@ -58,28 +78,107 @@ public sealed class VaultUiService : IVaultUiService
         return editingId!;
     }
 
-    public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) =>
-        _writeService.DeleteCipherAsync(id, permanent, ct);
+    public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default)
+    {
+        if (IsDemo)
+        {
+            if (permanent)
+                _session!.RemoveCipher(id);
+            else
+                _session!.UpsertCipher(Find(id).WithDeletedDate(Now));
+            return Task.CompletedTask;
+        }
 
-    public Task RestoreCipherAsync(string id, CancellationToken ct = default) =>
-        _writeService.RestoreCipherAsync(id, ct);
+        return _writeService.DeleteCipherAsync(id, permanent, ct);
+    }
 
-    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) =>
-        _writeService.SaveFolderAsync(folderId, name, ct);
+    public Task RestoreCipherAsync(string id, CancellationToken ct = default)
+    {
+        if (IsDemo)
+        {
+            _session!.UpsertCipher(Find(id).WithDeletedDate(null));
+            return Task.CompletedTask;
+        }
 
-    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) =>
-        _writeService.DeleteFolderAsync(folderId, ct);
+        return _writeService.RestoreCipherAsync(id, ct);
+    }
 
-    public Task SyncAsync(CancellationToken ct = default) => _sync.SyncAsync(ct);
+    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default)
+    {
+        if (IsDemo)
+        {
+            _session!.UpsertFolder(new Folder
+            {
+                Id = string.IsNullOrEmpty(folderId) ? Guid.NewGuid().ToString("N") : folderId,
+                Name = name,
+                RevisionDate = Now,
+            });
+            return Task.CompletedTask;
+        }
 
-    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) =>
-        _writeService.MoveCiphersAsync(ids, folderId, ct);
+        return _writeService.SaveFolderAsync(folderId, name, ct);
+    }
 
-    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default) =>
-        _writeService.DeleteCiphersAsync(ids, permanent, ct);
+    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default)
+    {
+        if (IsDemo)
+        {
+            _session!.RemoveFolder(folderId);
+            _session!.ClearFolderReference(folderId);
+            return Task.CompletedTask;
+        }
 
-    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) =>
-        _writeService.RestoreCiphersAsync(ids, ct);
+        return _writeService.DeleteFolderAsync(folderId, ct);
+    }
+
+    public Task SyncAsync(CancellationToken ct = default)
+    {
+        if (IsDemo)
+            return Task.CompletedTask;
+
+        return _sync.SyncAsync(ct);
+    }
+
+    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default)
+    {
+        if (IsDemo)
+        {
+            foreach (var id in ids)
+                _session!.UpsertCipher(Find(id).WithFolderId(folderId));
+            return Task.CompletedTask;
+        }
+
+        return _writeService.MoveCiphersAsync(ids, folderId, ct);
+    }
+
+    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default)
+    {
+        if (IsDemo)
+        {
+            foreach (var id in ids)
+            {
+                if (permanent)
+                    _session!.RemoveCipher(id);
+                else
+                    _session!.UpsertCipher(Find(id).WithDeletedDate(Now));
+            }
+            return Task.CompletedTask;
+        }
+
+        return _writeService.DeleteCiphersAsync(ids, permanent, ct);
+    }
+
+    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
+    {
+        if (IsDemo)
+        {
+            foreach (var id in ids)
+                _session!.UpsertCipher(Find(id).WithDeletedDate(null));
+            return Task.CompletedTask;
+        }
+
+        return _writeService.RestoreCiphersAsync(ids, ct);
+    }
 
     public IReadOnlyList<FilterNode> GetFilters()
     {

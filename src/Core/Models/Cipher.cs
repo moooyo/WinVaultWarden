@@ -55,6 +55,56 @@ public sealed class Cipher
         Attachments = Attachments,
         PasswordHistory = PasswordHistory,
     };
+
+    // 返回一个仅 DeletedDate 不同的副本(软删除/恢复用)。新增属性时须同步此拷贝。
+    public Cipher WithDeletedDate(DateTimeOffset? deletedDate) => new()
+    {
+        Id = Id,
+        Type = Type,
+        OrganizationId = OrganizationId,
+        FolderId = FolderId,
+        Key = Key,
+        Favorite = Favorite,
+        Reprompt = Reprompt,
+        Name = Name,
+        Notes = Notes,
+        CreationDate = CreationDate,
+        RevisionDate = RevisionDate,
+        DeletedDate = deletedDate,
+        Login = Login,
+        Card = Card,
+        Identity = Identity,
+        SecureNote = SecureNote,
+        Ssh = Ssh,
+        Fields = Fields,
+        Attachments = Attachments,
+        PasswordHistory = PasswordHistory,
+    };
+
+    // 返回一个 Id/CreationDate/RevisionDate 不同的副本(新建条目落库后回填服务端元数据用)。新增属性时须同步此拷贝。
+    public Cipher WithMetadata(string id, DateTimeOffset creationDate, DateTimeOffset revisionDate) => new()
+    {
+        Id = id,
+        Type = Type,
+        OrganizationId = OrganizationId,
+        FolderId = FolderId,
+        Key = Key,
+        Favorite = Favorite,
+        Reprompt = Reprompt,
+        Name = Name,
+        Notes = Notes,
+        CreationDate = creationDate,
+        RevisionDate = revisionDate,
+        DeletedDate = DeletedDate,
+        Login = Login,
+        Card = Card,
+        Identity = Identity,
+        SecureNote = SecureNote,
+        Ssh = Ssh,
+        Fields = Fields,
+        Attachments = Attachments,
+        PasswordHistory = PasswordHistory,
+    };
 }
 
 public sealed record PasswordHistoryEntry(string Password, DateTimeOffset? LastUsedDate);

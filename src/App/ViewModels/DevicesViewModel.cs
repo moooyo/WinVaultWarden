@@ -3,12 +3,14 @@ using App.Services;
 using App.ViewModels.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Core.Services;
+using Vault;
 
 namespace App.ViewModels;
 
 public partial class DevicesViewModel : ObservableObject
 {
     private readonly IAuthRequestUiService? _authRequests;
+    private readonly VaultSession? _session;
 
     public ObservableCollection<DeviceItem> Devices { get; } = new();
     public ObservableCollection<AuthRequestItem> PendingRequests { get; } = new();
@@ -23,9 +25,10 @@ public partial class DevicesViewModel : ObservableObject
     public bool HasNoDevices => Devices.Count == 0;
     public bool HasNoPendingRequests => PendingRequests.Count == 0;
 
-    public DevicesViewModel(IDeviceUiService service, IAuthRequestUiService? authRequests = null)
+    public DevicesViewModel(IDeviceUiService service, IAuthRequestUiService? authRequests = null, VaultSession? session = null)
     {
         _authRequests = authRequests;
+        _session = session;
         foreach (var d in service.GetDevices()) Devices.Add(d);
         PendingRequests.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasNoPendingRequests));
     }
@@ -35,6 +38,14 @@ public partial class DevicesViewModel : ObservableObject
     /// <summary>刷新待审批的设备登录请求列表。</summary>
     public async Task RefreshRequestsAsync(CancellationToken ct = default)
     {
+        // 演示/离线会话没有服务端:短路为空的待处理列表(展示干净的空状态),不触网、不报错。
+        if (_session?.IsDemo == true)
+        {
+            PendingRequests.Clear();
+            Error = null;
+            return;
+        }
+
         if (_authRequests is null)
         {
             Error = "设备登录授权服务不可用";
