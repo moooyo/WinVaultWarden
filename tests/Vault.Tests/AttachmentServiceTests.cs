@@ -54,7 +54,7 @@ public class AttachmentServiceTests
 
     private static DecryptedVault SnapshotWith(Cipher cipher)
         => new(
-            new AccountInfo("me@example.com", "https://vault.example", "M", string.Empty),
+            new AccountInfo("test-account", "me@example.com", new ServerOrigin("https://vault.example"), "M", string.Empty),
             Array.Empty<Folder>(),
             new[] { cipher },
             0);

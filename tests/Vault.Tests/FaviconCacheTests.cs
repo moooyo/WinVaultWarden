@@ -13,7 +13,8 @@ public class FaviconCacheTests : IDisposable
     private VaultSession Session(string serverUrl = "https://vault.example")
     {
         var s = new VaultSession();
-        s.SetAccount(new AccountInfo("e@x.com", serverUrl, "E", "kdf"));
+        var origin = ServerOrigin.TryParse(serverUrl, out var o) ? (ServerOrigin?)o : null;
+        s.SetAccount(new AccountInfo("test-account", "e@x.com", origin, "E", "kdf"));
         return s;
     }
 

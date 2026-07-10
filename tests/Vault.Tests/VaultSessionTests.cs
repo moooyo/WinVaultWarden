@@ -21,7 +21,7 @@ public class VaultSessionTests
         session.SetTokens("access", "refresh");
         session.SetUnlockedKey(key);
         session.SetSnapshot(new DecryptedVault(
-            new AccountInfo("me@example.com", "https://vault.example", "M", "PBKDF2 600000"),
+            new AccountInfo("test-account", "me@example.com", new ServerOrigin("https://vault.example"), "M", "PBKDF2 600000"),
             [folder],
             [cipher],
             0));
@@ -66,7 +66,7 @@ public class VaultSessionTests
     {
         var session = new VaultSession();
         var key = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
-        var account = new AccountInfo("me@example.com", "https://vault.example", "M", "PBKDF2 600000");
+        var account = new AccountInfo("test-account", "me@example.com", new ServerOrigin("https://vault.example"), "M", "PBKDF2 600000");
 
         session.SetUnlockedKey(key);
         session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 3));
@@ -90,7 +90,7 @@ public class VaultSessionTests
         // S6:并发锁定时,在途同步完成后的 SetSnapshot 不得把明文条目回灌进已锁定会话。
         var session = new VaultSession();
         var key = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
-        var account = new AccountInfo("me@example.com", "https://vault.example", "M", "PBKDF2 600000");
+        var account = new AccountInfo("test-account", "me@example.com", new ServerOrigin("https://vault.example"), "M", "PBKDF2 600000");
         var ciphers = new[] { new Cipher { Id = "c1", Type = Core.Enums.CipherType.Login, Name = "Secret" } };
 
         session.SetUnlockedKey(key);
@@ -127,7 +127,7 @@ public class VaultSessionTests
     {
         var session = new VaultSession();
         var key = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
-        var account = new AccountInfo("me@example.com", "https://vault.example", "M", "PBKDF2 600000");
+        var account = new AccountInfo("test-account", "me@example.com", new ServerOrigin("https://vault.example"), "M", "PBKDF2 600000");
 
         session.SetUnlockedKey(key);
         session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 0), dataStale: true);

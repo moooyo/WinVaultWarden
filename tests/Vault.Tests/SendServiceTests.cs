@@ -16,7 +16,7 @@ public class SendServiceTests
         var userKey = new SymmetricCryptoKey(UserKeyBytes);
         var session = new VaultSession();
         session.SetUnlockedKey(userKey);
-        session.SetAccount(new Core.Models.AccountInfo("test@test.com", serverUrl, "T", "PBKDF2"));
+        session.SetAccount(new Core.Models.AccountInfo("test-account", "test@test.com", new Core.Models.ServerOrigin(serverUrl), "T", "PBKDF2"));
         var crypto = new SendCryptoService(new CryptoService());
         var api = new FakeSendApiClient();
         return (new SendService(api, crypto, session), api, crypto, userKey);

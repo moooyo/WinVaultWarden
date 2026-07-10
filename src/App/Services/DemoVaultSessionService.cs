@@ -65,7 +65,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
         };
 
         return new DecryptedVault(
-            new AccountInfo("demo@winvaultwarden.local", "local-demo", "D", "Demo"),
+            new AccountInfo("demo-account", "demo@winvaultwarden.local", new ServerOrigin("http://localhost"), "D", "Demo"),
             [folder, folderWork, folderPersonal, folderFinance],
             BuildCiphers(folder.Id, folderWork.Id, folderPersonal.Id, folderFinance.Id),
             0);

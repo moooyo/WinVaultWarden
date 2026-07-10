@@ -221,7 +221,8 @@ public sealed class VaultDecryptor
         var initial = string.IsNullOrWhiteSpace(display)
             ? string.Empty
             : display.Trim()[0].ToString().ToUpperInvariant();
-        return new AccountInfo(email, serverUrl, initial, string.Empty);
+        var origin = ServerOrigin.TryParse(serverUrl, out var o) ? (ServerOrigin?)o : null;
+        return new AccountInfo(string.Empty, email, origin, initial, string.Empty);
     }
 
     private static bool IsCipherDecryptException(Exception ex) =>

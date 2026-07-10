@@ -35,8 +35,9 @@ public class NotificationsServiceTests
         var session = new VaultSession();
         session.SetTokens(accessToken, "refresh-token");
         session.SetAccount(new AccountInfo(
+            Id: "test-account",
             Email: "test@example.com",
-            ServerUrl: serverUrl,
+            Origin: new ServerOrigin(serverUrl),
             Initial: "T",
             KdfSummary: "PBKDF2/600000"));
         return session;

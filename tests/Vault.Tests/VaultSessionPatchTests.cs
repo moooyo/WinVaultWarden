@@ -25,7 +25,7 @@ public class VaultSessionPatchTests
         // SetSnapshot 现要求会话已解锁(S6:锁定态不得回灌明文快照),故先设 UserKey。
         session.SetUnlockedKey(new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray()));
         session.SetSnapshot(new DecryptedVault(
-            new AccountInfo("me@example.com", "https://vault.example", "M", "PBKDF2 600000"),
+            new AccountInfo("test-account", "me@example.com", new ServerOrigin("https://vault.example"), "M", "PBKDF2 600000"),
             folders,
             ciphers,
             0));
