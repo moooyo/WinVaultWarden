@@ -2,19 +2,27 @@ using System.Buffers.Binary;
 using System.Formats.Cbor;
 using System.Security.Cryptography;
 using System.Text;
+using Core.Services;
 
 namespace Core.Passkeys;
 
 public static class WebAuthnCrypto
 {
-    public static byte[] BuildAuthenticatorData(string rpId, uint signatureCounter, bool userPresent = true, bool userVerified = false)
+    public static byte[] BuildAuthenticatorData(
+        string rpId,
+        uint signatureCounter,
+        PasskeyApprovalEvidence evidence)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rpId);
 
         var authenticatorData = new byte[37];
-        SHA256.HashData(Encoding.UTF8.GetBytes(rpId), authenticatorData.AsSpan(0, 32));
-        authenticatorData[32] = BuildFlags(userPresent, userVerified);
-        BinaryPrimitives.WriteUInt32BigEndian(authenticatorData.AsSpan(33, 4), signatureCounter);
+        SHA256.HashData(
+            Encoding.UTF8.GetBytes(rpId),
+            authenticatorData.AsSpan(0, 32));
+        authenticatorData[32] = BuildFlags(evidence);
+        BinaryPrimitives.WriteUInt32BigEndian(
+            authenticatorData.AsSpan(33, 4),
+            signatureCounter);
         return authenticatorData;
     }
 
@@ -55,12 +63,19 @@ public static class WebAuthnCrypto
         return Convert.FromBase64String(base64);
     }
 
-    private static byte BuildFlags(bool userPresent, bool userVerified)
+    private static byte BuildFlags(PasskeyApprovalEvidence evidence)
     {
+        if (evidence.UserVerified && !evidence.UserPresent)
+        {
+            throw new ArgumentException(
+                "UserVerified requires UserPresent.",
+                nameof(evidence));
+        }
+
         byte flags = 0;
-        if (userPresent)
+        if (evidence.UserPresent)
             flags |= 0x01;
-        if (userVerified)
+        if (evidence.UserVerified)
             flags |= 0x04;
         return flags;
     }
@@ -86,7 +101,11 @@ public static class WebAuthnCrypto
 
         var head = new byte[37];
         SHA256.HashData(Encoding.UTF8.GetBytes(rpId), head.AsSpan(0, 32));
-        head[32] = (byte)(BuildFlags(userPresent, userVerified) | 0x40); // + AT
+        var evidence = new PasskeyApprovalEvidence(
+            Approved: true,
+            UserPresent: userPresent,
+            UserVerified: userVerified);
+        head[32] = (byte)(BuildFlags(evidence) | 0x40); // + AT
         BinaryPrimitives.WriteUInt32BigEndian(head.AsSpan(33, 4), counter);
 
         var credLen = new byte[2];

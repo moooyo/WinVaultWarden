@@ -154,7 +154,7 @@ public sealed class BrowserPasskeyRequestHandler
                     payload.Challenge,
                     rpId,
                     allowedCredentialIds,
-                    UserVerified: approval.Evidence.UserVerified,
+                    ApprovalEvidence: approval.Evidence,
                     CrossOrigin: payload.CrossOrigin));
 
             return new BrowserPasskeyResponse(

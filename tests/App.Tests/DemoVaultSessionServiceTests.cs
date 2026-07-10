@@ -2,6 +2,7 @@ using System.Linq;
 using App.Services;
 using Core.Enums;
 using Core.Passkeys;
+using Core.Services;
 using Core.Session;
 using Vault;
 using Xunit;
@@ -32,9 +33,19 @@ public class DemoVaultSessionServiceTests
         var localPasskey = Assert.Single(session.Ciphers, c => c.Id == "demo-local-passkey");
         var credential = Assert.Single(localPasskey.Login!.Fido2Credentials);
         Assert.Equal("localhost", credential.RpId);
-        Assert.False(string.IsNullOrWhiteSpace(WebAuthnAssertionService.CreateAssertion(
-            credential,
-            new WebAuthnGetAssertionRequest("http://localhost:8787", "AQIDBA", "localhost", [], false)).Signature));
+        Assert.False(string.IsNullOrWhiteSpace(
+            WebAuthnAssertionService.CreateAssertion(
+                credential,
+                new WebAuthnGetAssertionRequest(
+                    "http://localhost:8787",
+                    "AQIDBA",
+                    "localhost",
+                    [],
+                    new PasskeyApprovalEvidence(
+                        Approved: true,
+                        UserPresent: true,
+                        UserVerified: false)))
+            .Signature));
         Assert.True(session.Folders.Count >= 4, $"folders={session.Folders.Count}");
         Assert.Single(session.Devices);
 

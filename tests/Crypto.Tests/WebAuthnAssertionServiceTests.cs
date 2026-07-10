@@ -2,12 +2,19 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Core.Models;
 using Core.Passkeys;
+using Core.Services;
 using Xunit;
 
 namespace Crypto.Tests;
 
 public class WebAuthnAssertionServiceTests
 {
+    private static readonly PasskeyApprovalEvidence VerifiedApproval =
+        new(Approved: true, UserPresent: true, UserVerified: true);
+
+    private static readonly PasskeyApprovalEvidence PresenceOnlyApproval =
+        new(Approved: true, UserPresent: true, UserVerified: false);
+
     [Fact]
     public void CreateAssertion_SignsChallengeForMatchingCredential()
     {
@@ -18,7 +25,7 @@ public class WebAuthnAssertionServiceTests
             "AQIDBA",
             "github.com",
             [credential.CredentialId!],
-            UserVerified: true);
+            ApprovalEvidence: VerifiedApproval);
 
         var assertion = WebAuthnAssertionService.CreateAssertion(credential, request);
 
@@ -55,7 +62,7 @@ public class WebAuthnAssertionServiceTests
             "AQIDBA",
             "github.com",
             [credential.CredentialId!],
-            UserVerified: true,
+            ApprovalEvidence: VerifiedApproval,
             CrossOrigin: true);
 
         var assertion = WebAuthnAssertionService.CreateAssertion(credential, request);
@@ -75,7 +82,7 @@ public class WebAuthnAssertionServiceTests
             "AQIDBA",
             "github.com",
             ["not-the-credential"],
-            UserVerified: false);
+            ApprovalEvidence: PresenceOnlyApproval);
 
         Assert.Throws<InvalidOperationException>(() =>
             WebAuthnAssertionService.CreateAssertion(credential, request));
@@ -91,9 +98,67 @@ public class WebAuthnAssertionServiceTests
             "AQIDBA",
             "evil.example",
             [credential.CredentialId!],
-            UserVerified: false);
+            ApprovalEvidence: PresenceOnlyApproval);
 
         Assert.Throws<InvalidOperationException>(() =>
+            WebAuthnAssertionService.CreateAssertion(credential, request));
+    }
+
+    [Theory]
+    [InlineData(false, false, 0x00)]
+    [InlineData(true, false, 0x01)]
+    [InlineData(true, true, 0x05)]
+    public void CreateAssertion_MapsApprovalEvidenceToUpUvFlags(
+        bool userPresent,
+        bool userVerified,
+        int expectedFlags)
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var credential = Credential(key);
+        var request = new WebAuthnGetAssertionRequest(
+            "https://github.com",
+            "AQIDBA",
+            "github.com",
+            [credential.CredentialId!],
+            new PasskeyApprovalEvidence(true, userPresent, userVerified));
+
+        var assertion = WebAuthnAssertionService.CreateAssertion(credential, request);
+
+        var authData = WebAuthnCrypto.DecodeBase64Url(assertion.AuthenticatorData);
+        Assert.Equal(expectedFlags, (int)authData[32]);
+    }
+
+    [Fact]
+    public void CreateAssertion_UnapprovedEvidence_Throws()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var credential = Credential(key);
+        var request = new WebAuthnGetAssertionRequest(
+            "https://github.com",
+            "AQIDBA",
+            "github.com",
+            [credential.CredentialId!],
+            new PasskeyApprovalEvidence(false, false, false));
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            WebAuthnAssertionService.CreateAssertion(credential, request));
+
+        Assert.Equal("Passkey approval is required.", error.Message);
+    }
+
+    [Fact]
+    public void CreateAssertion_UserVerifiedWithoutPresence_Throws()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var credential = Credential(key);
+        var request = new WebAuthnGetAssertionRequest(
+            "https://github.com",
+            "AQIDBA",
+            "github.com",
+            [credential.CredentialId!],
+            new PasskeyApprovalEvidence(true, false, true));
+
+        Assert.Throws<ArgumentException>(() =>
             WebAuthnAssertionService.CreateAssertion(credential, request));
     }
 

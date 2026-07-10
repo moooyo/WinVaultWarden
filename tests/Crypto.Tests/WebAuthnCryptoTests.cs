@@ -1,21 +1,56 @@
 using System.Security.Cryptography;
 using System.Text;
 using Core.Passkeys;
+using Core.Services;
 using Xunit;
 
 namespace Crypto.Tests;
 
 public class WebAuthnCryptoTests
 {
-    [Fact]
-    public void BuildAuthenticatorData_HashesRpIdAndWritesFlagsAndCounter()
+    [Theory]
+    [InlineData(false, false, false, 0x00)]
+    [InlineData(true, false, false, 0x00)]
+    [InlineData(true, true, false, 0x01)]
+    [InlineData(true, true, true, 0x05)]
+    public void BuildAuthenticatorData_MapsOnlyPresenceAndVerificationBits(
+        bool approved,
+        bool userPresent,
+        bool userVerified,
+        int expectedFlags)
     {
-        var authData = WebAuthnCrypto.BuildAuthenticatorData("github.com", 42, userPresent: true, userVerified: true);
+        var evidence = new PasskeyApprovalEvidence(
+            approved,
+            userPresent,
+            userVerified);
+
+        var authData = WebAuthnCrypto.BuildAuthenticatorData(
+            "github.com",
+            42,
+            evidence);
 
         Assert.Equal(37, authData.Length);
-        Assert.Equal(SHA256.HashData(Encoding.UTF8.GetBytes("github.com")), authData[..32]);
-        Assert.Equal(0x05, authData[32]);
+        Assert.Equal(
+            SHA256.HashData(Encoding.UTF8.GetBytes("github.com")),
+            authData[..32]);
+        Assert.Equal(expectedFlags, (int)authData[32]);
         Assert.Equal(new byte[] { 0, 0, 0, 42 }, authData[33..37]);
+    }
+
+    [Fact]
+    public void BuildAuthenticatorData_UserVerifiedWithoutPresence_Throws()
+    {
+        var evidence = new PasskeyApprovalEvidence(
+            Approved: true,
+            UserPresent: false,
+            UserVerified: true);
+
+        var error = Assert.Throws<ArgumentException>(() =>
+            WebAuthnCrypto.BuildAuthenticatorData("github.com", 0, evidence));
+
+        Assert.Equal("evidence", error.ParamName);
+        Assert.Contains("UserVerified", error.Message);
+        Assert.Contains("UserPresent", error.Message);
     }
 
     [Fact]
@@ -23,7 +58,13 @@ public class WebAuthnCryptoTests
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var keyValue = WebAuthnCrypto.EncodeBase64Url(key.ExportPkcs8PrivateKey());
-        var authData = WebAuthnCrypto.BuildAuthenticatorData("github.com", 1);
+        var authData = WebAuthnCrypto.BuildAuthenticatorData(
+            "github.com",
+            1,
+            new PasskeyApprovalEvidence(
+                Approved: true,
+                UserPresent: true,
+                UserVerified: false));
         var clientDataJson = Encoding.UTF8.GetBytes("""{"type":"webauthn.get","challenge":"AQID","origin":"https://github.com"}""");
 
         var signature = WebAuthnCrypto.SignAssertion(keyValue, authData, clientDataJson);

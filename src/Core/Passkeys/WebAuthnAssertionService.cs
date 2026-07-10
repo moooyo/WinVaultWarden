@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Core.Models;
+using Core.Services;
 
 namespace Core.Passkeys;
 
@@ -15,7 +16,7 @@ public sealed record WebAuthnGetAssertionRequest(
     string Challenge,
     string? RpId,
     IReadOnlyList<string> AllowedCredentialIds,
-    bool UserVerified,
+    PasskeyApprovalEvidence ApprovalEvidence,
     bool CrossOrigin = false);
 
 public sealed record WebAuthnAssertionResult(
@@ -50,15 +51,14 @@ public static class WebAuthnAssertionService
             && !request.AllowedCredentialIds.Contains(credentialId, StringComparer.Ordinal))
             throw new InvalidOperationException("The credential is not in allowCredentials.");
 
-        // 安全:签名计数器始终发 0(对齐 Bitwarden "counter unsupported" 约定)。
-        // 本客户端不创建 passkey、无法维护严格递增计数;发 0 避免严格校验计数器的 RP
-        // 因计数器未递增而拒绝重复断言。authenticatorData 的 4 字节计数器字段随之写 0。
+        if (!request.ApprovalEvidence.Approved)
+            throw new InvalidOperationException("Passkey approval is required.");
+
         const uint signatureCounter = 0u;
         var authenticatorData = WebAuthnCrypto.BuildAuthenticatorData(
             effectiveRpId,
             signatureCounter,
-            userPresent: true,
-            userVerified: request.UserVerified);
+            request.ApprovalEvidence);
         var clientDataJson = BuildClientDataJson(request);
         var signature = WebAuthnCrypto.SignAssertion(keyValue, authenticatorData, clientDataJson);
 
