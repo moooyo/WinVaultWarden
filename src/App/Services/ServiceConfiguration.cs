@@ -53,8 +53,17 @@ public static class ServiceConfiguration
         services.AddSingleton<ISendAccessService, Vault.SendAccessService>();
         services.AddSingleton<IAttachmentService, Vault.AttachmentService>();
         services.AddSingleton<IAccountService, Vault.AccountService>();
-        // 主密码重提示门禁(E1d):依赖 IAccountService + VaultSession,二者均已单例注册。
-        services.AddSingleton<IMasterPasswordReprompt, MasterPasswordReprompt>();
+        // 条目级主密码重提示门禁(Task 4):依赖 IAccountService + VaultSession,二者均已单例注册。
+        // 登记到 ISensitiveStateRegistry,使 Lock/登出时立即清空授权缓存(与 generation 键控双重失效)。
+        services.AddSingleton<IItemRepromptGate>(sp => TrackSensitive(sp,
+            new ItemRepromptGate(
+                sp.GetRequiredService<IAccountService>(),
+                sp.GetRequiredService<VaultSession>())));
+        // 真实用户验证(Task 4):Windows Hello 优先、主密码回退,供 required passkey / 详情解锁产出真实 UV。
+        services.AddSingleton<IUserVerificationService>(sp =>
+            new UserVerificationService(
+                sp.GetRequiredService<IWindowsHelloAuthenticator>(),
+                sp.GetRequiredService<IAccountService>()));
         services.AddSingleton<ITwoFactorService, Vault.TwoFactorService>();
         services.AddSingleton<IAuthRequestService, Vault.AuthRequestService>();
         services.AddSingleton<IEmergencyAccessService, Vault.EmergencyAccessService>();

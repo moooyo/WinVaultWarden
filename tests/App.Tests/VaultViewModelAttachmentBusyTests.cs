@@ -41,6 +41,8 @@ public class VaultViewModelAttachmentBusyTests
     private static VaultViewModel Vm(IAttachmentUiService att) =>
         new(new MockVaultUiService(), clipboard: null, attachments: att);
 
+    private static Task<string?> NoPrompt(CancellationToken _) => Task.FromResult<string?>(null);
+
     [Fact]
     public async Task AddAttachmentAsync_WhileInFlight_ShowsUploadingText_ThenClears()
     {
@@ -67,7 +69,7 @@ public class VaultViewModelAttachmentBusyTests
         var att = new GatedAttachmentUiService();
         var vm = Vm(att);
 
-        var task = vm.DownloadAttachmentAsync("c1", "a1", CancellationToken.None);
+        var task = vm.DownloadAttachmentAsync("1", "a1", NoPrompt, CancellationToken.None);
 
         Assert.Equal("下载中…", vm.AttachmentBusyText);
         Assert.True(vm.IsAttachmentBusy);
@@ -120,13 +122,13 @@ public class VaultViewModelAttachmentBusyTests
         var att = new GatedAttachmentUiService { ThrowOnRelease = true };
         var vm = Vm(att);
 
-        var task = vm.DownloadAttachmentAsync("c1", "a1", CancellationToken.None);
+        var task = vm.DownloadAttachmentAsync("1", "a1", NoPrompt, CancellationToken.None);
         Assert.Equal("下载中…", vm.AttachmentBusyText);
 
         att.Gate.SetResult(true);
-        var bytes = await task;
+        var result = await task;
 
-        Assert.Null(bytes);
+        Assert.Null(result.Value);
         Assert.Equal(string.Empty, vm.AttachmentBusyText);
         Assert.False(vm.IsAttachmentBusy);
         Assert.Equal("download failed", vm.OperationError);

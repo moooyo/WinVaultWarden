@@ -12,7 +12,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     private readonly IClipboardService? _clipboard;
     private readonly IAttachmentUiService? _attachments;
     private readonly ISavedSearchStore? _savedStore;
-    private readonly IMasterPasswordReprompt? _reprompt;
+    private readonly IItemRepromptGate? _reprompt;
     private string? _editingId;
     private bool _suppressApply;
     private readonly HashSet<string> _selectedIds = new(StringComparer.Ordinal);
@@ -37,6 +37,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNoSelectionPlaceholder))]
+    [NotifyPropertyChangedFor(nameof(ShowSensitiveUnlock))]
     public partial CipherDetail? Detail { get; set; }
 
     [ObservableProperty]
@@ -149,6 +150,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     public bool HasDetailSelected => Detail is not null;
     public bool NoSelection => Detail is null;
 
+    // 详情要求主密码重提示且当前投影尚未解锁 → 显示"验证后显示敏感字段"入口。
+    public bool ShowSensitiveUnlock => Detail is { Reprompt: true, SensitiveUnlocked: false };
+
     // 右栏“未选择任何项目”空状态浮层:无选中且不在编辑(新建条目时 Detail 为空但在编辑,需排除)。
     public bool ShowNoSelectionPlaceholder => Detail is null && !IsEditing;
 
@@ -184,7 +188,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     };
 
     public VaultViewModel(IVaultUiService service, IClipboardService? clipboard = null, IAttachmentUiService? attachments = null,
-        ISavedSearchStore? savedStore = null, IMasterPasswordReprompt? reprompt = null)
+        ISavedSearchStore? savedStore = null, IItemRepromptGate? reprompt = null)
     {
         _service = service;
         _clipboard = clipboard;
@@ -245,11 +249,19 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     partial void OnSelectedItemChanged(CipherListItem? value)
     {
-        Detail = value is null ? null : _service.GetDetail(value.Id);
+        Detail = value is null ? null : ProjectDetail(value.Id);
         OnPropertyChanged(nameof(HasDetailSelected));
         OnPropertyChanged(nameof(NoSelection));
         OnPropertyChanged(nameof(IsSelectedItemDeleted));
         OnPropertyChanged(nameof(DetailIconDomain));
+    }
+
+    // 选中条目只投影安全视图:仅当条目级门禁已授权时才携带敏感字段,否则返回脱敏投影。
+    private CipherDetail ProjectDetail(string id)
+    {
+        var policy = _service.GetAccessPolicy(id);
+        var authorized = _reprompt?.IsAuthorized(policy) == true;
+        return _service.GetDetail(id, includeSensitive: authorized);
     }
 
     partial void OnSearchTextChanged(string value)
@@ -423,14 +435,40 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(EditorTitle));
     }
 
-    public void BeginEdit(string id)
+    // 统一条目级授权:Reprompt==false 直接通过;缺失门禁服务 fail-closed;否则走门禁验证。
+    // 授权结果在 await 后由门禁自身用 lease 校验会话未变;调用方仅在成功后才读取/绑定秘密。
+    private async Task<UiOperationResult<bool>> EnsureAuthorizedAsync(
+        string id,
+        SensitiveItemAction action,
+        Func<CancellationToken, Task<string?>> prompt,
+        CancellationToken ct)
     {
+        var policy = _service.GetAccessPolicy(id);
+        if (!policy.RequiresReprompt)
+            return UiOperationResult<bool>.Success(true);
+        if (_reprompt is null)
+            return UiOperationResult<bool>.Failure("敏感条目验证服务不可用");
+        return await _reprompt.AuthorizeAsync(policy, action, prompt, ct);
+    }
+
+    // 编辑必须先过门禁再读 draft:未授权时绝不构造/暴露可编辑的明文草稿。
+    public async Task<UiOperationResult> BeginEditAsync(
+        string id,
+        Func<CancellationToken, Task<string?>> prompt,
+        CancellationToken ct = default)
+    {
+        var authorization = await EnsureAuthorizedAsync(
+            id, SensitiveItemAction.Edit, prompt, ct);
+        if (!authorization.IsSuccess)
+            return new UiOperationResult(authorization.Status, authorization.Error);
+
         EditorDraft = _service.GetDraft(id);
         _editingId = id;
         EditorError = string.Empty;
         OperationError = string.Empty;
         IsEditing = true;
         OnPropertyChanged(nameof(EditorTitle));
+        return UiOperationResult.Success();
     }
 
     public void CancelEdit()
@@ -761,14 +799,24 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         if (!string.IsNullOrEmpty(value)) _clipboard?.SetText(value);
     }
 
-    [RelayCommand]
-    private void CopyPrimary(string? id)
+    // 复制主值必须先过条目级门禁:未授权/被拒时绝不读取敏感详情、绝不写剪贴板。
+    public async Task<UiOperationResult> CopyPrimaryAsync(
+        string? id,
+        Func<CancellationToken, Task<string?>> prompt,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(id))
-            return;
-        var value = PrimaryValue(_service.GetDetail(id));
+            return UiOperationResult.Failure("无效条目");
+
+        var authorization = await EnsureAuthorizedAsync(
+            id, SensitiveItemAction.Copy, prompt, ct);
+        if (!authorization.IsSuccess)
+            return new UiOperationResult(authorization.Status, authorization.Error);
+
+        var value = PrimaryValue(_service.GetDetail(id, includeSensitive: true));
         if (!string.IsNullOrEmpty(value))
             _clipboard?.SetSecretText(value);
+        return UiOperationResult.Success();
     }
 
     // 各类型主值:登录→密码(空则用户名),卡→卡号,笔记→内容,SSH→公钥,身份等→名称。
@@ -781,20 +829,26 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         _ => detail.Name,
     };
 
-    // ── 主密码重提示门禁(会话级)────────────────────────────────────────────────
-    // 判定对某条目揭示/复制机密前是否需要主密码验证:条目 Reprompt==true 且本次解锁会话尚未通过
-    // 验证时为 true。无门禁服务(设计时/未注册)时恒 false,保持旧行为。会话标志经 VaultSession
-    // (E1b)承载,作用域故意收窄在会话级,日后可平滑收紧到条目级。
-    public bool RequiresReprompt(CipherDetail? detail) =>
-        _reprompt is not null && detail is { Reprompt: true } && !_reprompt.IsSessionVerified;
+    // ── 条目级主密码重提示门禁 ───────────────────────────────────────────────────
+    // 解锁当前详情的敏感字段:先过条目级门禁(动作 Totp——授权前 TotpSecret 恒为 null),
+    // 成功后才用 includeSensitive 重投影 Detail。被拒/取消时 Detail 维持脱敏投影不变。
+    public async Task<UiOperationResult<bool>> UnlockDetailAsync(
+        string id,
+        Func<CancellationToken, Task<string?>> prompt,
+        CancellationToken ct = default)
+    {
+        var authorization = await EnsureAuthorizedAsync(
+            id, SensitiveItemAction.Totp, prompt, ct);
+        if (!authorization.IsSuccess)
+            return authorization;
 
-    public bool RequiresRepromptFor(string? id) =>
-        !string.IsNullOrEmpty(id) && RequiresReprompt(_service.GetDetail(id));
-
-    // 供 code-behind 在弹出主密码对话框后回填校验:通过则由门禁服务置会话级标志。
-    // 无门禁服务时视为已通过(不阻断)。
-    public Task<bool> VerifyRepromptAsync(string password, CancellationToken ct = default) =>
-        _reprompt is null ? Task.FromResult(true) : _reprompt.VerifyAsync(password, ct);
+        if (SelectedItem?.Id == id || Detail?.Id == id)
+        {
+            Detail = _service.GetDetail(id, includeSensitive: true);
+            OnPropertyChanged(nameof(DetailIconDomain));
+        }
+        return UiOperationResult<bool>.Success(true);
+    }
 
     public Task<bool> ToggleFavoriteAsync(string id) =>
         RunWriteAsync(async () =>
@@ -828,22 +882,35 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         }
     }
 
-    public async Task<byte[]?> DownloadAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default)
+    // 下载附件前必须先过条目级门禁:被拒/取消时绝不调用附件服务。返回携带字节的 UiOperationResult。
+    public async Task<UiOperationResult<byte[]>> DownloadAttachmentAsync(
+        string cipherId,
+        string attachmentId,
+        Func<CancellationToken, Task<string?>> prompt,
+        CancellationToken ct = default)
     {
-        if (_attachments is null || IsBusy)
-            return null;
+        if (_attachments is null)
+            return UiOperationResult<byte[]>.Failure("附件服务不可用");
+        if (IsBusy)
+            return UiOperationResult<byte[]>.Busy();
+
+        var authorization = await EnsureAuthorizedAsync(
+            cipherId, SensitiveItemAction.DownloadAttachment, prompt, ct);
+        if (!authorization.IsSuccess)
+            return new UiOperationResult<byte[]>(authorization.Status, default, authorization.Error);
 
         IsBusy = true;
         AttachmentBusyText = "下载中…";
         OperationError = string.Empty;
         try
         {
-            return await _attachments.DownloadAttachmentAsync(cipherId, attachmentId, ct);
+            var bytes = await _attachments.DownloadAttachmentAsync(cipherId, attachmentId, ct);
+            return UiOperationResult<byte[]>.Success(bytes);
         }
         catch (Exception ex)
         {
             OperationError = ex.Message;
-            return null;
+            return UiOperationResult<byte[]>.Failure(ex.Message);
         }
         finally
         {
@@ -884,7 +951,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         if (Detail is null || Detail.Id != cipherId)
             return;
 
-        Detail = _service.GetDetail(cipherId) is { } refreshed && refreshed.Id == cipherId
+        // 保留当前解锁状态重投影:锁定详情仍脱敏,已解锁详情仍显示敏感字段。
+        var includeSensitive = Detail.SensitiveUnlocked;
+        Detail = _service.GetDetail(cipherId, includeSensitive) is { } refreshed && refreshed.Id == cipherId
             ? CloneDetailWithAttachments(refreshed, attachments)
             : Detail;
         OnPropertyChanged(nameof(DetailIconDomain));
@@ -896,13 +965,16 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         {
             Id = l.Id, Name = l.Name, FolderName = l.FolderName, Notes = l.Notes, CustomFields = l.CustomFields,
             Created = l.Created, Edited = l.Edited, IsDeleted = l.IsDeleted, Favorite = l.Favorite, Reprompt = l.Reprompt,
+            SensitiveUnlocked = l.SensitiveUnlocked,
             Username = l.Username, Password = l.Password, TotpSecret = l.TotpSecret, Uri = l.Uri, Passkeys = l.Passkeys,
+            PasswordHistory = l.PasswordHistory,
             Attachments = attachments,
         },
         CardDetail c => new CardDetail
         {
             Id = c.Id, Name = c.Name, FolderName = c.FolderName, Notes = c.Notes, CustomFields = c.CustomFields,
             Created = c.Created, Edited = c.Edited, IsDeleted = c.IsDeleted, Favorite = c.Favorite, Reprompt = c.Reprompt,
+            SensitiveUnlocked = c.SensitiveUnlocked,
             Cardholder = c.Cardholder, Number = c.Number, Expiry = c.Expiry, Brand = c.Brand, Cvv = c.Cvv,
             Attachments = attachments,
         },
@@ -910,6 +982,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         {
             Id = i.Id, Name = i.Name, FolderName = i.FolderName, Notes = i.Notes, CustomFields = i.CustomFields,
             Created = i.Created, Edited = i.Edited, IsDeleted = i.IsDeleted, Favorite = i.Favorite, Reprompt = i.Reprompt,
+            SensitiveUnlocked = i.SensitiveUnlocked,
             FullName = i.FullName, Username = i.Username, Company = i.Company, Email = i.Email, Phone = i.Phone,
             IdNumber = i.IdNumber, Address = i.Address,
             Attachments = attachments,
@@ -918,6 +991,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         {
             Id = n.Id, Name = n.Name, FolderName = n.FolderName, Notes = n.Notes, CustomFields = n.CustomFields,
             Created = n.Created, Edited = n.Edited, IsDeleted = n.IsDeleted, Favorite = n.Favorite, Reprompt = n.Reprompt,
+            SensitiveUnlocked = n.SensitiveUnlocked,
             Content = n.Content,
             Attachments = attachments,
         },
@@ -925,6 +999,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         {
             Id = s.Id, Name = s.Name, FolderName = s.FolderName, Notes = s.Notes, CustomFields = s.CustomFields,
             Created = s.Created, Edited = s.Edited, IsDeleted = s.IsDeleted, Favorite = s.Favorite, Reprompt = s.Reprompt,
+            SensitiveUnlocked = s.SensitiveUnlocked,
             PublicKey = s.PublicKey, PrivateKey = s.PrivateKey, Fingerprint = s.Fingerprint,
             Attachments = attachments,
         },

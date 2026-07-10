@@ -25,7 +25,7 @@ public class MockVaultUiServiceTests
     public void GetDetail_LoginItem_ReturnsLoginDetailWithFields()
     {
         var svc = new MockVaultUiService();
-        var detail = svc.GetDetail("1");
+        var detail = svc.GetDetail("1", includeSensitive: true);
 
         var login = Assert.IsType<LoginDetail>(detail);
         Assert.Equal("百度网盘", login.Name);
@@ -73,6 +73,9 @@ public class VaultViewModelTests
 {
     private static VaultViewModel NewVm() => new(new MockVaultUiService());
 
+    // 非 Reprompt 场景统一的空 prompt(条目不要求重提示时门禁直接放行,不会调用它)。
+    private static Task<string?> NoPrompt(CancellationToken _) => Task.FromResult<string?>(null);
+
     private sealed class RecordingClipboard : IClipboardService
     {
         public string? Text { get; private set; }
@@ -84,37 +87,37 @@ public class VaultViewModelTests
     }
 
     [Fact]
-    public void CopyPrimary_Login_CopiesPasswordOrUsername()
+    public async Task CopyPrimary_Login_CopiesPasswordOrUsername()
     {
         var clipboard = new RecordingClipboard();
         var service = new MockVaultUiService();
         var vm = new VaultViewModel(service, clipboard);
-        var login = (LoginDetail)service.GetDetail("1");
+        var login = (LoginDetail)service.GetDetail("1", includeSensitive: true);
         var expected = string.IsNullOrEmpty(login.Password) ? login.Username : login.Password;
 
-        vm.CopyPrimaryCommand.Execute("1");
+        await vm.CopyPrimaryAsync("1", NoPrompt);
 
         Assert.Equal(expected, clipboard.Text);
     }
 
     [Fact]
-    public void CopyPrimary_NullId_DoesNothing()
+    public async Task CopyPrimary_NullId_DoesNothing()
     {
         var clipboard = new RecordingClipboard();
         var vm = new VaultViewModel(new MockVaultUiService(), clipboard);
 
-        vm.CopyPrimaryCommand.Execute(null);
+        await vm.CopyPrimaryAsync(null, NoPrompt);
 
         Assert.Null(clipboard.Text);
     }
 
     [Fact]
-    public void CopyPrimary_UsesSecretClipboard()
+    public async Task CopyPrimary_UsesSecretClipboard()
     {
         var clipboard = new RecordingClipboard();
         var vm = new VaultViewModel(new MockVaultUiService(), clipboard);
 
-        vm.CopyPrimaryCommand.Execute("1");
+        await vm.CopyPrimaryAsync("1", NoPrompt);
 
         Assert.Equal(1, clipboard.SecretCount);
         Assert.Equal(0, clipboard.PlainCount);
@@ -471,7 +474,8 @@ public class VaultViewModelTests
     [Fact]
     public async Task SaveDraft_CommonMetadataAndCustomFields_RoundTripToDetail()
     {
-        var vm = NewVm();
+        var service = new MockVaultUiService();
+        var vm = new VaultViewModel(service);
         vm.BeginAdd(VaultItemKind.Login);
         vm.EditorDraft!.Name = "Metadata Login";
         vm.EditorDraft.Favorite = true;
@@ -498,11 +502,23 @@ public class VaultViewModelTests
         var saved = await vm.SaveDraftAsync();
 
         Assert.True(saved);
-        var detail = Assert.IsType<LoginDetail>(vm.Detail);
-        Assert.True(detail.Favorite);
-        Assert.True(detail.Reprompt);
+
+        // Reprompt 条目且无门禁授权 → vm.Detail 为脱敏投影:隐藏字段值被抹除,未解锁。
+        var locked = Assert.IsType<LoginDetail>(vm.Detail);
+        Assert.True(locked.Favorite);
+        Assert.True(locked.Reprompt);
+        Assert.False(locked.SensitiveUnlocked);
+        var lockedHidden = locked.CustomFields.Single(f => f.Label == "Hidden field");
+        Assert.Equal(string.Empty, lockedHidden.Value);
+        Assert.True(lockedHidden.IsSecret);
+
+        // 真实往返通过服务的 includeSensitive 视图验证:隐藏字段值确已入库。
+        var full = Assert.IsType<LoginDetail>(
+            service.GetDetail(vm.SelectedItem!.Id, includeSensitive: true));
+        Assert.True(full.Favorite);
+        Assert.True(full.Reprompt);
         Assert.Collection(
-            detail.CustomFields,
+            full.CustomFields,
             field =>
             {
                 Assert.Equal("Text field", field.Label);
@@ -617,12 +633,12 @@ public class VaultViewModelTests
     }
 
     [Fact]
-    public void BeginEdit_LoadsDraftFromItemAndSetsEditTitle()
+    public async Task BeginEdit_LoadsDraftFromItemAndSetsEditTitle()
     {
         var vm = NewVm();
         vm.SelectedItem = vm.Items.First(i => i.Id == "1");
 
-        vm.BeginEdit("1");
+        await vm.BeginEditAsync("1", NoPrompt);
 
         Assert.True(vm.IsEditing);
         Assert.NotNull(vm.EditorDraft);
@@ -637,7 +653,7 @@ public class VaultViewModelTests
         var vm = NewVm();
         var before = vm.Items.Count;
         vm.SelectedItem = vm.Items.First(i => i.Id == "1");
-        vm.BeginEdit("1");
+        await vm.BeginEditAsync("1", NoPrompt);
         vm.EditorDraft!.Name = "百度网盘改名";
 
         var saved = await vm.SaveDraftAsync();
@@ -805,7 +821,8 @@ public sealed class ThrowingVaultUiService : IVaultUiService
 {
     private readonly MockVaultUiService _inner = new();
     public IReadOnlyList<CipherListItem> GetItems() => _inner.GetItems();
-    public CipherDetail GetDetail(string id) => _inner.GetDetail(id);
+    public CipherAccessPolicy GetAccessPolicy(string id) => _inner.GetAccessPolicy(id);
+    public CipherDetail GetDetail(string id, bool includeSensitive) => _inner.GetDetail(id, includeSensitive);
     public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
     public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
     public int SkippedCipherCount => 0;
@@ -825,7 +842,8 @@ public sealed class EmptyVaultUiService : IVaultUiService
 {
     private readonly MockVaultUiService _inner = new();
     public IReadOnlyList<CipherListItem> GetItems() => Array.Empty<CipherListItem>();
-    public CipherDetail GetDetail(string id) => _inner.GetDetail(id);
+    public CipherAccessPolicy GetAccessPolicy(string id) => _inner.GetAccessPolicy(id);
+    public CipherDetail GetDetail(string id, bool includeSensitive) => _inner.GetDetail(id, includeSensitive);
     public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
     public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
     public int SkippedCipherCount => 0;
@@ -1027,7 +1045,8 @@ public sealed class SkippedCipherVaultUiService : IVaultUiService
     public bool DataStale => false;
 
     public IReadOnlyList<CipherListItem> GetItems() => _inner.GetItems();
-    public CipherDetail GetDetail(string id) => _inner.GetDetail(id);
+    public CipherAccessPolicy GetAccessPolicy(string id) => _inner.GetAccessPolicy(id);
+    public CipherDetail GetDetail(string id, bool includeSensitive) => _inner.GetDetail(id, includeSensitive);
     public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
     public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
     public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => _inner.SaveCipherAsync(draft, editingId, ct);
@@ -1092,7 +1111,8 @@ public sealed class DataStaleVaultUiService : IVaultUiService
     public bool DataStale { get; set; }
 
     public IReadOnlyList<CipherListItem> GetItems() => _inner.GetItems();
-    public CipherDetail GetDetail(string id) => _inner.GetDetail(id);
+    public CipherAccessPolicy GetAccessPolicy(string id) => _inner.GetAccessPolicy(id);
+    public CipherDetail GetDetail(string id, bool includeSensitive) => _inner.GetDetail(id, includeSensitive);
     public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
     public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
     public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => _inner.SaveCipherAsync(draft, editingId, ct);

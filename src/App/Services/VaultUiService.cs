@@ -44,7 +44,18 @@ public sealed class VaultUiService : IVaultUiService
 
     public IReadOnlyList<CipherListItem> GetItems() => _vault.GetCiphers().Select(ToListItem).ToList();
 
-    public CipherDetail GetDetail(string id) => ToDetail(_vault.GetCiphers().First(c => c.Id == id));
+    public CipherAccessPolicy GetAccessPolicy(string id)
+    {
+        var cipher = Find(id);
+        return new CipherAccessPolicy(cipher.Id, cipher.Reprompt);
+    }
+
+    // includeSensitive==false 且条目 Reprompt==true 时返回脱敏投影;Reprompt==false 的条目恒返回完整投影。
+    public CipherDetail GetDetail(string id, bool includeSensitive)
+    {
+        var cipher = Find(id);
+        return ToDetail(cipher, includeSensitive || !cipher.Reprompt);
+    }
 
     public CipherEditorDraft GetDraft(string id) =>
         CipherDraftMapper.ToDraft(_vault.GetCiphers().First(c => c.Id == id));
@@ -230,12 +241,14 @@ public sealed class VaultUiService : IVaultUiService
         CreationDate = cipher.CreationDate,
     };
 
-    // 拼接可搜索文本(小写);不含密码/隐藏字段值/CVV,卡号仅后四位。
-    private CipherDetail ToDetail(Cipher cipher)
+    // 详情投影。includeSensitive==false 时抹除全部秘密:密码/TOTP/密码历史/卡号/CVV/证件号/私钥/笔记内容/备注,
+    // 且隐藏自定义字段值置空。SensitiveUnlocked 反映本投影是否已解锁。
+    private CipherDetail ToDetail(Cipher cipher, bool includeSensitive)
     {
-        var commonFields = MapFields(cipher.Fields);
+        var commonFields = MapFields(cipher.Fields, includeSensitive);
         var folderName = FolderNameFor(cipher.FolderId);
         var attachments = MapAttachments(cipher.Attachments);
+        var notes = includeSensitive ? cipher.Notes : null;
 
         return cipher.Type switch
         {
@@ -244,63 +257,70 @@ public sealed class VaultUiService : IVaultUiService
                 Id = cipher.Id,
                 Name = cipher.Name,
                 FolderName = folderName,
-                Notes = cipher.Notes,
+                Notes = notes,
                 CustomFields = commonFields,
                 Created = cipher.CreationDate,
                 Edited = cipher.RevisionDate,
                 IsDeleted = cipher.IsDeleted,
                 Favorite = cipher.Favorite,
                 Reprompt = cipher.Reprompt,
+                SensitiveUnlocked = includeSensitive,
                 Attachments = attachments,
                 Username = cipher.Login?.Username,
-                Password = cipher.Login?.Password,
-                TotpSecret = cipher.Login?.Totp,
+                Password = includeSensitive ? cipher.Login?.Password : null,
+                TotpSecret = includeSensitive ? cipher.Login?.Totp : null,
                 Uri = cipher.Login?.Uris.FirstOrDefault()?.Uri,
                 Passkeys = MapPasskeys(cipher.Login?.Fido2Credentials),
-                PasswordHistory = (cipher.PasswordHistory ?? Array.Empty<Core.Models.PasswordHistoryEntry>())
-                    .Select(h => new PasswordHistoryItem(
-                        h.Password,
-                        h.LastUsedDate is { } d ? d.LocalDateTime.ToString("yyyy/M/d HH:mm:ss") : "—"))
-                    .ToList(),
+                PasswordHistory = includeSensitive
+                    ? (cipher.PasswordHistory ?? Array.Empty<Core.Models.PasswordHistoryEntry>())
+                        .Select(h => new PasswordHistoryItem(
+                            h.Password,
+                            h.LastUsedDate is { } d ? d.LocalDateTime.ToString("yyyy/M/d HH:mm:ss") : "—"))
+                        .ToList()
+                    : Array.Empty<PasswordHistoryItem>(),
             },
             CipherType.Card => new CardDetail
             {
                 Id = cipher.Id,
                 Name = cipher.Name,
                 FolderName = folderName,
-                Notes = cipher.Notes,
+                Notes = notes,
                 CustomFields = commonFields,
                 Created = cipher.CreationDate,
                 Edited = cipher.RevisionDate,
                 IsDeleted = cipher.IsDeleted,
                 Favorite = cipher.Favorite,
                 Reprompt = cipher.Reprompt,
+                SensitiveUnlocked = includeSensitive,
                 Attachments = attachments,
                 Cardholder = cipher.Card?.CardholderName,
-                Number = cipher.Card?.Number,
+                Number = includeSensitive ? cipher.Card?.Number : null,
                 Expiry = JoinExpiry(cipher.Card?.ExpMonth, cipher.Card?.ExpYear),
                 Brand = cipher.Card?.Brand,
-                Cvv = cipher.Card?.Code,
+                Cvv = includeSensitive ? cipher.Card?.Code : null,
             },
             CipherType.Identity => new IdentityDetail
             {
                 Id = cipher.Id,
                 Name = cipher.Name,
                 FolderName = folderName,
-                Notes = cipher.Notes,
+                Notes = notes,
                 CustomFields = commonFields,
                 Created = cipher.CreationDate,
                 Edited = cipher.RevisionDate,
                 IsDeleted = cipher.IsDeleted,
                 Favorite = cipher.Favorite,
                 Reprompt = cipher.Reprompt,
+                SensitiveUnlocked = includeSensitive,
                 Attachments = attachments,
                 FullName = JoinNonEmpty(" ", cipher.Identity?.FirstName, cipher.Identity?.MiddleName, cipher.Identity?.LastName),
                 Username = cipher.Identity?.Username,
                 Company = cipher.Identity?.Company,
                 Email = cipher.Identity?.Email,
                 Phone = cipher.Identity?.Phone,
-                IdNumber = cipher.Identity?.Ssn ?? cipher.Identity?.PassportNumber ?? cipher.Identity?.LicenseNumber,
+                IdNumber = includeSensitive
+                    ? cipher.Identity?.Ssn ?? cipher.Identity?.PassportNumber ?? cipher.Identity?.LicenseNumber
+                    : null,
                 Address = JoinNonEmpty(", ", cipher.Identity?.Address1, cipher.Identity?.Address2, cipher.Identity?.Address3,
                     cipher.Identity?.City, cipher.Identity?.State, cipher.Identity?.PostalCode, cipher.Identity?.Country),
             },
@@ -309,31 +329,33 @@ public sealed class VaultUiService : IVaultUiService
                 Id = cipher.Id,
                 Name = cipher.Name,
                 FolderName = folderName,
-                Notes = cipher.Notes,
+                Notes = notes,
                 CustomFields = commonFields,
                 Created = cipher.CreationDate,
                 Edited = cipher.RevisionDate,
                 IsDeleted = cipher.IsDeleted,
                 Favorite = cipher.Favorite,
                 Reprompt = cipher.Reprompt,
+                SensitiveUnlocked = includeSensitive,
                 Attachments = attachments,
-                Content = cipher.Notes,
+                Content = includeSensitive ? cipher.Notes : null,
             },
             CipherType.SshKey => new SshDetail
             {
                 Id = cipher.Id,
                 Name = cipher.Name,
                 FolderName = folderName,
-                Notes = cipher.Notes,
+                Notes = notes,
                 CustomFields = commonFields,
                 Created = cipher.CreationDate,
                 Edited = cipher.RevisionDate,
                 IsDeleted = cipher.IsDeleted,
                 Favorite = cipher.Favorite,
                 Reprompt = cipher.Reprompt,
+                SensitiveUnlocked = includeSensitive,
                 Attachments = attachments,
                 PublicKey = cipher.Ssh?.PublicKey,
-                PrivateKey = cipher.Ssh?.PrivateKey,
+                PrivateKey = includeSensitive ? cipher.Ssh?.PrivateKey : null,
                 Fingerprint = cipher.Ssh?.Fingerprint,
             },
             _ => throw new ArgumentOutOfRangeException(nameof(cipher), cipher.Type, "Unsupported cipher type."),
@@ -345,13 +367,21 @@ public sealed class VaultUiService : IVaultUiService
             ? null
             : _vault.GetFolders().FirstOrDefault(folder => folder.Id == folderId)?.Name;
 
-    private static IReadOnlyList<CustomField> MapFields(IReadOnlyList<CipherField> fields) =>
-        fields.Select(field => new CustomField(field.Name, field.Value ?? string.Empty, field.Type switch
+    // includeSensitive==false 时,隐藏(机密)字段的值固定为 string.Empty;标签与非隐藏值保留。
+    private static IReadOnlyList<CustomField> MapFields(IReadOnlyList<CipherField> fields, bool includeSensitive) =>
+        fields.Select(field =>
         {
-            CipherFieldType.Hidden => CipherEditorFieldType.Hidden,
-            CipherFieldType.Boolean => CipherEditorFieldType.Boolean,
-            _ => CipherEditorFieldType.Text,
-        })).ToArray();
+            var type = field.Type switch
+            {
+                CipherFieldType.Hidden => CipherEditorFieldType.Hidden,
+                CipherFieldType.Boolean => CipherEditorFieldType.Boolean,
+                _ => CipherEditorFieldType.Text,
+            };
+            var value = type == CipherEditorFieldType.Hidden && !includeSensitive
+                ? string.Empty
+                : field.Value ?? string.Empty;
+            return new CustomField(field.Name, value, type);
+        }).ToArray();
 
     private static IReadOnlyList<PasskeyDetail> MapPasskeys(IReadOnlyList<CipherFido2Credential>? credentials) =>
         (credentials ?? Array.Empty<CipherFido2Credential>())

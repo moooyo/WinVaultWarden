@@ -93,4 +93,20 @@ public class SecurityHygieneSourceTests
         var page = ReadSource("src", "App", "Views", "VaultPage.xaml");
         Assert.Contains("TotpField Secret=", page);   // 绑定改为 Secret(输入种子),非 Code
     }
+
+    // ── Task 4: 条目级重提示门禁提升到详情层,FieldRow 不再自持主密码门禁 ──────────
+
+    [Fact]
+    public void FieldRow_NoLongerOwnsRepromptGate()
+    {
+        var src = ReadSource("src", "App", "Controls", "FieldRow.xaml.cs");
+        // 揭示/复制不再自持门禁;条目级门禁在详情层完成,FieldRow 只渲染已授权的 Value。
+        Assert.DoesNotContain("PassesRepromptAsync", src);
+        Assert.DoesNotContain("IMasterPasswordReprompt", src);
+        Assert.DoesNotContain("RepromptRequired", src);
+
+        // VaultPage 不再有 per-field 的 RepromptRequired 绑定(脱敏在投影层完成)。
+        var page = ReadSource("src", "App", "Views", "VaultPage.xaml");
+        Assert.DoesNotContain("RepromptRequired", page);
+    }
 }

@@ -33,6 +33,11 @@ public abstract class CipherDetail
     public bool IsDeleted { get; init; }
     public bool Favorite { get; init; }
     public bool Reprompt { get; init; }
+
+    // 本投影是否已解锁敏感字段(密码/TOTP/隐藏字段/密码历史等)。
+    // Reprompt==false 的条目恒为 true;Reprompt==true 的条目仅在条目级门禁验证通过后为 true。
+    // 为 false 时上述敏感字段一律脱敏(null / 空集合 / 隐藏字段值置空),UI 显示"验证后显示敏感字段"入口。
+    public bool SensitiveUnlocked { get; init; }
     public IReadOnlyList<AttachmentItem> Attachments { get; init; } = Array.Empty<AttachmentItem>();
     public int AttachmentCount => Attachments.Count;
     public bool HasAttachments => Attachments.Count > 0;

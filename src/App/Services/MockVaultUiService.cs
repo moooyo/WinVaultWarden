@@ -7,7 +7,14 @@ namespace App.Services;
 public interface IVaultUiService
 {
     IReadOnlyList<CipherListItem> GetItems();
-    CipherDetail GetDetail(string id);
+
+    // 条目级访问策略:该条目是否要求主密码重提示。授权判定的唯一输入,绝不携带任何秘密。
+    CipherAccessPolicy GetAccessPolicy(string id);
+
+    // 详情投影。includeSensitive==false(或未授权)时返回脱敏投影:密码/TOTP/隐藏字段值/密码历史等一律抹除。
+    // Reprompt==false 的条目无论传入何值都返回完整投影(不受门禁约束)。
+    CipherDetail GetDetail(string id, bool includeSensitive);
+
     IReadOnlyList<FilterNode> GetFilters();
     CipherEditorDraft GetDraft(string id);
 
@@ -87,7 +94,79 @@ public sealed class MockVaultUiService : IVaultUiService
         return string.Join('\n', parts.Where(s => !string.IsNullOrWhiteSpace(s))).ToLowerInvariant();
     }
 
-    public CipherDetail GetDetail(string id) => _details.First(d => d.Id == id);
+    public CipherAccessPolicy GetAccessPolicy(string id)
+    {
+        var cipher = _details.First(d => d.Id == id);
+        return new CipherAccessPolicy(cipher.Id, cipher.Reprompt);
+    }
+
+    // 脱敏投影:Reprompt==true 且未授权(includeSensitive==false)时抹除全部秘密;
+    // 与真实 VaultUiService 同一规则,测试环境不得绕过门禁。
+    public CipherDetail GetDetail(string id, bool includeSensitive)
+    {
+        var cipher = _details.First(d => d.Id == id);
+        return Project(cipher, includeSensitive || !cipher.Reprompt);
+    }
+
+    private static CipherDetail Project(CipherDetail d, bool unlock)
+    {
+        var fields = unlock ? d.CustomFields : MaskFields(d.CustomFields);
+        return d switch
+        {
+            LoginDetail l => new LoginDetail
+            {
+                Id = l.Id, Name = l.Name, FolderName = l.FolderName, CustomFields = fields,
+                Created = l.Created, Edited = l.Edited, IsDeleted = l.IsDeleted, Favorite = l.Favorite,
+                Reprompt = l.Reprompt, SensitiveUnlocked = unlock, Attachments = l.Attachments,
+                Username = l.Username, Uri = l.Uri, Passkeys = l.Passkeys,
+                Notes = unlock ? l.Notes : null,
+                Password = unlock ? l.Password : null,
+                TotpSecret = unlock ? l.TotpSecret : null,
+                PasswordHistory = unlock ? l.PasswordHistory : Array.Empty<PasswordHistoryItem>(),
+            },
+            CardDetail c => new CardDetail
+            {
+                Id = c.Id, Name = c.Name, FolderName = c.FolderName, CustomFields = fields,
+                Created = c.Created, Edited = c.Edited, IsDeleted = c.IsDeleted, Favorite = c.Favorite,
+                Reprompt = c.Reprompt, SensitiveUnlocked = unlock, Attachments = c.Attachments,
+                Cardholder = c.Cardholder, Expiry = c.Expiry, Brand = c.Brand,
+                Notes = unlock ? c.Notes : null,
+                Number = unlock ? c.Number : null,
+                Cvv = unlock ? c.Cvv : null,
+            },
+            IdentityDetail i => new IdentityDetail
+            {
+                Id = i.Id, Name = i.Name, FolderName = i.FolderName, CustomFields = fields,
+                Created = i.Created, Edited = i.Edited, IsDeleted = i.IsDeleted, Favorite = i.Favorite,
+                Reprompt = i.Reprompt, SensitiveUnlocked = unlock, Attachments = i.Attachments,
+                FullName = i.FullName, Username = i.Username, Company = i.Company, Email = i.Email,
+                Phone = i.Phone, Address = i.Address,
+                Notes = unlock ? i.Notes : null,
+                IdNumber = unlock ? i.IdNumber : null,
+            },
+            NoteDetail n => new NoteDetail
+            {
+                Id = n.Id, Name = n.Name, FolderName = n.FolderName, CustomFields = fields,
+                Created = n.Created, Edited = n.Edited, IsDeleted = n.IsDeleted, Favorite = n.Favorite,
+                Reprompt = n.Reprompt, SensitiveUnlocked = unlock, Attachments = n.Attachments,
+                Notes = unlock ? n.Notes : null,
+                Content = unlock ? n.Content : null,
+            },
+            SshDetail s => new SshDetail
+            {
+                Id = s.Id, Name = s.Name, FolderName = s.FolderName, CustomFields = fields,
+                Created = s.Created, Edited = s.Edited, IsDeleted = s.IsDeleted, Favorite = s.Favorite,
+                Reprompt = s.Reprompt, SensitiveUnlocked = unlock, Attachments = s.Attachments,
+                PublicKey = s.PublicKey, Fingerprint = s.Fingerprint,
+                Notes = unlock ? s.Notes : null,
+                PrivateKey = unlock ? s.PrivateKey : null,
+            },
+            _ => d,
+        };
+    }
+
+    private static IReadOnlyList<CustomField> MaskFields(IReadOnlyList<CustomField> fields) =>
+        fields.Select(f => f.IsSecret ? f with { Value = string.Empty } : f).ToArray();
 
     public CipherEditorDraft GetDraft(string id) => DraftFor(_details.First(d => d.Id == id), FolderIdFor(id));
 

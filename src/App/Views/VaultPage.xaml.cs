@@ -80,22 +80,18 @@ public sealed partial class VaultPage : Page
     {
         if (RowItem(sender) is not { } item)
             return;
-        if (ViewModel.RequiresRepromptFor(item.Id) && !await PromptAndVerifyRepromptAsync())
-            return;
-        ViewModel.CopyPrimaryCommand.Execute(item.Id);
+        await ViewModel.CopyPrimaryAsync(item.Id, PromptMasterPasswordAsync);
     }
 
-    // 弹主密码对话框并回填 ViewModel.VerifyRepromptAsync;通过返回 true。与 ImportExportPage 的
-    // 主密码确认对话框同一模式(循环重试、错误提示、SystemFillColorCriticalBrush)。
-    private async Task<bool> PromptAndVerifyRepromptAsync()
+    // 主密码重提示对话框:仅采集主密码并返回给条目级门禁校验(通过则门禁自行缓存授权);
+    // 取消返回 null。经 Task 3 tracked 对话框——锁屏/登出会强制关闭并清空密码框。
+    // 校验交由 IItemRepromptGate.AuthorizeAsync 完成,本方法不自持校验逻辑。
+    private async Task<string?> PromptMasterPasswordAsync(CancellationToken ct)
     {
         var passwordBox = new PasswordBox { PlaceholderText = "主密码", MinWidth = 320 };
-        var errorText = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
-        errorText.SetValue(TextBlock.ForegroundProperty, Application.Current.Resources["SystemFillColorCriticalBrush"]);
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(new TextBlock { Text = "该条目要求主密码重提示", TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(passwordBox);
-        panel.Children.Add(errorText);
         var dialog = new ContentDialog
         {
             Title = "验证主密码",
@@ -107,18 +103,11 @@ public sealed partial class VaultPage : Page
         };
         try
         {
-            while (true)
-            {
-                var result = await DialogHelper.ShowTrackedAsync(
-                    dialog,
-                    () => passwordBox.Password = string.Empty);
-                if (result != ContentDialogResult.Primary)
-                    return false;
-                if (await ViewModel.VerifyRepromptAsync(passwordBox.Password))
-                    return true;
-                errorText.Text = "主密码不正确";
-                errorText.Visibility = Visibility.Visible;
-            }
+            var result = await DialogHelper.ShowTrackedAsync(
+                dialog,
+                () => passwordBox.Password = string.Empty,
+                ct);
+            return result == ContentDialogResult.Primary ? passwordBox.Password : null;
         }
         finally
         {
@@ -126,14 +115,12 @@ public sealed partial class VaultPage : Page
         }
     }
 
-    // PasswordHistoryItem/CustomField 行嵌套在子级 DataTemplate 内,其 DataContext 类型不携带
-    // Reprompt——WinUI 的 x:Bind 与经典 ElementName Binding 均无法跨 DataTemplate 边界读取外层
-    // Page 的属性(命名空间作用域限制),因此改为在 DataContext 就位/复用(含虚拟化容器回收)时
-    // 由代码隐藏直接从 ViewModel.Detail 回填,而非尝试跨模板绑定。
-    private void OnSecretFieldRowDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+    // 详情级"验证后显示敏感字段"入口:经条目级门禁解锁当前详情的敏感投影。
+    private async void OnUnlockSensitiveFieldsClick(object sender, RoutedEventArgs e)
     {
-        if (sender is FieldRow row)
-            row.RepromptRequired = ViewModel.Detail?.Reprompt ?? false;
+        if (ViewModel.SelectedItem is not { } item)
+            return;
+        await ViewModel.UnlockDetailAsync(item.Id, PromptMasterPasswordAsync);
     }
 
     private void OnRemoveCustomFieldClick(object sender, RoutedEventArgs e)
@@ -142,12 +129,13 @@ public sealed partial class VaultPage : Page
             ViewModel.RemoveCustomFieldCommand.Execute(field);
     }
 
-    private void OnRowEditClick(object sender, RoutedEventArgs e)
+    private async void OnRowEditClick(object sender, RoutedEventArgs e)
     {
         if (RowItem(sender) is { } item)
         {
-            ViewModel.BeginEdit(item.Id);
-            SyncEditorTypeSelection();
+            var authorized = await ViewModel.BeginEditAsync(item.Id, PromptMasterPasswordAsync);
+            if (authorized.IsSuccess)
+                SyncEditorTypeSelection();
         }
     }
 
@@ -306,12 +294,13 @@ public sealed partial class VaultPage : Page
     private void OnVaultFoldersChanged(object? sender, EventArgs e) =>
         global::App.App.MainWindow?.RefreshFolderNavigation();
 
-    private void OnEditCipherClick(object sender, RoutedEventArgs e)
+    private async void OnEditCipherClick(object sender, RoutedEventArgs e)
     {
         if (ViewModel.SelectedItem is { } item)
         {
-            ViewModel.BeginEdit(item.Id);
-            SyncEditorTypeSelection();
+            var authorized = await ViewModel.BeginEditAsync(item.Id, PromptMasterPasswordAsync);
+            if (authorized.IsSuccess)
+                SyncEditorTypeSelection();
         }
     }
 
@@ -453,8 +442,8 @@ public sealed partial class VaultPage : Page
         if (file is null)
             return;
 
-        var bytes = await ViewModel.DownloadAttachmentAsync(item.Id, attachment.Id);
-        if (bytes is null)
+        var download = await ViewModel.DownloadAttachmentAsync(item.Id, attachment.Id, PromptMasterPasswordAsync);
+        if (!download.IsSuccess || download.Value is not { } bytes)
             return;
 
         // 文件写入在 code-behind 内、不在 VM 的 try/catch 内:磁盘满/拒绝访问/网络盘掉线会抛异常

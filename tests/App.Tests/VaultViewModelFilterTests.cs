@@ -14,12 +14,15 @@ public sealed class FakeFacetVaultUiService : IVaultUiService
 
     public IReadOnlyList<CipherListItem> GetItems() => _items;
 
-    public CipherDetail GetDetail(string id) => new LoginDetail
+    public CipherAccessPolicy GetAccessPolicy(string id) => new(id, false);
+
+    public CipherDetail GetDetail(string id, bool includeSensitive) => new LoginDetail
     {
         Id = id,
         Name = _items.First(i => i.Id == id).Name,
         Username = string.Empty,
         Password = string.Empty,
+        SensitiveUnlocked = includeSensitive,
     };
 
     public IReadOnlyList<FilterNode> GetFilters() => new[]

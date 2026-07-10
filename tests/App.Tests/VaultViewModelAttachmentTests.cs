@@ -20,14 +20,17 @@ public class VaultViewModelAttachmentTests
         public int SkippedCipherCount => 0;
         public bool DataStale => false;
 
-        public CipherDetail GetDetail(string id)
+        public CipherAccessPolicy GetAccessPolicy(string id) => new(id, false);
+
+        public CipherDetail GetDetail(string id, bool includeSensitive)
         {
             LastDetailId = id;
-            var baseDetail = _inner.GetDetail(id);
+            var baseDetail = _inner.GetDetail(id, includeSensitive: true);
             return new LoginDetail
             {
                 Id = baseDetail.Id,
                 Name = baseDetail.Name,
+                SensitiveUnlocked = includeSensitive,
                 Attachments = DetailAttachments,
             };
         }
@@ -89,6 +92,8 @@ public class VaultViewModelAttachmentTests
     private static VaultViewModel Vm(IVaultUiService vault, IAttachmentUiService att) =>
         new(vault, clipboard: null, attachments: att);
 
+    private static Task<string?> NoPrompt(CancellationToken _) => Task.FromResult<string?>(null);
+
     [Fact]
     public async Task AddAttachmentAsync_DelegatesToServiceWithBytesAndFileName()
     {
@@ -142,9 +147,10 @@ public class VaultViewModelAttachmentTests
         var att = new FakeAttachmentUiService { DownloadResult = new byte[] { 7, 7, 7 } };
         var vm = Vm(new AttachmentVaultUiService(), att);
 
-        var bytes = await vm.DownloadAttachmentAsync("c1", "a1", CancellationToken.None);
+        var result = await vm.DownloadAttachmentAsync("c1", "a1", NoPrompt, CancellationToken.None);
 
-        Assert.Equal(new byte[] { 7, 7, 7 }, bytes);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(new byte[] { 7, 7, 7 }, result.Value);
         Assert.Equal("c1", att.LastCipherId);
         Assert.Equal("a1", att.LastAttachmentId);
         Assert.Equal(string.Empty, vm.OperationError);
@@ -156,9 +162,10 @@ public class VaultViewModelAttachmentTests
         var att = new FakeAttachmentUiService { ThrowOnDownload = true };
         var vm = Vm(new AttachmentVaultUiService(), att);
 
-        var bytes = await vm.DownloadAttachmentAsync("c1", "a1", CancellationToken.None);
+        var result = await vm.DownloadAttachmentAsync("c1", "a1", NoPrompt, CancellationToken.None);
 
-        Assert.Null(bytes);
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Null(result.Value);
         Assert.Equal("download failed", vm.OperationError);
         Assert.False(vm.IsBusy);
     }
@@ -202,10 +209,10 @@ public class VaultViewModelAttachmentTests
         var vm = new VaultViewModel(new MockVaultUiService());
 
         await vm.AddAttachmentAsync("c1", new byte[] { 1 }, "f.pdf", CancellationToken.None);
-        var bytes = await vm.DownloadAttachmentAsync("c1", "a1", CancellationToken.None);
+        var result = await vm.DownloadAttachmentAsync("c1", "a1", NoPrompt, CancellationToken.None);
         await vm.DeleteAttachmentAsync("c1", "a1", CancellationToken.None);
 
-        Assert.Null(bytes);
+        Assert.Null(result.Value);
         Assert.False(vm.IsBusy);
         Assert.Equal(string.Empty, vm.OperationError);
     }

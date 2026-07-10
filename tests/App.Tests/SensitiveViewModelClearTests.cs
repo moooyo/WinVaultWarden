@@ -8,11 +8,13 @@ namespace App.Tests;
 public sealed class SensitiveViewModelClearTests
 {
     [Fact]
-    public void VaultClear_DropsDetailDraftCollectionsAndSelection()
+    public async Task VaultClear_DropsDetailDraftCollectionsAndSelection()
     {
         var vm = new VaultViewModel(new MockVaultUiService());
         vm.SelectedItem = vm.Items.First(item => item.Id == "1");
-        vm.BeginEdit("1");
+        await vm.BeginEditAsync(
+            "1",
+            _ => Task.FromResult<string?>(null));
 
         ((ISensitiveState)vm).ClearSensitive();
 

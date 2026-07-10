@@ -15,7 +15,7 @@ public class RealVaultUiServiceAttachmentTests
     {
         var service = new VaultUiService(new AttachmentVaultService(), new NoopWrite(), new NoopSync());
 
-        var login = Assert.IsType<LoginDetail>(service.GetDetail("withatt"));
+        var login = Assert.IsType<LoginDetail>(service.GetDetail("withatt", includeSensitive: true));
 
         Assert.Equal(2, login.Attachments.Count);
         Assert.Equal("a1", login.Attachments[0].Id);
@@ -31,7 +31,7 @@ public class RealVaultUiServiceAttachmentTests
     {
         var service = new VaultUiService(new AttachmentVaultService(), new NoopWrite(), new NoopSync());
 
-        var login = Assert.IsType<LoginDetail>(service.GetDetail("noatt"));
+        var login = Assert.IsType<LoginDetail>(service.GetDetail("noatt", includeSensitive: true));
 
         Assert.Empty(login.Attachments);
     }

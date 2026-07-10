@@ -18,7 +18,8 @@ public class VaultRecycleBinTests
         public CapturingVaultUiService(IReadOnlyList<CipherListItem> items) => _items = items;
 
         public IReadOnlyList<CipherListItem> GetItems() => _items;
-        public CipherDetail GetDetail(string id) => _inner.GetDetail(id);
+        public CipherAccessPolicy GetAccessPolicy(string id) => _inner.GetAccessPolicy(id);
+        public CipherDetail GetDetail(string id, bool includeSensitive) => _inner.GetDetail(id, includeSensitive);
         public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();  // 含 Trash 节点
         public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
         public int SkippedCipherCount => 0;

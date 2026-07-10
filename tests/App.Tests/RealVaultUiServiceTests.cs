@@ -37,7 +37,7 @@ public class RealVaultUiServiceTests
     {
         var service = new VaultUiService(new TestVaultService(), new NoopWriteService(), new NoopSyncService());
 
-        var login = Assert.IsType<LoginDetail>(service.GetDetail("login"));
+        var login = Assert.IsType<LoginDetail>(service.GetDetail("login", includeSensitive: true));
         Assert.Equal("octo", login.Username);
         Assert.Equal("pw", login.Password);
         Assert.Equal("otpauth", login.TotpSecret);
@@ -50,23 +50,23 @@ public class RealVaultUiServiceTests
         Assert.Equal("Octo Cat", passkey.DisplayName);
         Assert.Equal("是", passkey.DiscoverableText);
 
-        var card = Assert.IsType<CardDetail>(service.GetDetail("card"));
+        var card = Assert.IsType<CardDetail>(service.GetDetail("card", includeSensitive: true));
         Assert.Equal("Jane", card.Cardholder);
         Assert.Equal("4111", card.Number);
         Assert.Equal("12/2030", card.Expiry);
         Assert.Equal("Visa", card.Brand);
         Assert.Equal("123", card.Cvv);
 
-        var identity = Assert.IsType<IdentityDetail>(service.GetDetail("identity"));
+        var identity = Assert.IsType<IdentityDetail>(service.GetDetail("identity", includeSensitive: true));
         Assert.Equal("Jane Doe", identity.FullName);
         Assert.Equal("jane@example.com", identity.Email);
         Assert.Equal("123-45-6789", identity.IdNumber);
         Assert.Equal("Road 1, Beijing, China", identity.Address);
 
-        var note = Assert.IsType<NoteDetail>(service.GetDetail("note"));
+        var note = Assert.IsType<NoteDetail>(service.GetDetail("note", includeSensitive: true));
         Assert.Equal("note body", note.Content);
 
-        var ssh = Assert.IsType<SshDetail>(service.GetDetail("ssh"));
+        var ssh = Assert.IsType<SshDetail>(service.GetDetail("ssh", includeSensitive: true));
         Assert.Equal("public", ssh.PublicKey);
         Assert.Equal("private", ssh.PrivateKey);
         Assert.Equal("SHA256:fp", ssh.Fingerprint);
@@ -110,7 +110,7 @@ public class RealVaultUiServiceTests
         });
         var svc = new VaultUiService(vault, new NoopWriteService(), new NoopSyncService());
 
-        var detail = Assert.IsType<LoginDetail>(svc.GetDetail("1"));
+        var detail = Assert.IsType<LoginDetail>(svc.GetDetail("1", includeSensitive: true));
 
         Assert.True(detail.HasPasswordHistory);
         Assert.Equal(1, detail.PasswordHistoryCount);
