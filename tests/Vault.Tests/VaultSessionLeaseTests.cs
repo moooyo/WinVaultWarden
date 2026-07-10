@@ -307,5 +307,248 @@ public sealed class VaultSessionLeaseTests
 
         Assert.False(sawTornState);
     }
+
+    // ── I-1 fix tests: generation 饱和、持久化上界、try/finally 清理 ─────────────────────────
+
+    /// <summary>
+    /// long.MaxValue 超过 MaxPersistedGeneration 上界 → HasValidBinding 应为 false。
+    /// RED: 当前 HasValidBinding 只检查 Generation > 0，long.MaxValue 通过。
+    /// </summary>
+    [Fact]
+    public void HasValidBinding_MaxValueGeneration_ReturnsFalse()
+    {
+        var persisted = new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            "account-a",
+            A,
+            long.MaxValue,
+            "a@example.com",
+            "device-1",
+            "refresh-token",
+            "2.protected-key",
+            Core.Enums.KdfType.Pbkdf2,
+            600_000,
+            null,
+            null);
+
+        Assert.False(persisted.HasValidBinding);
+        // 常量必须存在且 MaxValue 超出它
+        Assert.True(long.MaxValue > PersistedSession.MaxPersistedGeneration);
+    }
+
+    /// <summary>
+    /// 恢复 Generation=long.MaxValue 的持久化记录 → fail-closed 拒绝（InvalidDataException）。
+    /// RED: 当前 HasValidBinding 允许 long.MaxValue，RestorePersistedSession 不抛。
+    /// </summary>
+    [Fact]
+    public void RestorePersistedSession_MaxValueGeneration_ThrowsInvalidDataException()
+    {
+        var vaultSession = new VaultSession();
+        _ = vaultSession.BeginAccountSession("account-a", "a@example.com", A);
+        var persisted = new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            "account-a",
+            A,
+            long.MaxValue,
+            "a@example.com",
+            "device-1",
+            "refresh-token",
+            "2.protected-key",
+            Core.Enums.KdfType.Pbkdf2,
+            600_000,
+            null,
+            null);
+
+        Assert.Throws<InvalidDataException>(() => vaultSession.RestorePersistedSession(persisted));
+    }
+
+    /// <summary>
+    /// 恢复 long.MaxValue-1 后连续两次 Lock/Logout 不得抛出。
+    /// RED: 第一次 Lock 后 _generation=MaxValue；第二次 checked(MaxValue+1) 抛 OverflowException。
+    /// </summary>
+    [Fact]
+    public void RestoreMaxMinus1_TwoConsecutiveLocks_DoesNotThrow()
+    {
+        var vaultSession = new VaultSession();
+        var persisted = new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            "account-a",
+            A,
+            long.MaxValue - 1,
+            "a@example.com",
+            "device-1",
+            "refresh-token",
+            "2.protected-key",
+            Core.Enums.KdfType.Pbkdf2,
+            600_000,
+            null,
+            null);
+
+        vaultSession.RestorePersistedSession(persisted); // _generation = MaxValue-1
+        vaultSession.Lock();  // _generation = MaxValue  (MaxValue-1+1, 无溢出)
+        vaultSession.Lock();  // saturate: MaxValue 保持，不得溢出
+    }
+
+    /// <summary>
+    /// generation 饱和（long.MaxValue）时 Lock 仍轮换 stamp 与 CTS → 旧 lease 必须失效。
+    /// RED: Lock 在 _generation=MaxValue 时抛 OverflowException，旧 lease 根本无法失效。
+    /// </summary>
+    [Fact]
+    public void SaturatedGeneration_Lock_StillRotatesStampAndCts_OldLeaseStale()
+    {
+        var vaultSession = new VaultSession();
+        var persisted = new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            "account-a",
+            A,
+            long.MaxValue - 1,
+            "a@example.com",
+            "device-1",
+            "refresh-token",
+            "2.protected-key",
+            Core.Enums.KdfType.Pbkdf2,
+            600_000,
+            null,
+            null);
+
+        // 将 _generation 推到 long.MaxValue
+        vaultSession.RestorePersistedSession(persisted); // gen = MaxValue-1
+        vaultSession.Lock();                              // gen = MaxValue (一次正常递增)
+
+        // 在 long.MaxValue 上开启新会话拿到 lease
+        var leaseAtMax = vaultSession.BeginAccountSession("account-a", "a@example.com", A);
+        Assert.Equal(long.MaxValue, leaseAtMax.Generation);
+
+        // Lock at long.MaxValue: generation 饱和保持 MaxValue，但 stamp/CTS 必须轮换
+        vaultSession.Lock();
+
+        Assert.True(leaseAtMax.CancellationToken.IsCancellationRequested, "旧 CTS 未取消");
+        Assert.False(vaultSession.IsCurrent(leaseAtMax), "旧 lease 未失效");
+
+        // 再来一轮确认：在 MaxValue 上仍可连续失效
+        var lease2 = vaultSession.BeginAccountSession("account-a", "a@example.com", A);
+        Assert.Equal(long.MaxValue, lease2.Generation); // generation 仍饱和在 MaxValue
+        vaultSession.Lock();
+        Assert.True(lease2.CancellationToken.IsCancellationRequested, "第二轮旧 CTS 未取消");
+        Assert.False(vaultSession.IsCurrent(lease2), "第二轮旧 lease 未失效");
+    }
+
+    /// <summary>
+    /// generation 饱和后 Lock 仍必须清除 UserKey/AccessToken/明文集合（try/finally 保证）。
+    /// RED: checked 抛 OverflowException 时，ClearSensitiveState 未执行，UserKey 残留。
+    /// </summary>
+    [Fact]
+    public void Lock_AtMaxGeneration_ClearsSensitiveStateViaFinally()
+    {
+        var vaultSession = new VaultSession();
+        var persisted = new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            "account-a",
+            A,
+            long.MaxValue - 1,
+            "a@example.com",
+            "device-1",
+            "refresh-token",
+            "2.protected-key",
+            Core.Enums.KdfType.Pbkdf2,
+            600_000,
+            null,
+            null);
+
+        // 将 _generation 推到 long.MaxValue，并写入敏感状态
+        vaultSession.RestorePersistedSession(persisted); // gen = MaxValue-1
+        var lease = vaultSession.BeginAccountSession("account-a", "a@example.com", A); // gen = MaxValue
+        Assert.Equal(long.MaxValue, lease.Generation);
+
+        var key = new Crypto.SymmetricCryptoKey(
+            Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
+        Assert.True(vaultSession.TryCommit(lease, () =>
+        {
+            vaultSession.SetUnlockedKey(key);
+            vaultSession.SetTokens("access-tok", "refresh-tok");
+        }));
+        Assert.NotNull(vaultSession.UserKey);
+
+        // Lock at MaxValue (饱和)：try/finally 必须清除敏感状态
+        vaultSession.Lock();
+
+        Assert.Null(vaultSession.UserKey);
+        Assert.Null(vaultSession.AccessToken);
+        Assert.Empty(vaultSession.Ciphers);
+        Assert.Equal(VaultState.Locked, vaultSession.State);
+    }
+
+    /// <summary>
+    /// generation 饱和后 Logout 必须置 LoggedOut、清空 AccountInfo、清除敏感状态。
+    /// RED: checked 抛 OverflowException，Logout 路径同样 fail-open。
+    /// </summary>
+    [Fact]
+    public void Logout_AtMaxGeneration_ClearsSensitiveStateAndSetsLoggedOut()
+    {
+        var vaultSession = new VaultSession();
+        var persisted = new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            "account-a",
+            A,
+            long.MaxValue - 1,
+            "a@example.com",
+            "device-1",
+            "refresh-token",
+            "2.protected-key",
+            Core.Enums.KdfType.Pbkdf2,
+            600_000,
+            null,
+            null);
+
+        vaultSession.RestorePersistedSession(persisted); // gen = MaxValue-1
+        var lease = vaultSession.BeginAccountSession("account-a", "a@example.com", A); // gen = MaxValue
+        var key = new Crypto.SymmetricCryptoKey(
+            Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
+        Assert.True(vaultSession.TryCommit(lease, () =>
+        {
+            vaultSession.SetUnlockedKey(key);
+            vaultSession.SetTokens("access-tok", "refresh-tok");
+        }));
+
+        vaultSession.Logout(); // gen = MaxValue → saturate，try/finally 必须清除状态
+
+        Assert.Null(vaultSession.UserKey);
+        Assert.Null(vaultSession.AccessToken);
+        Assert.Equal(VaultState.LoggedOut, vaultSession.State);
+        Assert.Equal(AccountInfo.Empty, vaultSession.Account);
+    }
+
+    /// <summary>
+    /// generation 饱和后的旧 lease TryCommit 应返回 false（stamp 已轮换）。
+    /// RED: Lock 在 MaxValue 直接抛 OverflowException，测试无法执行。
+    /// </summary>
+    [Fact]
+    public void TryCommit_OldLeaseAfterSaturation_ReturnsFalse()
+    {
+        var vaultSession = new VaultSession();
+        var persisted = new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            "account-a",
+            A,
+            long.MaxValue - 1,
+            "a@example.com",
+            "device-1",
+            "refresh-token",
+            "2.protected-key",
+            Core.Enums.KdfType.Pbkdf2,
+            600_000,
+            null,
+            null);
+
+        vaultSession.RestorePersistedSession(persisted);
+        var oldLease = vaultSession.BeginAccountSession("account-a", "a@example.com", A); // gen = MaxValue
+        Assert.Equal(long.MaxValue, oldLease.Generation);
+
+        vaultSession.Lock(); // stamp/CTS 轮换，oldLease 失效
+
+        var mutationRan = false;
+        Assert.False(vaultSession.TryCommit(oldLease, () => mutationRan = true));
+        Assert.False(mutationRan);
+    }
 }
 

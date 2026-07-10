@@ -21,15 +21,26 @@ public sealed record PersistedSession(
     public const int CurrentSchemaVersion = 2;
 
     /// <summary>
+    /// 持久化 Generation 的安全上界。任何等于或超过此值的持久化记录将被 HasValidBinding 拒绝
+    /// （fail-closed）。防止恶意/损坏记录将 _generation 恢复到 long.MaxValue，导致下一次
+    /// Lock/Logout 在 RotateLeaseNoLock 内立即溢出（或即便采用饱和计数后仍无法继续递增）。
+    /// 具体值为 long.MaxValue - 1：允许正常会话最多递增到 long.MaxValue（饱和），
+    /// 而 long.MaxValue 本身则无法通过绑定校验被持久化恢复进来。
+    /// </summary>
+    public const long MaxPersistedGeneration = long.MaxValue - 1;
+
+    /// <summary>
     /// fail-closed 门禁:任何缺失 account/origin/generation 绑定的持久化记录一律视为不可信,
     /// TryLoad 必须拒绝返回它(见 DpapiTokenStore/MemoryTokenStore),迫使用户重新登录以获得
     /// schema 2 记录,而不是把旧的、未绑定身份的 session 静默当作当前账户使用。
+    /// Generation 额外受 MaxPersistedGeneration 上界约束，防止恢复后下一次 Lock/Logout 溢出。
     /// </summary>
     public bool HasValidBinding =>
         SchemaVersion == CurrentSchemaVersion
         && !string.IsNullOrWhiteSpace(AccountId)
         && !string.IsNullOrWhiteSpace(Email)
         && Generation > 0
+        && Generation <= MaxPersistedGeneration
         && Origin.IsInitialized;
 
     /// <summary>

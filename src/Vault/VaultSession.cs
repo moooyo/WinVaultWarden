@@ -453,6 +453,8 @@ public sealed class VaultSession : IVaultSnapshot
     /// <summary>
     /// 锁定:第一动作即轮换 generation 并取消旧租约,再清空敏感状态。仍有活跃账户时返回新租约,
     /// 否则(未曾开启任何账户会话)返回 null。
+    /// try/finally 保证即便 RotateLeaseNoLock 意外抛出，ClearSensitiveState 也必然执行，
+    /// 安全清理路径不得 fail-open。
     /// </summary>
     public VaultSessionLease? Lock()
     {
@@ -460,22 +462,36 @@ public sealed class VaultSession : IVaultSnapshot
         {
             var accountId = _accountId;
             var origin = _origin;
-            RotateLeaseNoLock(accountId, origin, persistedGeneration: null);
-            ClearSensitiveState();
-            State = VaultState.Locked;
-            return accountId is null || origin is null ? null : CurrentLeaseNoLock();
+            try
+            {
+                RotateLeaseNoLock(accountId, origin, persistedGeneration: null);
+                return accountId is null || origin is null ? null : CurrentLeaseNoLock();
+            }
+            finally
+            {
+                ClearSensitiveState();
+                State = VaultState.Locked;
+            }
         }
     }
 
-    /// <summary>登出:第一动作即轮换 generation(账户置空)并取消旧租约,再清空敏感状态。</summary>
+    /// <summary>登出:第一动作即轮换 generation(账户置空)并取消旧租约,再清空敏感状态。
+    /// try/finally 保证即便 RotateLeaseNoLock 意外抛出，ClearSensitiveState、AccountInfo.Empty、
+    /// LoggedOut 状态也必然被应用，安全清理路径不得 fail-open。</summary>
     public void Logout()
     {
         lock (_gate)
         {
-            RotateLeaseNoLock(null, null, persistedGeneration: null);
-            ClearSensitiveState();
-            Account = AccountInfo.Empty;
-            State = VaultState.LoggedOut;
+            try
+            {
+                RotateLeaseNoLock(null, null, persistedGeneration: null);
+            }
+            finally
+            {
+                ClearSensitiveState();
+                Account = AccountInfo.Empty;
+                State = VaultState.LoggedOut;
+            }
         }
     }
 
@@ -486,6 +502,10 @@ public sealed class VaultSession : IVaultSnapshot
     /// 唯一的 generation/stamp/CTS 变更点。必须在 _gate 内调用。取消旧 CTS 在赋新值之后执行,
     /// 确保"generation 已经推进"先于"旧 token 被观察到取消"对外可见,任何取消回调异常都不得
     /// 阻断新会话生效(仅吞掉 AggregateException,不吞其他致命异常)。
+    /// generation 计数采用饱和而非 checked 溢出：到达 long.MaxValue 后保持在 long.MaxValue，
+    /// 同时每次仍轮换 stamp 与 CTS，确保旧 lease 必然失效。long.MaxValue 值本身被
+    /// PersistedSession.HasValidBinding 拒绝（Generation > MaxPersistedGeneration），
+    /// 故该状态不可通过 RestorePersistedSession 再次被持久化注入，属最终不可达饱和态。
     /// </summary>
     private void RotateLeaseNoLock(
         string? accountId,
@@ -493,7 +513,8 @@ public sealed class VaultSession : IVaultSnapshot
         long? persistedGeneration)
     {
         var previous = _leaseCts;
-        var next = checked(_generation + 1);
+        // 饱和加一：不使用 checked，到达 long.MaxValue 后保持不变（不溢出）。
+        var next = _generation == long.MaxValue ? long.MaxValue : _generation + 1;
         _generation = persistedGeneration is long restored
             ? Math.Max(next, restored)
             : next;
@@ -562,3 +583,4 @@ public sealed class VaultSession : IVaultSnapshot
         RepromptSatisfied = false;
     }
 }
+
