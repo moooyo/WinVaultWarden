@@ -1,12 +1,29 @@
 using Core.Passkeys;
+using Core.Services;
 using Xunit;
 
 namespace Crypto.Tests;
 
 public class WebAuthnRegistrationServiceTests
 {
-    private static WebAuthnMakeCredentialRequest Req(IReadOnlyList<int> algs, bool uv = true, bool credProps = true) =>
-        new("https://github.com", "AQIDBA", "github.com", "GitHub", "dXNlcklk", "octo", "Octo Cat", algs, uv, credProps);
+    private static readonly PasskeyApprovalEvidence VerifiedApproval =
+        new(Approved: true, UserPresent: true, UserVerified: true);
+
+    private static WebAuthnMakeCredentialRequest Req(
+        IReadOnlyList<int> algorithms,
+        PasskeyApprovalEvidence? evidence = null,
+        bool credProps = true) =>
+        new(
+            "https://github.com",
+            "AQIDBA",
+            "github.com",
+            "GitHub",
+            "dXNlcklk",
+            "octo",
+            "Octo Cat",
+            algorithms,
+            evidence ?? VerifiedApproval,
+            credProps);
 
     [Fact]
     public void CreateAttestation_Es256_ProducesStorableCredential_AndAttestationPayload()
@@ -49,6 +66,61 @@ public class WebAuthnRegistrationServiceTests
     {
         Assert.Throws<InvalidOperationException>(() =>
             WebAuthnRegistrationService.CreateAttestation(
-                new("https://evil.com", "AQIDBA", "github.com", "GitHub", "dXNlcklk", "octo", "Octo", [-7], true, false)));
+                new WebAuthnMakeCredentialRequest(
+                    "https://evil.com",
+                    "AQIDBA",
+                    "github.com",
+                    "GitHub",
+                    "dXNlcklk",
+                    "octo",
+                    "Octo",
+                    [-7],
+                    VerifiedApproval,
+                    CredProps: false)));
+    }
+
+    [Theory]
+    [InlineData(false, false, 0x40)]
+    [InlineData(true, false, 0x41)]
+    [InlineData(true, true, 0x45)]
+    public void CreateAttestation_MapsApprovalEvidenceToAtUpUvFlags(
+        bool userPresent,
+        bool userVerified,
+        int expectedFlags)
+    {
+        var evidence = new PasskeyApprovalEvidence(
+            Approved: true,
+            UserPresent: userPresent,
+            UserVerified: userVerified);
+
+        var result = WebAuthnRegistrationService.CreateAttestation(
+            Req([-7], evidence));
+
+        var authData = WebAuthnCrypto.DecodeBase64Url(result.Payload.AuthData);
+        Assert.Equal(expectedFlags, (int)authData[32]);
+    }
+
+    [Fact]
+    public void CreateAttestation_UnapprovedEvidence_Throws()
+    {
+        var request = Req(
+            [-7],
+            new PasskeyApprovalEvidence(false, false, false));
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            WebAuthnRegistrationService.CreateAttestation(request));
+
+        Assert.Equal("Passkey approval is required.", error.Message);
+    }
+
+    [Fact]
+    public void CreateAttestation_UserVerifiedWithoutPresence_Throws()
+    {
+        var request = Req(
+            [-7],
+            new PasskeyApprovalEvidence(true, false, true));
+
+        Assert.Throws<ArgumentException>(() =>
+            WebAuthnRegistrationService.CreateAttestation(request));
     }
 }

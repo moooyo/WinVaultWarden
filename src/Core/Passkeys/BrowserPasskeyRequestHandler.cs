@@ -80,9 +80,15 @@ public sealed class BrowserPasskeyRequestHandler
         try
         {
             var result = WebAuthnRegistrationService.CreateAttestation(new WebAuthnMakeCredentialRequest(
-                payload.Origin, payload.Challenge, rpId, payload.Rp?.Name,
-                payload.User!.Id, payload.User.Name, payload.User.DisplayName,
-                algorithms, UserVerification: approval.Evidence.UserVerified,
+                payload.Origin,
+                payload.Challenge,
+                rpId,
+                payload.Rp?.Name,
+                payload.User!.Id,
+                payload.User.Name,
+                payload.User.DisplayName,
+                algorithms,
+                ApprovalEvidence: approval.Evidence,
                 CredProps: HasCredProps(payload.Extensions)));
 
             var cipher = approval.CreateNew

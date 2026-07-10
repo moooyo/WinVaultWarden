@@ -93,31 +93,40 @@ public static class WebAuthnCrypto
 
     // authData(注册):rpIdHash(32)‖flags(1)‖counter(4)‖aaguid(16)‖credIdLen(2,BE)‖credId‖coseKey。
     public static byte[] BuildAttestedAuthenticatorData(
-        string rpId, uint counter, bool userPresent, bool userVerified,
-        byte[] aaguid, byte[] credentialId, byte[] coseKey)
+        string rpId,
+        uint counter,
+        PasskeyApprovalEvidence evidence,
+        byte[] aaguid,
+        byte[] credentialId,
+        byte[] coseKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rpId);
-        if (aaguid.Length != 16) throw new ArgumentException("aaguid must be 16 bytes.", nameof(aaguid));
+        if (aaguid.Length != 16)
+            throw new ArgumentException("aaguid must be 16 bytes.", nameof(aaguid));
 
         var head = new byte[37];
         SHA256.HashData(Encoding.UTF8.GetBytes(rpId), head.AsSpan(0, 32));
-        var evidence = new PasskeyApprovalEvidence(
-            Approved: true,
-            UserPresent: userPresent,
-            UserVerified: userVerified);
-        head[32] = (byte)(BuildFlags(evidence) | 0x40); // + AT
+        head[32] = (byte)(BuildFlags(evidence) | 0x40);
         BinaryPrimitives.WriteUInt32BigEndian(head.AsSpan(33, 4), counter);
 
         var credLen = new byte[2];
-        BinaryPrimitives.WriteUInt16BigEndian(credLen, (ushort)credentialId.Length);
+        BinaryPrimitives.WriteUInt16BigEndian(
+            credLen,
+            (ushort)credentialId.Length);
 
-        var total = new byte[head.Length + aaguid.Length + credLen.Length + credentialId.Length + coseKey.Length];
-        var o = 0;
+        var total = new byte[
+            head.Length
+            + aaguid.Length
+            + credLen.Length
+            + credentialId.Length
+            + coseKey.Length];
+        var offset = 0;
         foreach (var part in new[] { head, aaguid, credLen, credentialId, coseKey })
         {
-            part.CopyTo(total.AsSpan(o));
-            o += part.Length;
+            part.CopyTo(total.AsSpan(offset));
+            offset += part.Length;
         }
+
         return total;
     }
 

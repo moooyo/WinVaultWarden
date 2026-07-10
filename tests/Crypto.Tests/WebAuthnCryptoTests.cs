@@ -124,7 +124,16 @@ public class WebAuthnCryptoTests
         var (_, cose, _) = WebAuthnCrypto.GenerateEs256KeyPair();
         var credId = new byte[] { 9, 8, 7, 6, 5 };
         var aaguid = new byte[16];
-        var authData = WebAuthnCrypto.BuildAttestedAuthenticatorData("github.com", 0, true, true, aaguid, credId, cose);
+        var authData = WebAuthnCrypto.BuildAttestedAuthenticatorData(
+            "github.com",
+            0,
+            new PasskeyApprovalEvidence(
+                Approved: true,
+                UserPresent: true,
+                UserVerified: true),
+            aaguid,
+            credId,
+            cose);
 
         var expectedHash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("github.com"));
         Assert.Equal(expectedHash, authData[..32]);
@@ -134,6 +143,21 @@ public class WebAuthnCryptoTests
         Assert.Equal(credId.Length, (authData[53] << 8) | authData[54]); // credIdLen big-endian
         Assert.Equal(credId, authData[55..(55 + credId.Length)]);
         Assert.Equal(cose, authData[(55 + credId.Length)..]);
+    }
+
+    [Fact]
+    public void BuildAttestedAuthenticatorData_UserVerifiedWithoutPresence_Throws()
+    {
+        var (_, cose, _) = WebAuthnCrypto.GenerateEs256KeyPair();
+
+        Assert.Throws<ArgumentException>(() =>
+            WebAuthnCrypto.BuildAttestedAuthenticatorData(
+                "github.com",
+                0,
+                new PasskeyApprovalEvidence(true, false, true),
+                new byte[16],
+                [1, 2, 3, 4],
+                cose));
     }
 
     [Fact]

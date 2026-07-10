@@ -2,13 +2,22 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Core.Models;
+using Core.Services;
 
 namespace Core.Passkeys;
 
 public sealed record WebAuthnMakeCredentialRequest(
-    string Origin, string Challenge, string? RpId, string? RpName,
-    string UserId, string? UserName, string? UserDisplayName,
-    IReadOnlyList<int> Algorithms, bool UserVerification, bool CredProps, bool CrossOrigin = false);
+    string Origin,
+    string Challenge,
+    string? RpId,
+    string? RpName,
+    string UserId,
+    string? UserName,
+    string? UserDisplayName,
+    IReadOnlyList<int> Algorithms,
+    PasskeyApprovalEvidence ApprovalEvidence,
+    bool CredProps,
+    bool CrossOrigin = false);
 
 public sealed record WebAuthnRegistrationResult(CipherFido2Credential Credential, PasskeyCreateAttestationPayload Payload);
 
@@ -30,6 +39,9 @@ public static class WebAuthnRegistrationService
         if (!request.Algorithms.Contains(Es256))
             throw new InvalidOperationException("Only ES256 passkeys are supported.");
 
+        if (!request.ApprovalEvidence.Approved)
+            throw new InvalidOperationException("Passkey approval is required.");
+
         var effectiveRpId = string.IsNullOrWhiteSpace(request.RpId) ? HostFromOrigin(request.Origin) : request.RpId;
         if (!IsRpIdAllowedForOrigin(effectiveRpId, request.Origin))
             throw new InvalidOperationException("The requested rpId is not valid for the origin.");
@@ -37,8 +49,12 @@ public static class WebAuthnRegistrationService
         var (pkcs8, cose, spki) = WebAuthnCrypto.GenerateEs256KeyPair();
         var credentialId = RandomNumberGenerator.GetBytes(16);
         var authData = WebAuthnCrypto.BuildAttestedAuthenticatorData(
-            effectiveRpId, 0, userPresent: true, userVerified: request.UserVerification,
-            aaguid: new byte[16], credentialId, cose);
+            rpId: effectiveRpId,
+            counter: 0,
+            evidence: request.ApprovalEvidence,
+            aaguid: new byte[16],
+            credentialId: credentialId,
+            coseKey: cose);
         var attestationObject = WebAuthnCrypto.BuildNoneAttestationObject(authData);
         var clientDataJson = JsonSerializer.SerializeToUtf8Bytes(
             new ClientDataJson("webauthn.create", request.Challenge, request.Origin, request.CrossOrigin),
