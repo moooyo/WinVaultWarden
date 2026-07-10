@@ -39,11 +39,6 @@ public sealed class VaultSession : IVaultSnapshot
     // 「An invalid request URI was provided…」。Lock()/Clear() 经 ClearSensitiveState 复位。
     public bool IsDemo { get; private set; }
 
-    // 会话级主密码重提示标志:本次解锁后首次对 Reprompt==true 条目验证主密码通过后置位,
-    // 之后本次解锁会话内不再重复要求。Lock()/Clear() 经 ClearSensitiveState 复位。
-    // 作用域故意收窄在会话级——原语此处最粗;日后若收紧到"条目级短窗口"只需换标志载体,成本低。
-    public bool RepromptSatisfied { get; private set; }
-
     public IReadOnlyList<Cipher> Ciphers
     {
         get { lock (_gate) return _ciphers; }
@@ -289,12 +284,6 @@ public sealed class VaultSession : IVaultSnapshot
     {
         lock (_gate)
             Account = account;
-    }
-
-    public void MarkRepromptSatisfied()
-    {
-        lock (_gate)
-            RepromptSatisfied = true;
     }
 
     /// <summary>
@@ -605,6 +594,5 @@ public sealed class VaultSession : IVaultSnapshot
         SkippedCipherCount = 0;
         SkippedFolderCount = 0;
         DataStale = false;
-        RepromptSatisfied = false;
     }
 }

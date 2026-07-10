@@ -1,4 +1,6 @@
 using App.Services;
+using Core.Enums;
+using Core.Models;
 using Core.Services;
 using Vault;
 using Xunit;
@@ -7,6 +9,58 @@ namespace App.Tests;
 
 public sealed class ItemRepromptGateTests
 {
+    /// <summary>
+    /// 饱和 generation（long.MaxValue）场景：generation 无法再递增，但每次 Lock
+    /// 仍轮换 stamp 与 CTS。缓存键必须包含 lease（含 stamp），仅比较 generation+account
+    /// 则在此态下无法失效授权。
+    /// </summary>
+    [Fact]
+    public async Task Lock_AtSaturatedGeneration_RevokesAuthorization()
+    {
+        var session = new VaultSession();
+        var origin = new ServerOrigin("https://vault.example");
+
+        // 通过 RestorePersistedSession 将 generation 设到 long.MaxValue-1，再经 Lock 推进到 long.MaxValue
+        var persisted = new PersistedSession(
+            SchemaVersion: PersistedSession.CurrentSchemaVersion,
+            AccountId: "account-sat",
+            Origin: origin,
+            Generation: long.MaxValue - 1,
+            Email: "sat@example.com",
+            DeviceIdentifier: "device-1",
+            RefreshToken: "token",
+            ProtectedUserKey: "key",
+            KdfType: KdfType.Pbkdf2,
+            KdfIterations: 600_000,
+            KdfMemory: null,
+            KdfParallelism: null);
+        session.RestorePersistedSession(persisted);
+        Assert.Equal(long.MaxValue - 1, session.Generation);
+
+        // Lock → generation 饱和为 long.MaxValue，stamp = S1
+        session.Lock();
+        Assert.Equal(long.MaxValue, session.Generation);
+
+        var gate = new ItemRepromptGate(new AccountVerifier("correct"), session);
+        var policy = new CipherAccessPolicy("cipher-sat", true);
+
+        // 授权（session 在 Locked 状态但仍有活跃租约）
+        var result = await gate.AuthorizeAsync(
+            policy,
+            SensitiveItemAction.Copy,
+            _ => Task.FromResult<string?>("correct"));
+
+        Assert.True(result.IsSuccess);
+        Assert.True(gate.IsAuthorized(policy));
+
+        // 再次 Lock：generation 保持 long.MaxValue，但 stamp 变为 S2
+        session.Lock();
+        Assert.Equal(long.MaxValue, session.Generation);
+
+        // 关键断言：仅比较 generation+account 的实现在此会错误地返回 true
+        Assert.False(gate.IsAuthorized(policy));
+    }
+
     [Fact]
     public async Task AuthorizingA_DoesNotAuthorizeB_AndGenerationChangeRevokesA()
     {

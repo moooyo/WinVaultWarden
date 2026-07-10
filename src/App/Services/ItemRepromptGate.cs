@@ -38,26 +38,36 @@ public sealed class ItemRepromptGate(
     VaultSession session) : IItemRepromptGate
 {
     private readonly object _gate = new();
-    private readonly HashSet<(long Generation, string AccountId, string CipherId)> _authorized = [];
+    // 缓存键为 CipherId，值为授权时捕获的完整 VaultSessionLease（含 stamp）。
+    // IsAuthorized 必须调用 session.IsCurrent(cachedLease) 而非仅比较 generation/account，
+    // 以保证在 generation 饱和（long.MaxValue）时每次 Lock 轮换的 stamp 仍能正确失效授权。
+    // 注意：session.IsCurrent 获取 VaultSession 自身锁，故必须在释放 _gate 后再调用，避免锁序死锁。
+    private readonly Dictionary<string, Core.Session.VaultSessionLease> _authorized = [];
 
     public bool IsAuthorized(CipherAccessPolicy policy)
     {
-        // 非重提示条目无需门禁。重提示条目在无会话/异常时一律拒绝(fail-closed)。
+        // 非重提示条目无需门禁。
         if (!policy.RequiresReprompt)
             return true;
 
-        Core.Session.VaultSessionLease lease;
-        try
-        {
-            lease = session.CaptureLease();
-        }
-        catch
-        {
-            return false;
-        }
-
+        Core.Session.VaultSessionLease? cached;
         lock (_gate)
-            return _authorized.Contains((lease.Generation, lease.AccountId, policy.CipherId));
+            _authorized.TryGetValue(policy.CipherId, out cached);
+
+        if (cached is null)
+            return false;
+
+        // 释放 _gate 后再调用 IsCurrent，避免与 VaultSession 内锁产生死锁。
+        if (session.IsCurrent(cached))
+            return true;
+
+        // 失效 entry 可移除，节省内存；只在值未被其他线程替换时才移除（防 TOCTOU）。
+        lock (_gate)
+            if (_authorized.TryGetValue(policy.CipherId, out var current)
+                && ReferenceEquals(current, cached))
+                _authorized.Remove(policy.CipherId);
+
+        return false;
     }
 
     public async Task<UiOperationResult<bool>> AuthorizeAsync(
@@ -92,12 +102,13 @@ public sealed class ItemRepromptGate(
             if (!await account.VerifyMasterPasswordAsync(password, linked.Token))
                 return UiOperationResult<bool>.Failure("主密码不正确");
 
-            // 跨 await 后必须校验仍为同一会话租约:期间 Lock/切账户则授权作废。
+            // 跨 await 后校验仍为同一会话租约（含 stamp 比较）：期间 Lock/切账户则授权作废。
             if (!session.IsCurrent(lease))
                 return UiOperationResult<bool>.Cancelled();
 
+            // 缓存完整 lease（含 stamp），后续 IsAuthorized 通过 IsCurrent 验证其有效性。
             lock (_gate)
-                _authorized.Add((lease.Generation, lease.AccountId, policy.CipherId));
+                _authorized[policy.CipherId] = lease;
             return UiOperationResult<bool>.Success(true);
         }
         catch (OperationCanceledException)

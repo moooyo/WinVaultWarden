@@ -148,30 +148,6 @@ public class VaultSessionTests
         Assert.False(session.DataStale);
     }
 
-    [Fact]
-    public void RepromptSatisfied_defaults_false_marked_true_reset_by_lock()
-    {
-        var session = new VaultSession();
-        Assert.False(session.RepromptSatisfied);
-
-        session.MarkRepromptSatisfied();
-        Assert.True(session.RepromptSatisfied);
-
-        session.Lock();
-        Assert.False(session.RepromptSatisfied); // 锁定重置会话级验证标志
-    }
-
-    [Fact]
-    public void RepromptSatisfied_reset_by_clear()
-    {
-        var session = new VaultSession();
-        session.MarkRepromptSatisfied();
-        Assert.True(session.RepromptSatisfied);
-
-        session.Logout();
-        Assert.False(session.RepromptSatisfied); // 登出重置
-    }
-
     private static Send DemoSend(string id) => new()
     {
         Id = id,
