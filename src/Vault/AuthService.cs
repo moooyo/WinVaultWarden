@@ -1,3 +1,4 @@
+using System.IO;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Api;
@@ -529,6 +530,7 @@ public sealed class AuthService : IAuthService
             or CryptographicException
             or FormatException
             or ArgumentException
+            or InvalidDataException
             or NotSupportedException
             or NotImplementedException;
 
