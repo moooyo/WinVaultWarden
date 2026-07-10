@@ -27,10 +27,29 @@ public readonly record struct ServerOrigin
     public Uri Resolve(string relativeOrAbsolute)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(relativeOrAbsolute);
+
+        // Reject protocol-relative ("//", "///") and backslash/UNC paths BEFORE calling
+        // Uri.TryCreate, which would silently interpret them as file:// URIs.
+        if (relativeOrAbsolute.StartsWith("//", StringComparison.Ordinal) ||
+            relativeOrAbsolute.StartsWith("\\", StringComparison.Ordinal))
+            throw new ArgumentException(
+                "Protocol-relative and UNC paths are not allowed.", nameof(relativeOrAbsolute));
+
         if (Uri.TryCreate(relativeOrAbsolute, UriKind.Absolute, out var absolute))
+        {
+            // Only http/https absolute URIs are permitted.
+            if (absolute.Scheme != Uri.UriSchemeHttp && absolute.Scheme != Uri.UriSchemeHttps)
+                throw new ArgumentException(
+                    $"Absolute URI scheme '{absolute.Scheme}' is not allowed; only http/https are permitted.",
+                    nameof(relativeOrAbsolute));
+            // The absolute URI must belong to the same origin.
+            if (!Matches(absolute))
+                throw new ArgumentException(
+                    "Absolute URI must belong to the same origin as this ServerOrigin.",
+                    nameof(relativeOrAbsolute));
             return absolute;
-        if (relativeOrAbsolute.StartsWith("//", StringComparison.Ordinal))
-            throw new ArgumentException("Protocol-relative URLs are not allowed.", nameof(relativeOrAbsolute));
+        }
+
         return new Uri(new Uri(Value + "/", UriKind.Absolute), relativeOrAbsolute.TrimStart('/'));
     }
 
@@ -58,7 +77,10 @@ public readonly record struct ServerOrigin
             return false;
 
         var scheme = uri.Scheme.ToLowerInvariant();
-        var host = uri.IdnHost.ToLowerInvariant();
+        // Trim trailing dot(s) so that FQDN "example.com." normalises to "example.com".
+        var host = uri.IdnHost.TrimEnd('.').ToLowerInvariant();
+        if (string.IsNullOrEmpty(host))
+            return false;
         var port = uri.IsDefaultPort ? -1 : uri.Port;
         var builder = new UriBuilder(scheme, host, port);
         normalized = builder.Uri.GetLeftPart(UriPartial.Authority);

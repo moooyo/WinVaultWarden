@@ -1,3 +1,4 @@
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using Api.Dtos;
@@ -224,5 +225,35 @@ public class VaultDecryptorTests
         Assert.Equal("me@example.com", result.Account.Email);
         Assert.Equal("https://vault.example", result.Account.ServerUrl);
         Assert.Equal("M", result.Account.Initial);
+    }
+
+    // C2: BuildAccount must use profile.Id, not hard-coded empty string.
+    [Fact]
+    public void Decrypt_UsesProfileIdAsAccountId()
+    {
+        var result = NewDecryptor().Decrypt(
+            Sync(profile: new ProfileDto("real-user-id-xyz", "me@example.com", "Me", null, null)),
+            _userKey, "https://vault.example");
+
+        Assert.Equal("real-user-id-xyz", result.Account.Id);
+    }
+
+    // C2: null profile must throw InvalidDataException (profile is required).
+    [Fact]
+    public void Decrypt_NullProfile_ThrowsInvalidDataException()
+    {
+        var sync = new SyncResponse("sync", null, [], []);
+        Assert.Throws<InvalidDataException>(() =>
+            NewDecryptor().Decrypt(sync, _userKey, "https://vault.example"));
+    }
+
+    // C2: blank/whitespace profile Id must throw InvalidDataException.
+    [Fact]
+    public void Decrypt_BlankProfileId_ThrowsInvalidDataException()
+    {
+        var sync = new SyncResponse("sync",
+            new ProfileDto("  ", "me@example.com", "Me", null, null), [], []);
+        Assert.Throws<InvalidDataException>(() =>
+            NewDecryptor().Decrypt(sync, _userKey, "https://vault.example"));
     }
 }

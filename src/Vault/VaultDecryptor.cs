@@ -1,3 +1,4 @@
+using System.IO;
 using System.Security.Cryptography;
 using Api.Dtos;
 using Core.Enums;
@@ -216,13 +217,16 @@ public sealed class VaultDecryptor
 
     private static AccountInfo BuildAccount(ProfileDto? profile, string serverUrl)
     {
-        var email = profile?.Email ?? string.Empty;
-        var display = profile?.Name ?? email;
+        if (profile is null || string.IsNullOrWhiteSpace(profile.Id))
+            throw new InvalidDataException("Sync profile is missing a valid account ID.");
+
+        var email = profile.Email ?? string.Empty;
+        var display = profile.Name ?? email;
         var initial = string.IsNullOrWhiteSpace(display)
             ? string.Empty
             : display.Trim()[0].ToString().ToUpperInvariant();
         var origin = ServerOrigin.TryParse(serverUrl, out var o) ? (ServerOrigin?)o : null;
-        return new AccountInfo(string.Empty, email, origin, initial, string.Empty);
+        return new AccountInfo(profile.Id, email, origin, initial, string.Empty);
     }
 
     private static bool IsCipherDecryptException(Exception ex) =>

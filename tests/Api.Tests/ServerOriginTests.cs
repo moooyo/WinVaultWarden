@@ -16,9 +16,32 @@ public sealed class ServerOriginTests
     [Theory]
     [InlineData("vault.example")]
     [InlineData("ftp://vault.example")]
-    [InlineData("******vault.example")]
     public void Constructor_RejectsUnsafeValues(string input) =>
         Assert.Throws<ArgumentException>(() => new ServerOrigin(input));
+
+    // Constructed via Concat so that credential-scrubbers cannot replace the literal.
+    [Fact]
+    public void Constructor_RejectsUserInfo()
+    {
+        var urlWithUserInfo = string.Concat("https://", "u", ":", "p", "@", "vault.example");
+        Assert.Throws<ArgumentException>(() => new ServerOrigin(urlWithUserInfo));
+    }
+
+    // Trailing-dot FQDN "example.com." must normalise to the same origin as "example.com".
+    [Fact]
+    public void Equality_TrailingDotFqdnEqualsNoDot()
+    {
+        Assert.Equal(new ServerOrigin("https://example.com."),
+            new ServerOrigin("https://example.com"));
+    }
+
+    // After trimming the trailing dot, an empty host must be rejected.
+    [Fact]
+    public void Constructor_RejectsSingleDotHost()
+    {
+        // "https://." has a host that is purely a trailing-dot FQDN root label → empty after trim.
+        Assert.Throws<ArgumentException>(() => new ServerOrigin("https://."));
+    }
 
     [Fact]
     public void Equality_NormalizesHostAndDefaultPort()
@@ -36,5 +59,33 @@ public sealed class ServerOriginTests
         Assert.Equal("https://vault.example:8443/api/sync?excludeDomains=true", uri.AbsoluteUri);
         Assert.True(origin.Matches(uri));
         Assert.False(origin.Matches(new Uri("https://other.example/api/sync")));
+    }
+
+    // All of the following inputs must be rejected by Resolve().
+    // Protocol-relative ("//") and backslash/UNC must be rejected BEFORE Uri.TryCreate is
+    // called (which would silently parse them as file:// URIs).
+    // Absolute URIs with non-http(s) schemes or a different authority must also be rejected.
+    [Theory]
+    [InlineData("//evil.example/steal")]
+    [InlineData("///evil.example/steal")]
+    [InlineData(@"\\evil.example\share")]
+    [InlineData("file:///etc/passwd")]
+    [InlineData("ftp://evil.example/x")]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("data:text/html,hi")]
+    [InlineData("https://other.example/api")]
+    public void Resolve_RejectsUnsafeOrForeignInput(string input)
+    {
+        var origin = new ServerOrigin("https://vault.example");
+        Assert.Throws<ArgumentException>(() => origin.Resolve(input));
+    }
+
+    // A same-origin absolute URL must still be accepted (regression guard).
+    [Fact]
+    public void Resolve_AcceptsSameOriginAbsolute()
+    {
+        var origin = new ServerOrigin("https://vault.example:8443");
+        var uri = origin.Resolve("https://vault.example:8443/api/sync?key=value");
+        Assert.Equal("https://vault.example:8443/api/sync?key=value", uri.AbsoluteUri);
     }
 }
