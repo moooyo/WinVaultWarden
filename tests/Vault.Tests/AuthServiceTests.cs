@@ -73,12 +73,13 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public async Task LoginAsync_Argon2idSuccess_SavesSessionAndBootstrapsVault()
+    public async Task LoginAsync_Argon2idIterationsOne_SavesSessionAndBootstrapsVault()
     {
-        var fixture = CreateArgon2idLoginFixture();
+        const int argonIterations = 1;
+        var fixture = CreateArgon2idLoginFixture(argonIterations);
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
-            """{"kdf":1,"kdfIterations":3,"kdfMemory":64,"kdfParallelism":4}"""));
+            """{"kdf":1,"kdfIterations":1,"kdfMemory":64,"kdfParallelism":4}"""));
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, TokenJson(fixture.ProtectedUserKey)));
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, SyncJson()));
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, DevicesJson()));
@@ -95,6 +96,7 @@ public class AuthServiceTests
         Assert.Equal(fixture.PasswordHash, form["password"]);
         Assert.True(tokenStore.TryLoad(out var persisted));
         Assert.Equal(KdfType.Argon2id, persisted.KdfType);
+        Assert.Equal(argonIterations, persisted.KdfIterations);
     }
 
     [Fact]
@@ -341,9 +343,9 @@ public class AuthServiceTests
         return new LoginFixture(userKey, protectedUserKey, passwordHash);
     }
 
-    private LoginFixture CreateArgon2idLoginFixture()
+    private LoginFixture CreateArgon2idLoginFixture(int iterations)
     {
-        var masterKey = _crypto.DeriveMasterKey(Password, Email, KdfType.Argon2id, 3, 64, 4);
+        var masterKey = _crypto.DeriveMasterKey(Password, Email, KdfType.Argon2id, iterations, 64, 4);
         var passwordHash = _crypto.ComputeMasterPasswordHash(masterKey, Password);
         var stretchedKey = _crypto.StretchMasterKey(masterKey);
         var userKey = new SymmetricCryptoKey(Enumerable.Range(64, 64).Select(i => (byte)i).ToArray());

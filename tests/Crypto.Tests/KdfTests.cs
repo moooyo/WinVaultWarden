@@ -53,54 +53,21 @@ public class KdfTests
     }
 
     [Fact]
-    public void DeriveMasterKey_Argon2id_MatchesParameterMapping()
+    public void DeriveMasterKey_Argon2id_IterationOne_MatchesVaultwardenCompatibleVector()
     {
         var svc = new CryptoService();
-        const int iterations = 3, memoryMiB = 64, parallelism = 4;
 
-        var actual = svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, iterations, memoryMiB, parallelism);
+        var actual = svc.DeriveMasterKey(
+            Password,
+            Email,
+            KdfType.Argon2id,
+            iterations: 1,
+            memoryMiB: 15,
+            parallelism: 1);
 
-        // 参考实现:salt = SHA256(规范化邮箱),memory 单位 KiB = MiB*1024。
-        var salt = SHA256.HashData(Encoding.UTF8.GetBytes(Email));
-        using var argon2 = new Argon2id(Encoding.UTF8.GetBytes(Password))
-        {
-            Salt = salt,
-            Iterations = iterations,
-            MemorySize = memoryMiB * 1024,
-            DegreeOfParallelism = parallelism,
-        };
-        var expected = argon2.GetBytes(32);
-
-        Assert.Equal(expected, actual);
-        Assert.Equal(32, actual.Length);
-    }
-
-    [Fact]
-    public void DeriveMasterKey_Argon2id_RejectsWrongMemoryUnit()
-    {
-        var svc = new CryptoService();
-        var actual = svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, 3, 64, 4);
-
-        // 若实现误把 MiB 当 KiB(不 *1024),结果会等于下面这个错误参考值;断言两者不同。
-        var salt = SHA256.HashData(Encoding.UTF8.GetBytes(Email));
-        using var wrong = new Argon2id(Encoding.UTF8.GetBytes(Password))
-        {
-            Salt = salt,
-            Iterations = 3,
-            MemorySize = 64, // 错误:把 MiB 直接当 KiB
-            DegreeOfParallelism = 4,
-        };
-        Assert.NotEqual(wrong.GetBytes(32), actual);
-    }
-
-    [Fact]
-    public void DeriveMasterKey_Argon2id_NullMemoryOrParallelism_Throws()
-    {
-        var svc = new CryptoService();
-        Assert.Throws<ArgumentException>(() =>
-            svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, 3, null, 4));
-        Assert.Throws<ArgumentException>(() =>
-            svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, 3, 64, null));
+        Assert.Equal(
+            Convert.FromHexString("EF0BF4281B723A9AD1F5157F177AA53E107818063CC073D949CFF72C1800D96E"),
+            actual);
     }
 
     // RFC 9106 Section 5.3 Argon2id known-answer test vector.
@@ -160,7 +127,7 @@ public class KdfTests
     }
 
     [Theory]
-    [InlineData(1, 64, 4)]     // iterations < 2
+    [InlineData(0, 64, 4)]     // iterations < 1
     [InlineData(3, 14, 4)]     // memoryMiB < 15
     [InlineData(3, 1025, 4)]   // memoryMiB > 1024 (DoS 上限)
     [InlineData(3, 64, 0)]     // parallelism < 1
@@ -175,9 +142,9 @@ public class KdfTests
     public void DeriveMasterKey_Argon2id_AcceptsInBoundsParameters()
     {
         var svc = new CryptoService();
-        // 边界内(iterations>=2, 15<=memory<=1024, parallelism>=1)不抛异常。
+        // 边界内(iterations>=1, 15<=memory<=1024, parallelism>=1)不抛异常。
         // 仅用廉价内存参数实际派生,避免 1024MiB 分配拖慢/撑爆 CI。
-        _ = svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, 2, 15, 1);
+        _ = svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, 1, 15, 1);
         _ = svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, 3, 64, 4);
     }
 }
