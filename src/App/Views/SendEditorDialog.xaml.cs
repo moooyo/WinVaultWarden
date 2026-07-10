@@ -13,7 +13,6 @@ public sealed partial class SendEditorDialog : ContentDialog
     private readonly Func<SendEditorDraft, CancellationToken, Task<UiOperationResult>> _save;
 
     public SendEditorDraft Draft { get; }
-    public bool Saved { get; private set; }
     public bool IsEditMode { get; }
 
     public string DialogTitle => IsEditMode
@@ -140,7 +139,7 @@ public sealed partial class SendEditorDialog : ContentDialog
     }
 
     // Primary 保存:deferral 内完成上传/写入。失败(Failed)保留对话框并展示可重试错误;Busy/Cancelled 同样保留
-    // 对话框但不显示错误(瞬态);成功才置 Saved 并关闭。全程注册到瞬态登记表,使锁屏/登出能取消并清空敏感值。
+    // 对话框但不显示错误(瞬态);成功才关闭。全程注册到瞬态登记表,使锁屏/登出能取消并清空敏感值。
     private async void OnPrimaryButtonClick(
         ContentDialog sender,
         ContentDialogButtonClickEventArgs args)
@@ -174,7 +173,6 @@ public sealed partial class SendEditorDialog : ContentDialog
                 args.Cancel = true;
                 return;
             }
-            Saved = true;
         }
         finally
         {

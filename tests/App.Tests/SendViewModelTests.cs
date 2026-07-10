@@ -239,6 +239,26 @@ public class SendViewModelTests
     }
 
     [Fact]
+    public async Task CreateSendAsync_FileChangedDuringUpload_ReturnsFailed_WithActionableMessage_AndKeepsReplacementFile()
+    {
+        var vm = new SendViewModel(new ThrowingInvalidDataSendUiService());
+        var draft = SendEditorDraft.CreateDefault(SendType.File);
+        draft.Name = "合同";
+        draft.FileName = "合同.zip";
+        var source = MemorySource("合同.zip", new byte[] { 1, 2, 3 });
+        draft.ReplacementFile = source;
+
+        var result = await vm.CreateSendAsync(draft, draft.ReplacementFile, CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal("文件在读取或上传过程中已被修改，请重新选择文件后重试。", result.Error);
+        Assert.Same(source, draft.ReplacementFile);
+        Assert.True(vm.HasError);
+        Assert.Equal(result.Error, vm.Error);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
     public async Task UpdateSendFromDraftAsync_InvalidDraft_ReturnsFailure_AndDoesNotCallService()
     {
         var svc = new FakeSendUiService();
@@ -282,6 +302,27 @@ public class SendViewModelTests
         Assert.True(result.IsSuccess);
         Assert.Equal(item.Id, svc.LastUpdateId);
         Assert.Contains(vm.Items, s => s.Id == item.Id && s.Name == "改名后");
+    }
+
+    [Fact]
+    public async Task UpdateSendFromDraftAsync_FileChangedDuringUpload_ReturnsFailed_WithActionableMessage_AndKeepsReplacementFile()
+    {
+        var vm = new SendViewModel(new ThrowingInvalidDataSendUiService());
+        var item = new SendListItem("s1", "周报.pdf", SendType.File, "d", "https://vault.example/#/send/acc1/seed1");
+        var draft = SendEditorDraft.CreateDefault(SendType.File);
+        draft.Name = "合同";
+        draft.FileName = "合同.zip";
+        var source = MemorySource("合同.zip", new byte[] { 1, 2, 3 });
+        draft.ReplacementFile = source;
+
+        var result = await vm.UpdateSendFromDraftAsync(item, draft, draft.ReplacementFile, CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal("文件在读取或上传过程中已被修改，请重新选择文件后重试。", result.Error);
+        Assert.Same(source, draft.ReplacementFile);
+        Assert.True(vm.HasError);
+        Assert.Equal(result.Error, vm.Error);
+        Assert.False(vm.IsBusy);
     }
 
     [Fact]
@@ -433,6 +474,7 @@ public class SendViewModelTests
         Assert.Null(vm.LastReceived);
         Assert.Empty(vm.Items);
         Assert.Empty(vm.FilteredItems);
+        Assert.Equal(DataPageState.Loading, vm.LoadState);
     }
 
     private static async Task WaitForIdle(SendViewModel vm)
@@ -457,6 +499,23 @@ public class SendViewModelTests
             Task.FromException<SendReceivedResult>(new IOException("access failed"));
         public Task<SendEditorDraft?> GetEditDraftAsync(string id, CancellationToken ct = default) =>
             Task.FromException<SendEditorDraft?>(new IOException("edit failed"));
+    }
+
+    private sealed class ThrowingInvalidDataSendUiService : ISendUiService
+    {
+        public Task<IReadOnlyList<SendListItem>> GetSendsAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<SendListItem>>(Array.Empty<SendListItem>());
+        public Task<SendListItem> CreateSendAsync(SendEditorDraft draft, SendFileSource? file, CancellationToken ct = default) =>
+            Task.FromException<SendListItem>(new InvalidDataException("file changed"));
+        public Task<SendListItem> UpdateSendAsync(string id, SendEditorDraft draft, SendFileSource? file, CancellationToken ct = default) =>
+            Task.FromException<SendListItem>(new InvalidDataException("file changed"));
+        public Task DeleteSendAsync(string id, CancellationToken ct = default) =>
+            Task.CompletedTask;
+        public string? CopyShareLink(SendListItem item) => item.Link;
+        public Task<SendReceivedResult> OpenReceivedLinkAsync(string url, string? password, CancellationToken ct = default) =>
+            Task.FromException<SendReceivedResult>(new InvalidDataException("file changed"));
+        public Task<SendEditorDraft?> GetEditDraftAsync(string id, CancellationToken ct = default) =>
+            Task.FromException<SendEditorDraft?>(new InvalidDataException("file changed"));
     }
 
     // latest-wins 专用替身:按调用顺序返回预置的加载任务,忽略其余成员。

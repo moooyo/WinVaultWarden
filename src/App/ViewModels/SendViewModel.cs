@@ -174,6 +174,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
             catch (Exception ex) when (ex is ArgumentOutOfRangeException
                 or UnauthorizedAccessException
                 or IOException
+                or InvalidDataException
                 or Vault.SendUploadCompensationException
                 or HttpRequestException)
             {
@@ -220,6 +221,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
             catch (Exception ex) when (ex is ArgumentOutOfRangeException
                 or UnauthorizedAccessException
                 or IOException
+                or InvalidDataException
                 or Vault.SendUploadCompensationException
                 or HttpRequestException)
             {
@@ -239,6 +241,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         ArgumentOutOfRangeException => "文件超过 500 MiB 上限。",
         UnauthorizedAccessException => "没有读取所选文件的权限。",
         IOException => "读取或上传文件失败，请确认文件仍可访问后重试。",
+        InvalidDataException => "文件在读取或上传过程中已被修改，请重新选择文件后重试。",
         Vault.SendUploadCompensationException compensation => compensation.Message,
         HttpRequestException => "网络请求失败，请检查连接后重试。",
         _ => "保存 Send 失败。",
@@ -346,5 +349,6 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         Error = null;
         Items.Clear();
         FilteredItems.Clear();
+        LoadState = DataPageState.Loading;
     }
 }
