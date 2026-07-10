@@ -62,26 +62,30 @@ public class VaultSessionTests
     }
 
     [Fact]
-    public void SetSnapshot_ExposesSkippedCipherCount_ResetOnLockAndClear()
+    public void SetSnapshot_ExposesSkippedCounts_ResetOnLockAndClear()
     {
         var session = new VaultSession();
         var key = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
         var account = new AccountInfo("test-account", "me@example.com", new ServerOrigin("https://vault.example"), "M", "PBKDF2 600000");
 
         session.SetUnlockedKey(key);
-        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 3));
+        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 3, SkippedFolderCount: 1));
         Assert.Equal(3, session.SkippedCipherCount);
+        Assert.Equal(1, session.SkippedFolderCount);
 
         session.Lock();
         Assert.Equal(0, session.SkippedCipherCount);
+        Assert.Equal(0, session.SkippedFolderCount);
 
         // 重新解锁后才能再次写入快照。
         session.SetUnlockedKey(key);
-        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 5));
+        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 5, SkippedFolderCount: 2));
         Assert.Equal(5, session.SkippedCipherCount);
+        Assert.Equal(2, session.SkippedFolderCount);
 
         session.Clear();
         Assert.Equal(0, session.SkippedCipherCount);
+        Assert.Equal(0, session.SkippedFolderCount);
     }
 
     [Fact]

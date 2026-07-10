@@ -129,6 +129,7 @@ public sealed class VaultSession : IVaultSnapshot
             _folders = vault.Folders;
             _ciphers = vault.Ciphers;
             SkippedCipherCount = vault.SkippedCipherCount;
+            SkippedFolderCount = vault.SkippedFolderCount;
             DataStale = dataStale;
             return true;
         }
@@ -610,4 +611,3 @@ public sealed class VaultSession : IVaultSnapshot
         RepromptSatisfied = false;
     }
 }
-

@@ -151,6 +151,26 @@ public class VaultDecryptorTests
     }
 
     [Fact]
+    public void Decrypt_BadFolder_IsSkipped_GoodFolderAndCipherRemain()
+    {
+        var wrongKey = new SymmetricCryptoKey(RandomNumberGenerator.GetBytes(64));
+        var folders = new[]
+        {
+            new FolderDto("f-bad", Enc("cannot decrypt", wrongKey), DateTimeOffset.Parse("2026-06-01T00:00:00Z")),
+            new FolderDto("f-good", Enc("Work", _userKey), DateTimeOffset.Parse("2026-06-01T00:00:00Z")),
+        };
+
+        var result = NewDecryptor().Decrypt(Sync(ciphers: [LoginDto()], folders: folders), _userKey, "https://vault.example");
+
+        Assert.Single(result.Folders);
+        Assert.Equal("Work", result.Folders[0].Name);
+        Assert.Single(result.Ciphers);
+        Assert.Equal("GitHub", result.Ciphers[0].Name);
+        Assert.Equal(0, result.SkippedCipherCount);
+        Assert.Equal(1, result.SkippedFolderCount);
+    }
+
+    [Fact]
     public void Decrypt_ItemLevelKey_OverridesUserKey()
     {
         var itemKey = new SymmetricCryptoKey(RandomNumberGenerator.GetBytes(64));

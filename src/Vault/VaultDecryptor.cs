@@ -11,7 +11,8 @@ public sealed record DecryptedVault(
     AccountInfo Account,
     IReadOnlyList<Folder> Folders,
     IReadOnlyList<Cipher> Ciphers,
-    int SkippedCipherCount);
+    int SkippedCipherCount,
+    int SkippedFolderCount = 0);
 
 public sealed class VaultDecryptor
 {
@@ -22,12 +23,22 @@ public sealed class VaultDecryptor
     public DecryptedVault Decrypt(SyncResponse sync, SymmetricCryptoKey userKey, string serverUrl)
     {
         var account = BuildAccount(sync.Profile, serverUrl);
-        var folders = (sync.Folders ?? Array.Empty<FolderDto>())
-            .Select(folder => DecryptFolder(folder, userKey))
-            .ToArray();
+        var folders = new List<Folder>();
+        var skippedFolders = 0;
+        foreach (var folder in sync.Folders ?? Array.Empty<FolderDto>())
+        {
+            try
+            {
+                folders.Add(DecryptFolder(folder, userKey));
+            }
+            catch (Exception ex) when (IsFolderDecryptException(ex))
+            {
+                skippedFolders++;
+            }
+        }
 
         var ciphers = new List<Cipher>();
-        var skipped = 0;
+        var skippedCiphers = 0;
         foreach (var cipher in sync.Ciphers ?? Array.Empty<CipherDto>())
         {
             try
@@ -36,11 +47,11 @@ public sealed class VaultDecryptor
             }
             catch (Exception ex) when (IsCipherDecryptException(ex))
             {
-                skipped++;
+                skippedCiphers++;
             }
         }
 
-        return new DecryptedVault(account, folders, ciphers, skipped);
+        return new DecryptedVault(account, folders, ciphers, skippedCiphers, skippedFolders);
     }
 
     public Folder DecryptFolder(FolderDto folder, SymmetricCryptoKey userKey) => new()
@@ -230,5 +241,8 @@ public sealed class VaultDecryptor
     }
 
     private static bool IsCipherDecryptException(Exception ex) =>
-        ex is CryptographicException or FormatException or ArgumentException or InvalidOperationException;
+        ex is CryptographicException or FormatException or ArgumentException;
+
+    private static bool IsFolderDecryptException(Exception ex) =>
+        ex is CryptographicException or FormatException or ArgumentException;
 }
