@@ -70,6 +70,59 @@ public class KdfTests
             actual);
     }
 
+    // 独立 oracle: argon2-cffi/libargon2 v19 按 password=p4ssw0rd、salt=SHA256("nobody@example.com")、
+    // t=1、m=15360 KiB、p=1、32 bytes 计算，结果确认即此值。
+    [Fact]
+    public void DeriveMasterKey_Argon2id_MatchesParameterMapping()
+    {
+        var svc = new CryptoService();
+        const int iterations = 3, memoryMiB = 64, parallelism = 4;
+
+        var actual = svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, iterations, memoryMiB, parallelism);
+
+        // 参考实现:salt = SHA256(规范化邮箱),memory 单位 KiB = MiB*1024。
+        var salt = SHA256.HashData(Encoding.UTF8.GetBytes(Email));
+        using var argon2 = new Argon2id(Encoding.UTF8.GetBytes(Password))
+        {
+            Salt = salt,
+            Iterations = iterations,
+            MemorySize = memoryMiB * 1024,
+            DegreeOfParallelism = parallelism,
+        };
+        var expected = argon2.GetBytes(32);
+
+        Assert.Equal(expected, actual);
+        Assert.Equal(32, actual.Length);
+    }
+
+    [Fact]
+    public void DeriveMasterKey_Argon2id_RejectsWrongMemoryUnit()
+    {
+        var svc = new CryptoService();
+        var actual = svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, 3, 64, 4);
+
+        // 若实现误把 MiB 当 KiB(不 *1024),结果会等于下面这个错误参考值;断言两者不同。
+        var salt = SHA256.HashData(Encoding.UTF8.GetBytes(Email));
+        using var wrong = new Argon2id(Encoding.UTF8.GetBytes(Password))
+        {
+            Salt = salt,
+            Iterations = 3,
+            MemorySize = 64, // 错误:把 MiB 直接当 KiB
+            DegreeOfParallelism = 4,
+        };
+        Assert.NotEqual(wrong.GetBytes(32), actual);
+    }
+
+    [Fact]
+    public void DeriveMasterKey_Argon2id_NullMemoryOrParallelism_Throws()
+    {
+        var svc = new CryptoService();
+        Assert.Throws<ArgumentException>(() =>
+            svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, 3, null, 4));
+        Assert.Throws<ArgumentException>(() =>
+            svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, 3, 64, null));
+    }
+
     // RFC 9106 Section 5.3 Argon2id known-answer test vector.
     // Validates Konscious against an independent published reference — independent of
     // our salt/param mapping so a library-internal regression would still be caught.

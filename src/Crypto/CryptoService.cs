@@ -32,7 +32,9 @@ public class CryptoService
         };
     }
 
-    // KDF 参数边界校验。合法参数必须原样派生，绝不 clamp，否则会得到错误密钥。
+    // KDF 参数安全下限/上限校验。
+    // 不可信/MITM 服务端可借 prelogin 下发极弱参数弱化整条派生链；所有派生入口(Login/Unlock/ChangePassword/ChangeKdf)
+    // 共用这里的校验。绝不 clamp: clamp 会改写派生出的密钥并导致与服务端 wrappedKey 不匹配。
     private const int MinPbkdf2Iterations = 100_000;   // Bitwarden 默认 600000
     private const int MinArgon2Iterations = 1;
     private const int MinArgon2MemoryMiB = 15;
