@@ -158,7 +158,9 @@ public sealed class SendUiService : ISendUiService
         DeletionDate = draft.ToDeletionDate(),
         Disabled = draft.Disabled,
         HideEmail = draft.HideEmail,
-        Password = NullIfBlank(draft.Password),
+        PasswordChange = string.IsNullOrWhiteSpace(draft.Password)
+            ? new SendPasswordChange.Keep()
+            : new SendPasswordChange.Set(draft.Password),
     };
 
     private static AppSendType MapType(CoreSendType type) => type == CoreSendType.File ? AppSendType.File : AppSendType.Text;

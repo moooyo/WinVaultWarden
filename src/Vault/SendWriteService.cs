@@ -9,8 +9,11 @@ using Crypto;
 
 namespace Vault;
 
-// Send 写编排:生成 seed → 派生 cryptoKey → 加密字段 → 用 UserKey 包裹 seed → 组 SendRequest → 创建/更新。
+// Send 写编排:生成/复用 seed → 派生 cryptoKey → 加密字段 → 用 UserKey 包裹 seed → 组 SendRequest → 创建/更新。
 // 文件类型:把文件加密成 EncArrayBuffer,fileLength=buffer.Length,先 v2 创建拿上传 URL,再 multipart 上传。
+// 更新(文本/文件元数据)必须复用 draft.Key 解出的原 seed,绝不轮换(见 ResolveSeed);
+// 密码变更是显式三态(SendPasswordChange.Keep/Set/Remove),Remove 必须先等元数据 PUT 成功,
+// 再调用专用 remove-password 路由(见 vaultwarden src/api/core/sends.rs:686-705),任一步失败不得伪装成功。
 public sealed class SendWriteService : ISendWriteService
 {
     private readonly IVaultApiClientProvider _clients;
@@ -26,76 +29,122 @@ public sealed class SendWriteService : ISendWriteService
 
     public async Task SaveTextSendAsync(SendDraftModel draft, CancellationToken ct = default)
     {
-        var userKey = RequireUserKey();
-        var seed = _crypto.GenerateSeed();
-        var cryptoKey = _crypto.DeriveCryptoKey(seed);
-
-        var request = BuildBaseRequest(draft, seed, cryptoKey, userKey);
-        request.Type = (int)SendType.Text;
-        request.Text = new SendTextRequest(
-            Text: draft.TextContent is null ? null : _crypto.EncryptField(draft.TextContent, cryptoKey),
-            Hidden: draft.TextHidden);
-
         var lease = _session.CaptureLease();
+        if (!_session.TryCopyUserKey(lease, out var copiedKey))
+            throw new InvalidOperationException("Vault is locked.");
+        using var userKey = copiedKey!;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var api = _clients.GetAuthenticated<ISendApiClient>(lease);
-        if (string.IsNullOrEmpty(draft.Id))
-            await api.CreateTextSendAsync(request, linked.Token);
-        else
-            await api.UpdateSendAsync(draft.Id, request, linked.Token);
-        _session.ThrowIfExpired(lease);
+        var seed = ResolveSeed(draft, userKey);
+        try
+        {
+            using var cryptoKey = _crypto.DeriveCryptoKey(seed);
+            var request = BuildBaseRequest(draft, seed, cryptoKey, userKey);
+            request.Type = (int)SendType.Text;
+            request.Text = new SendTextRequest(
+                Text: draft.TextContent is null ? null : _crypto.EncryptField(draft.TextContent, cryptoKey),
+                Hidden: draft.TextHidden);
+
+            if (string.IsNullOrEmpty(draft.Id))
+            {
+                if (draft.PasswordChange is SendPasswordChange.Remove)
+                    throw new InvalidOperationException("新 Send 不能移除尚不存在的密码。");
+                await api.CreateTextSendAsync(request, linked.Token);
+            }
+            else
+            {
+                await api.UpdateSendAsync(draft.Id, request, linked.Token);
+                _session.ThrowIfExpired(lease);
+                if (draft.PasswordChange is SendPasswordChange.Remove)
+                    await api.RemoveSendPasswordAsync(draft.Id, linked.Token);
+            }
+            _session.ThrowIfExpired(lease);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(seed);
+        }
     }
 
+    // Task 12 之前的过渡适配器:文件创建走 v2 create + upload;既有文件 Send 的更新(无论调用方是否
+    // 重选了文件字节)一律转发到 UpdateFileSendMetadataAsync —— 服务端没有任何端点能替换既有 Send 的
+    // 文件字节(put_send 收到 File=null 时忽略 file data,见 vaultwarden src/api/core/sends.rs:631-643),
+    // 与 Bitwarden 官方客户端一致。Task 12 会拆出显式的 CreateFileSendAsync/ReplaceFileSendAsync。
+    [Obsolete("Task 12 replaces this adapter with CreateFileSendAsync, UpdateFileSendMetadataAsync, and ReplaceFileSendAsync.")]
     public async Task SaveFileSendAsync(SendDraftModel draft, byte[] fileBytes, CancellationToken ct = default)
     {
-        var userKey = RequireUserKey();
-        var lease = _session.CaptureLease();
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
-        var api = _clients.GetAuthenticated<ISendApiClient>(lease);
-
-        // 更新既有文件 Send:服务端文件字节不可变(PUT /api/sends/{id} 收 File=null、不改 send.data,
-        // 只更新元数据;没有任何端点能替换既有 Send 的文件字节 —— 与 Bitwarden 官方客户端一致)。
-        // 关键:必须【复用原 seed】。put_send 会执行 send.akey = data.key,若此处生成新 seed 改写 akey,
-        // 服务端上仍以旧 seed 加密的文件与文件名将永久无法解密(随后被 GetSendsAsync 当损坏项跳过)。
-        // WrapSeed 每次 IV 随机,但重新包裹同一 seed 解出的仍是同一 seed,故文件保持可解密。
-        // 注意:即便调用方重选了文件(fileBytes 非空),服务端也无法替换字节,故此分支只更新元数据。
         if (!string.IsNullOrEmpty(draft.Id))
         {
-            if (string.IsNullOrEmpty(draft.Key))
-                throw new InvalidOperationException("更新文件 Send 需要其原始的 wrapped key。");
-
-            var existingSeed = _crypto.UnwrapSeed(draft.Key, userKey);
-            try
-            {
-                var existingCryptoKey = _crypto.DeriveCryptoKey(existingSeed);
-                var updateRequest = BuildBaseRequest(draft, existingSeed, existingCryptoKey, userKey);
-                updateRequest.Type = (int)SendType.File;
-                // File / FileLength 更新时被服务端忽略(文件不可变),保持 null。
-                await api.UpdateSendAsync(draft.Id, updateRequest, linked.Token);
-                _session.ThrowIfExpired(lease);
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(existingSeed);
-            }
+            await UpdateFileSendMetadataAsync(draft, ct);
             return;
         }
 
+        var lease = _session.CaptureLease();
+        if (!_session.TryCopyUserKey(lease, out var copiedKey))
+            throw new InvalidOperationException("Vault is locked.");
+        using var userKey = copiedKey!;
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ISendApiClient>(lease);
+
+        if (draft.PasswordChange is SendPasswordChange.Remove)
+            throw new InvalidOperationException("新 Send 不能移除尚不存在的密码。");
+
         // 创建新文件 Send:v2 建记录拿上传 URL → multipart 上传加密字节。
-        var seed = _crypto.GenerateSeed();
-        var cryptoKey = _crypto.DeriveCryptoKey(seed);
+        var seed = ResolveSeed(draft, userKey);
+        try
+        {
+            using var cryptoKey = _crypto.DeriveCryptoKey(seed);
 
-        var buffer = _crypto.EncryptToBuffer(fileBytes, cryptoKey);
-        var encryptedFileName = _crypto.EncryptField(draft.FileName ?? string.Empty, cryptoKey);
+            var buffer = _crypto.EncryptToBuffer(fileBytes, cryptoKey);
+            var encryptedFileName = _crypto.EncryptField(draft.FileName ?? string.Empty, cryptoKey);
 
-        var request = BuildBaseRequest(draft, seed, cryptoKey, userKey);
-        request.Type = (int)SendType.File;
-        request.File = new SendFileRequest(FileName: encryptedFileName);
-        request.FileLength = buffer.Length;
+            var request = BuildBaseRequest(draft, seed, cryptoKey, userKey);
+            request.Type = (int)SendType.File;
+            request.File = new SendFileRequest(FileName: encryptedFileName);
+            request.FileLength = buffer.Length;
 
-        var response = await api.CreateFileSendV2Async(request, linked.Token);
-        await api.UploadSendFileAsync(response.Url, encryptedFileName, buffer, linked.Token);
-        _session.ThrowIfExpired(lease);
+            var response = await api.CreateFileSendV2Async(request, linked.Token);
+            await api.UploadSendFileAsync(response.Url, encryptedFileName, buffer, linked.Token);
+            _session.ThrowIfExpired(lease);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(seed);
+        }
+    }
+
+    // 文本/文件元数据更新的统一入口:复用同一 ResolveSeed/BuildBaseRequest,File/FileLength 保持 null
+    // (文件字节在服务端不可变)。Remove 密码时,先等元数据 PUT 成功,再调用专用 remove-password 路由;
+    // 中途任一步失败都不得吞掉异常伪装成功。
+    public async Task UpdateFileSendMetadataAsync(SendDraftModel draft, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(draft.Id))
+            throw new InvalidOperationException("UpdateFileSendMetadataAsync 只用于更新既有 Send。");
+
+        var lease = _session.CaptureLease();
+        if (!_session.TryCopyUserKey(lease, out var copiedKey))
+            throw new InvalidOperationException("Vault is locked.");
+        using var userKey = copiedKey!;
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ISendApiClient>(lease);
+        var seed = ResolveSeed(draft, userKey);
+        try
+        {
+            using var cryptoKey = _crypto.DeriveCryptoKey(seed);
+            var request = BuildBaseRequest(draft, seed, cryptoKey, userKey);
+            request.Type = (int)SendType.File;
+            // File / FileLength 更新时被服务端忽略(文件不可变),保持 null。
+
+            await api.UpdateSendAsync(draft.Id, request, linked.Token);
+            _session.ThrowIfExpired(lease);
+            if (draft.PasswordChange is SendPasswordChange.Remove)
+                await api.RemoveSendPasswordAsync(draft.Id, linked.Token);
+            _session.ThrowIfExpired(lease);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(seed);
+        }
     }
 
     public async Task DeleteSendAsync(string sendId, CancellationToken ct = default)
@@ -119,22 +168,39 @@ public sealed class SendWriteService : ISendWriteService
         return Decrypt(dto, userKey);
     }
 
+    // 解析本次写入应使用的 seed:创建(Id 为空)生成新 seed;更新必须从 draft.Key 解包复用原 seed,
+    // 绝不为更新生成新 seed —— 否则服务端仍以旧 seed 加密的字段(文件名/文件字节/文本)将永久无法解密。
+    private byte[] ResolveSeed(SendDraftModel draft, SymmetricCryptoKey userKey)
+    {
+        if (string.IsNullOrEmpty(draft.Id))
+            return _crypto.GenerateSeed();
+        if (string.IsNullOrWhiteSpace(draft.Key))
+            throw new InvalidOperationException("更新 Send 需要原始 wrapped key。");
+        return _crypto.UnwrapSeed(draft.Key, userKey);
+    }
+
+    // 密码变更三态 → 服务端 password 字段语义:Keep 不传(null,服务端保留原值);Set 传新证明;
+    // Remove 也不传(null),移除动作由调用方随后另发专用 remove-password 请求完成。
+    private string? ResolvePasswordProof(SendPasswordChange change, byte[] seed) => change switch
+    {
+        SendPasswordChange.Keep => null,
+        SendPasswordChange.Set set => _crypto.ComputePasswordProof(set.Password, seed),
+        SendPasswordChange.Remove => null,
+        _ => throw new ArgumentOutOfRangeException(nameof(change)),
+    };
+
     // 组装通用字段(name/notes/key/password 证明/到期/删除日期/标志位)。
     // 返回可变 SendRequest 以便调用方补填 Type/Text/File/FileLength。
     private MutableSendRequest BuildBaseRequest(
         SendDraftModel draft, byte[] seed, SymmetricCryptoKey cryptoKey, SymmetricCryptoKey userKey)
     {
-        string? passwordProof = string.IsNullOrEmpty(draft.Password)
-            ? null
-            : _crypto.ComputePasswordProof(draft.Password, seed);
-
         return new MutableSendRequest
         {
             Id = string.IsNullOrEmpty(draft.Id) ? null : draft.Id,
             Name = _crypto.EncryptField(draft.Name, cryptoKey),
             Notes = draft.Notes is null ? null : _crypto.EncryptField(draft.Notes, cryptoKey),
             Key = _crypto.WrapSeed(seed, userKey),
-            Password = passwordProof,
+            Password = ResolvePasswordProof(draft.PasswordChange, seed),
             MaxAccessCount = draft.MaxAccessCount,
             ExpirationDate = ToIso(draft.ExpirationDate),
             DeletionDate = ToIso(draft.DeletionDate)!,

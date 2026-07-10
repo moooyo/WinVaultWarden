@@ -216,6 +216,8 @@ public class SendUiServiceDemoTests
             throw new InvalidOperationException("network write must not run in demo mode");
         public Task SaveFileSendAsync(SendDraftModel draft, byte[] fileBytes, CancellationToken ct = default) =>
             throw new InvalidOperationException("network write must not run in demo mode");
+        public Task UpdateFileSendMetadataAsync(SendDraftModel draft, CancellationToken ct = default) =>
+            throw new InvalidOperationException("network write must not run in demo mode");
         public Task DeleteSendAsync(string sendId, CancellationToken ct = default) =>
             throw new InvalidOperationException("network delete must not run in demo mode");
         public Task<Send> RemovePasswordAsync(string sendId, CancellationToken ct = default) =>

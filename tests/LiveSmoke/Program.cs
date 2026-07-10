@@ -406,7 +406,7 @@ try
         DeletionDate = sendDeletion,
         Disabled = false,
         HideEmail = false,
-        Password = sendPassword,
+        PasswordChange = new SendPasswordChange.Set(sendPassword),
     };
     await sendWriteService.SaveTextSendAsync(textDraft);
 
@@ -431,11 +431,13 @@ try
         // Notes は to_json_access では返却されない(オーナー向け to_json のみ)。
         // アクセスレスポンスは null になる — ここでは省略してテスト対象外とする。
 
-        // Update: change the name.
+        // Update: change the name. Must reuse the original seed via createdSend.Key,
+        // and Keep must not alter the existing password (Task 11 explicit tri-state).
         var newName = sendName + "-v2";
         var updateDraft = new SendDraftModel
         {
             Id = createdSend.Id,
+            Key = createdSend.Key,
             Type = SendType.Text,
             Name = newName,
             Notes = sendNotes,
@@ -446,14 +448,32 @@ try
             DeletionDate = sendDeletion,
             Disabled = false,
             HideEmail = false,
-            Password = null, // keep existing password
+            PasswordChange = new SendPasswordChange.Keep(), // keep existing password
         };
         await sendWriteService.SaveTextSendAsync(updateDraft);
         var afterUpdate = (await sendService.GetSendsAsync()).FirstOrDefault(s => s.Id == createdSend.Id);
         Step("send: name updated round-trip", afterUpdate?.Name == newName, afterUpdate?.Name);
+        // Prove Keep did not rotate the seed: the still-valid password proves the link/seed is unchanged.
+        var accessedAfterKeep = await sendAccessService.AccessAsync(
+            BuildShareUrlFromSession(afterUpdate!, serverForShare, sendCrypto, sendService, session),
+            sendPassword);
+        Step("send: access after keep-password update still works", accessedAfterKeep.TextContent == sendBody, accessedAfterKeep.TextContent);
 
-        // Remove password, then re-access WITHOUT a password.
-        var depassed = await sendWriteService.RemovePasswordAsync(createdSend.Id);
+        // Remove password via an explicit Remove draft, then re-access WITHOUT a password.
+        var removePasswordDraft = new SendDraftModel
+        {
+            Id = createdSend.Id,
+            Key = afterUpdate!.Key,
+            Type = SendType.Text,
+            Name = newName,
+            Notes = sendNotes,
+            TextContent = sendBody,
+            TextHidden = false,
+            DeletionDate = sendDeletion,
+            PasswordChange = new SendPasswordChange.Remove(),
+        };
+        await sendWriteService.SaveTextSendAsync(removePasswordDraft);
+        var depassed = (await sendService.GetSendsAsync()).Single(send => send.Id == createdSend.Id);
         Step("send: password removed flag", !depassed.HasPassword, $"hasPassword={depassed.HasPassword}");
         var reaccessed = await sendAccessService.AccessAsync(
             BuildShareUrlFromSession(depassed, serverForShare, sendCrypto, sendService, session),
@@ -480,7 +500,7 @@ try
         DeletionDate = sendDeletion,
         Disabled = false,
         HideEmail = false,
-        Password = null,
+        PasswordChange = new SendPasswordChange.Keep(),
     };
     await sendWriteService.SaveFileSendAsync(fileDraft, filePayload);
 
@@ -496,6 +516,29 @@ try
         var downloaded = await sendAccessService.DownloadFileAsync(accessedFile);
         Step("send: file bytes round-trip", downloaded.AsSpan().SequenceEqual(filePayload),
             $"{downloaded.Length} bytes vs {filePayload.Length}");
+
+        // Task 11: exercise UpdateFileSendMetadataAsync directly — it must reuse the original
+        // seed (via fileSend.Key) so the already-uploaded file bytes stay decryptable after
+        // a metadata-only rename.
+        var fileRenameDraft = new SendDraftModel
+        {
+            Id = fileSend.Id,
+            Key = fileSend.Key,
+            Type = SendType.File,
+            Name = fileSendName + "-renamed",
+            FileName = fileName,
+            DeletionDate = sendDeletion,
+            PasswordChange = new SendPasswordChange.Keep(),
+        };
+        await sendWriteService.UpdateFileSendMetadataAsync(fileRenameDraft);
+        var fileAfterRename = (await sendService.GetSendsAsync()).FirstOrDefault(s => s.Id == fileSend.Id);
+        Step("send: file metadata rename round-trip", fileAfterRename?.Name == fileRenameDraft.Name, fileAfterRename?.Name);
+        var accessedAfterRename = await sendAccessService.AccessAsync(
+            BuildShareUrlFromSession(fileAfterRename!, serverForShare, sendCrypto, sendService, session),
+            password: null);
+        var downloadedAfterRename = await sendAccessService.DownloadFileAsync(accessedAfterRename);
+        Step("send: file bytes still decryptable after metadata update", downloadedAfterRename.AsSpan().SequenceEqual(filePayload),
+            $"{downloadedAfterRename.Length} bytes vs {filePayload.Length}");
     }
 
     // ── 13. Cleanup: delete both sends ───────────────────────────────────────

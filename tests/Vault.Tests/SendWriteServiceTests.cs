@@ -23,9 +23,10 @@ public class SendWriteServiceTests
         return (new SendWriteService(FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(api), crypto, session), api, crypto, userKey);
     }
 
-    private static SendDraftModel TextDraft(string? password = null, string? id = null) => new()
+    private static SendDraftModel TextDraft(string? password = null, string? id = null, string? key = null) => new()
     {
         Id = id,
+        Key = key,
         Type = SendType.Text,
         Name = "My Send",
         Notes = "note text",
@@ -36,7 +37,7 @@ public class SendWriteServiceTests
         MaxAccessCount = 4,
         Disabled = false,
         HideEmail = true,
-        Password = password,
+        PasswordChange = password is null ? new SendPasswordChange.Keep() : new SendPasswordChange.Set(password),
     };
 
     [Fact]
@@ -95,9 +96,10 @@ public class SendWriteServiceTests
     [Fact]
     public async Task SaveTextSend_Existing_Updates()
     {
-        var (service, api, _, _) = NewService();
+        var (service, api, crypto, userKey) = NewService();
+        var wrappedKey = crypto.WrapSeed(crypto.GenerateSeed(), userKey);
 
-        await service.SaveTextSendAsync(TextDraft(id: "s-7"), TestContext.Current.CancellationToken);
+        await service.SaveTextSendAsync(TextDraft(id: "s-7", key: wrappedKey), TestContext.Current.CancellationToken);
 
         Assert.Equal("update", Assert.Single(api.Calls));
         Assert.Equal("s-7", api.LastUpdateId);
@@ -255,4 +257,68 @@ public class SendWriteServiceTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.SaveTextSendAsync(TextDraft(), TestContext.Current.CancellationToken));
     }
+
+    // Task 11: 更新既有文本/文件 Send 必须复用原 seed(通过 draft.Key 解包),绝不轮换 —— 否则服务端
+    // 仍以旧 seed 加密的字段(文件名/文件字节)将永久无法解密。
+    [Theory]
+    [InlineData(SendType.Text)]
+    [InlineData(SendType.File)]
+    public async Task ExistingSend_ReusesOriginalSeed(SendType type)
+    {
+        var (service, api, crypto, userKey) = NewService();
+        var originalSeed = crypto.GenerateSeed();
+        var draft = ExistingDraft(type, crypto.WrapSeed(originalSeed, userKey), new SendPasswordChange.Keep());
+
+        if (type == SendType.Text)
+            await service.SaveTextSendAsync(draft, TestContext.Current.CancellationToken);
+        else
+            await service.UpdateFileSendMetadataAsync(draft, TestContext.Current.CancellationToken);
+
+        var sentSeed = crypto.UnwrapSeed(api.LastUpdate!.Key, userKey);
+        Assert.Equal(originalSeed, sentSeed);
+    }
+
+    // Task 11: Keep/Set/Remove 是显式三态,分别映射为 null 密码证明(不改密码)/新证明(设置或替换)/
+    // 专用 remove-password 路由(移除)。绝不能用 null/空字符串暗号代替。
+    [Theory]
+    [MemberData(nameof(PasswordCases))]
+    public async Task PasswordChange_UsesExplicitServerSemantics(
+        SendType type, SendPasswordChange change, bool expectProof, bool expectRemove)
+    {
+        var (service, api, crypto, userKey) = NewService();
+        var seed = crypto.GenerateSeed();
+        var draft = ExistingDraft(type, crypto.WrapSeed(seed, userKey), change);
+
+        if (type == SendType.Text)
+            await service.SaveTextSendAsync(draft, TestContext.Current.CancellationToken);
+        else
+            await service.UpdateFileSendMetadataAsync(draft, TestContext.Current.CancellationToken);
+
+        Assert.Equal(expectProof, api.LastUpdate!.Password is not null);
+        Assert.Equal(expectRemove, api.Calls.Contains("remove-password"));
+        if (change is SendPasswordChange.Set set)
+            Assert.Equal(crypto.ComputePasswordProof(set.Password, seed), api.LastUpdate.Password);
+    }
+
+    public static TheoryData<SendType, SendPasswordChange, bool, bool> PasswordCases => new()
+    {
+        { SendType.Text, new SendPasswordChange.Keep(), false, false },
+        { SendType.Text, new SendPasswordChange.Set("new-password"), true, false },
+        { SendType.Text, new SendPasswordChange.Remove(), false, true },
+        { SendType.File, new SendPasswordChange.Keep(), false, false },
+        { SendType.File, new SendPasswordChange.Set("new-password"), true, false },
+        { SendType.File, new SendPasswordChange.Remove(), false, true },
+    };
+
+    private static SendDraftModel ExistingDraft(SendType type, string wrappedKey, SendPasswordChange passwordChange) => new()
+    {
+        Id = "send-1",
+        Key = wrappedKey,
+        Type = type,
+        Name = "Existing",
+        TextContent = type == SendType.Text ? "secret" : null,
+        FileName = type == SendType.File ? "existing.bin" : null,
+        DeletionDate = DateTimeOffset.UtcNow.AddDays(7),
+        PasswordChange = passwordChange,
+    };
 }

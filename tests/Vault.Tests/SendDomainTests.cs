@@ -100,14 +100,14 @@ public class SendDomainTests
             DeletionDate = deletion,
             Disabled = false,
             HideEmail = false,
-            Password = "secret",
+            PasswordChange = new SendPasswordChange.Set("secret"),
         };
 
         Assert.Null(draft.Id);
         Assert.Equal(SendType.Text, draft.Type);
         Assert.Equal("payload", draft.TextContent);
         Assert.Equal(deletion, draft.DeletionDate);
-        Assert.Equal("secret", draft.Password);
+        Assert.Equal("secret", Assert.IsType<SendPasswordChange.Set>(draft.PasswordChange).Password);
     }
 
     [Fact]

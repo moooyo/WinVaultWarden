@@ -63,7 +63,7 @@ public class RealSendUiServiceTests
         Assert.Equal(3, saved.MaxAccessCount);
         Assert.True(saved.Disabled);
         Assert.True(saved.HideEmail);
-        Assert.Equal("pw", saved.Password);
+        Assert.Equal("pw", Assert.IsType<SendPasswordChange.Set>(saved.PasswordChange).Password);
         Assert.Null(saved.Id);
         Assert.True(saved.DeletionDate > DateTimeOffset.UtcNow.AddDays(6));
         Assert.True(saved.DeletionDate <= DateTimeOffset.UtcNow.AddDays(8));
@@ -243,6 +243,8 @@ public class RealSendUiServiceTests
         { LastTextDraft = draft; return Task.CompletedTask; }
         public Task SaveFileSendAsync(SendDraftModel draft, byte[] fileBytes, CancellationToken ct = default)
         { LastFileDraft = draft; LastFileBytes = fileBytes; return Task.CompletedTask; }
+        public Task UpdateFileSendMetadataAsync(SendDraftModel draft, CancellationToken ct = default)
+        { LastFileDraft = draft; return Task.CompletedTask; }
         public Task DeleteSendAsync(string sendId, CancellationToken ct = default)
         { LastDeletedId = sendId; return Task.CompletedTask; }
         public Task<Send> RemovePasswordAsync(string sendId, CancellationToken ct = default)

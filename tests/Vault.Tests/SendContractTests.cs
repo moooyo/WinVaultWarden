@@ -20,7 +20,7 @@ public class SendContractTests
         Assert.Null(draft.Id);
         Assert.Equal(SendType.Text, draft.Type);
         Assert.Equal("n", draft.Name);
-        Assert.Null(draft.Password);
+        Assert.IsType<SendPasswordChange.Keep>(draft.PasswordChange);
         Assert.False(draft.Disabled);
         Assert.False(draft.HideEmail);
         Assert.Null(draft.MaxAccessCount);
@@ -56,9 +56,25 @@ public class SendContractTests
         Assert.Contains(typeof(ISendService).GetMethod("GetSendsAsync")!.ReturnType.Name, "Task`1");
         Assert.NotNull(typeof(ISendWriteService).GetMethod("SaveTextSendAsync"));
         Assert.NotNull(typeof(ISendWriteService).GetMethod("SaveFileSendAsync"));
+        Assert.NotNull(typeof(ISendWriteService).GetMethod("UpdateFileSendMetadataAsync"));
         Assert.NotNull(typeof(ISendWriteService).GetMethod("DeleteSendAsync"));
         Assert.NotNull(typeof(ISendWriteService).GetMethod("RemovePasswordAsync"));
         Assert.NotNull(typeof(ISendAccessService).GetMethod("AccessAsync"));
         Assert.NotNull(typeof(ISendAccessService).GetMethod("DownloadFileAsync"));
+    }
+
+    [Fact]
+    public void SendPasswordChange_IsExplicitThreeState()
+    {
+        // Task 11: Keep/Set/Remove 必须是显式类型,不能用 null/空字符串暗号代替。
+        SendPasswordChange keep = new SendPasswordChange.Keep();
+        SendPasswordChange set = new SendPasswordChange.Set("p4ssw0rd");
+        SendPasswordChange remove = new SendPasswordChange.Remove();
+
+        Assert.IsType<SendPasswordChange.Keep>(keep);
+        Assert.Equal("p4ssw0rd", Assert.IsType<SendPasswordChange.Set>(set).Password);
+        Assert.IsType<SendPasswordChange.Remove>(remove);
+        Assert.Throws<ArgumentException>(() => new SendPasswordChange.Set(""));
+        Assert.Throws<ArgumentException>(() => new SendPasswordChange.Set("   "));
     }
 }
