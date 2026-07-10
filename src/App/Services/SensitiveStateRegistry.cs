@@ -43,7 +43,13 @@ public sealed class SensitiveStateRegistry(Action<Exception> reportFailure) : IS
             if (!reference.TryGetTarget(out var state))
                 continue;
             try { state.ClearSensitive(); }
-            catch (Exception ex) { reportFailure(ex); }
+            catch (Exception ex) { ReportSafely(ex); }
         }
+    }
+
+    private void ReportSafely(Exception exception)
+    {
+        try { reportFailure(exception); }
+        catch { /* 诊断失败不得中断安全清理。 */ }
     }
 }

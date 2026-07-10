@@ -93,6 +93,19 @@ public sealed class UiCoordinationPrimitivesTests
     }
 
     [Fact]
+    public void SensitiveRegistry_ClearAll_StillRunsRemainingEntries_WhenReportFailureThrows()
+    {
+        var calls = new List<string>();
+        var registry = new SensitiveStateRegistry(_ => throw new InvalidOperationException("report failed"));
+        registry.Register(new State(() => throw new InvalidOperationException("boom")));
+        registry.Register(new State(() => calls.Add("after")));
+
+        registry.ClearAll();
+
+        Assert.Equal(["after"], calls);
+    }
+
+    [Fact]
     public async Task SensitiveRegistry_ClearAll_DoesNotHoldInternalLockWhileInvokingCallbacks()
     {
         // 若 ClearAll 在持锁期间调用 ClearSensitive,另一线程的并发 Register 会被阻塞到回调结束。
@@ -145,6 +158,21 @@ public sealed class UiCoordinationPrimitivesTests
 
         Assert.Equal(["close", "clear"], calls);
         Assert.IsType<InvalidOperationException>(reported);
+    }
+
+    [Fact]
+    public async Task TransientRegistry_CancelAndCloseAll_StillRunsRemainingSteps_WhenReportFailureThrows()
+    {
+        var calls = new List<string>();
+        var registry = new TransientOperationRegistry(_ => throw new InvalidOperationException("report failed"));
+        registry.Register(
+            () => throw new InvalidOperationException("cancel failed"),
+            () => calls.Add("close"),
+            () => calls.Add("clear"));
+
+        await registry.CancelAndCloseAllAsync();
+
+        Assert.Equal(["close", "clear"], calls);
     }
 
     [Fact]

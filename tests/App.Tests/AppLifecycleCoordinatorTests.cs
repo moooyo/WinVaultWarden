@@ -160,6 +160,66 @@ public sealed class AppLifecycleCoordinatorTests
     }
 
     [Fact]
+    public async Task ThrowingStep_StillRunsRemainingCleanup_WhenReportFailureThrows()
+    {
+        var log = new List<string>();
+        var coordinator = new AppLifecycleCoordinator(new AppLifecycleHooks(
+            BlockSensitiveOperations: () => log.Add("block"),
+            AllowSensitiveOperations: () => log.Add("allow"),
+            InvalidateSession: () => log.Add("invalidate"),
+            StopBackgroundAsync: () => throw new InvalidOperationException("stop failed"),
+            CloseTransientsAsync: () => AddAsync(log, "transients"),
+            CloseTransientsSynchronously: () => log.Add("transients-sync"),
+            ClearClipboardAsync: () => AddAsync(log, "clipboard"),
+            ClearClipboardSynchronously: () => log.Add("clipboard-sync"),
+            ClearSensitiveState: () => log.Add("sensitive"),
+            ResetFrames: () => log.Add("frames"),
+            LockSessionAsync: () => AddAsync(log, "lock"),
+            LogoutSessionAsync: () => AddAsync(log, "logout"),
+            ShowLogin: () => log.Add("login"),
+            ExitProcess: () => log.Add("exit"),
+            FailClosedSession: () => log.Add("session-sync"),
+            ReportFailure: (_, _) => throw new InvalidOperationException("report failed")));
+
+        await coordinator.RequestAsync(AppLifecycleIntent.Logout);
+
+        Assert.Equal([
+            "block", "invalidate", "transients", "clipboard",
+            "sensitive", "frames", "logout", "login"
+        ], log);
+    }
+
+    [Fact]
+    public void FailClosedSynchronously_StillRunsRemainingCleanup_WhenReportFailureThrows()
+    {
+        var log = new List<string>();
+        var coordinator = new AppLifecycleCoordinator(new AppLifecycleHooks(
+            BlockSensitiveOperations: () => log.Add("block"),
+            AllowSensitiveOperations: () => log.Add("allow"),
+            InvalidateSession: () => log.Add("invalidate"),
+            StopBackgroundAsync: () => Task.CompletedTask,
+            CloseTransientsAsync: () => Task.CompletedTask,
+            CloseTransientsSynchronously: () => throw new InvalidOperationException("transients-sync failed"),
+            ClearClipboardAsync: () => Task.CompletedTask,
+            ClearClipboardSynchronously: () => log.Add("clipboard-sync"),
+            ClearSensitiveState: () => log.Add("sensitive"),
+            ResetFrames: () => log.Add("frames"),
+            LockSessionAsync: () => Task.CompletedTask,
+            LogoutSessionAsync: () => Task.CompletedTask,
+            ShowLogin: () => log.Add("login"),
+            ExitProcess: () => log.Add("exit"),
+            FailClosedSession: () => log.Add("session-sync"),
+            ReportFailure: (_, _) => throw new InvalidOperationException("report failed")));
+
+        coordinator.FailClosedSynchronously();
+
+        Assert.Equal([
+            "block", "invalidate", "clipboard-sync",
+            "sensitive", "frames", "session-sync"
+        ], log);
+    }
+
+    [Fact]
     public void FailClosedSynchronously_InvalidatesAndClearsWithoutAwait()
     {
         var log = new List<string>();

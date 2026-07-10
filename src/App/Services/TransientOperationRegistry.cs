@@ -63,7 +63,13 @@ public sealed class TransientOperationRegistry(Action<Exception> reportFailure)
     private void Invoke(Action action)
     {
         try { action(); }
-        catch (Exception ex) { reportFailure(ex); }
+        catch (Exception ex) { ReportSafely(ex); }
+    }
+
+    private void ReportSafely(Exception exception)
+    {
+        try { reportFailure(exception); }
+        catch { /* 诊断失败不得中断安全清理。 */ }
     }
 
     private sealed class Entry(

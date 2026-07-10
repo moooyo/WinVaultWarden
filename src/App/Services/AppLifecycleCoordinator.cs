@@ -146,13 +146,19 @@ public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
     private async Task SafeAsync(string step, Func<Task> action)
     {
         try { await action(); }
-        catch (Exception ex) { hooks.ReportFailure(step, ex); }
+        catch (Exception ex) { ReportSafely(step, ex); }
     }
 
     private void Safe(string step, Action action)
     {
         try { action(); }
-        catch (Exception ex) { hooks.ReportFailure(step, ex); }
+        catch (Exception ex) { ReportSafely(step, ex); }
+    }
+
+    private void ReportSafely(string step, Exception exception)
+    {
+        try { hooks.ReportFailure(step, exception); }
+        catch { /* 诊断失败不得中断安全清理。 */ }
     }
 
     private static int Rank(AppLifecycleIntent intent) => intent switch
