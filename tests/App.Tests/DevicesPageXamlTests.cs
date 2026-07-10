@@ -151,12 +151,12 @@ public class DevicesPageXamlTests
     }
 
     [Fact]
-    public void PendingSection_EmptyStateTextBlock_BoundToHasNoPendingRequests()
+    public void PendingSection_EmptyStateTextBlock_BoundToShowRequestsEmpty()
     {
         var doc = Load();
         var textBlock = doc.Descendants()
             .FirstOrDefault(e => e.Name.LocalName == "TextBlock"
-                && (e.Attribute("Visibility")?.Value.Contains("HasNoPendingRequests") ?? false));
+                && (e.Attribute("Visibility")?.Value.Contains("ShowRequestsEmpty") ?? false));
         Assert.NotNull(textBlock);
     }
 

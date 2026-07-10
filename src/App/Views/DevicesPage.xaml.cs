@@ -35,14 +35,14 @@ public sealed partial class DevicesPage : Page
                 ?? (sender as FrameworkElement)?.DataContext as AuthRequestItem;
         if (item is null)
             return;
-        await ViewModel.ApproveAsync(item, ConfirmFingerprintAsync);
+        await ViewModel.ApproveAsync(item, ConfirmFingerprintAsync, CancellationToken.None);
     }
 
     /// <summary>
     /// 审批前弹窗：展示指纹短语，要求用户核对与请求设备显示的一致。
     /// 仅当用户点“确认并批准”才返回 true；取消/关闭返回 false → ViewModel 不加密下发。
     /// </summary>
-    private async Task<bool> ConfirmFingerprintAsync(AuthRequestItem item)
+    private async Task<bool> ConfirmFingerprintAsync(AuthRequestItem item, CancellationToken ct)
     {
         var body = new StackPanel { Spacing = 12 };
         body.Children.Add(new TextBlock
@@ -68,7 +68,7 @@ public sealed partial class DevicesPage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
         };
-        return await DialogHelper.ShowTrackedAsync(dialog) == ContentDialogResult.Primary;
+        return await DialogHelper.ShowTrackedAsync(dialog, ct: ct) == ContentDialogResult.Primary;
     }
 
     private async void OnDenyRequestClick(object sender, RoutedEventArgs e)
@@ -77,6 +77,15 @@ public sealed partial class DevicesPage : Page
                 ?? (sender as FrameworkElement)?.DataContext as AuthRequestItem;
         if (item is null)
             return;
-        await ViewModel.DenyAsync(item);
+
+        await ViewModel.DenyAsync(
+            item,
+            (request, ct) => DialogHelper.ConfirmAsync(
+                XamlRoot,
+                "拒绝登录请求",
+                $"确定拒绝来自 {request.DeviceTypeName} 的登录请求吗？",
+                "拒绝",
+                ct: ct),
+            CancellationToken.None);
     }
 }

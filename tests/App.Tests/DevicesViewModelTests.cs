@@ -187,7 +187,7 @@ public class DevicesViewModelTests
         await vm.RefreshRequestsAsync();
         var item = vm.PendingRequests.Single();
 
-        await vm.ApproveAsync(item, _ => Task.FromResult(true));
+        await vm.ApproveAsync(item, (_, _) => Task.FromResult(true));
 
         Assert.Empty(vm.PendingRequests);
         Assert.Contains("r1", fake.ApprovedIds);
@@ -204,7 +204,7 @@ public class DevicesViewModelTests
         vm.Error = "旧错误";
         var item = vm.PendingRequests.Single();
 
-        await vm.ApproveAsync(item, _ => Task.FromResult(true));
+        await vm.ApproveAsync(item, (_, _) => Task.FromResult(true));
 
         Assert.Null(vm.Error);
     }
@@ -218,7 +218,7 @@ public class DevicesViewModelTests
         var item = new AuthRequestItem("r1", "Android", "1.1.1.1", "2025/1/1 10:00", "pk");
         vm.PendingRequests.Add(item);
 
-        await vm.ApproveAsync(item, _ => Task.FromResult(true));
+        await vm.ApproveAsync(item, (_, _) => Task.FromResult(true));
 
         Assert.NotNull(vm.Error);
         Assert.Single(vm.PendingRequests); // item 未被移除
@@ -231,7 +231,7 @@ public class DevicesViewModelTests
         var item = new AuthRequestItem("r1", "Android", "1.1.1.1", "2025/1/1 10:00", "pk");
         vm.PendingRequests.Add(item);
 
-        await vm.ApproveAsync(item, _ => Task.FromResult(true));
+        await vm.ApproveAsync(item, (_, _) => Task.FromResult(true));
 
         Assert.NotNull(vm.Error);
         Assert.False(string.IsNullOrEmpty(vm.Error));
@@ -247,7 +247,7 @@ public class DevicesViewModelTests
         await vm.RefreshRequestsAsync();
         var item = vm.PendingRequests.Single();
 
-        await vm.ApproveAsync(item, _ => Task.FromResult(false)); // 取消
+        await vm.ApproveAsync(item, (_, _) => Task.FromResult(false)); // 取消
 
         Assert.Empty(fake.ApprovedIds);            // 未调用 approve/加密
         Assert.Single(vm.PendingRequests);         // 条目未移除
@@ -263,7 +263,7 @@ public class DevicesViewModelTests
         await vm.RefreshRequestsAsync();
         var item = vm.PendingRequests.Single();
 
-        await vm.ApproveAsync(item, _ => Task.FromResult(true));
+        await vm.ApproveAsync(item, (_, _) => Task.FromResult(true));
 
         Assert.Contains("r1", fake.ApprovedIds);
         Assert.Empty(vm.PendingRequests);
@@ -279,7 +279,7 @@ public class DevicesViewModelTests
         await vm.RefreshRequestsAsync();
         var item = vm.PendingRequests.Single();
 
-        await vm.ApproveAsync(item, _ => throw new OperationCanceledException());
+        await vm.ApproveAsync(item, (_, _) => throw new OperationCanceledException());
 
         Assert.Empty(fake.ApprovedIds);
         Assert.Single(vm.PendingRequests);
@@ -296,7 +296,7 @@ public class DevicesViewModelTests
         await vm.RefreshRequestsAsync();
         var item = vm.PendingRequests.Single();
 
-        await vm.DenyAsync(item);
+        await vm.DenyAsync(item, (_, _) => Task.FromResult(true));
 
         Assert.Empty(vm.PendingRequests);
         Assert.Contains("r2", fake.DeniedIds);
@@ -310,7 +310,7 @@ public class DevicesViewModelTests
         var item = new AuthRequestItem("r2", "iOS", "9.9.9.9", "2025/2/1 15:00", "pk");
         vm.PendingRequests.Add(item);
 
-        await vm.DenyAsync(item);
+        await vm.DenyAsync(item, (_, _) => Task.FromResult(true));
 
         Assert.NotNull(vm.Error);
         Assert.Single(vm.PendingRequests);
@@ -323,10 +323,66 @@ public class DevicesViewModelTests
         var item = new AuthRequestItem("r2", "iOS", "9.9.9.9", "2025/2/1 15:00", "pk");
         vm.PendingRequests.Add(item);
 
-        await vm.DenyAsync(item);
+        await vm.DenyAsync(item, (_, _) => Task.FromResult(true));
 
         Assert.NotNull(vm.Error);
         Assert.False(string.IsNullOrEmpty(vm.Error));
+    }
+
+    // ── Task 6: Gate / 四态 / Deny 确认 ─────────────────────────────────────
+
+    [Fact]
+    public async Task Approve_HoldsGateBeforeConfirmation_ConcurrentDenyReturnsBusy()
+    {
+        var fake = new FakeAuthRequestService();
+        fake.AddRequest(new PendingAuthRequest(
+            "r1", "Android", "1.2.3.4", "2025-01-01T10:00:00Z", "pk"));
+        var vm = new DevicesViewModel(
+            new MockDeviceUiService(),
+            new AuthRequestUiService(fake));
+        await vm.RefreshRequestsAsync();
+        var item = Assert.Single(vm.PendingRequests);
+        var confirmation = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var first = vm.ApproveAsync(
+            item,
+            (_, _) => confirmation.Task,
+            CancellationToken.None);
+        Assert.True(vm.IsBusy);
+
+        var second = await vm.DenyAsync(
+            item,
+            (_, _) => Task.FromResult(true),
+            CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Busy, second.Status);
+        Assert.Empty(fake.DeniedIds);
+
+        confirmation.SetResult(true);
+        Assert.True((await first).IsSuccess);
+        Assert.Single(fake.ApprovedIds);
+    }
+
+    [Fact]
+    public async Task Deny_WhenConfirmationDeclined_DoesNotCallService()
+    {
+        var fake = new FakeAuthRequestService();
+        var vm = new DevicesViewModel(
+            new MockDeviceUiService(),
+            new AuthRequestUiService(fake));
+        var item = new AuthRequestItem(
+            "r2", "Windows", "1.1.1.1", "2026/7/10 10:00", "pk");
+        vm.PendingRequests.Add(item);
+
+        var result = await vm.DenyAsync(
+            item,
+            (_, _) => Task.FromResult(false),
+            CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
+        Assert.Empty(fake.DeniedIds);
+        Assert.Contains(item, vm.PendingRequests);
     }
 
     // ── 私有 Stub / Fake 类 ───────────────────────────────────────────────────

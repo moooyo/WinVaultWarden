@@ -32,7 +32,7 @@ public class DevicesPageStateXamlTests
         Assert.Contains("ViewModel.Error", infoBar.Attribute("Message")?.Value);
 
         var isOpen = infoBar.Attribute("IsOpen")?.Value ?? "";
-        Assert.Contains("ViewModel.HasError", isOpen);
+        Assert.Contains("ViewModel.ShowRequestsError", isOpen);
         Assert.DoesNotContain("Converter", isOpen);
     }
 
@@ -45,6 +45,21 @@ public class DevicesPageStateXamlTests
             .Single(r => r.Attribute(X + "Name")?.Value == "DevicesBusyRing");
 
         Assert.Contains("ViewModel.IsBusy", ring.Attribute("IsActive")?.Value);
+    }
+
+    // ── Task 6: 请求区域四态 ──────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("DevicesLoadingPanel", "ViewModel.ShowRequestsLoading")]
+    [InlineData("DevicesErrorInfoBar", "ViewModel.ShowRequestsError")]
+    [InlineData("RequestsEmptyText", "ViewModel.ShowRequestsEmpty")]
+    [InlineData("PendingRequestsRepeater", "ViewModel.ShowRequestsContent")]
+    public void RequestStates_AreMutuallyExplicit(string name, string binding)
+    {
+        var document = LoadXaml();
+        var element = document.Descendants()
+            .Single(node => node.Attribute(X + "Name")?.Value == name);
+        Assert.Contains(binding, element.Attribute("Visibility")?.Value);
     }
 
     private static XDocument LoadXaml()
