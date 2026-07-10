@@ -24,19 +24,29 @@ public sealed class HelloUnlockService : IHelloUnlockService
 
     public void SetHello(byte[] signature, byte[] challenge)
     {
-        var userKey = _session.UserKey ?? throw new InvalidOperationException("Vault is locked.");
-        if (!_tokenStore.TryLoad(out var p))
-            throw new InvalidOperationException("No saved session.");
-
-        using var helloKey = _crypto.DeriveKeyFromSecret(signature);
+        ArgumentNullException.ThrowIfNull(signature);
+        ArgumentNullException.ThrowIfNull(challenge);
+        var lease = _session.CaptureLease();
         try
         {
-            var enc = _crypto.Encrypt(userKey.FullKey, helloKey);
-            _tokenStore.Save(p with
-            {
-                HelloProtectedUserKey = enc.ToString(),
-                HelloChallenge = Convert.ToBase64String(challenge),
-            });
+            if (!_session.TryCopyUserKey(lease, out var copiedKey))
+                throw new InvalidOperationException("Vault is locked.");
+            using var userKey = copiedKey;
+            if (!_tokenStore.TryLoad(out var persisted)
+                || persisted.AccountId != lease.AccountId
+                || persisted.Origin != lease.Origin
+                || persisted.Generation != lease.Generation)
+                throw new InvalidOperationException("No matching saved session.");
+
+            using var helloKey = _crypto.DeriveKeyFromSecret(signature);
+            var wrapped = _crypto.Encrypt(userKey!.FullKey, helloKey).ToString();
+            if (!_session.TryCommit(lease, () =>
+                _tokenStore.Save(persisted with
+                {
+                    HelloProtectedUserKey = wrapped,
+                    HelloChallenge = Convert.ToBase64String(challenge),
+                })))
+                throw new OperationCanceledException(lease.CancellationToken);
         }
         finally
         {
@@ -46,8 +56,16 @@ public sealed class HelloUnlockService : IHelloUnlockService
 
     public void ClearHello()
     {
-        if (_tokenStore.TryLoad(out var p))
-            _tokenStore.Save(p with { HelloProtectedUserKey = null, HelloChallenge = null });
+        var lease = _session.CaptureLease();
+        if (!_tokenStore.TryLoad(out var persisted)
+            || persisted.AccountId != lease.AccountId
+            || persisted.Origin != lease.Origin
+            || persisted.Generation != lease.Generation)
+            return;
+
+        if (!_session.TryCommit(lease, () =>
+            _tokenStore.Save(persisted with { HelloProtectedUserKey = null, HelloChallenge = null })))
+            throw new OperationCanceledException(lease.CancellationToken);
     }
 
     public byte[]? LoadChallenge()

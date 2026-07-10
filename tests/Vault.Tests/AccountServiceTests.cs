@@ -31,8 +31,11 @@ public class AccountServiceTests
         var userKey = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
         var protectedUserKey = _crypto.Encrypt(userKey.FullKey, stretchedKey).ToString();
 
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession("test-account", Email, new ServerOrigin("https://vault.example"));
+
         var store = new MemoryTokenStore();
-        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("https://vault.example"), 1, Email,
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, lease.AccountId, lease.Origin, lease.Generation, Email,
             "device-id",
             "refresh",
             protectedUserKey,
@@ -41,10 +44,11 @@ public class AccountServiceTests
             null,
             null));
 
-        var session = new VaultSession();
-        session.BeginAccountSession("test-account", Email, new ServerOrigin("https://vault.example"));
-        session.SetTokens("access", "refresh");
-        session.SetUnlockedKey(userKey);
+        session.TryCommit(lease, () =>
+        {
+            session.SetTokens("access", "refresh");
+            session.SetUnlockedKey(userKey);
+        });
 
         return (session, store, userKey, protectedUserKey);
     }
@@ -60,6 +64,9 @@ public class AccountServiceTests
         // 通过重新创建确保传入正确引用（构造函数接受 session+store）
         cacheStore ??= new FakeCacheStore();
         var cache = new VaultCacheService(cacheStore, new VaultDecryptor(_crypto), session);
+        // AccountService 不再自行调用 _cache.Clear():核心 LogoutAsync 才是清缓存的唯一入口,
+        // 这里把同一个 cache 交给 FakeAuthService,镜像真实 AuthService.LogoutAsync 的行为。
+        auth.Cache = cache;
         return new AccountService(_crypto, FakeVaultApiClientProvider.ForAuthenticated<IAccountApiClient>(api), session, store, auth, cache);
     }
 
@@ -345,6 +352,128 @@ public class AccountServiceTests
         Assert.All(recording.Issued, k => Assert.True(
             k.FullKey.All(b => b == 0), "派生密钥物料在校验后未被清零(泄露)"));
     }
+
+    // ---- Test 11: 改密请求挂起期间账户切到 B,迟到的 A 响应不得登出 B ----
+
+    private const string CurrentPassword = "Current-password-1!";
+
+    [Fact]
+    public async Task ChangePassword_SwitchToBWhileAwaiting_DoesNotLogoutB()
+    {
+        var pending = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var api = new BlockingAccountApiClient(async _ =>
+        {
+            entered.TrySetResult();
+            await pending.Task;
+        });
+        var fixture = CreateServiceForAccountA(api);
+
+        var running = fixture.Service.ChangePasswordAsync(
+            CurrentPassword, "New-password-2!", null, TestContext.Current.CancellationToken);
+        await entered.Task;
+        var b = fixture.Session.BeginAccountSession(
+            "account-b",
+            "b@example.com",
+            new ServerOrigin("https://b.example"));
+        pending.SetResult();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => running);
+        Assert.True(fixture.Session.IsCurrent(b));
+        Assert.Equal("account-b", fixture.Session.Account.Id);
+    }
+
+    private static (AccountService Service, VaultSession Session)
+        CreateServiceForAccountA(IAccountApiClient accountApi)
+    {
+        var crypto = new CryptoService();
+        var session = new VaultSession();
+        var origin = new ServerOrigin("https://a.example");
+        var lease = session.BeginAccountSession(
+            "account-a", "a@example.com", origin);
+        var userKey = new SymmetricCryptoKey(
+            Enumerable.Range(0, 64).Select(i => (byte)(i + 1)).ToArray());
+        session.TryCommit(lease, () =>
+        {
+            session.SetUnlockedKey(userKey);
+            session.SetTokens("access-a", "refresh-a");
+        });
+        var masterKey = crypto.DeriveMasterKey(
+            CurrentPassword,
+            "a@example.com",
+            KdfType.Pbkdf2,
+            600_000,
+            null,
+            null);
+        string protectedUserKey;
+        try
+        {
+            protectedUserKey = crypto.ProtectUserKey(masterKey, userKey).ToString();
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(masterKey);
+        }
+        var store = new MemoryTokenStore();
+        store.Save(new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            lease.AccountId,
+            origin,
+            lease.Generation,
+            "a@example.com",
+            "device-a",
+            "refresh-a",
+            protectedUserKey,
+            KdfType.Pbkdf2,
+            600_000,
+            null,
+            null));
+        var cache = new VaultCacheService(
+            new FakeCacheStore(),
+            new VaultDecryptor(crypto),
+            session);
+        var auth = new RecordingAuthService(session);
+        var provider = FakeVaultApiClientProvider
+            .ForAuthenticated(accountApi);
+        return (
+            new AccountService(
+                crypto,
+                provider,
+                session,
+                store,
+                auth,
+                cache),
+            session);
+    }
+
+    private sealed class RecordingAuthService(
+        VaultSession session) : IAuthService
+    {
+        public Task LogoutAsync(CancellationToken ct = default)
+        {
+            session.Logout();
+            return Task.CompletedTask;
+        }
+
+        public Task LockAsync(CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task<AuthResult> LoginAsync(
+            string serverUrl, string email, string password, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task<AuthResult> SubmitTwoFactorAsync(
+            string code, int provider, CancellationToken ct = default, bool rememberDevice = true) =>
+            throw new NotSupportedException();
+        public Task<bool> ResendTwoFactorEmailAsync(CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task<AuthResult> UnlockAsync(string password, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task<AuthResult> UnlockWithPinAsync(string pin, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task<AuthResult> UnlockWithHelloAsync(byte[] signature, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+    }
 }
 
 // ---- RecordingCryptoService: 记录 Stretch/DecryptUserKey 交出的密钥实例,供泄露测试断言其被释放 ----
@@ -376,6 +505,7 @@ public sealed class FakeAuthService : IAuthService
     private readonly ITokenStore? _store;
 
     public bool LoggedOut { get; private set; }
+    public VaultCacheService? Cache { get; set; }
 
     public FakeAuthService() { }
 
@@ -407,8 +537,9 @@ public sealed class FakeAuthService : IAuthService
     public Task LogoutAsync(CancellationToken ct = default)
     {
         LoggedOut = true;
-        _store?.Clear();
         _session?.Logout();
+        _store?.Clear();
+        Cache?.Clear();
         return Task.CompletedTask;
     }
 }

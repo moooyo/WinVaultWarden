@@ -77,10 +77,16 @@ public sealed class AccountService : IAccountService
         string? hint,
         CancellationToken ct = default)
     {
-        RequireUnlocked();
+        var lease = _session.CaptureLease();
+        if (!_session.TryCopyUserKey(lease, out var copiedKey))
+            throw new AccountOperationException("操作需要已解锁的 Vault，请先解锁后重试。");
+        using var userKey = copiedKey;
 
-        if (!_tokenStore.TryLoad(out var persisted))
-            throw new AccountOperationException("无法加载持久化会话，请重新登录后重试。");
+        if (!_tokenStore.TryLoad(out var persisted)
+            || persisted.AccountId != lease.AccountId
+            || persisted.Origin != lease.Origin
+            || persisted.Generation != lease.Generation)
+            throw new AccountOperationException("持久化会话与当前账户不匹配。");
 
         // 验证旧密码：派生旧 masterKey 后尝试解密 UserKey，不匹配则抛异常
         // oldMasterKey 在 finally 中无条件清零，catch 只负责把密码错误的异常转为业务异常
@@ -121,7 +127,7 @@ public sealed class AccountService : IAccountService
         try
         {
             newHash = _crypto.ComputeMasterPasswordHash(newMasterKey, newPassword);
-            var protectedKey = _crypto.ProtectUserKey(newMasterKey, _session.UserKey!);
+            var protectedKey = _crypto.ProtectUserKey(newMasterKey, userKey!);
             wrappedKey = protectedKey.ToString();
         }
         finally
@@ -129,19 +135,17 @@ public sealed class AccountService : IAccountService
             CryptographicOperations.ZeroMemory(newMasterKey);
         }
 
-        var lease = _session.CaptureLease();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var api = _clients.GetAuthenticated<IAccountApiClient>(lease);
         await api.ChangePasswordAsync(new ChangePasswordRequest(
             MasterPasswordHash: oldHash,
             NewMasterPasswordHash: newHash,
             MasterPasswordHint: hint,
-            Key: wrappedKey), linked.Token);
+            Key: wrappedKey), linked.Token).ConfigureAwait(false);
         _session.ThrowIfExpired(lease);
 
-        // 改密后旧缓存虽仍可被同一 userKey 解密,但为对齐 D2、避免与新 KDF/密码状态漂移,清缓存、下次同步重建。
-        _cache.Clear();
-        await _auth.LogoutAsync(ct);
+        // 强制重新登录:核心 LogoutAsync 已按"先失效、后清 store/cache"顺序执行一次,不在此重复清缓存。
+        await _auth.LogoutAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     // -----------------------------------------------------------------------
@@ -162,10 +166,16 @@ public sealed class AccountService : IAccountService
             throw new AccountOperationException(
                 $"迭代次数不能低于 {MinIterations}（当前 {newIterations}）。");
 
-        RequireUnlocked();
+        var lease = _session.CaptureLease();
+        if (!_session.TryCopyUserKey(lease, out var copiedKey))
+            throw new AccountOperationException("操作需要已解锁的 Vault，请先解锁后重试。");
+        using var userKey = copiedKey;
 
-        if (!_tokenStore.TryLoad(out var persisted))
-            throw new AccountOperationException("无法加载持久化会话，请重新登录后重试。");
+        if (!_tokenStore.TryLoad(out var persisted)
+            || persisted.AccountId != lease.AccountId
+            || persisted.Origin != lease.Origin
+            || persisted.Generation != lease.Generation)
+            throw new AccountOperationException("持久化会话与当前账户不匹配。");
 
         // 验证旧密码
         // oldMasterKey 在 finally 中无条件清零，catch 只负责把密码错误的异常转为业务异常
@@ -208,7 +218,7 @@ public sealed class AccountService : IAccountService
         try
         {
             newHash = _crypto.ComputeMasterPasswordHash(newMasterKey, currentPassword);
-            var protectedKey = _crypto.ProtectUserKey(newMasterKey, _session.UserKey!);
+            var protectedKey = _crypto.ProtectUserKey(newMasterKey, userKey!);
             wrappedKey = protectedKey.ToString();
         }
         finally
@@ -235,14 +245,12 @@ public sealed class AccountService : IAccountService
                 MasterKeyWrappedUserKey: wrappedKey),
             MasterPasswordHash: oldHash);
 
-        var lease = _session.CaptureLease();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var api = _clients.GetAuthenticated<IAccountApiClient>(lease);
-        await api.ChangeKdfAsync(request, linked.Token);
+        await api.ChangeKdfAsync(request, linked.Token).ConfigureAwait(false);
         _session.ThrowIfExpired(lease);
-        // 改 KDF 参数后旧缓存的 schema 头虽仍有效,但为对齐 D2、避免 KDF 参数漂移,清缓存、下次同步重建。
-        _cache.Clear();
-        await _auth.LogoutAsync(ct);
+        // 强制重新登录:核心 LogoutAsync 已按"先失效、后清 store/cache"顺序执行一次,不在此重复清缓存。
+        await _auth.LogoutAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     // -----------------------------------------------------------------------

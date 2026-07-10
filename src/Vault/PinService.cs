@@ -26,15 +26,33 @@ public sealed class PinService : IPinService
         if (!PinPolicy.IsValid(pin))
             throw new ArgumentException($"PIN 至少需要 {PinPolicy.MinLength} 位。", nameof(pin));
 
-        var userKey = _session.UserKey ?? throw new InvalidOperationException("Vault is locked.");
-        if (!_tokenStore.TryLoad(out var p))
-            throw new InvalidOperationException("No saved session.");
+        var lease = _session.CaptureLease();
+        if (!_session.TryCopyUserKey(lease, out var copiedKey))
+            throw new InvalidOperationException("Vault is locked.");
+        using var userKey = copiedKey;
+        if (!_tokenStore.TryLoad(out var persisted)
+            || persisted.AccountId != lease.AccountId
+            || persisted.Origin != lease.Origin
+            || persisted.Generation != lease.Generation)
+            throw new InvalidOperationException("No matching saved session.");
 
-        byte[] pinKey = _crypto.DeriveMasterKey(pin, p.Email, p.KdfType, p.KdfIterations, p.KdfMemory, p.KdfParallelism);
+        var pinKey = _crypto.DeriveMasterKey(
+            pin,
+            persisted.Email,
+            persisted.KdfType,
+            persisted.KdfIterations,
+            persisted.KdfMemory,
+            persisted.KdfParallelism);
         try
         {
-            var enc = _crypto.ProtectUserKey(pinKey, userKey);
-            _tokenStore.Save(p with { PinProtectedUserKey = enc.ToString(), PinFailedAttempts = 0 });
+            var wrapped = _crypto.ProtectUserKey(pinKey, userKey!);
+            if (!_session.TryCommit(lease, () =>
+                _tokenStore.Save(persisted with
+                {
+                    PinProtectedUserKey = wrapped.ToString(),
+                    PinFailedAttempts = 0,
+                })))
+                throw new OperationCanceledException(lease.CancellationToken);
         }
         finally
         {
@@ -44,7 +62,15 @@ public sealed class PinService : IPinService
 
     public void ClearPin()
     {
-        if (_tokenStore.TryLoad(out var p))
-            _tokenStore.Save(p with { PinProtectedUserKey = null, PinFailedAttempts = 0 });
+        var lease = _session.CaptureLease();
+        if (!_tokenStore.TryLoad(out var persisted)
+            || persisted.AccountId != lease.AccountId
+            || persisted.Origin != lease.Origin
+            || persisted.Generation != lease.Generation)
+            return;
+
+        if (!_session.TryCommit(lease, () =>
+            _tokenStore.Save(persisted with { PinProtectedUserKey = null, PinFailedAttempts = 0 })))
+            throw new OperationCanceledException(lease.CancellationToken);
     }
 }

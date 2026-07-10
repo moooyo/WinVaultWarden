@@ -16,12 +16,16 @@ public class PinServiceTests
     private (PinService pin, VaultSession session, MemoryTokenStore store, SymmetricCryptoKey userKey) Unlocked()
     {
         var userKey = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
-        var store = new MemoryTokenStore();
-        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("https://vault.example"), 1, Email, "device-id", "refresh",
-            "2.protected", KdfType.Pbkdf2, Iter, null, null));
         var session = new VaultSession();
-        session.SetTokens("access", "refresh");
-        session.SetUnlockedKey(userKey);
+        var lease = session.BeginAccountSession("account-a", Email, new ServerOrigin("https://vault.example"));
+        var store = new MemoryTokenStore();
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, lease.AccountId, lease.Origin, lease.Generation, Email, "device-id", "refresh",
+            "2.protected", KdfType.Pbkdf2, Iter, null, null));
+        session.TryCommit(lease, () =>
+        {
+            session.SetTokens("access", "refresh");
+            session.SetUnlockedKey(userKey);
+        });
         return (new PinService(_crypto, session, store), session, store, userKey);
     }
 
@@ -66,10 +70,12 @@ public class PinServiceTests
     [Fact]
     public void SetPin_WhenLocked_Throws()
     {
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession("account-a", Email, new ServerOrigin("https://vault.example"));
         var store = new MemoryTokenStore();
-        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("https://vault.example"), 1, Email, "device-id", "refresh",
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, lease.AccountId, lease.Origin, lease.Generation, Email, "device-id", "refresh",
             "2.protected", KdfType.Pbkdf2, Iter, null, null));
-        var session = new VaultSession();   // 未 SetUnlockedKey → 锁定
+        // 未 SetUnlockedKey → 锁定
         var pin = new PinService(_crypto, session, store);
         Assert.Throws<InvalidOperationException>(() => pin.SetPin("123456"));
     }

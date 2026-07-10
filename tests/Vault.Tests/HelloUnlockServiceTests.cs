@@ -16,12 +16,16 @@ public class HelloUnlockServiceTests
     private (HelloUnlockService svc, MemoryTokenStore store, SymmetricCryptoKey userKey) Unlocked()
     {
         var userKey = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
-        var store = new MemoryTokenStore();
-        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, "me@example.com", new ServerOrigin("https://vault.example"), 1, "me@example.com", "device-id", "refresh",
-            "2.protected", KdfType.Pbkdf2, 600_000, null, null));
         var session = new VaultSession();
-        session.SetTokens("access", "refresh");
-        session.SetUnlockedKey(userKey);
+        var lease = session.BeginAccountSession("account-a", "me@example.com", new ServerOrigin("https://vault.example"));
+        var store = new MemoryTokenStore();
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, lease.AccountId, lease.Origin, lease.Generation, "me@example.com", "device-id", "refresh",
+            "2.protected", KdfType.Pbkdf2, 600_000, null, null));
+        session.TryCommit(lease, () =>
+        {
+            session.SetTokens("access", "refresh");
+            session.SetUnlockedKey(userKey);
+        });
         return (new HelloUnlockService(_crypto, session, store), store, userKey);
     }
 
@@ -69,10 +73,10 @@ public class HelloUnlockServiceTests
     [Fact]
     public void SetHello_WhenLocked_Throws()
     {
-        var userKey = new SymmetricCryptoKey(new byte[64]);
         var store = new MemoryTokenStore();
-        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, "e", new ServerOrigin("https://s.example"), 1, "e", "d", "r", "2.p", KdfType.Pbkdf2, 600_000, null, null));
-        var session = new VaultSession(); // 未解锁 → UserKey null
+        var session = new VaultSession(); // 未 BeginAccountSession/未解锁 → 锁定
+        var lease = session.BeginAccountSession("account-e", "e", new ServerOrigin("https://s.example"));
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, lease.AccountId, lease.Origin, lease.Generation, "e", "d", "r", "2.p", KdfType.Pbkdf2, 600_000, null, null));
         var svc = new HelloUnlockService(_crypto, session, store);
         Assert.ThrowsAny<Exception>(() => svc.SetHello(Sig(1), Challenge));
     }
