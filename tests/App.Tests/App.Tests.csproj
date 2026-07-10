@@ -85,5 +85,10 @@
     <Compile Include="..\..\src\App\Services\VaultTimeoutService.cs" Link="Services\VaultTimeoutService.cs" />
     <Compile Include="..\..\src\App\Services\ClipboardClearPolicy.cs" Link="Services\ClipboardClearPolicy.cs" />
     <Compile Include="..\..\src\App\Services\TrayPolicy.cs" Link="Services\TrayPolicy.cs" />
+    <Compile Include="..\..\src\App\Services\UiOperationResult.cs" Link="Services\UiOperationResult.cs" />
+    <Compile Include="..\..\src\App\Services\AsyncOperationGate.cs" Link="Services\AsyncOperationGate.cs" />
+    <Compile Include="..\..\src\App\Services\SensitiveStateRegistry.cs" Link="Services\SensitiveStateRegistry.cs" />
+    <Compile Include="..\..\src\App\Services\TransientOperationRegistry.cs" Link="Services\TransientOperationRegistry.cs" />
+    <Compile Include="..\..\src\App\Services\AppLifecycleCoordinator.cs" Link="Services\AppLifecycleCoordinator.cs" />
   </ItemGroup>
 </Project>
