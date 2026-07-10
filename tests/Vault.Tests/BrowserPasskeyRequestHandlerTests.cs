@@ -198,32 +198,69 @@ public class BrowserPasskeyRequestHandlerTests
     }
 
     [Fact]
-    public void ConfirmCreateResult_RecordShape_Compiles()
+    public void ApprovalContract_RecordShapesExposeEvidenceAndSelections()
     {
-        var r = new PasskeyCreateApprovalResult(Approved: true, CreateNew: true, CipherId: null);
-        Assert.True(r.Approved);
-        Assert.True(r.CreateNew);
-        Assert.Null(r.CipherId);
+        var evidence = new PasskeyApprovalEvidence(
+            Approved: true,
+            UserPresent: true,
+            UserVerified: false);
+        var create = new PasskeyCreateApprovalResult(
+            evidence,
+            CreateNew: true,
+            CipherId: null);
+        var use = new PasskeyUseApprovalResult(
+            evidence,
+            CipherId: "cipher-1",
+            CredentialId: "credential-1");
+
+        Assert.Equal(evidence, create.Evidence);
+        Assert.True(create.CreateNew);
+        Assert.Null(create.CipherId);
+        Assert.Equal(evidence, use.Evidence);
+        Assert.Equal("cipher-1", use.CipherId);
+        Assert.Equal("credential-1", use.CredentialId);
+        Assert.Equal(
+            [
+                PasskeyUserVerificationRequirement.Preferred,
+                PasskeyUserVerificationRequirement.Required,
+                PasskeyUserVerificationRequirement.Discouraged,
+            ],
+            Enum.GetValues<PasskeyUserVerificationRequirement>());
     }
 
-    private static JsonDocument CreatePayload(string origin = "https://github.com", string rpId = "github.com",
-        string exclude = "", string alg = "-7") => JsonDocument.Parse($$"""
-    {
-      "origin": "{{origin}}", "rpId": "{{rpId}}", "challenge": "AQIDBA",
-      "rp": { "id": "{{rpId}}", "name": "GitHub" },
-      "user": { "id": "dXNlcklk", "name": "octo", "displayName": "Octo Cat" },
-      "pubKeyCredParams": [{ "type": "public-key", "alg": {{alg}} }],
-      "excludeCredentials": [{{exclude}}],
-      "authenticatorSelection": { "userVerification": "required", "residentKey": "required" },
-      "attestation": "none", "timeout": 60000
-    }
-    """);
+    private static JsonDocument CreatePayload(
+        string origin = "https://github.com",
+        string rpId = "github.com",
+        string exclude = "",
+        string alg = "-7",
+        string userVerification = "required") =>
+        JsonDocument.Parse($$"""
+        {
+          "origin": "{{origin}}", "rpId": "{{rpId}}", "challenge": "AQIDBA",
+          "rp": { "id": "{{rpId}}", "name": "GitHub" },
+          "user": { "id": "dXNlcklk", "name": "octo", "displayName": "Octo Cat" },
+          "pubKeyCredParams": [{ "type": "public-key", "alg": {{alg}} }],
+          "excludeCredentials": [{{exclude}}],
+          "authenticatorSelection": {
+            "userVerification": "{{userVerification}}",
+            "residentKey": "required"
+          },
+          "attestation": "none",
+          "timeout": 60000
+        }
+        """);
 
     [Fact]
     public async Task HandleCreate_ApprovalCreateNew_SavesNewLoginWithCredential_AndReturnsAttestation()
     {
         var write = new FakeVaultWriteService();
-        var approval = new CapturingApprovalService(approve: true) { CreateResult = new(true, true, null) };
+        var approval = new CapturingApprovalService(approve: true)
+        {
+            CreateResult = new PasskeyCreateApprovalResult(
+                new PasskeyApprovalEvidence(true, true, true),
+                CreateNew: true,
+                CipherId: null),
+        };
         var handler = new BrowserPasskeyRequestHandler(new FakeVaultService(VaultState.Unlocked, []), write, approval);
 
         using var doc = CreatePayload();
@@ -245,7 +282,13 @@ public class BrowserPasskeyRequestHandlerTests
     {
         var existing = new Cipher { Id = "c-9", Type = CipherType.Login, Name = "GitHub", Login = new CipherLogin("u", null, null, []) };
         var write = new FakeVaultWriteService();
-        var approval = new CapturingApprovalService(approve: true) { CreateResult = new(true, false, "c-9") };
+        var approval = new CapturingApprovalService(approve: true)
+        {
+            CreateResult = new PasskeyCreateApprovalResult(
+                new PasskeyApprovalEvidence(true, true, true),
+                CreateNew: false,
+                CipherId: "c-9"),
+        };
         var handler = new BrowserPasskeyRequestHandler(new FakeVaultService(VaultState.Unlocked, [existing]), write, approval);
 
         using var doc = CreatePayload();
@@ -268,7 +311,17 @@ public class BrowserPasskeyRequestHandlerTests
     public async Task HandleCreate_Cancelled_DoesNotSave()
     {
         var write = new FakeVaultWriteService();
-        var handler = new BrowserPasskeyRequestHandler(new FakeVaultService(VaultState.Unlocked, []), write, new CapturingApprovalService(approve: true) { CreateResult = new(false, false, null) });
+        var approval = new CapturingApprovalService(approve: false)
+        {
+            CreateResult = new PasskeyCreateApprovalResult(
+                new PasskeyApprovalEvidence(false, false, false),
+                CreateNew: false,
+                CipherId: null),
+        };
+        var handler = new BrowserPasskeyRequestHandler(
+            new FakeVaultService(VaultState.Unlocked, []),
+            write,
+            approval);
         using var doc = CreatePayload();
         var response = await handler.HandleAsync(new BrowserPasskeyRequest("r", "passkey.create", doc.RootElement), TestContext.Current.CancellationToken);
         Assert.False(response.Ok);
@@ -289,6 +342,133 @@ public class BrowserPasskeyRequestHandlerTests
         Assert.Null(write.Saved);
     }
 
+    [Theory]
+    [InlineData(null, PasskeyUserVerificationRequirement.Preferred, true, true, false, true, null, 0x01)]
+    [InlineData("required", PasskeyUserVerificationRequirement.Required, true, true, true, true, null, 0x05)]
+    [InlineData("required", PasskeyUserVerificationRequirement.Required, true, true, false, false, "user_verification_failed", 0)]
+    [InlineData("preferred", PasskeyUserVerificationRequirement.Preferred, true, true, true, true, null, 0x05)]
+    [InlineData("preferred", PasskeyUserVerificationRequirement.Preferred, true, true, false, true, null, 0x01)]
+    [InlineData("discouraged", PasskeyUserVerificationRequirement.Discouraged, true, true, true, true, null, 0x05)]
+    [InlineData("discouraged", PasskeyUserVerificationRequirement.Discouraged, true, true, false, true, null, 0x01)]
+    [InlineData("preferred", PasskeyUserVerificationRequirement.Preferred, false, false, false, false, "user_cancelled", 0)]
+    [InlineData("preferred", PasskeyUserVerificationRequirement.Preferred, true, false, true, false, "user_verification_failed", 0)]
+    public async Task HandleGet_UserVerificationRequirementAndEvidenceMatrix(
+        string? wireRequirement,
+        PasskeyUserVerificationRequirement expectedRequirement,
+        bool approved,
+        bool userPresent,
+        bool userVerified,
+        bool expectedOk,
+        string? expectedError,
+        int expectedFlags)
+    {
+        var cipher = CreateCipherWithCredential(out var credentialId);
+        var approval = new CapturingApprovalService(approved, userPresent, userVerified);
+        var handler = new BrowserPasskeyRequestHandler(
+            new FakeVaultService(VaultState.Unlocked, [cipher]),
+            new FakeVaultWriteService(),
+            approval);
+        using var payload = CreateGetPayload(credentialId, wireRequirement);
+
+        var response = await handler.HandleAsync(
+            new BrowserPasskeyRequest("matrix-get", "passkey.get", payload.RootElement),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(expectedOk, response.Ok);
+        Assert.Equal(expectedRequirement, approval.Request!.UserVerificationRequirement);
+        if (!expectedOk)
+        {
+            Assert.Equal(expectedError, response.Error?.Code);
+            Assert.Null(response.Payload);
+            return;
+        }
+
+        var assertion = response.Payload!.Value.Deserialize(
+            PasskeyJsonContext.Default.PasskeyGetAssertionPayload)!;
+        var authData = WebAuthnCrypto.DecodeBase64Url(assertion.AuthenticatorData);
+        Assert.Equal(expectedFlags, (int)authData[32]);
+    }
+
+    [Theory]
+    [InlineData("required", PasskeyUserVerificationRequirement.Required, true, true, true, true, null, 0x45)]
+    [InlineData("required", PasskeyUserVerificationRequirement.Required, true, true, false, false, "user_verification_failed", 0)]
+    [InlineData("preferred", PasskeyUserVerificationRequirement.Preferred, true, true, true, true, null, 0x45)]
+    [InlineData("preferred", PasskeyUserVerificationRequirement.Preferred, true, true, false, true, null, 0x41)]
+    [InlineData("discouraged", PasskeyUserVerificationRequirement.Discouraged, true, true, true, true, null, 0x45)]
+    [InlineData("discouraged", PasskeyUserVerificationRequirement.Discouraged, true, true, false, true, null, 0x41)]
+    [InlineData("discouraged", PasskeyUserVerificationRequirement.Discouraged, false, false, false, false, "user_cancelled", 0)]
+    [InlineData("preferred", PasskeyUserVerificationRequirement.Preferred, true, false, true, false, "user_verification_failed", 0)]
+    public async Task HandleCreate_UserVerificationRequirementAndEvidenceMatrix(
+        string wireRequirement,
+        PasskeyUserVerificationRequirement expectedRequirement,
+        bool approved,
+        bool userPresent,
+        bool userVerified,
+        bool expectedOk,
+        string? expectedError,
+        int expectedFlags)
+    {
+        var write = new FakeVaultWriteService();
+        var approval = new CapturingApprovalService(approved, userPresent, userVerified);
+        var handler = new BrowserPasskeyRequestHandler(
+            new FakeVaultService(VaultState.Unlocked, []),
+            write,
+            approval);
+        using var payload = CreatePayload(userVerification: wireRequirement);
+
+        var response = await handler.HandleAsync(
+            new BrowserPasskeyRequest("matrix-create", "passkey.create", payload.RootElement),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(expectedOk, response.Ok);
+        Assert.Equal(expectedRequirement, approval.CreateRequest!.UserVerificationRequirement);
+        if (!expectedOk)
+        {
+            Assert.Equal(expectedError, response.Error?.Code);
+            Assert.Null(write.Saved);
+            return;
+        }
+
+        Assert.NotNull(write.Saved);
+        var attestation = response.Payload!.Value.Deserialize(
+            PasskeyJsonContext.Default.PasskeyCreateAttestationPayload)!;
+        var authData = WebAuthnCrypto.DecodeBase64Url(attestation.AuthData);
+        Assert.Equal(expectedFlags, (int)authData[32]);
+    }
+
+    private static JsonDocument CreateGetPayload(
+        string credentialId,
+        string? userVerification) =>
+        JsonDocument.Parse($$"""
+        {
+          "origin": "https://github.com",
+          "rpId": "github.com",
+          "challenge": "AQIDBA",
+          "allowCredentials": [
+            { "id": "{{credentialId}}", "type": "public-key", "transports": ["internal"] }
+          ],
+          "userVerification": {{System.Text.Json.JsonSerializer.Serialize(userVerification)}},
+          "mediation": null,
+          "timeout": 60000
+        }
+        """);
+
+    private static Cipher CreateCipherWithCredential(out string credentialId)
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        credentialId = WebAuthnCrypto.EncodeBase64Url([1, 2, 3, 4]);
+        return new Cipher
+        {
+            Id = "cipher-1",
+            Type = CipherType.Login,
+            Name = "GitHub",
+            Login = new CipherLogin("octo@example.com", null, null, [])
+            {
+                Fido2Credentials = [Credential(key, credentialId)],
+            },
+        };
+    }
+
     private static CipherFido2Credential Credential(ECDsa key, string credentialId) => new(
         credentialId,
         "public-key",
@@ -306,23 +486,39 @@ public class BrowserPasskeyRequestHandlerTests
 
     private sealed class CapturingApprovalService : IPasskeyApprovalService
     {
-        private readonly bool _approve;
+        private readonly PasskeyApprovalEvidence _evidence;
 
-        public CapturingApprovalService(bool approve) => _approve = approve;
+        public CapturingApprovalService(
+            bool approve,
+            bool userPresent = true,
+            bool userVerified = true)
+        {
+            _evidence = approve
+                ? new PasskeyApprovalEvidence(true, userPresent, userVerified)
+                : new PasskeyApprovalEvidence(false, false, false);
+            CreateResult = new PasskeyCreateApprovalResult(_evidence, true, null);
+        }
 
         public PasskeyApprovalRequest? Request { get; private set; }
 
         public PasskeyCreateApprovalRequest? CreateRequest { get; private set; }
 
-        public PasskeyCreateApprovalResult CreateResult { get; set; } = new(true, true, null);
+        public PasskeyCreateApprovalResult CreateResult { get; set; }
 
-        public Task<bool> ConfirmUseAsync(PasskeyApprovalRequest request, CancellationToken ct = default)
+        public Task<PasskeyUseApprovalResult> ConfirmUseAsync(
+            PasskeyApprovalRequest request,
+            CancellationToken ct = default)
         {
             Request = request;
-            return Task.FromResult(_approve);
+            return Task.FromResult(new PasskeyUseApprovalResult(
+                _evidence,
+                _evidence.Approved ? request.CipherId : null,
+                _evidence.Approved ? request.CredentialId : null));
         }
 
-        public Task<PasskeyCreateApprovalResult> ConfirmCreateAsync(PasskeyCreateApprovalRequest request, CancellationToken ct = default)
+        public Task<PasskeyCreateApprovalResult> ConfirmCreateAsync(
+            PasskeyCreateApprovalRequest request,
+            CancellationToken ct = default)
         {
             CreateRequest = request;
             return Task.FromResult(CreateResult);

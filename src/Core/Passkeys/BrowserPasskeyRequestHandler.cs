@@ -54,18 +54,35 @@ public sealed class BrowserPasskeyRequestHandler
             .Select(c => new PasskeyLoginTarget(c.Id, c.Name))
             .ToArray();
 
-        var approval = await _approval.ConfirmCreateAsync(new PasskeyCreateApprovalRequest(
-            requestId ?? string.Empty, payload.Origin, rpId!, payload.Rp?.Name,
-            payload.User?.Name, payload.User?.DisplayName, existingLogins), ct);
-        if (!approval.Approved)
-            return Error(requestId, "user_cancelled", "The passkey creation was cancelled.");
+        var userVerificationRequirement =
+            GetUserVerificationRequirementForCreate(payload.AuthenticatorSelection);
+        var approval = await _approval.ConfirmCreateAsync(
+            new PasskeyCreateApprovalRequest(
+                requestId ?? string.Empty,
+                payload.Origin,
+                rpId!,
+                payload.Rp?.Name,
+                payload.User?.Name,
+                payload.User?.DisplayName,
+                existingLogins,
+                userVerificationRequirement),
+            ct);
+
+        if (ValidateApproval(
+                requestId,
+                userVerificationRequirement,
+                approval.Evidence,
+                "The passkey creation was cancelled.") is { } approvalError)
+        {
+            return approvalError;
+        }
 
         try
         {
             var result = WebAuthnRegistrationService.CreateAttestation(new WebAuthnMakeCredentialRequest(
                 payload.Origin, payload.Challenge, rpId, payload.Rp?.Name,
                 payload.User!.Id, payload.User.Name, payload.User.DisplayName,
-                algorithms, UserVerification: RequiresUserVerificationForCreate(payload.AuthenticatorSelection),
+                algorithms, UserVerification: approval.Evidence.UserVerified,
                 CredProps: HasCredProps(payload.Extensions)));
 
             var cipher = approval.CreateNew
@@ -104,17 +121,29 @@ public sealed class BrowserPasskeyRequestHandler
         if (credential is null)
             return Error(requestId, "no_credential", "No matching passkey was found for this site.");
 
-        var approved = await _approval.ConfirmUseAsync(new PasskeyApprovalRequest(
-            requestId ?? string.Empty,
-            payload.Origin,
-            rpId!,
-            credential.Cipher.Id,
-            credential.Cipher.Name,
-            credential.Credential.UserName,
-            credential.Credential.UserDisplayName), ct);
+        var userVerificationRequirement =
+            ParseUserVerificationRequirement(payload.UserVerification);
+        var approval = await _approval.ConfirmUseAsync(
+            new PasskeyApprovalRequest(
+                requestId ?? string.Empty,
+                payload.Origin,
+                rpId!,
+                credential.Cipher.Id,
+                credential.Credential.CredentialId!,
+                credential.Cipher.Name,
+                credential.Credential.UserName,
+                credential.Credential.UserDisplayName,
+                userVerificationRequirement),
+            ct);
 
-        if (!approved)
-            return Error(requestId, "user_cancelled", "The passkey request was cancelled.");
+        if (ValidateApproval(
+                requestId,
+                userVerificationRequirement,
+                approval.Evidence,
+                "The passkey request was cancelled.") is { } approvalError)
+        {
+            return approvalError;
+        }
 
         try
         {
@@ -125,7 +154,7 @@ public sealed class BrowserPasskeyRequestHandler
                     payload.Challenge,
                     rpId,
                     allowedCredentialIds,
-                    UserVerified: RequiresUserVerification(payload.UserVerification),
+                    UserVerified: approval.Evidence.UserVerified,
                     CrossOrigin: payload.CrossOrigin));
 
             return new BrowserPasskeyResponse(
@@ -216,15 +245,56 @@ public sealed class BrowserPasskeyRequestHandler
         };
     }
 
-    // authenticatorSelection.userVerification 为 required/preferred 时要求认证器完成用户验证。
-    private static bool RequiresUserVerificationForCreate(JsonElement? authenticatorSelection)
+    private static PasskeyUserVerificationRequirement
+        GetUserVerificationRequirementForCreate(JsonElement? authenticatorSelection)
     {
-        if (authenticatorSelection is not { } element || element.ValueKind != JsonValueKind.Object)
-            return false;
+        if (authenticatorSelection is not { } element
+            || element.ValueKind != JsonValueKind.Object
+            || !element.TryGetProperty("userVerification", out var uv)
+            || uv.ValueKind != JsonValueKind.String)
+        {
+            return PasskeyUserVerificationRequirement.Preferred;
+        }
 
-        return element.TryGetProperty("userVerification", out var uv)
-            && uv.ValueKind == JsonValueKind.String
-            && RequiresUserVerification(uv.GetString());
+        return ParseUserVerificationRequirement(uv.GetString());
+    }
+
+    private static PasskeyUserVerificationRequirement
+        ParseUserVerificationRequirement(string? userVerification) =>
+        userVerification?.Trim().ToLowerInvariant() switch
+        {
+            "required" => PasskeyUserVerificationRequirement.Required,
+            "discouraged" => PasskeyUserVerificationRequirement.Discouraged,
+            _ => PasskeyUserVerificationRequirement.Preferred,
+        };
+
+    private static BrowserPasskeyResponse? ValidateApproval(
+        string? requestId,
+        PasskeyUserVerificationRequirement requirement,
+        PasskeyApprovalEvidence evidence,
+        string cancellationMessage)
+    {
+        if (!evidence.Approved)
+            return Error(requestId, "user_cancelled", cancellationMessage);
+
+        if (evidence.UserVerified && !evidence.UserPresent)
+        {
+            return Error(
+                requestId,
+                "user_verification_failed",
+                "User verification evidence requires user presence.");
+        }
+
+        if (requirement == PasskeyUserVerificationRequirement.Required
+            && !evidence.UserVerified)
+        {
+            return Error(
+                requestId,
+                "user_verification_failed",
+                "User verification is required for this passkey request.");
+        }
+
+        return null;
     }
 
     // extensions.credProps 存在即代表浏览器请求了 credProps 扩展结果。
@@ -257,10 +327,6 @@ public sealed class BrowserPasskeyRequestHandler
 
         return true;
     }
-
-    private static bool RequiresUserVerification(string? userVerification) =>
-        string.Equals(userVerification, "required", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(userVerification, "preferred", StringComparison.OrdinalIgnoreCase);
 
     private static BrowserPasskeyResponse Error(string? id, BrowserPasskeyError error) =>
         Error(id, error.Code, error.Message);

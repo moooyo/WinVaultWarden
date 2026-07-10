@@ -9,7 +9,9 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
     private readonly SemaphoreSlim _dialogGate = new(1, 1);
     private readonly PasskeyApprovalThrottle _throttle = new(TimeSpan.FromSeconds(2));
 
-    public async Task<bool> ConfirmUseAsync(PasskeyApprovalRequest request, CancellationToken ct = default)
+    public async Task<PasskeyUseApprovalResult> ConfirmUseAsync(
+        PasskeyApprovalRequest request,
+        CancellationToken ct = default)
     {
         await _dialogGate.WaitAsync(ct);
 
@@ -17,16 +19,20 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         {
             // 按 rpId(而非完整 origin)键控冷却:轮换同一 rpId 的子域 origin 无法绕过节流。
             if (!_throttle.TryBegin(request.RpId))
-                return false;
+                return RejectedUse();
 
             var window = global::App.App.MainWindow;
             if (window is null)
-                return false;
+                return RejectedUse();
 
             if (window.DispatcherQueue.HasThreadAccess)
-                return await ShowDialogAsync(window, request);
+            {
+                var approved = await ShowDialogAsync(window, request);
+                return BuildUseResult(request, approved);
+            }
 
-            var result = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var result = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
             if (!window.DispatcherQueue.TryEnqueue(async () =>
                 {
                     try
@@ -39,11 +45,11 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
                     }
                 }))
             {
-                return false;
+                return RejectedUse();
             }
 
             using var registration = ct.Register(() => result.TrySetCanceled(ct));
-            return await result.Task;
+            return BuildUseResult(request, await result.Task);
         }
         finally
         {
@@ -51,22 +57,25 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         }
     }
 
-    public async Task<PasskeyCreateApprovalResult> ConfirmCreateAsync(PasskeyCreateApprovalRequest request, CancellationToken ct = default)
+    public async Task<PasskeyCreateApprovalResult> ConfirmCreateAsync(
+        PasskeyCreateApprovalRequest request,
+        CancellationToken ct = default)
     {
         // 与 ConfirmUseAsync 共用同一把闸门:WinUI 同一 XamlRoot 下不能同时展示两个 ContentDialog,
-        // 必须串行化,避免“使用 passkey”与“创建 passkey”弹窗并发触发时抛异常。
+        // 必须串行化,避免"使用 passkey"与"创建 passkey"弹窗并发触发时抛异常。
         await _dialogGate.WaitAsync(ct);
 
         try
         {
             var window = global::App.App.MainWindow;
             if (window is null)
-                return new PasskeyCreateApprovalResult(false, false, null);
+                return RejectedCreate();
 
             if (window.DispatcherQueue.HasThreadAccess)
                 return await ShowCreateDialogAsync(window, request);
 
-            var result = new TaskCompletionSource<PasskeyCreateApprovalResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var result = new TaskCompletionSource<PasskeyCreateApprovalResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
             if (!window.DispatcherQueue.TryEnqueue(async () =>
                 {
                     try
@@ -79,7 +88,7 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
                     }
                 }))
             {
-                return new PasskeyCreateApprovalResult(false, false, null);
+                return RejectedCreate();
             }
 
             using var registration = ct.Register(() => result.TrySetCanceled(ct));
@@ -116,7 +125,7 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
     private static async Task<PasskeyCreateApprovalResult> ShowCreateDialogAsync(MainWindow window, PasskeyCreateApprovalRequest request)
     {
         if (window.Content is not FrameworkElement root || root.XamlRoot is null)
-            return new PasskeyCreateApprovalResult(false, false, null);
+            return RejectedCreate();
 
         window.Activate();
 
@@ -179,16 +188,25 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
 
         var result = await dialog.ShowAsync();
         if (result != ContentDialogResult.Primary)
-            return new PasskeyCreateApprovalResult(false, false, null);
+            return RejectedCreate();
 
         if (newRadio.IsChecked == true)
-            return new PasskeyCreateApprovalResult(true, true, null);
+        {
+            return new PasskeyCreateApprovalResult(
+                PresenceEvidence(),
+                CreateNew: true,
+                CipherId: null);
+        }
 
         if (existingCombo.SelectedItem is PasskeyLoginTarget target)
-            return new PasskeyCreateApprovalResult(true, false, target.CipherId);
+        {
+            return new PasskeyCreateApprovalResult(
+                PresenceEvidence(),
+                CreateNew: false,
+                CipherId: target.CipherId);
+        }
 
-        // 选择了“挂到已有条目”却没有具体选中项:按取消处理,不回退为静默新建。
-        return new PasskeyCreateApprovalResult(false, false, null);
+        return RejectedCreate();
     }
 
     private static UIElement CreateDialogContent(PasskeyApprovalRequest request)
@@ -254,4 +272,26 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
 
     private static string? FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+    private static PasskeyApprovalEvidence PresenceEvidence() =>
+        new(Approved: true, UserPresent: true, UserVerified: false);
+
+    private static PasskeyApprovalEvidence RejectedEvidence() =>
+        new(Approved: false, UserPresent: false, UserVerified: false);
+
+    private static PasskeyUseApprovalResult BuildUseResult(
+        PasskeyApprovalRequest request,
+        bool approved) =>
+        approved
+            ? new PasskeyUseApprovalResult(
+                PresenceEvidence(),
+                request.CipherId,
+                request.CredentialId)
+            : RejectedUse();
+
+    private static PasskeyUseApprovalResult RejectedUse() =>
+        new(RejectedEvidence(), null, null);
+
+    private static PasskeyCreateApprovalResult RejectedCreate() =>
+        new(RejectedEvidence(), CreateNew: false, CipherId: null);
 }
