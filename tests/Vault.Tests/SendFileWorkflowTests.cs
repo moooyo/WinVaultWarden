@@ -142,6 +142,28 @@ public class SendFileWorkflowTests
     }
 
     [Fact]
+    public async Task CreateFile_ContentChangedBetweenPasses_FailsClosedAndCompensates()
+    {
+        // 安全门禁:文件在两遍加密之间被改成【相同长度但不同内容】。第二遍重算 MAC 侦测到不一致后抛错,
+        // 创建流程 fail-closed:用独立令牌补偿删除刚建的孤儿记录,绝不留下 MAC/密文不匹配的损坏 Send。
+        var fixture = NewFileFixture();
+        var first = new byte[] { 1, 2, 3, 4 };
+        var second = new byte[] { 4, 3, 2, 1 }; // 同长度,不同内容
+        var opens = 0;
+        var source = new SendFileSource("mutating.bin", first.LongLength, _ =>
+        {
+            opens++;
+            var payload = opens == 1 ? first : second;
+            return ValueTask.FromResult<Stream>(new MemoryStream(payload, writable: false));
+        });
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            fixture.Service.CreateFileSendAsync(FileDraft(), source, CancellationToken.None));
+
+        Assert.Equal(["create-file-v2", "upload", "delete:new-send"], fixture.Api.Calls);
+    }
+
+    [Fact]
     public async Task UploadFailure_DeletesCreatedRecordWithIndependentToken()
     {
         var fixture = NewFileFixture();

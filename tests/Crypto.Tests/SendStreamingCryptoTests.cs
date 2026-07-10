@@ -118,6 +118,31 @@ public class SendStreamingCryptoTests
     }
 
     [Fact]
+    public async Task PreparedStream_SameLengthContentChangedBetweenPasses_FailsClosed()
+    {
+        // 安全门禁(Vault Task 12 复审):两遍式流加密第一遍算 MAC、第二遍写密文。若文件在两遍之间被改成
+        // 【相同长度但不同内容】,仅靠长度校验无法发现,会写出 MAC 与密文不匹配的损坏 Send(fail-open)。
+        // 必须 fail-closed:第二遍以同一 IV/密钥重算 HMAC 并与第一遍比对,不一致即抛出、拒绝上传。
+        var first = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };
+        var second = new byte[] { 8, 7, 6, 5, 4, 3, 2, 1 }; // 同长度,不同内容
+        var opens = 0;
+        var source = new SendFileSource("mutating.bin", first.LongLength, _ =>
+        {
+            opens++;
+            var payload = opens == 1 ? first : second;
+            return ValueTask.FromResult<Stream>(new MemoryStream(payload, writable: false));
+        });
+        using var key = NewCryptoKey();
+        var crypto = NewCrypto();
+
+        var prepared = await crypto.PrepareFileUploadAsync(source, key, CancellationToken.None);
+        await using var output = new MemoryStream();
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            prepared.WriteAsync(output, CancellationToken.None));
+        Assert.Equal(2, opens);
+    }
+
+    [Fact]
     public async Task PreparedStream_SourceGrewAfterSelection_Throws()
     {
         // 声明长度小于实际内容 → 第一遍算 MAC 时即侦测到源在选择后变长，拒绝上传。

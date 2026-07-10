@@ -70,6 +70,10 @@ public sealed class SendCryptoService
     //   第一遍(ComputeFileMacAsync):重开源、以固定 iv/密钥做 AES-CBC 加密并把密文喂给 IncrementalHash,只得到 MAC;
     //   第二遍(WriteAsync 委托):重开源、复用【同一】iv/密钥,把 [2, iv, mac, ct] 直接写进目标流。
     // AES-CBC + PKCS7 在相同 iv/密钥/明文下确定,两遍密文必然一致,故第一遍算出的 MAC 可鉴别第二遍写出的密文。
+    // fail-closed 一致性(Vault Task 12 复审):源(如 file-backed StorageFile)可变,可能在两遍之间被改成
+    // 【相同长度但不同内容】——此时 CopyExactlyAsync 的长度校验无法侦测。第二遍在写密文的同时以同一 iv/密钥
+    // 重算 HMAC,并用固定时间比较与第一遍(已写进头部)的 MAC 比对;不一致即抛 InvalidDataException 拒绝上传,
+    // 绝不留下 MAC/密文不匹配的损坏 Send。上层创建流程随即用独立令牌补偿删除孤儿记录。
     // 返回的 Length 是加密后精确字节数,供上传方设置 Content-Length 与服务端长度比对。
     public async Task<StreamUploadContent> PrepareFileUploadAsync(
         SendFileSource source,
@@ -97,16 +101,25 @@ public sealed class SendCryptoService
                     new[] { (byte)EncryptionType.AesCbc256_HmacSha256_B64 }, writeCt).ConfigureAwait(false);
                 await destination.WriteAsync(iv, writeCt).ConfigureAwait(false);
                 await destination.WriteAsync(mac, writeCt).ConfigureAwait(false);
+                // 第二遍在流式写密文的同时以同一 iv/密钥重算 HMAC,供随后与第一遍的 mac 固定时间比对(fail-closed)。
+                using var verify = IncrementalHash.CreateHMAC(HashAlgorithmName.SHA256, cryptoKey.MacKey!);
+                verify.AppendData(iv);
                 await using var plaintext = await source.OpenReadAsync(writeCt).ConfigureAwait(false);
                 using var aes = Aes.Create();
                 aes.Mode = CipherMode.CBC;
                 aes.Padding = PaddingMode.PKCS7;
                 aes.Key = cryptoKey.EncKey;
                 aes.IV = iv;
-                await using var encrypting = new CryptoStream(
-                    destination, aes.CreateEncryptor(), CryptoStreamMode.Write, leaveOpen: true);
-                await CopyExactlyAsync(plaintext, encrypting, source.Length, writeCt).ConfigureAwait(false);
-                await encrypting.FlushFinalBlockAsync(writeCt).ConfigureAwait(false);
+                await using (var tee = new HmacTeeStream(destination, verify))
+                await using (var encrypting = new CryptoStream(
+                    tee, aes.CreateEncryptor(), CryptoStreamMode.Write, leaveOpen: true))
+                {
+                    await CopyExactlyAsync(plaintext, encrypting, source.Length, writeCt).ConfigureAwait(false);
+                    await encrypting.FlushFinalBlockAsync(writeCt).ConfigureAwait(false);
+                }
+                if (!CryptographicOperations.FixedTimeEquals(mac, verify.GetHashAndReset()))
+                    throw new InvalidDataException(
+                        "Send file content changed between passes; refusing to upload a MAC/ciphertext mismatch.");
             });
     }
 
@@ -190,6 +203,39 @@ public sealed class SendCryptoService
 
         public override void Flush() { }
         public override Task FlushAsync(CancellationToken ct) => Task.CompletedTask;
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+    }
+
+    // 只写的"三通"流:把写入内容同时转发给底层目标流与 IncrementalHash,使第二遍密文得以一边上传、一边重算 HMAC
+    // 做一致性校验,无需任何额外缓冲。不拥有底层流生命周期(Dispose 不关闭 inner,与原 leaveOpen 语义一致)。
+    private sealed class HmacTeeStream(Stream inner, IncrementalHash hash) : Stream
+    {
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            hash.AppendData(buffer, offset, count);
+            inner.Write(buffer, offset, count);
+        }
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
+        {
+            hash.AppendData(buffer.Span);
+            await inner.WriteAsync(buffer, ct).ConfigureAwait(false);
+        }
+
+        public override void Flush() => inner.Flush();
+        public override Task FlushAsync(CancellationToken ct) => inner.FlushAsync(ct);
         public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();
