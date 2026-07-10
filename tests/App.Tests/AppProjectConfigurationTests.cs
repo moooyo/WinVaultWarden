@@ -6,18 +6,24 @@ namespace App.Tests;
 public sealed class AppProjectConfigurationTests
 {
     [Fact]
-    public void App_UsesWindowsAppSdk220()
+    public void App_UsesExpectedWindowsPlatformPackages()
     {
         var root = FindRepositoryRoot();
         var project = XDocument.Load(
             Path.Combine(root, "src", "App", "App.csproj"));
-        var package = project
+        var windowsAppSdk = project
             .Descendants("PackageReference")
             .Single(element =>
                 (string?)element.Attribute("Include")
                 == "Microsoft.WindowsAppSDK");
+        var windowsSdkBuildTools = project
+            .Descendants("PackageReference")
+            .Single(element =>
+                (string?)element.Attribute("Include")
+                == "Microsoft.Windows.SDK.BuildTools");
 
-        Assert.Equal("2.2.0", (string?)package.Attribute("Version"));
+        Assert.Equal("2.2.0", (string?)windowsAppSdk.Attribute("Version"));
+        Assert.Equal("10.0.26100.4654", (string?)windowsSdkBuildTools.Attribute("Version"));
     }
 
     private static string FindRepositoryRoot()
