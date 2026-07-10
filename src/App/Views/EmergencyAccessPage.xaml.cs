@@ -21,25 +21,51 @@ public sealed partial class EmergencyAccessPage : Page
         _ = ViewModel.LoadAsync();
     }
 
-    // ── 选中项同步 ────────────────────────────────────────────────────────────
+    // ── 状态矩阵：每个按钮只在其状态允许的场景下可见 ─────────────────────────────
+    // 不存在无条件显示的行级操作；具体状态转换见 Task 7 brief 的状态矩阵。
 
-    private void OnMyContactsSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (MyContactsList.SelectedItem is EmergencyContact contact)
-        {
-            ViewModel.SelectedContactId = contact.Id;
-            ViewModel.SelectedGranteeId = contact.GranteeId ?? string.Empty;
-        }
-    }
+    public static Visibility ShowReinvite(EmergencyAccessStatus status) =>
+        status == EmergencyAccessStatus.Invited ? Visibility.Visible : Visibility.Collapsed;
 
-    private void OnTrustedByOthersSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (TrustedByOthersList.SelectedItem is GrantedAccess granted)
-        {
-            ViewModel.SelectedGrantedId = granted.Id;
-            ViewModel.SelectedGrantorEmail = granted.Email ?? string.Empty;
-        }
-    }
+    public static Visibility ShowConfirm(EmergencyAccessStatus status) =>
+        status == EmergencyAccessStatus.Accepted ? Visibility.Visible : Visibility.Collapsed;
+
+    public static Visibility ShowUpdate(EmergencyAccessStatus status) =>
+        status == EmergencyAccessStatus.Confirmed ? Visibility.Visible : Visibility.Collapsed;
+
+    public static Visibility ShowApprove(EmergencyAccessStatus status) =>
+        status == EmergencyAccessStatus.RecoveryInitiated ? Visibility.Visible : Visibility.Collapsed;
+
+    public static Visibility ShowReject(EmergencyAccessStatus status) =>
+        status == EmergencyAccessStatus.RecoveryInitiated ? Visibility.Visible : Visibility.Collapsed;
+
+    public static Visibility ShowRemove(EmergencyAccessStatus status) =>
+        status is EmergencyAccessStatus.Invited
+            or EmergencyAccessStatus.Accepted
+            or EmergencyAccessStatus.Confirmed
+            or EmergencyAccessStatus.RecoveryInitiated
+            or EmergencyAccessStatus.RecoveryApproved
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    public static Visibility ShowInitiate(EmergencyAccessStatus status) =>
+        status == EmergencyAccessStatus.Confirmed ? Visibility.Visible : Visibility.Collapsed;
+
+    public static Visibility ShowView(
+        EmergencyAccessStatus status,
+        EmergencyAccessType type) =>
+        status == EmergencyAccessStatus.RecoveryApproved
+            && type == EmergencyAccessType.View
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    public static Visibility ShowTakeover(
+        EmergencyAccessStatus status,
+        EmergencyAccessType type) =>
+        status == EmergencyAccessStatus.RecoveryApproved
+            && type == EmergencyAccessType.Takeover
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
     // ── 邀请对话框 ────────────────────────────────────────────────────────────
 
@@ -88,82 +114,89 @@ public sealed partial class EmergencyAccessPage : Page
             XamlRoot = XamlRoot,
         };
 
-        ViewModel.OperationError = null;
-
         while (true)
         {
-            var result = await DialogHelper.ShowTrackedAsync(dialog);
-            if (result != ContentDialogResult.Primary)
+            var dialogResult = await DialogHelper.ShowTrackedAsync(dialog);
+            if (dialogResult != ContentDialogResult.Primary)
                 return;
 
-            ViewModel.InviteEmail = emailBox.Text.Trim();
+            var email = emailBox.Text.Trim();
+            var type = typeCombo.SelectedItem is ComboBoxItem selectedType && selectedType.Tag is EmergencyAccessType t
+                ? t
+                : EmergencyAccessType.View;
+            var waitDays = double.IsNaN(waitDaysBox.Value) ? 7 : (int)waitDaysBox.Value;
 
-            if (typeCombo.SelectedItem is ComboBoxItem selectedType && selectedType.Tag is EmergencyAccessType t)
-                ViewModel.InviteType = t;
-
-            ViewModel.InviteWaitTimeDays = double.IsNaN(waitDaysBox.Value) ? 7 : (int)waitDaysBox.Value;
-
-            await ViewModel.InviteCommand.ExecuteAsync(null);
-
-            if (!ViewModel.HasError)
+            var result = await ViewModel.InviteAsync(email, type, waitDays);
+            if (result.IsSuccess)
                 return;
 
-            errorText.Text = ViewModel.OperationError ?? string.Empty;
+            errorText.Text = result.Error ?? "邀请失败";
             errorText.Visibility = Visibility.Visible;
         }
     }
 
-    // ── 授予方按钮 ────────────────────────────────────────────────────────────
+    // ── 授予方按钮（均从 Tag 取具体 item，不依赖可变 SelectedId）─────────────────
 
     private async void OnConfirmClick(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is EmergencyContact contact)
-        {
-            ViewModel.SelectedContactId = contact.Id;
-            ViewModel.SelectedGranteeId = contact.GranteeId ?? string.Empty;
-        }
-        await ViewModel.ConfirmCommand.ExecuteAsync(null);
+        if ((sender as FrameworkElement)?.Tag is not EmergencyContact item)
+            return;
+        await ViewModel.ConfirmAsync(item);
     }
 
     private async void OnReinviteClick(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is EmergencyContact contact)
-            ViewModel.SelectedContactId = contact.Id;
-        await ViewModel.ReinviteCommand.ExecuteAsync(null);
+        if ((sender as FrameworkElement)?.Tag is not EmergencyContact item)
+            return;
+        await ViewModel.ReinviteAsync(item);
     }
 
     private async void OnApproveClick(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is EmergencyContact contact)
-            ViewModel.SelectedContactId = contact.Id;
-        await ViewModel.ApproveCommand.ExecuteAsync(null);
+        if ((sender as FrameworkElement)?.Tag is not EmergencyContact item)
+            return;
+        await ViewModel.ApproveAsync(item);
     }
 
     private async void OnRejectClick(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is EmergencyContact contact)
-            ViewModel.SelectedContactId = contact.Id;
-        await ViewModel.RejectCommand.ExecuteAsync(null);
+        if ((sender as FrameworkElement)?.Tag is not EmergencyContact item)
+            return;
+        await ViewModel.RejectAsync(
+            item,
+            (contact, ct) => DialogHelper.ConfirmAsync(
+                XamlRoot,
+                "拒绝紧急访问请求",
+                $"确定要拒绝来自 {contact.Email} 的紧急访问请求吗？",
+                "拒绝",
+                ct: ct),
+            CancellationToken.None);
     }
 
     private async void OnRemoveContactClick(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is EmergencyContact contact)
-            ViewModel.SelectedContactId = contact.Id;
-        await ViewModel.RemoveCommand.ExecuteAsync(null);
+        if ((sender as FrameworkElement)?.Tag is not EmergencyContact item)
+            return;
+        await ViewModel.RemoveAsync(
+            item,
+            (contact, ct) => DialogHelper.ConfirmAsync(
+                XamlRoot,
+                "移除紧急联系人",
+                $"确定要移除 {contact.Email} 吗？此操作无法撤销。",
+                "移除",
+                ct: ct),
+            CancellationToken.None);
     }
 
     private async void OnUpdateClick(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is not EmergencyContact contact)
+        if ((sender as FrameworkElement)?.Tag is not EmergencyContact item)
             return;
-
-        ViewModel.SelectedContactId = contact.Id;
 
         var typeCombo = new ComboBox { MinWidth = 200 };
         typeCombo.Items.Add(new ComboBoxItem { Content = "查看 (View)", Tag = EmergencyAccessType.View });
         typeCombo.Items.Add(new ComboBoxItem { Content = "接管 (Takeover)", Tag = EmergencyAccessType.Takeover });
-        typeCombo.SelectedIndex = contact.Type == EmergencyAccessType.Takeover ? 1 : 0;
+        typeCombo.SelectedIndex = item.Type == EmergencyAccessType.Takeover ? 1 : 0;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(typeCombo, "UpdateTypeCombo");
 
         var waitDaysBox = new NumberBox
@@ -171,7 +204,7 @@ public sealed partial class EmergencyAccessPage : Page
             Header = "等待天数",
             Minimum = 1,
             Maximum = 90,
-            Value = contact.WaitTimeDays,
+            Value = item.WaitTimeDays,
             SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline,
             SmallChange = 1,
         };
@@ -188,7 +221,7 @@ public sealed partial class EmergencyAccessPage : Page
 
         var dialog = new ContentDialog
         {
-            Title = $"修改紧急访问 — {contact.Email}",
+            Title = $"修改紧急访问 — {item.Email}",
             Content = panel,
             PrimaryButtonText = "保存",
             CloseButtonText = "取消",
@@ -196,25 +229,22 @@ public sealed partial class EmergencyAccessPage : Page
             XamlRoot = XamlRoot,
         };
 
-        ViewModel.OperationError = null;
-
         while (true)
         {
-            var result = await DialogHelper.ShowTrackedAsync(dialog);
-            if (result != ContentDialogResult.Primary)
+            var dialogResult = await DialogHelper.ShowTrackedAsync(dialog);
+            if (dialogResult != ContentDialogResult.Primary)
                 return;
 
-            if (typeCombo.SelectedItem is ComboBoxItem selectedType && selectedType.Tag is EmergencyAccessType t)
-                ViewModel.InviteType = t;
+            var type = typeCombo.SelectedItem is ComboBoxItem selectedType && selectedType.Tag is EmergencyAccessType t
+                ? t
+                : item.Type;
+            var waitDays = double.IsNaN(waitDaysBox.Value) ? item.WaitTimeDays : (int)waitDaysBox.Value;
 
-            ViewModel.InviteWaitTimeDays = double.IsNaN(waitDaysBox.Value) ? contact.WaitTimeDays : (int)waitDaysBox.Value;
-
-            await ViewModel.UpdateCommand.ExecuteAsync(null);
-
-            if (!ViewModel.HasError)
+            var result = await ViewModel.UpdateAsync(item, type, waitDays);
+            if (result.IsSuccess)
                 return;
 
-            errorText.Text = ViewModel.OperationError ?? string.Empty;
+            errorText.Text = result.Error ?? "修改失败";
             errorText.Visibility = Visibility.Visible;
         }
     }
@@ -223,32 +253,25 @@ public sealed partial class EmergencyAccessPage : Page
 
     private async void OnInitiateClick(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is GrantedAccess granted)
-            ViewModel.SelectedGrantedId = granted.Id;
-        await ViewModel.InitiateCommand.ExecuteAsync(null);
+        if ((sender as FrameworkElement)?.Tag is not GrantedAccess item)
+            return;
+        await ViewModel.InitiateAsync(item);
     }
 
     private async void OnViewClick(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is GrantedAccess granted)
-        {
-            ViewModel.SelectedGrantedId = granted.Id;
-            ViewModel.SelectedGrantorEmail = granted.Email ?? string.Empty;
-        }
-        await ViewModel.ViewCommand.ExecuteAsync(null);
-
-        if (ViewModel.HasRecoveredVault)
-            await ShowViewResultDialogAsync();
+        if ((sender as FrameworkElement)?.Tag is not GrantedAccess item)
+            return;
+        var result = await ViewModel.ViewAsync(item);
+        if (result.IsSuccess && result.Value is { } recovered)
+            await ShowViewResultDialogAsync(recovered);
     }
 
-    private async Task ShowViewResultDialogAsync()
+    private async Task ShowViewResultDialogAsync(RecoveredVault recovered)
     {
-        var vault = ViewModel.RecoveredVault;
-        if (vault is null) return;
-
         var list = new ListView
         {
-            ItemsSource = vault.Ciphers,
+            ItemsSource = recovered.Ciphers,
             SelectionMode = ListViewSelectionMode.None,
             MaxHeight = 400,
         };
@@ -256,7 +279,7 @@ public sealed partial class EmergencyAccessPage : Page
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(new TextBlock
         {
-            Text = $"授予方：{vault.GrantorEmail}　共 {vault.Ciphers.Count} 条目",
+            Text = $"授予方：{recovered.GrantorEmail}　共 {recovered.Ciphers.Count} 条目",
             TextWrapping = TextWrapping.Wrap,
         });
         panel.Children.Add(list);
@@ -275,15 +298,12 @@ public sealed partial class EmergencyAccessPage : Page
 
     private async void OnTakeoverClick(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is GrantedAccess granted)
-        {
-            ViewModel.SelectedGrantedId = granted.Id;
-            ViewModel.SelectedGrantorEmail = granted.Email ?? string.Empty;
-        }
-        await ShowTakeoverDialogAsync();
+        if ((sender as FrameworkElement)?.Tag is not GrantedAccess item)
+            return;
+        await ShowTakeoverDialogAsync(item);
     }
 
-    private async Task ShowTakeoverDialogAsync()
+    private async Task ShowTakeoverDialogAsync(GrantedAccess item)
     {
         var pwBox = new PasswordBox { PlaceholderText = "新主密码（为对方设置）", MinWidth = 320 };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(pwBox, "TakeoverNewPasswordBox");
@@ -297,7 +317,7 @@ public sealed partial class EmergencyAccessPage : Page
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(new TextBlock
         {
-            Text = $"您即将重置 {ViewModel.SelectedGrantorEmail} 的主密码，此操作不可逆。",
+            Text = $"您即将重置 {item.Email} 的主密码，此操作不可逆。",
             TextWrapping = TextWrapping.Wrap,
         });
         panel.Children.Add(pwBox);
@@ -314,20 +334,20 @@ public sealed partial class EmergencyAccessPage : Page
             XamlRoot = XamlRoot,
         };
 
-        ViewModel.OperationError = null;
-
+        // 新主密码只存在于本方法的局部变量(pwBox/confirmBox)与 TakeoverAsync 的参数中,
+        // 绝不写入 ViewModel 的可观察属性,因此无论成功/失败/异常都不会有明文残留 VM 状态。
         try
         {
             while (true)
             {
-                var result = await DialogHelper.ShowTrackedAsync(
+                var dialogResult = await DialogHelper.ShowTrackedAsync(
                     dialog,
                     () =>
                     {
                         pwBox.Password = string.Empty;
                         confirmBox.Password = string.Empty;
                     });
-                if (result != ContentDialogResult.Primary)
+                if (dialogResult != ContentDialogResult.Primary)
                     return;
 
                 if (pwBox.Password != confirmBox.Password)
@@ -337,13 +357,11 @@ public sealed partial class EmergencyAccessPage : Page
                     continue;
                 }
 
-                ViewModel.TakeoverNewPassword = pwBox.Password;
-                await ViewModel.TakeoverCommand.ExecuteAsync(null);
-
-                if (!ViewModel.HasError)
+                var result = await ViewModel.TakeoverAsync(item, pwBox.Password);
+                if (result.IsSuccess)
                     return;
 
-                errorText.Text = ViewModel.OperationError ?? string.Empty;
+                errorText.Text = result.Error ?? "接管失败";
                 errorText.Visibility = Visibility.Visible;
             }
         }
