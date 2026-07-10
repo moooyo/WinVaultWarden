@@ -97,6 +97,7 @@ desktop.ini
 # Superpowers working docs (specs/plans) - local only
 docs/superpowers/
 .superpowers/
+.worktrees/
 
 # UI preview mockup - local scratch, not shipped
 docs/preview/
