@@ -1,3 +1,4 @@
+using App.Services;
 using App.ViewModels;
 using Core.Services;
 using Xunit;
@@ -108,11 +109,13 @@ public class ImportExportViewModelTests
         {
             ImportContent = "{...}",
         };
+        vm.PreviewImportCommand.Execute(null);
 
         await vm.DoImportCommand.ExecuteAsync(null);
 
         Assert.NotNull(vm.ResultMessage);
-        Assert.Contains("boom", vm.ResultMessage);
+        Assert.DoesNotContain("boom", vm.ResultMessage);
+        Assert.Equal("导入失败，请确认文件仍有效且密码库已解锁。", vm.ResultMessage);
     }
 
     [Fact]
@@ -145,7 +148,97 @@ public class ImportExportViewModelTests
         Assert.False(stubImport.ImportAsyncCalled);
     }
 
+    // ── 快照失效（Task 8）──────────────────────────────────────────────────────
+
+    [Fact]
+    public void ContentChange_InvalidatesPreviewAndDisablesImport()
+    {
+        var vm = Build(new StableImport(2, 1));
+        vm.ImportContent = "version-one";
+        vm.PreviewImportCommand.Execute(null);
+        Assert.True(vm.CanImport);
+
+        vm.ImportContent = "version-two";
+
+        Assert.False(vm.HasValidPreview);
+        Assert.False(vm.CanImport);
+    }
+
+    [Fact]
+    public void FormatChange_InvalidatesPreview()
+    {
+        var vm = Build(new StableImport(2, 1));
+        vm.ImportContent = "content";
+        vm.PreviewImportCommand.Execute(null);
+
+        vm.SelectedImportFormat = ImportFormat.Csv;
+
+        Assert.False(vm.CanImport);
+    }
+
+    [Fact]
+    public void AbaContentChange_DoesNotReviveOldPreview()
+    {
+        var vm = Build(new StableImport(2, 1));
+        vm.ImportContent = "A";
+        vm.PreviewImportCommand.Execute(null);
+        vm.ImportContent = "B";
+        vm.ImportContent = "A";
+
+        Assert.False(vm.CanImport);
+    }
+
+    [Fact]
+    public async Task ReparseDrift_RejectsWithoutImporting()
+    {
+        var service = new DriftingImport();
+        var vm = Build(service);
+        vm.ImportContent = "content";
+        vm.PreviewImportCommand.Execute(null);
+
+        var result = await vm.DoImportAsync();
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.False(service.ImportCalled);
+        Assert.Contains("预览已变化", vm.ImportError);
+    }
+
     // ── Fakes ────────────────────────────────────────────────────────────────
+
+    private static ImportExportViewModel Build(IVaultImportService import) =>
+        new(new StubExport(), import, new StubAccount(true));
+
+    private sealed class StableImport(int ciphers, int folders) : IVaultImportService
+    {
+        public ImportPreview Parse(ImportFormat format, string content) =>
+            new(ciphers, folders, null);
+
+        public Task<int> ImportAsync(
+            ImportFormat format,
+            string content,
+            CancellationToken ct = default) =>
+            Task.FromResult(ciphers);
+    }
+
+    private sealed class DriftingImport : IVaultImportService
+    {
+        private int _parseCalls;
+        public bool ImportCalled { get; private set; }
+
+        public ImportPreview Parse(ImportFormat format, string content) =>
+            Interlocked.Increment(ref _parseCalls) == 1
+                ? new ImportPreview(2, 1, null)
+                : new ImportPreview(3, 1, null);
+
+        public Task<int> ImportAsync(
+            ImportFormat format,
+            string content,
+            CancellationToken ct = default)
+        {
+            ImportCalled = true;
+            return Task.FromResult(2);
+        }
+    }
 
     private sealed class StubExport : IVaultExportService
     {

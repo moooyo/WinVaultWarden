@@ -6,6 +6,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:conv="using:App.Converters">
     <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <conv:EmptyStringToCollapsedConverter x:Key="EmptyStringToCollapsed" />
     </Page.Resources>
@@ -82,9 +83,10 @@
                              IsOpen="{x:Bind ViewModel.HasImportError, Mode=OneWay}"
                              Message="{x:Bind ViewModel.ImportError, Mode=OneWay}" />
 
-                    <StackPanel Spacing="4"
-                                Visibility="{x:Bind ViewModel.HasImportError, Mode=OneWay,
-                                    Converter={StaticResource InverseBoolToVis}}">
+                    <StackPanel x:Name="ImportPreviewPanel"
+                                Spacing="4"
+                                Visibility="{x:Bind ViewModel.HasValidPreview, Mode=OneWay,
+                                    Converter={StaticResource BoolToVisibilityConverter}}">
                         <TextBlock>
                             <Run Text="预览：" />
                             <Run Text="{x:Bind ViewModel.PreviewCipherCount, Mode=OneWay}" />
@@ -94,9 +96,11 @@
                         </TextBlock>
                     </StackPanel>
 
-                    <Button Content="导入"
+                    <Button x:Name="ImportButton"
+                            Content="导入"
                             Style="{ThemeResource AccentButtonStyle}"
                             AutomationProperties.AutomationId="ImportButton"
+                            IsEnabled="{x:Bind ViewModel.CanImport, Mode=OneWay}"
                             Command="{x:Bind ViewModel.DoImportCommand}" />
 
                     <TextBlock Text="{x:Bind ViewModel.ResultMessage, Mode=OneWay}"

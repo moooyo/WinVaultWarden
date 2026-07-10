@@ -96,6 +96,28 @@ public class ImportExportPageXamlTests
     }
 
     [Fact]
+    public void ImportPreviewPanel_VisibilityBoundToHasValidPreview()
+    {
+        var doc = LoadXaml();
+        var panel = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "StackPanel"
+            && e.Attribute("{http://schemas.microsoft.com/winfx/2006/xaml}Name")?.Value == "ImportPreviewPanel");
+        Assert.NotNull(panel);
+        var vis = panel!.Attribute("Visibility")?.Value ?? string.Empty;
+        Assert.Contains("HasValidPreview", vis);
+        Assert.Contains("BoolToVisibilityConverter", vis);
+    }
+
+    [Fact]
+    public void ImportButton_IsEnabledBoundToCanImport()
+    {
+        var doc = LoadXaml();
+        var button = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "Button"
+            && e.Attribute("AutomationProperties.AutomationId")?.Value == "ImportButton");
+        Assert.NotNull(button);
+        Assert.Contains("CanImport", button!.Attribute("IsEnabled")?.Value ?? string.Empty);
+    }
+
+    [Fact]
     public void ImportSection_ErrorInfoBar_BoundToHasImportError()
     {
         var doc = LoadXaml();
