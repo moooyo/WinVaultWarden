@@ -55,12 +55,30 @@ public sealed class TokenRefreshService : ITokenRefresher
                 || persisted.AccountId != lease.AccountId
                 || persisted.Origin != lease.Origin)
                 return false;
-            var result = await api.ConnectTokenAsync(
-                ConnectTokenRequest.Refresh(
-                    refreshToken!,
-                    persisted.DeviceIdentifier,
-                    DeviceName),
-                ct);
+
+            ConnectTokenResult result;
+            try
+            {
+                result = await api.ConnectTokenAsync(
+                    ConnectTokenRequest.Refresh(
+                        refreshToken!,
+                        persisted.DeviceIdentifier,
+                        DeviceName),
+                    ct);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                return false;
+            }
+
+            // B1：仅当服务端明确判定 refresh token 失效（invalid_grant，见 vaultwarden identity.rs）
+            // 且原始 lease 仍 current 时，rotation-first 锁定当前会话并清敏感状态。
+            // 陈旧 lease 的响应（stale A）绝不锁定已切换的新会话（B）。
+            if (result is ConnectTokenResult.Error { ErrorCode: "invalid_grant" })
+            {
+                _session.TryLockIfCurrent(lease);
+                return false;
+            }
             if (result is not ConnectTokenResult.Success success)
                 return false;
             return _session.TryCommit(lease, () =>

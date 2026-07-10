@@ -85,7 +85,7 @@ public class TokenRefreshServiceTests
     }
 
     [Fact]
-    public async Task TryRefreshAsync_ServerRejects_ReturnsFalse()
+    public async Task TryRefreshAsync_ServerRejects_ReturnsFalseAndLocks()
     {
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
@@ -96,9 +96,64 @@ public class TokenRefreshServiceTests
 
         var ok = await service.TryRefreshAsync(TestContext.Current.CancellationToken);
 
-        // Task 4 版本:非成功结果一律返回 false 且不改会话状态;invalid_grant 的锁库分类留待 Task 7。
         Assert.False(ok);
+        Assert.Equal(VaultState.Locked, session.State);
+    }
+
+    [Fact]
+    public async Task TryRefreshAsync_NetworkException_ReturnsFalseWithoutLocking()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => throw new HttpRequestException("connection refused"));
+        var session = ActiveSession();
+        session.SetTokens("old-access", "old-refresh");
+        session.SetState(VaultState.Unlocked);
+        var service = Create(handler, session, StoreWithSession());
+
+        var ok = await service.TryRefreshAsync(TestContext.Current.CancellationToken);
+
+        Assert.False(ok);
+        Assert.NotEqual(VaultState.Locked, session.State);
         Assert.Equal("old-access", session.AccessToken);
+    }
+
+    [Fact]
+    public async Task TryRefreshAsync_StaleInvalidGrant_DoesNotLockNewSession()
+    {
+        // Session A 的刷新请求在途期间，用户切换至 Session B。
+        // A 收到的 invalid_grant 响应绝不能锁定 B 的会话。
+        var httpStarted = new TaskCompletionSource();
+        var switchComplete = new TaskCompletionSource();
+
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ =>
+        {
+            httpStarted.TrySetResult();   // 通知主线程：HTTP 已发出
+            switchComplete.Task.Wait();   // 等待 B 登录完成后再返回响应
+            return FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+                """{"error":"invalid_grant","error_description":"refresh token is invalid"}""");
+        });
+
+        var session = ActiveSession();   // Session A (me@example.com)
+        session.SetTokens("old-access", "old-refresh");
+        var service = Create(handler, session, StoreWithSession());
+
+        // 用 Task.Run 防止 handler 内的同步 Wait 死锁主线程。
+        var refreshA = Task.Run(() => service.TryRefreshAsync(TestContext.Current.CancellationToken));
+
+        await httpStarted.Task;   // A 的 HTTP 已在途
+
+        // 切换到 B：轮换 generation，A 的 lease 作废。
+        session.BeginAccountSession("b@example.com", "b@example.com", new ServerOrigin(ServerUrl));
+        session.SetTokens("b-access", "b-refresh");
+        session.SetState(VaultState.Unlocked);
+        switchComplete.SetResult();   // 允许 A 的响应返回
+
+        var ok = await refreshA;
+
+        Assert.False(ok);
+        Assert.NotEqual(VaultState.Locked, session.State);   // B 的会话未被锁定
+        Assert.Equal("b-access", session.AccessToken);        // B 的 token 仍然有效
     }
 
     [Fact]

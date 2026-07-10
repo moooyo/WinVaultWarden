@@ -475,6 +475,33 @@ public sealed class VaultSession : IVaultSnapshot
         }
     }
 
+    /// <summary>
+    /// 仅当 lease 仍对应当前会话时，rotation-first 锁定：先轮换 generation（使旧 lease 失效），
+    /// 再清空敏感状态。用于 invalid_grant 场景——陈旧 lease 的刷新响应不会锁定已切换的新会话。
+    /// 检查与锁定在同一 _gate 下，无 TOCTOU 窗口；try/finally 保证安全路径不得 fail-open。
+    /// </summary>
+    public bool TryLockIfCurrent(VaultSessionLease lease)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease))
+                return false;
+            var accountId = _accountId;
+            var origin = _origin;
+            try
+            {
+                RotateLeaseNoLock(accountId, origin, persistedGeneration: null);
+            }
+            finally
+            {
+                ClearSensitiveState();
+                State = VaultState.Locked;
+            }
+            return true;
+        }
+    }
+
     /// <summary>登出:第一动作即轮换 generation(账户置空)并取消旧租约,再清空敏感状态。
     /// try/finally 保证即便 RotateLeaseNoLock 意外抛出，ClearSensitiveState、AccountInfo.Empty、
     /// LoggedOut 状态也必然被应用，安全清理路径不得 fail-open。</summary>
