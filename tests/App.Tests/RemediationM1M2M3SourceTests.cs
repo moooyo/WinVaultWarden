@@ -21,6 +21,15 @@ public sealed class RemediationM1M2M3SourceTests
     }
 
     [Fact]
+    public void TotpSetup_Step2ClearSensitive_ClearsOtpauthText()
+    {
+        // step2 ShowTrackedAsync 的 clearSensitive 还须清除 otpauthText.Text，
+        // 其 URI 中含 secret，不能残留在已关闭对话框里。
+        var src = ReadSettings();
+        Assert.Contains("otpauthText.Text = string.Empty", src);
+    }
+
+    [Fact]
     public void TotpSetup_Step3_ClearSensitive_ClearsRecoveryCodeBlock()
     {
         // step3 ShowTrackedAsync 须提供 clearSensitive 清恢复码 TextBlock.Text

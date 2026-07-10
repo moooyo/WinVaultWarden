@@ -553,6 +553,7 @@ public sealed partial class SettingsPage : Page
                     pwBox.Password = string.Empty;
                     codeBox.Text = string.Empty;
                     secretText.Text = string.Empty;
+                    otpauthText.Text = string.Empty;
                 });
             if (r2 != ContentDialogResult.Primary) return;
 
