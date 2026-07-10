@@ -8,4 +8,8 @@ public sealed record ExposedFinding(HealthItemRef Item, int BreachCount);
 public sealed record HealthReport(
     IReadOnlyList<ReusedGroup> Reused,
     IReadOnlyList<WeakFinding> Weak,
-    IReadOnlyList<UnsecuredFinding> Unsecured);
+    IReadOnlyList<UnsecuredFinding> Unsecured)
+{
+    // 尚未执行在线 HIBP 检查时的初态；离线报告不得暗示"已确认零泄露"。
+    public BreachCheckResult Exposure { get; init; } = BreachCheckResult.Unknown;
+}

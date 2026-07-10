@@ -60,6 +60,16 @@ public class VaultHealthUiServiceTests
             return new HealthReport([], [], []);
         }
 
+        public Task<BreachCheckResult> CheckExposureAsync(CancellationToken ct = default)
+        {
+            LastOp = "checkExposure";
+            return Task.FromResult(new BreachCheckResult(
+                BreachCheckStatus.Succeeded,
+                [],
+                SuccessfulQueries: 1,
+                FailedQueries: 0));
+        }
+
         public Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(CancellationToken ct = default)
         {
             LastOp = "checkExposed";

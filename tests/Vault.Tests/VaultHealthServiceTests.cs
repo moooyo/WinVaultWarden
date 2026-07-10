@@ -95,4 +95,105 @@ public class VaultHealthServiceTests
         Assert.All(exposed, e => Assert.Equal(42, e.BreachCount));
         Assert.Equal(1, pwned.Calls["leaked-pw"]);            // 去重：每唯一密码只查一次
     }
+
+    // ── Task 14: 显式 BreachCheckResult 状态 ─────────────────────────────────
+
+    private sealed class ScriptedPwnedClient(
+        IReadOnlyDictionary<string, object> results) : IPwnedPasswordsClient
+    {
+        public Task<int> GetBreachCountAsync(
+            string password,
+            CancellationToken ct = default)
+        {
+            var result = results[password];
+            return result is Exception exception
+                ? Task.FromException<int>(exception)
+                : Task.FromResult((int)result);
+        }
+    }
+
+    private sealed class CancelingPwnedClient(CancellationTokenSource cts) : IPwnedPasswordsClient
+    {
+        public Task<int> GetBreachCountAsync(string password, CancellationToken ct = default)
+        {
+            // 模拟调用方在请求进行中主动取消：ct 与调用方 cts 是同一个 token,
+            // 抛出的 OperationCanceledException.CancellationToken 应等于该 token。
+            cts.Cancel();
+            ct.ThrowIfCancellationRequested();
+            return Task.FromResult(0);
+        }
+    }
+
+    private static VaultHealthService HealthService(
+        IPwnedPasswordsClient client,
+        params Cipher[] ciphers) =>
+        new(
+            new FakeVault(ciphers),
+            new PasswordStrengthEvaluator(
+                new Omnimatch(new DictionaryMatcher(FrequencyDictionaries.Load()))),
+            client);
+
+    [Fact]
+    public async Task CheckExposure_OnePrefixFails_ReturnsPartialAndKeepsKnownFindings()
+    {
+        var client = new ScriptedPwnedClient(new Dictionary<string, object>
+        {
+            ["leaked"] = 77,
+            ["unknown"] = new HttpRequestException("service unavailable"),
+        });
+        var service = HealthService(client,
+            Login("1", "Known", "leaked"),
+            Login("2", "Unknown", "unknown"));
+
+        var result = await service.CheckExposureAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(BreachCheckStatus.PartialFailure, result.Status);
+        Assert.Equal(1, result.SuccessfulQueries);
+        Assert.Equal(1, result.FailedQueries);
+        Assert.Equal(77, Assert.Single(result.Findings).BreachCount);
+    }
+
+    [Fact]
+    public async Task CheckExposure_AllTimeout_ReturnsFailedNotZero()
+    {
+        var client = new ScriptedPwnedClient(new Dictionary<string, object>
+        {
+            ["a"] = new TaskCanceledException("timeout"),
+            ["b"] = new TaskCanceledException("timeout"),
+        });
+        var service = HealthService(
+            client,
+            Login("1", "A", "a"),
+            Login("2", "B", "b"));
+
+        var result = await service.CheckExposureAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(BreachCheckStatus.Failed, result.Status);
+        Assert.Equal(0, result.SuccessfulQueries);
+        Assert.Equal(2, result.FailedQueries);
+        await Assert.ThrowsAsync<BreachCheckIncompleteException>(() =>
+            service.CheckExposedAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CheckExposure_CallerCancels_PropagatesOperationCanceledException()
+    {
+        using var cts = new CancellationTokenSource();
+        var client = new CancelingPwnedClient(cts);
+        var service = HealthService(client, Login("1", "A", "secret"));
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            service.CheckExposureAsync(cts.Token));
+    }
+
+    [Fact]
+    public void AnalyzeOffline_ExposureStatusStartsUnknown()
+    {
+        var report = HealthService(
+            new ScriptedPwnedClient(new Dictionary<string, object>()),
+            Login("1", "A", "password"))
+            .AnalyzeOffline();
+
+        Assert.Equal(BreachCheckStatus.Unknown, report.Exposure.Status);
+    }
 }

@@ -54,32 +54,82 @@ public sealed class VaultHealthService : IVaultHealthService
         return new HealthReport(reused, weak, unsecured);
     }
 
-    // Task 7
-    public async Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(CancellationToken ct = default)
+    // Task 14
+    public async Task<BreachCheckResult> CheckExposureAsync(CancellationToken ct = default)
     {
-        // 演示/离线会话:不发起任何 HIBP 请求,直接从内置已知泄露密码表离线判定(Task 3)。
+        // 演示/离线会话:不发起任何 HIBP 请求,直接从内置已知泄露密码表离线判定(Task 3),
+        // 视为全部唯一密码均"成功"查询完成。
         if (_session?.IsDemo == true)
         {
-            return ActiveLogins()
-                .Where(c => !string.IsNullOrEmpty(c.Login!.Password) && DemoBreachCounts.ContainsKey(c.Login!.Password!))
-                .Select(c => new ExposedFinding(Ref(c), DemoBreachCounts[c.Login!.Password!]))
+            var demoLogins = ActiveLogins()
+                .Where(cipher => !string.IsNullOrEmpty(cipher.Login!.Password))
                 .ToArray();
+            var demo = demoLogins
+                .Where(cipher => DemoBreachCounts.ContainsKey(cipher.Login!.Password!))
+                .Select(cipher => new ExposedFinding(
+                    Ref(cipher),
+                    DemoBreachCounts[cipher.Login!.Password!]))
+                .ToArray();
+            return new BreachCheckResult(
+                BreachCheckStatus.Succeeded,
+                demo,
+                demoLogins
+                    .Select(cipher => cipher.Login!.Password!)
+                    .Distinct(StringComparer.Ordinal)
+                    .Count(),
+                0);
         }
 
-        var logins = ActiveLogins().Where(c => !string.IsNullOrEmpty(c.Login!.Password)).ToList();
-        var unique = logins.Select(c => c.Login!.Password!).Distinct(StringComparer.Ordinal).ToList();
-
-        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var pw in unique)
-        {
-            try { counts[pw] = await _pwned.GetBreachCountAsync(pw, ct); }
-            catch (OperationCanceledException) { throw; }
-            catch { counts[pw] = 0; } // 单项失败降级为 0，不阻塞整体
-        }
-
-        return logins
-            .Where(c => counts.GetValueOrDefault(c.Login!.Password!) > 0)
-            .Select(c => new ExposedFinding(Ref(c), counts[c.Login!.Password!]))
+        var logins = ActiveLogins().Where(cipher => !string.IsNullOrEmpty(cipher.Login!.Password)).ToList();
+        var unique = logins
+            .Select(cipher => cipher.Login!.Password!)
+            .Distinct(StringComparer.Ordinal)
             .ToArray();
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        var failures = 0;
+
+        foreach (var password in unique)
+        {
+            try
+            {
+                counts[password] = await _pwned.GetBreachCountAsync(password, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // 调用者主动取消:必须继续向上抛出,不得计为失败查询。
+                throw;
+            }
+            catch (Exception ex) when (
+                ex is HttpRequestException
+                    or TaskCanceledException
+                    or InvalidDataException)
+            {
+                // 网络失败、非调用者触发的超时、损坏的 HIBP 响应:计为失败查询,继续处理其余密码。
+                failures++;
+            }
+        }
+
+        var findings = logins
+            .Where(cipher =>
+                counts.TryGetValue(cipher.Login!.Password!, out var count) && count > 0)
+            .Select(cipher => new ExposedFinding(Ref(cipher), counts[cipher.Login!.Password!]))
+            .ToArray();
+        var successes = counts.Count;
+        var status = failures switch
+        {
+            0 => BreachCheckStatus.Succeeded,
+            _ when successes == 0 => BreachCheckStatus.Failed,
+            _ => BreachCheckStatus.PartialFailure,
+        };
+        return new BreachCheckResult(status, findings, successes, failures);
+    }
+
+    // Task 7 / Task 14: 兼容方法,只有 Succeeded 才返回 Findings。
+    public async Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(CancellationToken ct = default)
+    {
+        var result = await CheckExposureAsync(ct).ConfigureAwait(false);
+        return result.Status == BreachCheckStatus.Succeeded
+            ? result.Findings
+            : throw new BreachCheckIncompleteException(result);
     }
 }
