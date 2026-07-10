@@ -150,9 +150,9 @@ public sealed class AuthService : IAuthService
 
         // 本地已可离线解锁:先落 UserKey,再尝试从加密缓存立即出数据;随后联网刷新 token + 整库同步
         // (可能因断网/服务端不可达而失败——失败时按有无缓存分流,见 FinishUnlockOffline)。
-        _session.RestorePersistedSession(persisted);
+        var lease = _session.RestorePersistedSession(persisted);
         _session.SetUnlockedKey(userKey);
-        var fromCache = _cache.TryLoadInto(persisted.Email, persisted.ServerUrl, userKey);
+        var fromCache = _cache.TryLoadInto(lease, userKey);
 
         try
         {
@@ -166,7 +166,7 @@ public sealed class AuthService : IAuthService
 
             _session.SetTokens(success.Token.AccessToken, success.Token.RefreshToken);
             _tokenStore.Save(persisted with { RefreshToken = success.Token.RefreshToken });
-            await _bootstrapper.BootstrapAsync(persisted.ServerUrl, ct);
+            await _bootstrapper.BootstrapAsync(lease, ct);
             return new AuthResult.Success();
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
@@ -226,9 +226,9 @@ public sealed class AuthService : IAuthService
 
         // 本地已可离线解锁:先落 UserKey,再尝试从加密缓存立即出数据;随后联网刷新 token + 整库同步
         // (可能因断网/服务端不可达而失败——失败时按有无缓存分流,见 FinishUnlockOffline)。
-        _session.RestorePersistedSession(persisted);
+        var lease = _session.RestorePersistedSession(persisted);
         _session.SetUnlockedKey(userKey);
-        var fromCache = _cache.TryLoadInto(persisted.Email, persisted.ServerUrl, userKey);
+        var fromCache = _cache.TryLoadInto(lease, userKey);
 
         try
         {
@@ -240,7 +240,7 @@ public sealed class AuthService : IAuthService
 
             _session.SetTokens(success.Token.AccessToken, success.Token.RefreshToken);
             _tokenStore.Save(persisted with { RefreshToken = success.Token.RefreshToken, PinFailedAttempts = 0 });
-            await _bootstrapper.BootstrapAsync(persisted.ServerUrl, ct);
+            await _bootstrapper.BootstrapAsync(lease, ct);
             return new AuthResult.Success();
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
@@ -300,9 +300,9 @@ public sealed class AuthService : IAuthService
         // 本地已可离线解锁:先落 UserKey,再尝试从加密缓存立即出数据;随后联网刷新 token + 整库同步
         // (可能因断网/服务端不可达而失败——失败时按有无缓存分流,见 FinishUnlockOffline)。收尾与
         // UnlockWithPinAsync 完全一致。
-        _session.RestorePersistedSession(persisted);
+        var lease = _session.RestorePersistedSession(persisted);
         _session.SetUnlockedKey(userKey);
-        var fromCache = _cache.TryLoadInto(persisted.Email, persisted.ServerUrl, userKey);
+        var fromCache = _cache.TryLoadInto(lease, userKey);
 
         try
         {
@@ -314,7 +314,7 @@ public sealed class AuthService : IAuthService
 
             _session.SetTokens(success.Token.AccessToken, success.Token.RefreshToken);
             _tokenStore.Save(persisted with { RefreshToken = success.Token.RefreshToken });
-            await _bootstrapper.BootstrapAsync(persisted.ServerUrl, ct);
+            await _bootstrapper.BootstrapAsync(lease, ct);
             return new AuthResult.Success();
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
@@ -419,7 +419,7 @@ public sealed class AuthService : IAuthService
             {
                 rememberToken = prior.TwoFactorToken;
             }
-            _session.BeginAccountSession(context.Email, context.Email, new ServerOrigin(context.ServerUrl));
+            var lease = _session.BeginAccountSession(context.Email, context.Email, new ServerOrigin(context.ServerUrl));
             _session.SetTokens(token.AccessToken, token.RefreshToken);
             _session.SetUnlockedKey(userKey);
             _tokenStore.Save(new PersistedSession(
@@ -437,7 +437,7 @@ public sealed class AuthService : IAuthService
             });
             try
             {
-                await _bootstrapper.BootstrapAsync(context.ServerUrl, ct);
+                await _bootstrapper.BootstrapAsync(lease, ct);
             }
             catch (Exception)
             {

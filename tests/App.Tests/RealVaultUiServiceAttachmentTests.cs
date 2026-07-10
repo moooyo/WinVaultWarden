@@ -94,5 +94,8 @@ public class RealVaultUiServiceAttachmentTests
     {
         public Task<IReadOnlyList<Cipher>> SyncAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<Cipher>>(Array.Empty<Cipher>());
+
+        public Task<IReadOnlyList<Cipher>> SyncAsync(
+            Core.Session.VaultSessionLease lease, CancellationToken ct = default) => SyncAsync(ct);
     }
 }

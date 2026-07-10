@@ -23,14 +23,14 @@ public class VaultBootstrapperTests
             """{"data":[{"id":"d1","name":"Desktop","type":6,"identifier":"d1","creationDate":"2026-06-24T00:00:00Z","isTrusted":false,"object":"device"}],"object":"list","continuationToken":null}"""));
         var api = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
         var session = new VaultSession();
-        session.BeginAccountSession("test-account", "me@example.com", new ServerOrigin("https://vault.example"));
+        var lease = session.BeginAccountSession("u1", "me@example.com", new ServerOrigin("https://vault.example"));
         session.SetUnlockedKey(userKey);
         var decryptor = new VaultDecryptor(crypto);
         var cache = new VaultCacheService(new FakeCacheStore(), decryptor, session);
         var provider = FakeVaultApiClientProvider.ForAuthenticated<IReadonlyApiClient>(api);
         var bootstrapper = new VaultBootstrapper(new SyncService(provider, decryptor, session, cache), provider, session);
 
-        await bootstrapper.BootstrapAsync("https://vault.example", TestContext.Current.CancellationToken);
+        await bootstrapper.BootstrapAsync(lease, TestContext.Current.CancellationToken);
 
         Assert.Equal(Core.Session.VaultState.Unlocked, session.State);
         Assert.Equal("GitHub", Assert.Single(session.Ciphers).Name);
@@ -51,14 +51,14 @@ public class VaultBootstrapperTests
             """{"data":[{"id":"d1","name":"Desktop","type":6,"identifier":"d1","creationDate":"2026-06-24T00:00:00Z","isTrusted":false,"object":"device"}],"object":"list","continuationToken":null}"""));
         var api = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
         var session = new VaultSession();
-        session.BeginAccountSession("test-account", "me@example.com", new ServerOrigin("https://vault.example"));
+        var lease = session.BeginAccountSession("u1", "me@example.com", new ServerOrigin("https://vault.example"));
         session.SetUnlockedKey(userKey);
         var decryptor = new VaultDecryptor(crypto);
         var cache = new VaultCacheService(new FakeCacheStore(), decryptor, session);
         var provider = FakeVaultApiClientProvider.ForAuthenticated<IReadonlyApiClient>(api);
         var bootstrapper = new VaultBootstrapper(new SyncService(provider, decryptor, session, cache), provider, session);
 
-        await bootstrapper.BootstrapAsync("https://vault.example", TestContext.Current.CancellationToken);
+        await bootstrapper.BootstrapAsync(lease, TestContext.Current.CancellationToken);
 
         Assert.Equal(fakePrivateKey, session.EncryptedPrivateKey);
     }

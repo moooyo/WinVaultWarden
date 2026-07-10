@@ -473,4 +473,7 @@ file sealed class NoopSyncService : ISyncService
         SyncCount++;
         return Task.FromResult<IReadOnlyList<Cipher>>(System.Array.Empty<Cipher>());
     }
+
+    public Task<IReadOnlyList<Cipher>> SyncAsync(
+        Core.Session.VaultSessionLease lease, CancellationToken ct = default) => SyncAsync(ct);
 }

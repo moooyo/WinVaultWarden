@@ -161,13 +161,16 @@ public class AuthServiceOfflineTests
         return new AuthService(provider, _crypto, session, tokenStore, bootstrapper, cache, refresher);
     }
 
-    // 预置一条加密缓存(不经过 session 解锁/加锁,避免 Dispose 清零测试仍要复用的 fixture.UserKey)。
+    // 预置一条加密缓存(直接写 store,不经过 session 解锁/加锁,避免 Dispose 清零测试仍要复用的 fixture.UserKey)。
+    // 头部绑定与解锁流程一致:AccountId=Email、Origin=Server、Generation=1(持久化会话过渡值)。
     private VaultCacheService PrePopulateCache(
         FakeCacheStore store, VaultSession session, SymmetricCryptoKey userKey, string cipherName)
     {
         var decryptor = new VaultDecryptor(_crypto);
         var cache = new VaultCacheService(store, decryptor, session);
-        cache.Save(BuildSync(cipherName, userKey), Email, Server, DateTimeOffset.UnixEpoch);
+        var json = JsonSerializer.Serialize(BuildSync(cipherName, userKey), ApiJsonContext.Default.SyncResponse);
+        store.SaveVaultCache(new VaultCacheEntry(
+            VaultCacheService.SchemaVersion, Email, new ServerOrigin(Server), 1, Email, DateTimeOffset.UnixEpoch, json));
         return cache;
     }
 
@@ -179,7 +182,8 @@ public class AuthServiceOfflineTests
             Favorite: false, Reprompt: 0, Login: null, Card: null, Identity: null, SecureNote: null,
             SshKey: null, Fields: null, CreationDate: null, RevisionDate: null, DeletedDate: null,
             Attachments: null, PasswordHistory: null);
-        return new SyncResponse("sync", new ProfileDto("u", Email, "Me", null, null), [], [dto]);
+        // profile.Id 须等于登录/解锁租约 AccountId(过渡期为 Email),否则同步/缓存门禁拒绝。
+        return new SyncResponse("sync", new ProfileDto(Email, Email, "Me", null, null), [], [dto]);
     }
 
     private string FreshSyncJson(SymmetricCryptoKey userKey) =>

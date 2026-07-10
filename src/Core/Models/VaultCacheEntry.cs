@@ -22,26 +22,4 @@ public sealed record VaultCacheEntry(
     /// 与 PersistedSession.ServerUrl/AccountInfo.ServerUrl 同一约定。
     /// </summary>
     public string ServerUrl => Origin.Value;
-
-    /// <summary>
-    /// 过渡构造:Task 2 引入 account/origin/generation 绑定之前遗留的调用点仍以此签名构造。
-    /// 只保留到 Task 6(缓存 lease 迁移完成),最终门禁禁止仓库中残留任何 [Obsolete] 构造。
-    /// </summary>
-    [Obsolete("Task 6 removes this constructor after cache lease migration.")]
-    public VaultCacheEntry(
-        int schemaVersion,
-        string email,
-        string serverUrl,
-        DateTimeOffset cachedAtUtc,
-        string syncResponseJson)
-        : this(
-            schemaVersion,
-            email,
-            new ServerOrigin(serverUrl),
-            1,
-            email,
-            cachedAtUtc,
-            syncResponseJson)
-    {
-    }
 }

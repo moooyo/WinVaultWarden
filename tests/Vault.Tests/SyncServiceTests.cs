@@ -12,7 +12,7 @@ public class SyncServiceTests
     private const string Server = "https://vault.example";
 
     [Fact]
-    public async Task SyncCoreAsync_OnSuccess_WritesCacheAndMarksSnapshotFresh()
+    public async Task SyncAsync_OnSuccess_WritesCacheAndMarksSnapshotFresh()
     {
         var crypto = new CryptoService();
         var userKey = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
@@ -20,14 +20,15 @@ public class SyncServiceTests
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, SyncJson()));
         var api = new ApiClient(new HttpClient(handler), new ServerOrigin(Server));
         var session = new VaultSession();
-        session.BeginAccountSession("test-account", "me@example.com", new ServerOrigin(Server));
+        // profile.id 必须等于租约 AccountId,否则 SyncService 门禁拒绝(账户错配)。
+        var lease = session.BeginAccountSession("u1", "me@example.com", new ServerOrigin(Server));
         session.SetUnlockedKey(userKey);
         var decryptor = new VaultDecryptor(crypto);
         var store = new FakeCacheStore();
         var cache = new VaultCacheService(store, decryptor, session);
         var sync = new SyncService(FakeVaultApiClientProvider.ForAuthenticated<IReadonlyApiClient>(api), decryptor, session, cache);
 
-        await sync.SyncCoreAsync(Server, TestContext.Current.CancellationToken);
+        await sync.SyncAsync(lease, TestContext.Current.CancellationToken);
 
         Assert.False(session.DataStale);
         Assert.True(store.TryLoadVaultCache(out _));

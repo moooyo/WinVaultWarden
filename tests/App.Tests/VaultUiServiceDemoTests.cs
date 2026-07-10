@@ -183,5 +183,8 @@ public class VaultUiServiceDemoTests
     {
         public Task<IReadOnlyList<Cipher>> SyncAsync(CancellationToken ct = default) =>
             throw new InvalidOperationException("network sync must not run in demo mode");
+
+        public Task<IReadOnlyList<Cipher>> SyncAsync(
+            Core.Session.VaultSessionLease lease, CancellationToken ct = default) => SyncAsync(ct);
     }
 }

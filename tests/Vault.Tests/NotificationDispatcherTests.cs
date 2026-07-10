@@ -626,4 +626,7 @@ public sealed class FakeNotificationSyncService : Core.Services.ISyncService
         SyncCalls++;
         return Task.FromResult<IReadOnlyList<Core.Models.Cipher>>(Array.Empty<Core.Models.Cipher>());
     }
+
+    public Task<IReadOnlyList<Core.Models.Cipher>> SyncAsync(
+        Core.Session.VaultSessionLease lease, CancellationToken ct = default) => SyncAsync(ct);
 }

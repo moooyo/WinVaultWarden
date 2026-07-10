@@ -171,7 +171,7 @@ public class AuthServicePinTests
     }
 
     private static string SyncJson() =>
-        """{"object":"sync","profile":{"id":"u1","email":"me@example.com","name":"Me"},"folders":[],"ciphers":[]}""";
+        """{"object":"sync","profile":{"id":"me@example.com","email":"me@example.com","name":"Me"},"folders":[],"ciphers":[]}""";
 
     private static string DevicesJson() =>
         """{"data":[{"id":"d1","name":"Desktop","type":6,"identifier":"d1","creationDate":"2026-06-24T00:00:00Z","isTrusted":false,"object":"device"}],"object":"list","continuationToken":null}""";

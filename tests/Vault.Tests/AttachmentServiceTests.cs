@@ -44,6 +44,9 @@ public class AttachmentServiceTests
                 _session.SetSnapshot(_snapshot);
             return Task.FromResult(_snapshot?.Ciphers ?? (IReadOnlyList<Cipher>)Array.Empty<Cipher>());
         }
+
+        public Task<IReadOnlyList<Cipher>> SyncAsync(
+            Core.Session.VaultSessionLease lease, CancellationToken ct = default) => SyncAsync(ct);
     }
 
     private VaultSession NewUnlockedSession()

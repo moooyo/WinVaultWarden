@@ -69,6 +69,9 @@ public class VaultWriteServiceTests
             Calls++;
             return Task.FromResult<IReadOnlyList<Cipher>>(Array.Empty<Cipher>());
         }
+
+        public Task<IReadOnlyList<Cipher>> SyncAsync(
+            Core.Session.VaultSessionLease lease, CancellationToken ct = default) => SyncAsync(ct);
     }
 
     private readonly FakeWriteApi _api = new();
@@ -137,6 +140,9 @@ public class VaultWriteServiceTests
         private readonly Exception _ex;
         public ThrowingSync(Exception ex) => _ex = ex;
         public Task<IReadOnlyList<Cipher>> SyncAsync(CancellationToken ct = default) => Task.FromException<IReadOnlyList<Cipher>>(_ex);
+
+        public Task<IReadOnlyList<Cipher>> SyncAsync(
+            Core.Session.VaultSessionLease lease, CancellationToken ct = default) => SyncAsync(ct);
     }
 
 

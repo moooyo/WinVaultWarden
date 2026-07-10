@@ -43,12 +43,18 @@ public class VaultImportServiceTests
             Calls++;
             return Task.FromResult<IReadOnlyList<Cipher>>(Array.Empty<Cipher>());
         }
+
+        public Task<IReadOnlyList<Cipher>> SyncAsync(
+            Core.Session.VaultSessionLease lease, CancellationToken ct = default) => SyncAsync(ct);
     }
 
     private sealed class ThrowingSync : ISyncService
     {
         public Task<IReadOnlyList<Cipher>> SyncAsync(CancellationToken ct = default) =>
             throw new InvalidOperationException("sync boom");
+
+        public Task<IReadOnlyList<Cipher>> SyncAsync(
+            Core.Session.VaultSessionLease lease, CancellationToken ct = default) => SyncAsync(ct);
     }
 
     [Fact]
