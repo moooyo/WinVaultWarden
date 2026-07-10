@@ -44,6 +44,9 @@ public sealed class FakeNotificationsConnection : INotificationsConnection
     /// <summary>记录 ConnectAsync 被调用的次数（包含失败次数）。</summary>
     public int ConnectCallCount { get; private set; }
 
+    /// <summary>ReadAsync 是否观察到取消（账户切换/停止时取消租约令牌）。</summary>
+    public bool ReadCancellationObserved { get; private set; }
+
     /// <summary>记录最近一次 ConnectAsync 收到的 accessToken。</summary>
     public string? LastAccessToken { get; private set; }
 
@@ -88,6 +91,7 @@ public sealed class FakeNotificationsConnection : INotificationsConnection
             }
             catch (OperationCanceledException)
             {
+                ReadCancellationObserved = true;
                 yield break;
             }
         }
@@ -126,14 +130,17 @@ public sealed class SequentialConnectionFactory
 public sealed class FakeNotificationDispatcher : Vault.INotificationDispatcher
 {
     public List<NotificationMessage> Dispatched { get; } = new();
+    public List<Core.Session.VaultSessionLease> Leases { get; } = new();
 
     public event Action? VaultChanged;
     public event Action? SendsChanged;
     public event Action? AuthRequestsChanged;
     public event Action? LoggedOut;
 
-    public Task DispatchAsync(NotificationMessage msg, CancellationToken ct)
+    public Task DispatchAsync(
+        Core.Session.VaultSessionLease lease, NotificationMessage msg, CancellationToken ct)
     {
+        Leases.Add(lease);
         Dispatched.Add(msg);
 
         // 根据消息类型触发对应事件（简化：仅按字段 Type 判断）
@@ -204,17 +211,13 @@ public sealed class FakeTokenRefresher : Core.Services.ITokenRefresher
 {
     public bool Result { get; init; } = true;
     public int CallCount { get; private set; }
+    public List<Core.Session.VaultSessionLease> Leases { get; } = new();
 
     public Task<bool> TryRefreshAsync(
         Core.Session.VaultSessionLease lease,
         CancellationToken ct = default)
     {
-        CallCount++;
-        return Task.FromResult(Result);
-    }
-
-    public Task<bool> TryRefreshAsync(CancellationToken ct = default)
-    {
+        Leases.Add(lease);
         CallCount++;
         return Task.FromResult(Result);
     }

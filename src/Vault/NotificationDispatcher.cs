@@ -2,6 +2,7 @@ using Api;
 using Core.Enums;
 using Core.Models;
 using Core.Services;
+using Core.Session;
 
 namespace Vault;
 
@@ -10,8 +11,8 @@ namespace Vault;
 /// </summary>
 public interface INotificationDispatcher
 {
-    /// <summary>根据消息类型执行对应路由逻辑。</summary>
-    Task DispatchAsync(NotificationMessage msg, CancellationToken ct);
+    /// <summary>根据消息类型执行对应路由逻辑，全程绑定启动时捕获的 <paramref name="lease"/>。</summary>
+    Task DispatchAsync(VaultSessionLease lease, NotificationMessage message, CancellationToken ct);
 
     /// <summary>任何密码库条目或文件夹被修改后触发（包含全量同步完成）。</summary>
     event Action? VaultChanged;
@@ -85,104 +86,129 @@ public sealed class NotificationDispatcher : INotificationDispatcher
     public event Action? LoggedOut;
 
     /// <summary>
-    /// 根据 <paramref name="msg"/> 的 <see cref="NotificationMessage.Type"/> 执行对应路由逻辑。
+    /// 根据 <paramref name="message"/> 的类型执行对应路由，全程绑定启动时捕获的 <paramref name="lease"/>：
+    /// <list type="bullet">
+    ///   <item>入口即校验 <see cref="VaultSession.IsCurrent"/>；stale（账户已切换/锁定/登出）直接 no-op。</item>
+    ///   <item>补丁与事件永远在同一 <see cref="VaultSession.TryCommit"/> 内提交——校验与变更间无窗口；
+    ///         TryCommit 返回 false（await 期间租约失效）时抛取消异常，绝不补丁或触发事件。</item>
+    ///   <item>需要 UserKey 的分支用 <see cref="VaultSession.TryCopyUserKey"/> 在 await 前取独立密钥拷贝，
+    ///         GET 返回后再 <see cref="VaultSession.ThrowIfExpired"/> 拒绝陈旧响应。</item>
+    ///   <item><see cref="UpdateType.LogOut"/> 是唯一不要求 UserKey 的分支（锁定后仍可登出），只需租约仍 current。</item>
+    /// </list>
     /// </summary>
-    public async Task DispatchAsync(NotificationMessage msg, CancellationToken ct)
+    public async Task DispatchAsync(VaultSessionLease lease, NotificationMessage message, CancellationToken ct)
     {
-        var type = (UpdateType)msg.Type;
+        ArgumentNullException.ThrowIfNull(lease);
+        var type = (UpdateType)message.Type;
 
-        // LogOut 是唯一即使已锁定也要处理的类型。
+        if (!_session.IsCurrent(lease))
+            return;
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+
+        // LogOut 是唯一即使已锁定也要处理的类型：只需租约仍 current，事件在 TryCommit 内触发。
         if (type == UpdateType.LogOut)
         {
-            LoggedOut?.Invoke();
+            _session.TryCommit(lease, () => LoggedOut?.Invoke());
             return;
         }
 
-        // 其余所有路由均需要解锁状态（UserKey 非空）。
-        var userKey = _session.UserKey;
-        if (userKey is null)
+        // 其余所有路由均要求解锁：TryCopyUserKey 原子校验"current + unlocked"，顺带取独立密钥拷贝
+        // （调用方拥有其生命周期，锁定清零原 UserKey 不影响该拷贝）。stale 或已锁定时直接 no-op。
+        if (!_session.TryCopyUserKey(lease, out var copiedKey))
             return;
-
-        var lease = _session.CaptureLease();
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        using var key = copiedKey;
 
         switch (type)
         {
             case UpdateType.SyncCipherCreate:
             case UpdateType.SyncCipherUpdate:
             {
-                var id = msg.EntityId;
-                if (id is null)
+                if (message.EntityId is not { } id)
                     return;
 
-                var dto = await _clients.GetAuthenticated<IAttachmentApiClient>(lease).GetCipherAsync(id, linked.Token);
+                var api = _clients.GetAuthenticated<IAttachmentApiClient>(lease);
+                var dto = await api.GetCipherAsync(id, linked.Token).ConfigureAwait(false);
                 _session.ThrowIfExpired(lease);
                 // DecryptCipher 内部已调用 ResolveItemKey，无需在外层重复调用。
-                var cipher = _decryptor.DecryptCipher(dto, userKey);
-                _session.UpsertCipher(cipher);
-                VaultChanged?.Invoke();
-                break;
+                var cipher = _decryptor.DecryptCipher(dto, key!);
+                if (!_session.TryCommit(lease, () =>
+                {
+                    _session.UpsertCipher(cipher);
+                    VaultChanged?.Invoke();
+                }))
+                    throw new OperationCanceledException(lease.CancellationToken);
+                return;
             }
 
             case UpdateType.SyncLoginDelete:
             {
-                var id = msg.EntityId;
-                if (id is null)
+                if (message.EntityId is not { } id)
                     return;
 
-                _session.RemoveCipher(id);
-                VaultChanged?.Invoke();
-                break;
+                _session.TryCommit(lease, () =>
+                {
+                    _session.RemoveCipher(id);
+                    VaultChanged?.Invoke();
+                });
+                return;
             }
 
             case UpdateType.SyncFolderCreate:
             case UpdateType.SyncFolderUpdate:
             {
-                var id = msg.EntityId;
-                if (id is null)
+                if (message.EntityId is not { } id)
                     return;
 
-                var dto = await _clients.GetAuthenticated<IReadonlyApiClient>(lease).GetFolderAsync(id, linked.Token);
+                var api = _clients.GetAuthenticated<IReadonlyApiClient>(lease);
+                var dto = await api.GetFolderAsync(id, linked.Token).ConfigureAwait(false);
                 _session.ThrowIfExpired(lease);
-                var folder = _decryptor.DecryptFolder(dto, userKey);
-                _session.UpsertFolder(folder);
-                VaultChanged?.Invoke();
-                break;
+                var folder = _decryptor.DecryptFolder(dto, key!);
+                if (!_session.TryCommit(lease, () =>
+                {
+                    _session.UpsertFolder(folder);
+                    VaultChanged?.Invoke();
+                }))
+                    throw new OperationCanceledException(lease.CancellationToken);
+                return;
             }
 
             case UpdateType.SyncFolderDelete:
             {
-                var id = msg.EntityId;
-                if (id is null)
+                if (message.EntityId is not { } id)
                     return;
 
-                _session.RemoveFolder(id);
-                _session.ClearFolderReference(id); // 引用被删文件夹的条目迁到"无文件夹"(R8)
-                VaultChanged?.Invoke();
-                break;
+                _session.TryCommit(lease, () =>
+                {
+                    _session.RemoveFolder(id);
+                    _session.ClearFolderReference(id); // 引用被删文件夹的条目迁到"无文件夹"(R8)
+                    VaultChanged?.Invoke();
+                });
+                return;
             }
 
             case UpdateType.SyncSendCreate:
             case UpdateType.SyncSendUpdate:
             case UpdateType.SyncSendDelete:
-                SendsChanged?.Invoke();
-                break;
+                _session.TryCommit(lease, () => SendsChanged?.Invoke());
+                return;
 
             case UpdateType.SyncCiphers:
             case UpdateType.SyncVault:
             case UpdateType.SyncOrgKeys:
             case UpdateType.SyncSettings:
-                await _sync.SyncAsync(ct);
-                VaultChanged?.Invoke();
-                break;
+                await _sync.SyncAsync(lease, linked.Token).ConfigureAwait(false);
+                if (!_session.TryCommit(lease, () => VaultChanged?.Invoke()))
+                    throw new OperationCanceledException(lease.CancellationToken);
+                return;
 
             case UpdateType.AuthRequest:
-                AuthRequestsChanged?.Invoke();
-                break;
+                _session.TryCommit(lease, () => AuthRequestsChanged?.Invoke());
+                return;
 
             // None、AuthRequestResponse 及所有未知类型 → 忽略
             default:
-                break;
+                return;
         }
     }
 }

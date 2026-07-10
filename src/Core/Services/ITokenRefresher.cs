@@ -10,7 +10,4 @@ public interface ITokenRefresher
     Task<bool> TryRefreshAsync(
         VaultSessionLease lease,
         CancellationToken ct = default);
-
-    [Obsolete("Task 9 migrates notifications to the explicit lease overload.")]
-    Task<bool> TryRefreshAsync(CancellationToken ct = default);
 }

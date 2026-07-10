@@ -27,10 +27,6 @@ public sealed class TokenRefreshService : ITokenRefresher
         _tokenStore = tokenStore;
     }
 
-    // 兼容入口:捕获一次当前 lease 后委托给 lease 重载(不含第二份刷新逻辑)。
-    public Task<bool> TryRefreshAsync(CancellationToken ct = default) =>
-        TryRefreshAsync(_session.CaptureLease(), ct);
-
     public async Task<bool> TryRefreshAsync(
         VaultSessionLease lease,
         CancellationToken ct = default)

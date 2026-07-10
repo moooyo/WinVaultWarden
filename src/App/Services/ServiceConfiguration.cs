@@ -152,7 +152,6 @@ public static class ServiceConfiguration
                 () => new NotificationsConnection(),
                 sp.GetRequiredService<INotificationDispatcher>(),
                 sp.GetRequiredService<VaultSession>(),
-                sp.GetRequiredService<ITokenStore>(),
                 sp.GetRequiredService<ITokenRefresher>()));
         // ── 导航服务 ──────────────────────────────────────────────────────────
         // 单例:MainWindow 解析具体类型注入 Frame,页面解析接口下沉导航动作。

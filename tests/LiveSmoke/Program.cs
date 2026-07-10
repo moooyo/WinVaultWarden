@@ -1192,7 +1192,8 @@ async Task NotificationsPushRoundTripAsync()
                     session,
                     sync);
 
-                await dispatcher.DispatchAsync(received, CancellationToken.None);
+                var notificationLease = session.CaptureLease();
+                await dispatcher.DispatchAsync(notificationLease, received, CancellationToken.None);
 
                 var afterDispatch = session.Folders.Any(x => x.Id == wsFolderId);
                 Step("ws dispatcher re-adds folder", afterDispatch,

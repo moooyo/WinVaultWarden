@@ -2,6 +2,7 @@ using Api;
 using Core.Abstractions;
 using Core.Models;
 using Core.Services;
+using Core.Session;
 
 namespace Vault;
 
@@ -16,16 +17,18 @@ namespace Vault;
 ///
 /// 设计原则：
 /// - StartAsync 立即返回（不阻塞），循环在后台 Task.Run 中运行。
+/// - StartAsync 只捕获一次租约（<see cref="VaultSession.CaptureLease"/>），整个循环——连接、
+///   token 刷新、消息分发——始终复用该租约；绝不从 token store 或切换后的新账户重新解析 origin/token。
+/// - origin 取自租约（<see cref="VaultSessionLease.Origin"/>）；accessToken 取自
+///   <see cref="VaultSession.GetAccessTokenBinding"/>（校验租约仍 current）。
 /// - 连接失败仅触发退避重连，不抛出到调用方。
-/// - serverUrl 优先从 <see cref="VaultSession.Account"/> 取，否则回落到 <see cref="ITokenStore"/>。
-/// - accessToken 取自 <see cref="VaultSession.AccessToken"/>；若为空则无法连接，循环退出。
+/// - 账户切换/锁定/登出会轮换 generation 并取消该租约的取消令牌，循环随之退出（旧连接不会看到新账户）。
 /// </summary>
 public sealed class NotificationsService : INotificationsService
 {
     private readonly Func<INotificationsConnection> _connectionFactory;
     private readonly INotificationDispatcher _dispatcher;
     private readonly VaultSession _session;
-    private readonly ITokenStore _tokenStore;
     private readonly ITokenRefresher _refresher;
     private readonly TimeSpan _baseBackoff;
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromSeconds(30);
@@ -41,22 +44,19 @@ public sealed class NotificationsService : INotificationsService
 
     /// <param name="connectionFactory">每次重连时调用，返回新的 <see cref="INotificationsConnection"/> 实例。</param>
     /// <param name="dispatcher">消息路由器，其事件会被透传为本服务的事件。</param>
-    /// <param name="session">当前会话，提供 AccessToken 和 Account.ServerUrl。</param>
-    /// <param name="tokenStore">持久化 token 存储，ServerUrl 回落来源。</param>
-    /// <param name="refresher">token 刷新器，每次重连前尝试刷新。</param>
+    /// <param name="session">当前会话，提供启动时租约、绑定的 origin 与 access token。</param>
+    /// <param name="refresher">token 刷新器，每次因错误断开后按启动租约尝试刷新。</param>
     /// <param name="baseBackoff">退避基准时长（测试可注入近零值）；默认 1 秒。</param>
     public NotificationsService(
         Func<INotificationsConnection> connectionFactory,
         INotificationDispatcher dispatcher,
         VaultSession session,
-        ITokenStore tokenStore,
         ITokenRefresher refresher,
         TimeSpan? baseBackoff = null)
     {
         _connectionFactory = connectionFactory;
         _dispatcher        = dispatcher;
         _session           = session;
-        _tokenStore        = tokenStore;
         _refresher         = refresher;
         _baseBackoff       = baseBackoff ?? TimeSpan.FromSeconds(1);
 
@@ -78,14 +78,26 @@ public sealed class NotificationsService : INotificationsService
             if (_loopTask is { IsCompleted: false })
                 return Task.CompletedTask; // 已在运行
 
-            _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            // 只在启动时捕获一次租约；整个循环生命周期复用它。无活跃会话则无可监听，直接返回。
+            VaultSessionLease lease;
+            try
+            {
+                lease = _session.CaptureLease();
+            }
+            catch (InvalidOperationException)
+            {
+                return Task.CompletedTask;
+            }
+
+            // 循环取消令牌链接调用方 ct 与租约取消令牌：账户切换/锁定/登出会取消租约令牌，循环随之退出。
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
             var cts   = _cts;
             var token = cts.Token;
             _loopTask = Task.Run(async () =>
             {
                 try
                 {
-                    await RunLoopAsync(token).ConfigureAwait(false);
+                    await RunLoopAsync(lease, token).ConfigureAwait(false);
                 }
                 finally
                 {
@@ -144,39 +156,34 @@ public sealed class NotificationsService : INotificationsService
 
     // ─────────────────────────── 内部循环 ───────────────────────────
 
-    private async Task RunLoopAsync(CancellationToken ct)
+    private async Task RunLoopAsync(VaultSessionLease lease, CancellationToken ct)
     {
         var backoff = _baseBackoff;
 
-        while (!ct.IsCancellationRequested)
+        while (!ct.IsCancellationRequested && _session.IsCurrent(lease))
         {
-            // 1. 解析 serverUrl
-            var serverUrl = ResolveServerUrl();
-            if (string.IsNullOrEmpty(serverUrl))
-                break; // 无法确定服务端地址，停止循环
+            // 1. 从启动租约取绑定的 access token（校验租约仍 current）；为空则无法连接，停止循环。
+            var binding = _session.GetAccessTokenBinding(lease);
+            if (binding is null)
+                return;
 
-            // 2. 解析 accessToken
-            var accessToken = _session.AccessToken;
-            if (string.IsNullOrEmpty(accessToken))
-                break; // 无令牌，停止循环
-
-            // 3. 建立连接并读取消息
+            // 2. 建立连接并读取消息。origin 恒取自租约，绝不解析新账户。
             var conn = _connectionFactory();
             var connectionFailed = false;
             try
             {
-                await conn.ConnectAsync(serverUrl, accessToken, ct).ConfigureAwait(false);
+                await conn.ConnectAsync(lease.Origin.Value, binding.Token, ct).ConfigureAwait(false);
                 backoff = _baseBackoff; // 重置退避
 
                 await foreach (var msg in conn.ReadAsync(ct).ConfigureAwait(false))
                 {
-                    await _dispatcher.DispatchAsync(msg, ct).ConfigureAwait(false);
+                    await _dispatcher.DispatchAsync(lease, msg, ct).ConfigureAwait(false);
                 }
                 // ReadAsync 正常结束（连接关闭）→ token 仍有效，继续循环重连
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                return; // 已取消，直接退出
+                return; // 已取消（含账户切换取消租约），直接退出
             }
             catch
             {
@@ -190,14 +197,15 @@ public sealed class NotificationsService : INotificationsService
             if (ct.IsCancellationRequested)
                 return;
 
-            // 4. 仅在连接因错误断开时才刷新 token（可能是 token 失效）。正常关闭无需刷新——token 仍有效，
+            // 3. 仅在连接因错误断开时才刷新 token（可能是 token 失效）。正常关闭无需刷新——token 仍有效，
             //    否则每次良性重连都多一次 connect/token 调用 + session.bin 落盘（R15）。若 token 确已过期，
             //    重连时 ConnectAsync 会失败 → 下一轮 connectionFailed=true 触发刷新，逻辑自愈。
+            //    刷新绑定启动租约：陈旧租约（账户已切换）绝不轮换新账户的 token。
             if (connectionFailed)
             {
                 try
                 {
-                    await _refresher.TryRefreshAsync(ct).ConfigureAwait(false);
+                    await _refresher.TryRefreshAsync(lease, ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -209,7 +217,7 @@ public sealed class NotificationsService : INotificationsService
                 }
             }
 
-            // 5. 退避等待后重连
+            // 4. 退避等待后重连
             try
             {
                 await Task.Delay(backoff, ct).ConfigureAwait(false);
@@ -222,17 +230,5 @@ public sealed class NotificationsService : INotificationsService
             // 指数退避，上限 MaxBackoff
             backoff = backoff * 2 > MaxBackoff ? MaxBackoff : backoff * 2;
         }
-    }
-
-    private string? ResolveServerUrl()
-    {
-        var urlFromSession = _session.Account.ServerUrl;
-        if (!string.IsNullOrEmpty(urlFromSession))
-            return urlFromSession;
-
-        if (_tokenStore.TryLoad(out var persisted) && !string.IsNullOrEmpty(persisted.ServerUrl))
-            return persisted.ServerUrl;
-
-        return null;
     }
 }

@@ -3,6 +3,8 @@ using Api;
 using Api.Dtos;
 using Core.Enums;
 using Core.Models;
+using Core.Services;
+using Core.Session;
 using Crypto;
 using Vault;
 using Xunit;
@@ -14,6 +16,9 @@ namespace Vault.Tests;
 /// 使用真实 CryptoService + VaultDecryptor + VaultSession，
 /// 配合 FakeAttachmentApiClient / FakeNotificationReadonlyApiClient / FakeNotificationSyncService。
 /// 遵循 TDD：先写测试（RED），再写实现（GREEN）。
+///
+/// Task 9：DispatchAsync 接受启动时捕获的显式 lease；补丁与事件只在同一 TryCommit 内、
+/// lease 仍 current 时提交。Lock/Logout/账户切换在 await 期间发生时，旧响应绝不补丁/触发事件。
 /// </summary>
 public class NotificationDispatcherTests
 {
@@ -53,31 +58,60 @@ public class NotificationDispatcherTests
         Name: Enc(name, _userKey),
         RevisionDate: DateTimeOffset.UtcNow);
 
-    /// <summary>创建已解锁（UserKey 非空）的 VaultSession。</summary>
-    private VaultSession NewUnlockedSession()
+    /// <summary>创建已解锁（UserKey 非空）的 VaultSession，并返回其启动租约。</summary>
+    private VaultSession NewUnlockedSession(out VaultSessionLease lease)
     {
         var session = new VaultSession();
-        session.BeginAccountSession("test-account", "test@test.com", new ServerOrigin("https://vault.example"));
-        session.SetUnlockedKey(_userKey);
+        lease = session.BeginAccountSession(
+            "account-a",
+            "a@example.com",
+            new ServerOrigin("https://a.example"));
+        var sessionKey = new SymmetricCryptoKey(_userKey.FullKey.ToArray());
+        session.TryCommit(lease, () =>
+        {
+            session.SetUnlockedKey(sessionKey);
+            session.SetTokens("access-a", "refresh-a");
+        });
         return session;
     }
 
-    /// <summary>创建已锁定（UserKey 为 null）的 VaultSession。</summary>
-    private static VaultSession NewLockedSession() => new();
+    /// <summary>
+    /// 创建已锁定（UserKey 为 null）但仍有活跃账户的 VaultSession，返回锁定后的当前租约。
+    /// 锁定会轮换 generation，故返回的是锁定后仍 current 的新租约。
+    /// </summary>
+    private VaultSession NewLockedSession(out VaultSessionLease lease)
+    {
+        var session = new VaultSession();
+        var initial = session.BeginAccountSession(
+            "account-a",
+            "a@example.com",
+            new ServerOrigin("https://a.example"));
+        var sessionKey = new SymmetricCryptoKey(_userKey.FullKey.ToArray());
+        session.TryCommit(initial, () =>
+        {
+            session.SetUnlockedKey(sessionKey);
+            session.SetTokens("access-a", "refresh-a");
+        });
+        lease = session.Lock()!;
+        return session;
+    }
+
+    private static FakeVaultApiClientProvider ClientsWith(
+        IAttachmentApiClient? cipherApi = null,
+        IReadonlyApiClient? readApi = null) =>
+        new FakeVaultApiClientProvider()
+            .AddAuthenticated<IAttachmentApiClient>(cipherApi ?? new FakeAttachmentApiClient())
+            .AddAuthenticated<IReadonlyApiClient>(readApi ?? new FakeNotificationReadonlyApiClient());
 
     private NotificationDispatcher NewDispatcher(
         VaultSession session,
-        FakeAttachmentApiClient? cipherApi = null,
-        FakeNotificationReadonlyApiClient? readApi = null,
-        FakeNotificationSyncService? sync = null)
+        IVaultApiClientProvider? clients = null,
+        ISyncService? sync = null)
     {
-        var decryptor = new VaultDecryptor(_crypto);
-        var clients = new FakeVaultApiClientProvider()
-            .AddAuthenticated<IAttachmentApiClient>(cipherApi ?? new FakeAttachmentApiClient())
-            .AddAuthenticated<IReadonlyApiClient>(readApi ?? new FakeNotificationReadonlyApiClient());
+        clients ??= ClientsWith();
         return new NotificationDispatcher(
             clients,
-            decryptor,
+            new VaultDecryptor(_crypto),
             session,
             sync ?? new FakeNotificationSyncService());
     }
@@ -92,28 +126,22 @@ public class NotificationDispatcherTests
     [Fact]
     public async Task CipherCreate_Push_UpsertsCipherAndRaisesVaultChanged()
     {
-        // Arrange
         var dto = MakeEncryptedCipherDto("c-1", "GitHub");
         var cipherApi = new FakeAttachmentApiClient { GetCipherResult = dto };
-        var session = NewUnlockedSession();
-        var dispatcher = NewDispatcher(session, cipherApi: cipherApi);
+        var session = NewUnlockedSession(out var lease);
+        var dispatcher = NewDispatcher(session, ClientsWith(cipherApi: cipherApi));
 
         var vaultChangedCount = 0;
         dispatcher.VaultChanged += () => vaultChangedCount++;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage((int)UpdateType.SyncCipherCreate, "c-1"),
             CancellationToken.None);
 
-        // Assert — API 被调用
         Assert.Equal("c-1", cipherApi.LastGetCipherId);
-
-        // Assert — 条目被插入 session
         var cipher = Assert.Single(session.Ciphers, c => c.Id == "c-1");
         Assert.Equal("GitHub", cipher.Name);
-
-        // Assert — VaultChanged 事件触发一次
         Assert.Equal(1, vaultChangedCount);
     }
 
@@ -124,30 +152,24 @@ public class NotificationDispatcherTests
     [Fact]
     public async Task CipherUpdate_Push_ReplacesExistingCipherAndRaisesVaultChanged()
     {
-        // Arrange — 预先植入旧版本条目
-        var session = NewUnlockedSession();
+        var session = NewUnlockedSession(out var lease);
         session.UpsertCipher(new Cipher { Id = "c-1", Type = CipherType.Login, Name = "Old Name" });
 
         var dto = MakeEncryptedCipherDto("c-1", "New Name");
         var cipherApi = new FakeAttachmentApiClient { GetCipherResult = dto };
-        var dispatcher = NewDispatcher(session, cipherApi: cipherApi);
+        var dispatcher = NewDispatcher(session, ClientsWith(cipherApi: cipherApi));
 
         var vaultChangedCount = 0;
         dispatcher.VaultChanged += () => vaultChangedCount++;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage((int)UpdateType.SyncCipherUpdate, "c-1"),
             CancellationToken.None);
 
-        // Assert — 条目数量不变（替换而非追加）
         Assert.Equal(1, session.Ciphers.Count);
-
-        // Assert — 名称已更新
         var cipher = Assert.Single(session.Ciphers, c => c.Id == "c-1");
         Assert.Equal("New Name", cipher.Name);
-
-        // Assert — 事件触发一次
         Assert.Equal(1, vaultChangedCount);
     }
 
@@ -158,28 +180,22 @@ public class NotificationDispatcherTests
     [Fact]
     public async Task CipherDelete_Push_RemovesCipherAndRaisesVaultChanged()
     {
-        // Arrange
-        var session = NewUnlockedSession();
+        var session = NewUnlockedSession(out var lease);
         session.UpsertCipher(new Cipher { Id = "c-del", Type = CipherType.Login, Name = "ToDelete" });
 
         var cipherApi = new FakeAttachmentApiClient();
-        var dispatcher = NewDispatcher(session, cipherApi: cipherApi);
+        var dispatcher = NewDispatcher(session, ClientsWith(cipherApi: cipherApi));
 
         var vaultChangedCount = 0;
         dispatcher.VaultChanged += () => vaultChangedCount++;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage((int)UpdateType.SyncLoginDelete, "c-del"),
             CancellationToken.None);
 
-        // Assert — 不应调用 GetCipherAsync
         Assert.Empty(cipherApi.Calls);
-
-        // Assert — 条目已从 session 移除
         Assert.Empty(session.Ciphers);
-
-        // Assert — VaultChanged 触发
         Assert.Equal(1, vaultChangedCount);
     }
 
@@ -190,28 +206,22 @@ public class NotificationDispatcherTests
     [Fact]
     public async Task FolderCreate_Push_UpsertsFolderAndRaisesVaultChanged()
     {
-        // Arrange
         var dto = MakeEncryptedFolderDto("f-1", "Work");
         var readApi = new FakeNotificationReadonlyApiClient { GetFolderResult = dto };
-        var session = NewUnlockedSession();
-        var dispatcher = NewDispatcher(session, readApi: readApi);
+        var session = NewUnlockedSession(out var lease);
+        var dispatcher = NewDispatcher(session, ClientsWith(readApi: readApi));
 
         var vaultChangedCount = 0;
         dispatcher.VaultChanged += () => vaultChangedCount++;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage((int)UpdateType.SyncFolderCreate, "f-1"),
             CancellationToken.None);
 
-        // Assert — GetFolderAsync 被调用
         Assert.Equal("f-1", readApi.LastGetFolderId);
-
-        // Assert — 文件夹出现在 session
         var folder = Assert.Single(session.Folders, f => f.Id == "f-1");
         Assert.Equal("Work", folder.Name);
-
-        // Assert — VaultChanged 触发
         Assert.Equal(1, vaultChangedCount);
     }
 
@@ -221,28 +231,24 @@ public class NotificationDispatcherTests
     [Fact]
     public async Task FolderUpdate_Push_ReplacesExistingFolderAndRaisesVaultChanged()
     {
-        // Arrange
-        var session = NewUnlockedSession();
+        var session = NewUnlockedSession(out var lease);
         session.UpsertFolder(new Folder { Id = "f-1", Name = "Old Folder" });
 
         var dto = MakeEncryptedFolderDto("f-1", "Renamed Folder");
         var readApi = new FakeNotificationReadonlyApiClient { GetFolderResult = dto };
-        var dispatcher = NewDispatcher(session, readApi: readApi);
+        var dispatcher = NewDispatcher(session, ClientsWith(readApi: readApi));
 
         var vaultChangedCount = 0;
         dispatcher.VaultChanged += () => vaultChangedCount++;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage((int)UpdateType.SyncFolderUpdate, "f-1"),
             CancellationToken.None);
 
-        // Assert — 文件夹数量不变
         Assert.Equal(1, session.Folders.Count);
         var folder = Assert.Single(session.Folders, f => f.Id == "f-1");
         Assert.Equal("Renamed Folder", folder.Name);
-
-        // Assert — 事件触发
         Assert.Equal(1, vaultChangedCount);
     }
 
@@ -253,39 +259,31 @@ public class NotificationDispatcherTests
     [Fact]
     public async Task FolderDelete_Push_RemovesFolderAndRaisesVaultChanged()
     {
-        // Arrange
-        var session = NewUnlockedSession();
+        var session = NewUnlockedSession(out var lease);
         session.UpsertFolder(new Folder { Id = "f-del", Name = "Bye" });
-        session.UpsertCipher(new Core.Models.Cipher
+        session.UpsertCipher(new Cipher
         {
             Id = "c-in-folder",
-            Type = Core.Enums.CipherType.Login,
+            Type = CipherType.Login,
             Name = "X",
             FolderId = "f-del",
         });
 
         var readApi = new FakeNotificationReadonlyApiClient();
-        var dispatcher = NewDispatcher(session, readApi: readApi);
+        var dispatcher = NewDispatcher(session, ClientsWith(readApi: readApi));
 
         var vaultChangedCount = 0;
         dispatcher.VaultChanged += () => vaultChangedCount++;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage((int)UpdateType.SyncFolderDelete, "f-del"),
             CancellationToken.None);
 
-        // Assert — 不应调用 GetFolderAsync
         Assert.Empty(readApi.Calls);
-
-        // Assert — 文件夹已移除
         Assert.Empty(session.Folders);
-
-        // Assert — 引用被删文件夹的条目迁到"无文件夹"(R8)
         var cipher = Assert.Single(session.Ciphers);
         Assert.Null(cipher.FolderId);
-
-        // Assert — VaultChanged 触发
         Assert.Equal(1, vaultChangedCount);
     }
 
@@ -299,27 +297,23 @@ public class NotificationDispatcherTests
     [InlineData((int)UpdateType.SyncSendDelete)]
     public async Task SendPush_RaisesSendsChangedOnly_NoGetCall(int type)
     {
-        // Arrange
         var cipherApi = new FakeAttachmentApiClient();
         var readApi = new FakeNotificationReadonlyApiClient();
-        var session = NewUnlockedSession();
-        var dispatcher = NewDispatcher(session, cipherApi: cipherApi, readApi: readApi);
+        var session = NewUnlockedSession(out var lease);
+        var dispatcher = NewDispatcher(session, ClientsWith(cipherApi: cipherApi, readApi: readApi));
 
         var sendsChangedCount = 0;
         var vaultChangedCount = 0;
         dispatcher.SendsChanged += () => sendsChangedCount++;
         dispatcher.VaultChanged += () => vaultChangedCount++;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage(type, "send-id"),
             CancellationToken.None);
 
-        // Assert — 只触发 SendsChanged
         Assert.Equal(1, sendsChangedCount);
         Assert.Equal(0, vaultChangedCount);
-
-        // Assert — 无任何 API 调用
         Assert.Empty(cipherApi.Calls);
         Assert.Empty(readApi.Calls);
     }
@@ -335,23 +329,19 @@ public class NotificationDispatcherTests
     [InlineData((int)UpdateType.SyncSettings)]
     public async Task BulkSyncPush_CallsSyncAsyncAndRaisesVaultChanged(int type)
     {
-        // Arrange
         var sync = new FakeNotificationSyncService();
-        var session = NewUnlockedSession();
+        var session = NewUnlockedSession(out var lease);
         var dispatcher = NewDispatcher(session, sync: sync);
 
         var vaultChangedCount = 0;
         dispatcher.VaultChanged += () => vaultChangedCount++;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage(type, null),
             CancellationToken.None);
 
-        // Assert — SyncAsync 被调用一次
         Assert.Equal(1, sync.SyncCalls);
-
-        // Assert — VaultChanged 触发
         Assert.Equal(1, vaultChangedCount);
     }
 
@@ -361,8 +351,7 @@ public class NotificationDispatcherTests
     [Fact]
     public async Task AuthRequest_Push_RaisesAuthRequestsChangedOnly()
     {
-        // Arrange
-        var session = NewUnlockedSession();
+        var session = NewUnlockedSession(out var lease);
         var dispatcher = NewDispatcher(session);
 
         var authChangedCount = 0;
@@ -370,12 +359,11 @@ public class NotificationDispatcherTests
         dispatcher.AuthRequestsChanged += () => authChangedCount++;
         dispatcher.VaultChanged += () => vaultChangedCount++;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage((int)UpdateType.AuthRequest, null),
             CancellationToken.None);
 
-        // Assert
         Assert.Equal(1, authChangedCount);
         Assert.Equal(0, vaultChangedCount);
     }
@@ -386,8 +374,7 @@ public class NotificationDispatcherTests
     [Fact]
     public async Task LogOut_Push_WhenUnlocked_RaisesLoggedOut()
     {
-        // Arrange
-        var session = NewUnlockedSession();
+        var session = NewUnlockedSession(out var lease);
         var dispatcher = NewDispatcher(session);
 
         var loggedOutCount = 0;
@@ -395,36 +382,33 @@ public class NotificationDispatcherTests
         dispatcher.LoggedOut += () => loggedOutCount++;
         dispatcher.VaultChanged += () => vaultChangedCount++;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage((int)UpdateType.LogOut, null),
             CancellationToken.None);
 
-        // Assert
         Assert.Equal(1, loggedOutCount);
         Assert.Equal(0, vaultChangedCount);
     }
 
     /// <summary>
     /// LogOut 推送（已锁定状态，UserKey 为 null）：
-    /// 即使 session 已锁定，仍必须触发 LoggedOut 事件（例外规则）。
+    /// 即使 session 已锁定，只要租约仍 current，仍必须触发 LoggedOut 事件（例外规则）。
     /// </summary>
     [Fact]
     public async Task LogOut_Push_WhenLocked_StillRaisesLoggedOut()
     {
-        // Arrange — 锁定状态（UserKey = null）
-        var session = NewLockedSession();
+        var session = NewLockedSession(out var lease);
         var dispatcher = NewDispatcher(session);
 
         var loggedOutCount = 0;
         dispatcher.LoggedOut += () => loggedOutCount++;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage((int)UpdateType.LogOut, null),
             CancellationToken.None);
 
-        // Assert — LoggedOut 仍然触发
         Assert.Equal(1, loggedOutCount);
     }
 
@@ -435,10 +419,9 @@ public class NotificationDispatcherTests
     [Fact]
     public async Task CipherCreate_WhenLocked_IsNoOpNoEvent()
     {
-        // Arrange — 锁定状态
         var cipherApi = new FakeAttachmentApiClient();
-        var session = NewLockedSession();
-        var dispatcher = NewDispatcher(session, cipherApi: cipherApi);
+        var session = NewLockedSession(out var lease);
+        var dispatcher = NewDispatcher(session, ClientsWith(cipherApi: cipherApi));
 
         var eventFired = false;
         dispatcher.VaultChanged += () => eventFired = true;
@@ -446,12 +429,11 @@ public class NotificationDispatcherTests
         dispatcher.AuthRequestsChanged += () => eventFired = true;
         dispatcher.LoggedOut += () => eventFired = true;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage((int)UpdateType.SyncCipherCreate, "c-locked"),
             CancellationToken.None);
 
-        // Assert — 无 API 调用，无事件
         Assert.Empty(cipherApi.Calls);
         Assert.False(eventFired);
     }
@@ -462,20 +444,18 @@ public class NotificationDispatcherTests
     [Fact]
     public async Task CipherCreate_NullEntityId_IsNoOp()
     {
-        // Arrange
         var cipherApi = new FakeAttachmentApiClient();
-        var session = NewUnlockedSession();
-        var dispatcher = NewDispatcher(session, cipherApi: cipherApi);
+        var session = NewUnlockedSession(out var lease);
+        var dispatcher = NewDispatcher(session, ClientsWith(cipherApi: cipherApi));
 
         var eventFired = false;
         dispatcher.VaultChanged += () => eventFired = true;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage((int)UpdateType.SyncCipherCreate, null),
             CancellationToken.None);
 
-        // Assert
         Assert.Empty(cipherApi.Calls);
         Assert.False(eventFired);
     }
@@ -489,8 +469,7 @@ public class NotificationDispatcherTests
     [InlineData(999)] // 未知类型
     public async Task UnknownOrIgnoredType_IsNoOp(int type)
     {
-        // Arrange
-        var session = NewUnlockedSession();
+        var session = NewUnlockedSession(out var lease);
         var dispatcher = NewDispatcher(session);
 
         var eventFired = false;
@@ -499,19 +478,17 @@ public class NotificationDispatcherTests
         dispatcher.AuthRequestsChanged += () => eventFired = true;
         dispatcher.LoggedOut += () => eventFired = true;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage(type, "some-id"),
             CancellationToken.None);
 
-        // Assert
         Assert.False(eventFired);
     }
 
     /// <summary>
     /// SyncFolderCreate/Update/Delete 推送但 EntityId 为 null：
     /// 应完全忽略——不调用 GetFolderAsync，不触发任何事件。
-    /// 对称覆盖 CipherCreate_NullEntityId_IsNoOp。
     /// </summary>
     [Theory]
     [InlineData((int)UpdateType.SyncFolderCreate)]
@@ -519,30 +496,25 @@ public class NotificationDispatcherTests
     [InlineData((int)UpdateType.SyncFolderDelete)]
     public async Task FolderPush_NullEntityId_IsNoOp(int type)
     {
-        // Arrange
         var readApi = new FakeNotificationReadonlyApiClient();
-        var session = NewUnlockedSession();
-        var dispatcher = NewDispatcher(session, readApi: readApi);
+        var session = NewUnlockedSession(out var lease);
+        var dispatcher = NewDispatcher(session, ClientsWith(readApi: readApi));
 
         var eventFired = false;
         dispatcher.VaultChanged += () => eventFired = true;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage(type, null),
             CancellationToken.None);
 
-        // Assert — 不应调用 GetFolderAsync
         Assert.Empty(readApi.Calls);
-
-        // Assert — 无任何事件
         Assert.False(eventFired);
     }
 
     /// <summary>
     /// 锁定状态（UserKey = null）下的 SyncFolderCreate、SyncSendCreate、SyncCiphers 推送：
     /// 期望完全忽略——不调用任何 API，不触发任何事件。
-    /// 对称覆盖现有的 CipherCreate_WhenLocked_IsNoOpNoEvent。
     /// </summary>
     [Theory]
     [InlineData((int)UpdateType.SyncFolderCreate)]
@@ -550,12 +522,11 @@ public class NotificationDispatcherTests
     [InlineData((int)UpdateType.SyncCiphers)]
     public async Task Push_WhenLocked_IsNoOpNoEvent(int type)
     {
-        // Arrange — 锁定状态（UserKey = null）
         var cipherApi = new FakeAttachmentApiClient();
         var readApi = new FakeNotificationReadonlyApiClient();
         var sync = new FakeNotificationSyncService();
-        var session = NewLockedSession();
-        var dispatcher = NewDispatcher(session, cipherApi: cipherApi, readApi: readApi, sync: sync);
+        var session = NewLockedSession(out var lease);
+        var dispatcher = NewDispatcher(session, ClientsWith(cipherApi: cipherApi, readApi: readApi), sync);
 
         var eventFired = false;
         dispatcher.VaultChanged += () => eventFired = true;
@@ -563,25 +534,141 @@ public class NotificationDispatcherTests
         dispatcher.AuthRequestsChanged += () => eventFired = true;
         dispatcher.LoggedOut += () => eventFired = true;
 
-        // Act
         await dispatcher.DispatchAsync(
+            lease,
             new NotificationMessage(type, "some-id"),
             CancellationToken.None);
 
-        // Assert — 无任何 API 调用
         Assert.Empty(cipherApi.Calls);
         Assert.Empty(readApi.Calls);
         Assert.Equal(0, sync.SyncCalls);
-
-        // Assert — 无任何事件
         Assert.False(eventFired);
+    }
+
+    // ─────────────────────────── Task 9 竞态门禁 ───────────────────────────
+
+    /// <summary>
+    /// CipherUpdate 推送在 GET 期间 Lock：旧响应回来后既不补丁也不触发事件，且抛出取消异常。
+    /// </summary>
+    [Fact]
+    public async Task CipherUpdate_LockDuringGet_DoesNotPatchOrRaise()
+    {
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var pending = new TaskCompletionSource<CipherDto>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var api = new BlockingAttachmentApiClient(async _ =>
+        {
+            entered.TrySetResult();
+            return await pending.Task;
+        });
+        var session = NewUnlockedSession(out var lease);
+        var dispatcher = NewDispatcher(
+            session,
+            FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api));
+        var raised = 0;
+        dispatcher.VaultChanged += () => raised++;
+
+        var running = dispatcher.DispatchAsync(
+            lease,
+            new NotificationMessage((int)UpdateType.SyncCipherUpdate, "c-1"),
+            CancellationToken.None);
+        await entered.Task;
+        session.Lock();
+        pending.SetResult(MakeEncryptedCipherDto("c-1", "Late secret"));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running);
+        Assert.Empty(session.Ciphers);
+        Assert.Equal(0, raised);
+    }
+
+    /// <summary>
+    /// 陈旧 lease（账户已切换到 B）上的 Send 推送：不触发 SendsChanged。
+    /// </summary>
+    [Fact]
+    public async Task StaleSendPush_DoesNotRaiseSendsChanged()
+    {
+        var session = NewUnlockedSession(out var lease);
+        var dispatcher = NewDispatcher(session);
+        var raised = 0;
+        dispatcher.SendsChanged += () => raised++;
+        session.BeginAccountSession(
+            "account-b",
+            "b@example.com",
+            new ServerOrigin("https://b.example"));
+
+        await dispatcher.DispatchAsync(
+            lease,
+            new NotificationMessage((int)UpdateType.SyncSendUpdate, "s-1"),
+            CancellationToken.None);
+
+        Assert.Equal(0, raised);
+    }
+
+    /// <summary>
+    /// FolderUpdate 推送在 GET 期间 Logout：旧响应回来后既不补丁也不触发事件，且抛出取消异常。
+    /// </summary>
+    [Fact]
+    public async Task FolderUpdate_LogoutDuringGet_DoesNotPatchOrRaise()
+    {
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var pending = new TaskCompletionSource<FolderDto>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var read = new ControlledReadonlyApiClient(
+            _ => throw new NotSupportedException())
+        {
+            GetFolder = async (_, _) =>
+            {
+                entered.TrySetResult();
+                return await pending.Task;
+            },
+        };
+        var session = NewUnlockedSession(out var lease);
+        var clients = new FakeVaultApiClientProvider()
+            .AddAuthenticated<IAttachmentApiClient>(
+                new FakeAttachmentApiClient())
+            .AddAuthenticated<IReadonlyApiClient>(read);
+        var dispatcher = NewDispatcher(session, clients);
+        var raised = 0;
+        dispatcher.VaultChanged += () => raised++;
+
+        var running = dispatcher.DispatchAsync(
+            lease,
+            new NotificationMessage((int)UpdateType.SyncFolderUpdate, "f-1"),
+            CancellationToken.None);
+        await entered.Task;
+        session.Logout();
+        pending.SetResult(MakeEncryptedFolderDto("f-1", "Late folder"));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running);
+        Assert.Empty(session.Folders);
+        Assert.Equal(0, raised);
+    }
+
+    /// <summary>
+    /// 全量同步推送：透传启动租约给 SyncService（不回退到无 lease 重载）。
+    /// </summary>
+    [Fact]
+    public async Task BulkSyncPush_UsesNotificationLease()
+    {
+        var session = NewUnlockedSession(out var lease);
+        var sync = new FakeNotificationSyncService();
+        var dispatcher = NewDispatcher(session, sync: sync);
+
+        await dispatcher.DispatchAsync(
+            lease,
+            new NotificationMessage((int)UpdateType.SyncVault, null),
+            CancellationToken.None);
+
+        Assert.Same(lease, Assert.Single(sync.Leases));
     }
 }
 
 // ─────────────────────────── 测试专用 Fake 类 ───────────────────────────
 
 /// <summary>
-/// IReadonlyApiClient 的最小化测试替身，只实现 GetFolderAsync / GetSendAsync。
+/// IReadonlyApiClient 的最小化测试替身，只实现 GetFolderAsync。
 /// 其余方法抛出 NotImplementedException（本测试中不会被调用）。
 /// </summary>
 public sealed class FakeNotificationReadonlyApiClient : IReadonlyApiClient
@@ -615,18 +702,23 @@ public sealed class FakeNotificationReadonlyApiClient : IReadonlyApiClient
 }
 
 /// <summary>
-/// ISyncService 的最小化测试替身，计数 SyncAsync 调用次数。
+/// ISyncService 的最小化测试替身，记录调用次数与显式租约。
+/// 无 lease 重载被禁用——通知路径必须使用显式租约重载。
 /// </summary>
 public sealed class FakeNotificationSyncService : Core.Services.ISyncService
 {
     public int SyncCalls { get; private set; }
+    public List<VaultSessionLease> Leases { get; } = new();
 
-    public Task<IReadOnlyList<Core.Models.Cipher>> SyncAsync(CancellationToken ct = default)
+    public Task<IReadOnlyList<Core.Models.Cipher>> SyncAsync(
+        VaultSessionLease lease, CancellationToken ct = default)
     {
         SyncCalls++;
+        Leases.Add(lease);
         return Task.FromResult<IReadOnlyList<Core.Models.Cipher>>(Array.Empty<Core.Models.Cipher>());
     }
 
-    public Task<IReadOnlyList<Core.Models.Cipher>> SyncAsync(
-        Core.Session.VaultSessionLease lease, CancellationToken ct = default) => SyncAsync(ct);
+    public Task<IReadOnlyList<Core.Models.Cipher>> SyncAsync(CancellationToken ct = default) =>
+        throw new InvalidOperationException(
+            "Notification tests must use the explicit lease overload.");
 }
