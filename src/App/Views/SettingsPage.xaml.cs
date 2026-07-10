@@ -548,7 +548,12 @@ public sealed partial class SettingsPage : Page
         {
             var r2 = await DialogHelper.ShowTrackedAsync(
                 step2Dialog,
-                () => pwBox.Password = string.Empty);
+                () =>
+                {
+                    pwBox.Password = string.Empty;
+                    codeBox.Text = string.Empty;
+                    secretText.Text = string.Empty;
+                });
             if (r2 != ContentDialogResult.Primary) return;
 
             recoveryCode = await ViewModel.EnableTotpAsync(pwBox.Password, secret, codeBox.Text.Trim());
@@ -581,7 +586,7 @@ public sealed partial class SettingsPage : Page
             CloseButtonText = "完成",
             XamlRoot = XamlRoot,
         };
-        await DialogHelper.ShowTrackedAsync(step3Dialog);
+        await DialogHelper.ShowTrackedAsync(step3Dialog, () => rcText.Text = string.Empty);
         }
         finally
         {
@@ -671,7 +676,11 @@ public sealed partial class SettingsPage : Page
         {
             var r2 = await DialogHelper.ShowTrackedAsync(
                 step2Dialog,
-                () => emailPwBox.Password = string.Empty);
+                () =>
+                {
+                    emailPwBox.Password = string.Empty;
+                    tokenBox.Text = string.Empty;
+                });
             if (r2 != ContentDialogResult.Primary) return;
 
             await ViewModel.EnableEmailAsync(emailPwBox.Password, emailAddressBox.Text.Trim(), tokenBox.Text.Trim());

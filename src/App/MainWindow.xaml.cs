@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using App.Services;
 using Core.Services;
+using Core.Session;
 using System;
 using System.Threading.Tasks;
 using Microsoft.UI.Windowing;
@@ -411,6 +412,8 @@ public sealed partial class MainWindow : Window
         // 查看历史后循环重开生成器,保留其已生成的口令/选项状态。历史对话框本身
         // 只关闭并回报 ClearRequested,清除确认在其关闭之后由本宿主再单独弹出,
         // 避免同一 XamlRoot 下两个 ContentDialog 同时 ShowAsync。
+        // 历史关闭后须检查真实 VaultState 仍 Unlocked 再继续,
+        // 不能只依赖 coordinator.IsTransitioning(过渡完成后该窗口已归 false)。
         var dialog = new GeneratorDialog { XamlRoot = Nav.XamlRoot };
         while (true)
         {
@@ -420,6 +423,8 @@ public sealed partial class MainWindow : Window
 
             var history = new GeneratorHistoryDialog(dialog.ViewModel) { XamlRoot = Nav.XamlRoot };
             await global::App.Views.DialogHelper.ShowTrackedAsync(history);
+            if (!IsVaultUnlocked())
+                break;
 
             if (history.ClearRequested
                 && await global::App.Views.DialogHelper.ConfirmAsync(
@@ -432,6 +437,10 @@ public sealed partial class MainWindow : Window
             }
         }
     }
+
+    private static bool IsVaultUnlocked() =>
+        global::App.App.Services.GetRequiredService<IVaultService>().Snapshot.State
+            == VaultState.Unlocked;
 
     /// <summary>按 ShowTrayIcon 设置增删托盘图标。</summary>
     public void ApplyTrayIconSetting()

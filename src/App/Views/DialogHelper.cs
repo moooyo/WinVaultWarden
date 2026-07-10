@@ -22,7 +22,7 @@ public static class DialogHelper
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
         using var tracked = registry.Register(
             linked.Cancel,
-            dialog.Hide,
+            () => dialog.DispatcherQueue.TryEnqueue(dialog.Hide),
             clearSensitive ?? (() => { }));
 
         try
