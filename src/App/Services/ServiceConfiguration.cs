@@ -22,28 +22,14 @@ public static class ServiceConfiguration
         services.AddSingleton<FingerprintService>();
         services.AddSingleton<ITokenStore, DpapiTokenStore>();
         services.AddSingleton<ICacheStore, DpapiVaultCacheStore>();
-        services.AddSingleton(sp =>
-        {
-            var session = sp.GetRequiredService<VaultSession>();
-            var handler = new AuthHeaderHandler(
-                () => session.AccessToken,
-                ct => sp.GetRequiredService<ITokenRefresher>().TryRefreshAsync(ct))
-            {
-                InnerHandler = new HttpClientHandler(),
-            };
-            return new HttpClient(handler);
-        });
-        services.AddSingleton<ApiClient>();
-        // 端点配置 seam:与角色接口分离,单独解析到同一 ApiClient 单例。
-        services.AddSingleton<IApiEndpointConfig>(sp => sp.GetRequiredService<ApiClient>());
-        services.AddSingleton<IReadonlyApiClient>(sp => sp.GetRequiredService<ApiClient>());
-        services.AddSingleton<IVaultWriteApiClient>(sp => sp.GetRequiredService<ApiClient>());
-        services.AddSingleton<ISendApiClient>(sp => sp.GetRequiredService<ApiClient>());
-        services.AddSingleton<IAttachmentApiClient>(sp => sp.GetRequiredService<ApiClient>());
-        services.AddSingleton<IAccountApiClient>(sp => sp.GetRequiredService<ApiClient>());
-        services.AddSingleton<ITwoFactorApiClient>(sp => sp.GetRequiredService<ApiClient>());
-        services.AddSingleton<IAuthRequestApiClient>(sp => sp.GetRequiredService<ApiClient>());
-        services.AddSingleton<IEmergencyAccessApiClient>(sp => sp.GetRequiredService<ApiClient>());
+        services.AddSingleton<IApiClientFactory, ApiClientFactory>();
+        // 会话绑定的 Api client 供给器:匿名角色按 origin、认证角色按当前 lease 解析。
+        // 忽略 lease 的 refresh 适配仅为过渡;Task 7 收紧为显式 lease。
+        services.AddSingleton<IVaultApiClientProvider>(sp =>
+            new VaultApiClientProvider(
+                sp.GetRequiredService<IApiClientFactory>(),
+                sp.GetRequiredService<VaultSession>(),
+                (_, ct) => sp.GetRequiredService<ITokenRefresher>().TryRefreshAsync(ct)));
         services.AddSingleton<CipherEncryptor>();
         services.AddSingleton<IVaultWriteService, Vault.VaultWriteService>();
         services.AddSingleton<VaultDecryptor>();
@@ -157,8 +143,7 @@ public static class ServiceConfiguration
         // WebSocket 推送通知
         services.AddSingleton<INotificationDispatcher>(sp =>
             new NotificationDispatcher(
-                sp.GetRequiredService<IAttachmentApiClient>(),
-                sp.GetRequiredService<IReadonlyApiClient>(),
+                sp.GetRequiredService<IVaultApiClientProvider>(),
                 sp.GetRequiredService<VaultDecryptor>(),
                 sp.GetRequiredService<VaultSession>(),
                 sp.GetRequiredService<ISyncService>()));

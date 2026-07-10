@@ -18,32 +18,36 @@ public sealed class AuthService : IAuthService
     // Bitwarden TwoFactorProviderType.Remember。二次登录带此 provider + 记住令牌可免交互 2FA。
     private const int RememberTwoFactorProvider = 5;
 
-    private readonly IReadonlyApiClient _api;
-    private readonly IApiEndpointConfig _apiConfig;
+    private readonly IVaultApiClientProvider _clients;
     private readonly CryptoService _crypto;
     private readonly VaultSession _session;
     private readonly ITokenStore _tokenStore;
     private readonly VaultBootstrapper _bootstrapper;
     private readonly VaultCacheService _cache;
+    private readonly ITokenRefresher _refresher;
     private PendingTwoFactorContext? _pendingTwoFactor;
 
     public AuthService(
-        IReadonlyApiClient api,
-        IApiEndpointConfig apiConfig,
+        IVaultApiClientProvider clients,
         CryptoService crypto,
         VaultSession session,
         ITokenStore tokenStore,
         VaultBootstrapper bootstrapper,
-        VaultCacheService cache)
+        VaultCacheService cache,
+        ITokenRefresher refresher)
     {
-        _api = api;
-        _apiConfig = apiConfig;
+        _clients = clients;
         _crypto = crypto;
         _session = session;
         _tokenStore = tokenStore;
         _bootstrapper = bootstrapper;
         _cache = cache;
+        _refresher = refresher;
     }
+
+    // 匿名 identity 角色按 serverUrl 派生的 origin 获取;登录/刷新/发码全部走匿名 transport,绝不携带 Bearer。
+    private IIdentityApiClient Identity(string serverUrl) =>
+        _clients.GetAnonymous<IIdentityApiClient>(new ServerOrigin(serverUrl));
 
     public async Task<AuthResult> LoginAsync(
         string serverUrl,
@@ -54,10 +58,10 @@ public sealed class AuthService : IAuthService
         try
         {
             var normalizedServerUrl = NormalizeServerUrl(serverUrl);
-            _apiConfig.SetBaseAddress(normalizedServerUrl);
+            var api = Identity(normalizedServerUrl);
             _session.SetState(Core.Session.VaultState.Unlocking);
 
-            var prelogin = await _api.PreloginAsync(email, ct);
+            var prelogin = await api.PreloginAsync(email, ct);
 
             // 同一账户二次登录:复用上次的 device identifier(服务端把"记住此设备"令牌按 device 存储,
             // 换新 id 会令令牌失效),并带上已存的 remember 令牌免交互 2FA。
@@ -72,7 +76,7 @@ public sealed class AuthService : IAuthService
             }
 
             var context = BuildLoginContext(normalizedServerUrl, email, masterPassword, prelogin, deviceIdentifier);
-            var result = await _api.ConnectTokenAsync(ConnectTokenRequest.Password(
+            var result = await api.ConnectTokenAsync(ConnectTokenRequest.Password(
                 email,
                 context.PasswordHash,
                 context.DeviceIdentifier,
@@ -95,8 +99,7 @@ public sealed class AuthService : IAuthService
 
         try
         {
-            _apiConfig.SetBaseAddress(context.ServerUrl);
-            var result = await _api.ConnectTokenAsync(ConnectTokenRequest.Password(
+            var result = await Identity(context.ServerUrl).ConnectTokenAsync(ConnectTokenRequest.Password(
                 context.Email,
                 context.PasswordHash,
                 context.DeviceIdentifier,
@@ -120,7 +123,6 @@ public sealed class AuthService : IAuthService
         SymmetricCryptoKey userKey;
         try
         {
-            _apiConfig.SetBaseAddress(persisted.ServerUrl);
             _session.SetState(Core.Session.VaultState.Unlocking);
 
             var stretchedKey = DeriveStretchedKey(
@@ -148,12 +150,13 @@ public sealed class AuthService : IAuthService
 
         // 本地已可离线解锁:先落 UserKey,再尝试从加密缓存立即出数据;随后联网刷新 token + 整库同步
         // (可能因断网/服务端不可达而失败——失败时按有无缓存分流,见 FinishUnlockOffline)。
+        _session.RestorePersistedSession(persisted);
         _session.SetUnlockedKey(userKey);
         var fromCache = _cache.TryLoadInto(persisted.Email, persisted.ServerUrl, userKey);
 
         try
         {
-            var refresh = await _api.ConnectTokenAsync(ConnectTokenRequest.Refresh(
+            var refresh = await Identity(persisted.ServerUrl).ConnectTokenAsync(ConnectTokenRequest.Refresh(
                 persisted.RefreshToken,
                 persisted.DeviceIdentifier,
                 DeviceName), ct);
@@ -195,7 +198,6 @@ public sealed class AuthService : IAuthService
         SymmetricCryptoKey userKey;
         try
         {
-            _apiConfig.SetBaseAddress(persisted.ServerUrl);
             _session.SetState(Core.Session.VaultState.Unlocking);
 
             var stretchedKey = DeriveStretchedKey(
@@ -224,12 +226,13 @@ public sealed class AuthService : IAuthService
 
         // 本地已可离线解锁:先落 UserKey,再尝试从加密缓存立即出数据;随后联网刷新 token + 整库同步
         // (可能因断网/服务端不可达而失败——失败时按有无缓存分流,见 FinishUnlockOffline)。
+        _session.RestorePersistedSession(persisted);
         _session.SetUnlockedKey(userKey);
         var fromCache = _cache.TryLoadInto(persisted.Email, persisted.ServerUrl, userKey);
 
         try
         {
-            var refresh = await _api.ConnectTokenAsync(ConnectTokenRequest.Refresh(
+            var refresh = await Identity(persisted.ServerUrl).ConnectTokenAsync(ConnectTokenRequest.Refresh(
                 persisted.RefreshToken, persisted.DeviceIdentifier, DeviceName), ct);
 
             if (refresh is not ConnectTokenResult.Success success)
@@ -269,7 +272,6 @@ public sealed class AuthService : IAuthService
         SymmetricCryptoKey userKey;
         try
         {
-            _apiConfig.SetBaseAddress(persisted.ServerUrl);
             _session.SetState(Core.Session.VaultState.Unlocking);
 
             using var helloKey = _crypto.DeriveKeyFromSecret(signature);
@@ -298,12 +300,13 @@ public sealed class AuthService : IAuthService
         // 本地已可离线解锁:先落 UserKey,再尝试从加密缓存立即出数据;随后联网刷新 token + 整库同步
         // (可能因断网/服务端不可达而失败——失败时按有无缓存分流,见 FinishUnlockOffline)。收尾与
         // UnlockWithPinAsync 完全一致。
+        _session.RestorePersistedSession(persisted);
         _session.SetUnlockedKey(userKey);
         var fromCache = _cache.TryLoadInto(persisted.Email, persisted.ServerUrl, userKey);
 
         try
         {
-            var refresh = await _api.ConnectTokenAsync(ConnectTokenRequest.Refresh(
+            var refresh = await Identity(persisted.ServerUrl).ConnectTokenAsync(ConnectTokenRequest.Refresh(
                 persisted.RefreshToken, persisted.DeviceIdentifier, DeviceName), ct);
 
             if (refresh is not ConnectTokenResult.Success success)
@@ -374,7 +377,7 @@ public sealed class AuthService : IAuthService
     {
         try
         {
-            await _api.SendTwoFactorEmailLoginAsync(context.Email, context.PasswordHash, context.DeviceIdentifier, ct);
+            await Identity(context.ServerUrl).SendTwoFactorEmailLoginAsync(context.Email, context.PasswordHash, context.DeviceIdentifier, ct);
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
         {
@@ -388,8 +391,7 @@ public sealed class AuthService : IAuthService
 
         try
         {
-            _apiConfig.SetBaseAddress(context.ServerUrl);
-            await _api.SendTwoFactorEmailLoginAsync(context.Email, context.PasswordHash, context.DeviceIdentifier, ct);
+            await Identity(context.ServerUrl).SendTwoFactorEmailLoginAsync(context.Email, context.PasswordHash, context.DeviceIdentifier, ct);
             return true;
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
@@ -417,6 +419,7 @@ public sealed class AuthService : IAuthService
             {
                 rememberToken = prior.TwoFactorToken;
             }
+            _session.BeginAccountSession(context.Email, context.Email, new ServerOrigin(context.ServerUrl));
             _session.SetTokens(token.AccessToken, token.RefreshToken);
             _session.SetUnlockedKey(userKey);
             _tokenStore.Save(new PersistedSession(

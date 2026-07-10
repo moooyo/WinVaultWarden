@@ -1,3 +1,4 @@
+using Api;
 using Api.Dtos;
 using Core.Enums;
 using Core.Models;
@@ -13,7 +14,7 @@ public class SendAccessServiceTests
     {
         var crypto = new SendCryptoService(new CryptoService());
         var api = new FakeSendApiClient();
-        return (new SendAccessService(api, crypto), api, crypto);
+        return (new SendAccessService(FakeVaultApiClientProvider.ForAnonymous<IPublicSendApiClient>(api), crypto), api, crypto);
     }
 
     [Fact]

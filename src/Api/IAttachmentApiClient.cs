@@ -4,7 +4,7 @@ namespace Api;
 
 // 附件端点。读 GET api/ciphers/{id} 拿含附件的 CipherDto;两步上传(v2 元数据 + multipart 文件体);
 // 删除 DELETE api/ciphers/{id}/attachment/{attId}。上传 url 与下载 url 由服务端给出(可能为相对路径)。
-public interface IAttachmentApiClient
+public interface IAttachmentApiClient : IAuthenticatedApiRole
 {
     // GET api/ciphers/{id}:返回含新鲜 url 与各附件 key 的单条目。
     Task<CipherDto> GetCipherAsync(string cipherId, CancellationToken ct = default);

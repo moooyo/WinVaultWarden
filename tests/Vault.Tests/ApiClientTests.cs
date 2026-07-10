@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text.Json;
 using Api;
+using Core.Models;
+using Core.Session;
 using Api.Dtos;
 using Core.Enums;
 using Xunit;
@@ -15,8 +17,7 @@ public class ApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
             """{"kdf":0,"kdfIterations":600000,"kdfMemory":null,"kdfParallelism":null}"""));
-        var client = new ApiClient(new HttpClient(handler));
-        client.SetBaseAddress("https://vault.example/");
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example/"));
 
         var response = await client.PreloginAsync("me@example.com", TestContext.Current.CancellationToken);
 
@@ -32,8 +33,7 @@ public class ApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
             """{"access_token":"a","refresh_token":"r","expires_in":3600,"token_type":"Bearer","scope":"api offline_access","Key":"2.X","PrivateKey":null,"Kdf":0,"KdfIterations":600000}"""));
-        var client = new ApiClient(new HttpClient(handler));
-        client.SetBaseAddress("https://vault.example");
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
 
         var result = await client.ConnectTokenAsync(ConnectTokenRequest.Password(
             "me@example.com",
@@ -57,8 +57,7 @@ public class ApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
             """{"error":"invalid_grant","error_description":"Two factor required.","TwoFactorProviders":["0"],"TwoFactorProviders2":{"0":null}}"""));
-        var client = new ApiClient(new HttpClient(handler));
-        client.SetBaseAddress("https://vault.example");
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
 
         var result = await client.ConnectTokenAsync(
             ConnectTokenRequest.Password("me@example.com", "hash", "d", "n", null),
@@ -74,8 +73,7 @@ public class ApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
             """{"object":"sync","profile":{"email":"me@example.com"},"folders":[],"ciphers":[]}"""));
-        var client = new ApiClient(new HttpClient(handler));
-        client.SetBaseAddress("https://vault.example");
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
 
         var sync = await client.GetSyncAsync(TestContext.Current.CancellationToken);
 
@@ -164,8 +162,7 @@ public class ApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.NotFound,
             """{"message":"Folder doesn't exist","validationErrors":{},"object":"error"}"""));
-        var client = new ApiClient(new HttpClient(handler));
-        client.SetBaseAddress("https://vault.example");
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
 
         var ex = await Assert.ThrowsAsync<VaultApiException>(() =>
             client.GetFolderAsync("missing", TestContext.Current.CancellationToken));
@@ -185,8 +182,7 @@ public class ApiClientTests
         {
             Content = new StringContent("upstream exploded", System.Text.Encoding.UTF8, "text/plain"),
         });
-        var client = new ApiClient(new HttpClient(handler));
-        client.SetBaseAddress("https://vault.example");
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
 
         var ex = await Assert.ThrowsAsync<VaultApiException>(() =>
             client.GetSyncAsync(TestContext.Current.CancellationToken));
@@ -203,8 +199,7 @@ public class ApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
             """{"version":"2025.12.0","gitHash":"f21a3ada","object":"config","server":{"name":"Vaultwarden","url":"https://github.com/dani-garcia/vaultwarden"},"settings":{"disableUserRegistration":false},"environment":{"vault":"http://localhost"}}"""));
-        var client = new ApiClient(new HttpClient(handler));
-        client.SetBaseAddress("https://vault.example");
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
 
         var config = await client.GetConfigAsync(TestContext.Current.CancellationToken);
 
@@ -220,8 +215,7 @@ public class ApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
             """{"data":[{"id":"d1","name":"Desktop","type":6,"identifier":"d1","creationDate":"2026-06-24T00:00:00Z","isTrusted":false,"object":"device"}],"object":"list","continuationToken":null}"""));
-        var client = new ApiClient(new HttpClient(handler));
-        client.SetBaseAddress("https://vault.example");
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
 
         var devices = await client.GetDevicesAsync(TestContext.Current.CancellationToken);
 
@@ -236,7 +230,8 @@ public class ApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
         using var client = new HttpClient(new AuthHeaderHandler(
-            () => "access-token",
+            new ServerOrigin("https://vault.example"),
+            () => new AccessTokenBinding("acct", new ServerOrigin("https://vault.example"), 1, "access-token"),
             _ => Task.FromResult(false))
         {
             InnerHandler = handler,
@@ -248,9 +243,9 @@ public class ApiClientTests
         await client.GetAsync("api/config", TestContext.Current.CancellationToken);
 
         var request = handler.Requests[0];
-        Assert.Equal(AuthHeaderHandler.ClientName, request.Headers.GetValues("Bitwarden-Client-Name").Single());
-        Assert.Equal(AuthHeaderHandler.ClientVersion, request.Headers.GetValues("Bitwarden-Client-Version").Single());
-        Assert.Equal(AuthHeaderHandler.DeviceType, request.Headers.GetValues("Device-Type").Single());
+        Assert.Equal(ClientHeadersHandler.ClientName, request.Headers.GetValues("Bitwarden-Client-Name").Single());
+        Assert.Equal(ClientHeadersHandler.ClientVersion, request.Headers.GetValues("Bitwarden-Client-Version").Single());
+        Assert.Equal(ClientHeadersHandler.DeviceType, request.Headers.GetValues("Device-Type").Single());
         Assert.Equal("Bearer", request.Headers.Authorization!.Scheme);
         Assert.Equal("access-token", request.Headers.Authorization.Parameter);
     }
@@ -264,7 +259,8 @@ public class ApiClientTests
         handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
         using var client = new HttpClient(new AuthHeaderHandler(
-            () => accessToken,
+            new ServerOrigin("https://vault.example"),
+            () => new AccessTokenBinding("acct", new ServerOrigin("https://vault.example"), 1, accessToken),
             _ =>
             {
                 refreshCalls++;
@@ -294,7 +290,8 @@ public class ApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
         using var client = new HttpClient(new AuthHeaderHandler(
-            () => "token",
+            new ServerOrigin("https://vault.example"),
+            () => new AccessTokenBinding("acct", new ServerOrigin("https://vault.example"), 1, "token"),
             _ => { refreshCalls++; return Task.FromResult(true); })
         {
             InnerHandler = handler,
@@ -322,8 +319,7 @@ public class ApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
             """{"email":"me@example.com","enabled":"true","object":"twoFactorEmail"}"""));
-        var client = new ApiClient(new HttpClient(handler));
-        client.SetBaseAddress("https://vault.example/");
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example/"));
 
         // 不抛即通过(旧实现会因 "true"→bool 反序列化抛 JsonException)。
         await client.EnableEmailAsync(
@@ -343,8 +339,7 @@ public class ApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
             """{"message":"Username or password is incorrect. Try again","validationErrors":{"":["Username or password is incorrect. Try again"]},"errorModel":{"message":"Username or password is incorrect. Try again","object":"error"},"error":"","error_description":"","object":"error"}"""));
-        var client = new ApiClient(new HttpClient(handler));
-        client.SetBaseAddress("https://vault.example");
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
 
         var result = await client.ConnectTokenAsync(
             ConnectTokenRequest.Password("me@example.com", "hash", "d", "n", null),
@@ -363,8 +358,7 @@ public class ApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
             """{"error":"invalid_grant"}"""));
-        var client = new ApiClient(new HttpClient(handler));
-        client.SetBaseAddress("https://vault.example");
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
 
         var result = await client.ConnectTokenAsync(
             ConnectTokenRequest.Refresh("stale-refresh", "d", "n"),
@@ -381,8 +375,7 @@ public class ApiClientTests
     {
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.TooManyRequests, "{}"));
-        var client = new ApiClient(new HttpClient(handler));
-        client.SetBaseAddress("https://vault.example");
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
 
         var result = await client.ConnectTokenAsync(
             ConnectTokenRequest.Password("me@example.com", "hash", "d", "n", null),
@@ -398,8 +391,7 @@ public class ApiClientTests
     {
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
-        var client = new ApiClient(new HttpClient(handler));
-        client.SetBaseAddress("https://vault.example/");
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example/"));
 
         await client.SendTwoFactorEmailLoginAsync(
             "me@example.com", "hash-abc", "device-1", TestContext.Current.CancellationToken);

@@ -55,21 +55,18 @@ public interface INotificationDispatcher
 /// </summary>
 public sealed class NotificationDispatcher : INotificationDispatcher
 {
-    private readonly IAttachmentApiClient _cipherApi;
-    private readonly IReadonlyApiClient _readApi;
+    private readonly IVaultApiClientProvider _clients;
     private readonly VaultDecryptor _decryptor;
     private readonly VaultSession _session;
     private readonly ISyncService _sync;
 
     public NotificationDispatcher(
-        IAttachmentApiClient cipherApi,
-        IReadonlyApiClient readApi,
+        IVaultApiClientProvider clients,
         VaultDecryptor decryptor,
         VaultSession session,
         ISyncService sync)
     {
-        _cipherApi = cipherApi;
-        _readApi = readApi;
+        _clients = clients;
         _decryptor = decryptor;
         _session = session;
         _sync = sync;
@@ -106,6 +103,9 @@ public sealed class NotificationDispatcher : INotificationDispatcher
         if (userKey is null)
             return;
 
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+
         switch (type)
         {
             case UpdateType.SyncCipherCreate:
@@ -115,7 +115,8 @@ public sealed class NotificationDispatcher : INotificationDispatcher
                 if (id is null)
                     return;
 
-                var dto = await _cipherApi.GetCipherAsync(id, ct);
+                var dto = await _clients.GetAuthenticated<IAttachmentApiClient>(lease).GetCipherAsync(id, linked.Token);
+                _session.ThrowIfExpired(lease);
                 // DecryptCipher 内部已调用 ResolveItemKey，无需在外层重复调用。
                 var cipher = _decryptor.DecryptCipher(dto, userKey);
                 _session.UpsertCipher(cipher);
@@ -141,7 +142,8 @@ public sealed class NotificationDispatcher : INotificationDispatcher
                 if (id is null)
                     return;
 
-                var dto = await _readApi.GetFolderAsync(id, ct);
+                var dto = await _clients.GetAuthenticated<IReadonlyApiClient>(lease).GetFolderAsync(id, linked.Token);
+                _session.ThrowIfExpired(lease);
                 var folder = _decryptor.DecryptFolder(dto, userKey);
                 _session.UpsertFolder(folder);
                 VaultChanged?.Invoke();

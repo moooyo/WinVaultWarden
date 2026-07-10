@@ -1,5 +1,6 @@
 using System;
 using System.Security.Cryptography;
+using Api;
 using Core.Abstractions;
 using Core.Enums;
 using Core.Models;
@@ -47,7 +48,12 @@ public class TwoFactorServiceTests
     }
 
     private TwoFactorService BuildService(MemoryTokenStore store, FakeTwoFactorApiClient api)
-        => new TwoFactorService(_crypto, api, store);
+    {
+        // 2FA 操作是已认证操作（需要活跃会话以获取 lease），但不需要解锁 vault（无需 UserKey）。
+        var session = new VaultSession();
+        session.BeginAccountSession("test-account", "test@test.com", new ServerOrigin("https://vault.example"));
+        return new TwoFactorService(_crypto, FakeVaultApiClientProvider.ForAuthenticated<ITwoFactorApiClient>(api), session, store);
+    }
 
     // ============================================================
     // Test 1: ListProvidersAsync — API 结果映射到领域模型

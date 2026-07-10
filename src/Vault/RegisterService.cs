@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Api;
 using Api.Dtos;
 using Core.Enums;
+using Core.Models;
 using Core.Services;
 using Crypto;
 
@@ -11,14 +12,12 @@ public sealed class RegisterService : IRegisterService
 {
     private const int Iterations = 600_000;
     private readonly CryptoService _crypto;
-    private readonly IAccountApiClient _api;
-    private readonly IApiEndpointConfig _apiConfig;
+    private readonly IVaultApiClientProvider _clients;
 
-    public RegisterService(CryptoService crypto, IAccountApiClient api, IApiEndpointConfig apiConfig)
+    public RegisterService(CryptoService crypto, IVaultApiClientProvider clients)
     {
         _crypto = crypto;
-        _api = api;
-        _apiConfig = apiConfig;
+        _clients = clients;
     }
 
     public async Task RegisterAsync(
@@ -32,7 +31,7 @@ public sealed class RegisterService : IRegisterService
         ArgumentException.ThrowIfNullOrWhiteSpace(serverUrl);
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(password);
-        _apiConfig.SetBaseAddress(serverUrl.TrimEnd('/'));
+        var origin = new ServerOrigin(serverUrl);
 
         var masterKey = _crypto.DeriveMasterKey(password, email, KdfType.Pbkdf2, Iterations, null, null);
         var userKeyBytes = RandomNumberGenerator.GetBytes(64);
@@ -76,7 +75,8 @@ public sealed class RegisterService : IRegisterService
 
             try
             {
-                await _api.RegisterAsync(req, ct);
+                var api = _clients.GetAnonymous<IRegistrationApiClient>(origin);
+                await api.RegisterAsync(req, ct);
             }
             catch (VaultWriteException ex)
             {

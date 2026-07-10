@@ -45,7 +45,15 @@ public class EmergencyAccessServiceTests
     {
         userKey = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
         var s = new VaultSession();
+        s.BeginAccountSession("test-account", "test@test.com", new ServerOrigin("https://vault.test"));
         s.SetUnlockedKey(userKey);
+        return s;
+    }
+
+    private static VaultSession ActiveSession()
+    {
+        var s = new VaultSession();
+        s.BeginAccountSession("test-account", "test@test.com", new ServerOrigin("https://vault.test"));
         return s;
     }
 
@@ -56,7 +64,7 @@ public class EmergencyAccessServiceTests
             Trusted = new ListResponse<EmergencyAccessGranteeDetailsDto>(
                 new[] { new EmergencyAccessGranteeDetailsDto { Id="e1", Status=2, Type=1, WaitTimeDays=7, GranteeId="u2", Email="b@x.com", Name="B" } },
                 null, null) };
-        var svc = new EmergencyAccessService(api, new CryptoService(), new VaultDecryptor(new CryptoService()), new VaultSession());
+        var svc = new EmergencyAccessService(FakeVaultApiClientProvider.ForAuthenticated<IEmergencyAccessApiClient>(api), new CryptoService(), new VaultDecryptor(new CryptoService()), ActiveSession());
         var list = await svc.GetTrustedAsync(TestContext.Current.CancellationToken);
         var c = Assert.Single(list);
         Assert.Equal("e1", c.Id);
@@ -69,7 +77,7 @@ public class EmergencyAccessServiceTests
     public async Task Invite_SendsEmailTypeWait()
     {
         var api = new FakeEaApi();
-        var svc = new EmergencyAccessService(api, new CryptoService(), new VaultDecryptor(new CryptoService()), new VaultSession());
+        var svc = new EmergencyAccessService(FakeVaultApiClientProvider.ForAuthenticated<IEmergencyAccessApiClient>(api), new CryptoService(), new VaultDecryptor(new CryptoService()), ActiveSession());
         await svc.InviteAsync("b@x.com", EmergencyAccessType.Takeover, 7, TestContext.Current.CancellationToken);
         Assert.Equal("b@x.com", api.LastInvite!.Email);
         Assert.Equal(1, api.LastInvite.Type);
@@ -85,7 +93,7 @@ public class EmergencyAccessServiceTests
         var api = new FakeEaApi { PublicKeyB64 = Convert.ToBase64String(pubDer) };
         var crypto = new CryptoService();
         var session = UnlockedSession(out var userKey);
-        var svc = new EmergencyAccessService(api, crypto, new VaultDecryptor(crypto), session);
+        var svc = new EmergencyAccessService(FakeVaultApiClientProvider.ForAuthenticated<IEmergencyAccessApiClient>(api), crypto, new VaultDecryptor(crypto), session);
 
         await svc.ConfirmAsync("e1", "u2", TestContext.Current.CancellationToken);
 
@@ -101,7 +109,7 @@ public class EmergencyAccessServiceTests
     public async Task Confirm_WhenLocked_Throws()
     {
         var api = new FakeEaApi { PublicKeyB64 = "x" };
-        var svc = new EmergencyAccessService(api, new CryptoService(), new VaultDecryptor(new CryptoService()), new VaultSession());
+        var svc = new EmergencyAccessService(FakeVaultApiClientProvider.ForAuthenticated<IEmergencyAccessApiClient>(api), new CryptoService(), new VaultDecryptor(new CryptoService()), new VaultSession());
         await Assert.ThrowsAnyAsync<Exception>(() => svc.ConfirmAsync("e1", "u2", TestContext.Current.CancellationToken));
     }
 
@@ -109,7 +117,7 @@ public class EmergencyAccessServiceTests
     public async Task Approve_Reject_Remove_CallApi()
     {
         var api = new FakeEaApi();
-        var svc = new EmergencyAccessService(api, new CryptoService(), new VaultDecryptor(new CryptoService()), new VaultSession());
+        var svc = new EmergencyAccessService(FakeVaultApiClientProvider.ForAuthenticated<IEmergencyAccessApiClient>(api), new CryptoService(), new VaultDecryptor(new CryptoService()), ActiveSession());
         await svc.ApproveAsync("e1", TestContext.Current.CancellationToken);
         await svc.RejectAsync("e2", TestContext.Current.CancellationToken);
         await svc.RemoveAsync("e3", TestContext.Current.CancellationToken);
@@ -158,7 +166,7 @@ public class EmergencyAccessServiceTests
 
         var api = new FakeEaApi();
         api.ViewResult = new EmergencyAccessViewResponse { Ciphers = new[] { cipherDto }, KeyEncrypted = keyEnc };
-        var svc = new EmergencyAccessService(api, crypto, decryptor, session);
+        var svc = new EmergencyAccessService(FakeVaultApiClientProvider.ForAuthenticated<IEmergencyAccessApiClient>(api), crypto, decryptor, session);
 
         var recovered = await svc.ViewAsync("e1", "a@x.com", TestContext.Current.CancellationToken);
 
@@ -181,7 +189,7 @@ public class EmergencyAccessServiceTests
 
         var api = new FakeEaApi();
         api.TakeoverResult = new EmergencyAccessTakeoverResponse { Kdf = 0, KdfIterations = 600000, KeyEncrypted = keyEnc };
-        var svc = new EmergencyAccessService(api, crypto, new VaultDecryptor(crypto), session);
+        var svc = new EmergencyAccessService(FakeVaultApiClientProvider.ForAuthenticated<IEmergencyAccessApiClient>(api), crypto, new VaultDecryptor(crypto), session);
 
         await svc.TakeoverAndResetPasswordAsync("e1", "a@x.com", "New-Pass-1!", TestContext.Current.CancellationToken);
 

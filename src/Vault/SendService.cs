@@ -11,13 +11,13 @@ namespace Vault;
 // Send 读编排:拉列表 → 逐条用 UserKey 解出 seed → 派生 cryptoKey → 解密字段 → 映射成领域 Send。
 public sealed class SendService : ISendService
 {
-    private readonly ISendApiClient _api;
+    private readonly IVaultApiClientProvider _clients;
     private readonly SendCryptoService _crypto;
     private readonly VaultSession _session;
 
-    public SendService(ISendApiClient api, SendCryptoService crypto, VaultSession session)
+    public SendService(IVaultApiClientProvider clients, SendCryptoService crypto, VaultSession session)
     {
-        _api = api;
+        _clients = clients;
         _crypto = crypto;
         _session = session;
     }
@@ -25,13 +25,17 @@ public sealed class SendService : ISendService
     public async Task<IReadOnlyList<Send>> GetSendsAsync(CancellationToken ct = default)
     {
         var userKey = _session.UserKey ?? throw new InvalidOperationException("Vault is locked.");
-        var response = await _api.GetSendsAsync(ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ISendApiClient>(lease);
+        var response = await api.GetSendsAsync(linked.Token);
+        _session.ThrowIfExpired(lease);
         var result = new List<Send>();
         foreach (var dto in response.Data ?? Array.Empty<SendResponseDto>())
         {
             try
             {
-                result.Add(Decrypt(dto, userKey));
+                result.Add(Decrypt(dto, userKey, lease.Origin.Value));
             }
             catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException or NullReferenceException)
             {
@@ -42,7 +46,7 @@ public sealed class SendService : ISendService
         return result;
     }
 
-    private Send Decrypt(SendResponseDto dto, SymmetricCryptoKey userKey)
+    private Send Decrypt(SendResponseDto dto, SymmetricCryptoKey userKey, string origin)
     {
         var seed = _crypto.UnwrapSeed(dto.Key!, userKey);
         var cryptoKey = _crypto.DeriveCryptoKey(seed);
@@ -63,7 +67,7 @@ public sealed class SendService : ISendService
             file = new SendFile(fileName, size, dto.File.SizeName, dto.File.Id);
         }
 
-        var shareUrl = _crypto.BuildShareUrl(_session.Account.ServerUrl, dto.AccessId, seed);
+        var shareUrl = _crypto.BuildShareUrl(origin, dto.AccessId, seed);
 
         return new Send
         {

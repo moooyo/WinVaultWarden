@@ -148,11 +148,13 @@ public class AuthServicePinTests
 
     private AuthService CreateAuthService(FakeHttpMessageHandler handler, VaultSession session, MemoryTokenStore tokenStore)
     {
-        var api = new ApiClient(new HttpClient(handler));
+        var api = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
         var decryptor = new VaultDecryptor(_crypto);
         var cache = new VaultCacheService(new FakeCacheStore(), decryptor, session);
-        var bootstrapper = new VaultBootstrapper(new SyncService(api, decryptor, session, cache), api, session);
-        return new AuthService(api, api, _crypto, session, tokenStore, bootstrapper, cache);
+        var provider = new FakeVaultApiClientProvider().AddAnonymous<IIdentityApiClient>(api).AddAuthenticated<IReadonlyApiClient>(api);
+        var bootstrapper = new VaultBootstrapper(new SyncService(provider, decryptor, session, cache), provider, session);
+        var refresher = new TokenRefreshService(provider, session, tokenStore);
+        return new AuthService(provider, _crypto, session, tokenStore, bootstrapper, cache, refresher);
     }
 
     private PinFixture CreatePinFixture()

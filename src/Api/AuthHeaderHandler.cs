@@ -1,58 +1,81 @@
+using System.Net;
+using System.Net.Http.Headers;
+using Core.Models;
+using Core.Session;
+
 namespace Api;
 
 public sealed class AuthHeaderHandler : DelegatingHandler
 {
-    public const string ClientName = "desktop";
-    public const string ClientVersion = "2026.6.0";
-    public const string DeviceType = "6";
+    public static readonly HttpRequestOptionsKey<bool> DisableAutomaticRetryKey =
+        new("WinVaultWarden.DisableAutomaticRetry");
 
-    private readonly Func<string?> _getAccessToken;
+    private readonly ServerOrigin _clientOrigin;
+    private readonly Func<AccessTokenBinding?> _tokenProvider;
     private readonly Func<CancellationToken, Task<bool>> _refreshAsync;
 
-    public AuthHeaderHandler(Func<string?> getAccessToken, Func<CancellationToken, Task<bool>> refreshAsync)
+    public AuthHeaderHandler(
+        ServerOrigin clientOrigin,
+        Func<AccessTokenBinding?> tokenProvider,
+        Func<CancellationToken, Task<bool>> refreshAsync)
     {
-        _getAccessToken = getAccessToken;
+        _clientOrigin = clientOrigin;
+        _tokenProvider = tokenProvider;
         _refreshAsync = refreshAsync;
     }
 
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken ct)
     {
-        ApplyHeaders(request);
-        var response = await base.SendAsync(request, cancellationToken);
-        if (response.StatusCode != System.Net.HttpStatusCode.Unauthorized)
+        var attached = ApplyHeaders(request);
+        var response = await base.SendAsync(request, ct).ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.Unauthorized
+            || !attached
+            || IsTokenEndpoint(request)
+            || request.Options.TryGetValue(DisableAutomaticRetryKey, out var disabled)
+               && disabled)
             return response;
 
-        // connect/token 自身就是刷新机制;对它的 401 不再触发刷新,避免再入与信号量自死锁。
-        if (IsTokenEndpoint(request))
-            return response;
-
+        var retry = await CloneRequestAsync(request, ct).ConfigureAwait(false);
         response.Dispose();
-        if (!await _refreshAsync(cancellationToken))
-            return new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized) { RequestMessage = request };
+        if (!await _refreshAsync(ct).ConfigureAwait(false))
+        {
+            retry.Dispose();
+            return new HttpResponseMessage(HttpStatusCode.Unauthorized)
+            {
+                RequestMessage = request,
+            };
+        }
 
-        var retry = await CloneRequestAsync(request, cancellationToken);
         ApplyHeaders(retry);
-        return await base.SendAsync(retry, cancellationToken);
+        return await base.SendAsync(retry, ct).ConfigureAwait(false);
+    }
+
+    private bool ApplyHeaders(HttpRequestMessage request)
+    {
+        request.Headers.Authorization = null;
+        ClientHeadersHandler.Apply(request);
+        var binding = _tokenProvider();
+        if (request.RequestUri is not { IsAbsoluteUri: true } target
+            || binding is null
+            || binding.Origin != _clientOrigin
+            || !_clientOrigin.Matches(target))
+            return false;
+
+        request.Headers.Authorization =
+            new AuthenticationHeaderValue("Bearer", binding.Token);
+        return true;
     }
 
     private static bool IsTokenEndpoint(HttpRequestMessage request) =>
-        request.RequestUri?.AbsolutePath.EndsWith("connect/token", StringComparison.OrdinalIgnoreCase) == true;
+        request.RequestUri?.AbsolutePath.EndsWith(
+            "/identity/connect/token",
+            StringComparison.OrdinalIgnoreCase) == true;
 
-    private void ApplyHeaders(HttpRequestMessage request)
-    {
-        request.Headers.Remove("Bitwarden-Client-Name");
-        request.Headers.Remove("Bitwarden-Client-Version");
-        request.Headers.Remove("Device-Type");
-        request.Headers.Add("Bitwarden-Client-Name", ClientName);
-        request.Headers.Add("Bitwarden-Client-Version", ClientVersion);
-        request.Headers.Add("Device-Type", DeviceType);
-
-        var token = _getAccessToken();
-        if (!string.IsNullOrWhiteSpace(token))
-            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-    }
-
-    private static async Task<HttpRequestMessage> CloneRequestAsync(HttpRequestMessage request, CancellationToken ct)
+    private static async Task<HttpRequestMessage> CloneRequestAsync(
+        HttpRequestMessage request,
+        CancellationToken ct)
     {
         var clone = new HttpRequestMessage(request.Method, request.RequestUri);
         foreach (var header in request.Headers)
@@ -60,12 +83,11 @@ public sealed class AuthHeaderHandler : DelegatingHandler
 
         if (request.Content is not null)
         {
-            var bytes = await request.Content.ReadAsByteArrayAsync(ct);
+            var bytes = await request.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
             clone.Content = new ByteArrayContent(bytes);
             foreach (var header in request.Content.Headers)
                 clone.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
         }
-
         return clone;
     }
 }

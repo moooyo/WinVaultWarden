@@ -1,5 +1,6 @@
 using System.Net;
 using Api;
+using Core.Models;
 using Api.Dtos;
 using Xunit;
 
@@ -9,8 +10,7 @@ public class AttachmentApiClientTests
 {
     private static ApiClient NewClient(FakeHttpMessageHandler handler)
     {
-        var client = new ApiClient(new HttpClient(handler));
-        client.SetBaseAddress("https://vault.example");
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
         return client;
     }
 

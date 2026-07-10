@@ -7,13 +7,13 @@ namespace Vault;
 public sealed class VaultBootstrapper
 {
     private readonly SyncService _sync;
-    private readonly IReadonlyApiClient _api;
+    private readonly IVaultApiClientProvider _clients;
     private readonly VaultSession _session;
 
-    public VaultBootstrapper(SyncService sync, IReadonlyApiClient api, VaultSession session)
+    public VaultBootstrapper(SyncService sync, IVaultApiClientProvider clients, VaultSession session)
     {
         _sync = sync;
-        _api = api;
+        _clients = clients;
         _session = session;
     }
 
@@ -26,7 +26,11 @@ public sealed class VaultBootstrapper
 
         await _sync.SyncCoreAsync(serverUrl, ct);
 
-        var devices = await _api.GetDevicesAsync(ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IReadonlyApiClient>(lease);
+        var devices = await api.GetDevicesAsync(linked.Token);
+        _session.ThrowIfExpired(lease);
         _session.SetDevices(devices.Data.Select(MapDevice).ToArray());
         // 仅当未被并发锁定时才迁移到 Unlocked(S8):若解锁后首个整库同步期间被手动/托盘锁定,
         // 不得把状态强行改回 Unlocked(那会与已清零的 UserKey 矛盾)。

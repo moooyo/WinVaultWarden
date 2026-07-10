@@ -77,8 +77,9 @@ public class VaultWriteServiceTests
     private VaultWriteService NewUnlockedService()
     {
         var session = new VaultSession();
+        session.BeginAccountSession("test-account", "test@test.com", new Core.Models.ServerOrigin("https://vault.example"));
         session.SetUnlockedKey(new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray()));
-        return new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, session);
+        return new VaultWriteService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(_api), new CipherEncryptor(new CryptoService()), _sync, session);
     }
 
     private static Cipher NewLogin(string id = "") => new()
@@ -105,9 +106,10 @@ public class VaultWriteServiceTests
         // 写已在服务端成功(FakeWriteApi 记录了 create),但随后的整库同步抛错 →
         // 必须包装为 VaultRefreshException(而非裸传底层异常),让上层区分"写成功但刷新失败"。
         var session = new VaultSession();
+        session.BeginAccountSession("test-account", "test@test.com", new Core.Models.ServerOrigin("https://vault.example"));
         session.SetUnlockedKey(new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray()));
         var innerEx = new HttpRequestException("network down");
-        var svc = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), new ThrowingSync(innerEx), session);
+        var svc = new VaultWriteService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(_api), new CipherEncryptor(new CryptoService()), new ThrowingSync(innerEx), session);
 
         var ex = await Assert.ThrowsAsync<VaultRefreshException>(
             () => svc.SaveCipherAsync(NewLogin(), TestContext.Current.CancellationToken));
@@ -121,8 +123,9 @@ public class VaultWriteServiceTests
     {
         // 取消须原样冒泡(不能被包装成 VaultRefreshException)。
         var session = new VaultSession();
+        session.BeginAccountSession("test-account", "test@test.com", new Core.Models.ServerOrigin("https://vault.example"));
         session.SetUnlockedKey(new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray()));
-        var svc = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()),
+        var svc = new VaultWriteService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(_api), new CipherEncryptor(new CryptoService()),
             new ThrowingSync(new OperationCanceledException()), session);
 
         await Assert.ThrowsAsync<OperationCanceledException>(
@@ -209,7 +212,7 @@ public class VaultWriteServiceTests
     [Fact]
     public async Task SaveCipher_WhenLocked_ThrowsAndDoesNotCallApi()
     {
-        var service = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
+        var service = new VaultWriteService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(_api), new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.SaveCipherAsync(NewLogin(), TestContext.Current.CancellationToken));
@@ -221,7 +224,7 @@ public class VaultWriteServiceTests
     [Fact]
     public async Task DeleteCipher_WhenLocked_ThrowsAndDoesNotCallApi()
     {
-        var service = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
+        var service = new VaultWriteService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(_api), new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.DeleteCipherAsync("c-9", permanent: false, TestContext.Current.CancellationToken));
@@ -233,7 +236,7 @@ public class VaultWriteServiceTests
     [Fact]
     public async Task RestoreCipher_WhenLocked_ThrowsAndDoesNotCallApi()
     {
-        var service = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
+        var service = new VaultWriteService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(_api), new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.RestoreCipherAsync("c-9", TestContext.Current.CancellationToken));
@@ -245,7 +248,7 @@ public class VaultWriteServiceTests
     [Fact]
     public async Task SaveFolder_WhenLocked_ThrowsAndDoesNotCallApi()
     {
-        var service = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
+        var service = new VaultWriteService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(_api), new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.SaveFolderAsync(null, "Work", TestContext.Current.CancellationToken));
@@ -257,7 +260,7 @@ public class VaultWriteServiceTests
     [Fact]
     public async Task DeleteFolder_WhenLocked_ThrowsAndDoesNotCallApi()
     {
-        var service = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
+        var service = new VaultWriteService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(_api), new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.DeleteFolderAsync("f-1", TestContext.Current.CancellationToken));
@@ -306,7 +309,7 @@ public class VaultWriteServiceTests
     [Fact]
     public async Task DeleteCiphers_WhenLocked_ThrowsAndDoesNotCallApi()
     {
-        var service = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
+        var service = new VaultWriteService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(_api), new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.DeleteCiphersAsync(new[] { "a" }, permanent: false, TestContext.Current.CancellationToken));
         Assert.Empty(_api.Calls);
@@ -316,7 +319,7 @@ public class VaultWriteServiceTests
     [Fact]
     public async Task RestoreCiphers_WhenLocked_ThrowsAndDoesNotCallApi()
     {
-        var service = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
+        var service = new VaultWriteService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(_api), new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.RestoreCiphersAsync(new[] { "a" }, TestContext.Current.CancellationToken));
         Assert.Empty(_api.Calls);
@@ -334,7 +337,7 @@ public class VaultWriteServiceTests
     [Fact]
     public async Task MoveCiphers_WhenLocked_ThrowsAndDoesNotCallApi()
     {
-        var service = new VaultWriteService(_api, new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
+        var service = new VaultWriteService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(_api), new CipherEncryptor(new CryptoService()), _sync, new VaultSession());
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.MoveCiphersAsync(new[] { "a" }, null, TestContext.Current.CancellationToken));
         Assert.Empty(_api.Calls);

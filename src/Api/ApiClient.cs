@@ -4,17 +4,26 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Api.Dtos;
+using Core.Models;
 
 namespace Api;
 
-public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWriteApiClient, ISendApiClient, IAttachmentApiClient, IAccountApiClient, ITwoFactorApiClient, IAuthRequestApiClient, IEmergencyAccessApiClient
+public sealed class ApiClient :
+    IIdentityApiClient,
+    IRegistrationApiClient,
+    IPublicSendApiClient,
+    IPublicAuthRequestApiClient,
+    IAuthenticatedApiClient,
+    IDisposable
 {
     private readonly HttpClient _http;
-    private Uri? _baseAddress;
+    public ServerOrigin Origin { get; }
 
-    public ApiClient(HttpClient http) => _http = http;
-
-    public void SetBaseAddress(string baseUrl) => _baseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
+    public ApiClient(HttpClient http, ServerOrigin origin)
+    {
+        _http = http;
+        Origin = origin;
+    }
 
     public async Task<ConfigResponse> GetConfigAsync(CancellationToken ct = default)
     {
@@ -153,7 +162,7 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
         // 字段名固定 "data";文件名必须等于加密后的 fileName(服务端会逐字节比对)。
         content.Add(part, "data", encryptedFileName);
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, Url(NormalizeServerPath(uploadUrl)))
+        using var request = new HttpRequestMessage(HttpMethod.Post, ResolveExternal(NormalizeServerPath(uploadUrl)))
         {
             Content = content,
         };
@@ -188,7 +197,7 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
 
     public async Task<byte[]> DownloadSendFileBytesAsync(string downloadUrl, CancellationToken ct = default)
     {
-        using var response = await _http.GetAsync(Url(NormalizeServerPath(downloadUrl)), HttpCompletionOption.ResponseHeadersRead, ct);
+        using var response = await _http.GetAsync(ResolveExternal(NormalizeServerPath(downloadUrl)), HttpCompletionOption.ResponseHeadersRead, ct);
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
@@ -217,7 +226,7 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
         // 字段名固定 "data";文件名必须等于加密后的 fileName(服务端逐字节比对)。
         content.Add(part, "data", encryptedFileName);
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, Url(NormalizeServerPath(uploadUrl)))
+        using var request = new HttpRequestMessage(HttpMethod.Post, ResolveExternal(NormalizeServerPath(uploadUrl)))
         {
             Content = content,
         };
@@ -229,7 +238,7 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
 
     public async Task<byte[]> DownloadAttachmentBytesAsync(string downloadUrl, CancellationToken ct = default)
     {
-        using var response = await _http.GetAsync(Url(NormalizeServerPath(downloadUrl)), HttpCompletionOption.ResponseHeadersRead, ct);
+        using var response = await _http.GetAsync(ResolveExternal(NormalizeServerPath(downloadUrl)), HttpCompletionOption.ResponseHeadersRead, ct);
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
@@ -483,10 +492,19 @@ public sealed class ApiClient : IApiEndpointConfig, IReadonlyApiClient, IVaultWr
         throw new VaultWriteException(response.StatusCode, message, error?.ValidationErrors);
     }
 
-    private Uri Url(string relativePath) =>
-        _baseAddress is null
-            ? new Uri(relativePath, UriKind.Relative)
-            : new Uri(_baseAddress, relativePath);
+    private Uri Url(string relativeOrAbsolute) => Origin.Resolve(relativeOrAbsolute);
+
+    // 服务端下发的附件/Send 文件上传·下载 URL 可能指向异源对象存储(S3/Azure Blob 等)。
+    // 这类绝对 http(s) URL 按原样使用,不做同源校验;认证 transport 的 AuthHeaderHandler 已保证
+    // 跨源请求不携带 Bearer(仅在 request/client/token origin 三者全等时附加),故不泄露令牌。
+    // 相对路径仍按本 client 的 Origin 解析(经 NormalizeServerPath 补 api/ 前缀)。
+    private Uri ResolveExternal(string relativeOrAbsolute) =>
+        Uri.TryCreate(relativeOrAbsolute, UriKind.Absolute, out var absolute)
+        && (absolute.Scheme == Uri.UriSchemeHttp || absolute.Scheme == Uri.UriSchemeHttps)
+            ? absolute
+            : Origin.Resolve(relativeOrAbsolute);
+
+    public void Dispose() => _http.Dispose();
 
     private static IEnumerable<KeyValuePair<string, string>> ToForm(ConnectTokenRequest request)
     {

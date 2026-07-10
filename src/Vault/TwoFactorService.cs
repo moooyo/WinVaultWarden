@@ -23,16 +23,19 @@ namespace Vault;
 public sealed class TwoFactorService : ITwoFactorService
 {
     private readonly CryptoService _crypto;
-    private readonly ITwoFactorApiClient _api;
+    private readonly IVaultApiClientProvider _clients;
+    private readonly VaultSession _session;
     private readonly ITokenStore _tokenStore;
 
     public TwoFactorService(
         CryptoService crypto,
-        ITwoFactorApiClient api,
+        IVaultApiClientProvider clients,
+        VaultSession session,
         ITokenStore tokenStore)
     {
         _crypto = crypto;
-        _api = api;
+        _clients = clients;
+        _session = session;
         _tokenStore = tokenStore;
     }
 
@@ -42,7 +45,11 @@ public sealed class TwoFactorService : ITwoFactorService
 
     public async Task<IReadOnlyList<TwoFactorProvider>> ListProvidersAsync(CancellationToken ct = default)
     {
-        var response = await _api.GetProvidersAsync(ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        var response = await api.GetProvidersAsync(linked.Token);
+        _session.ThrowIfExpired(lease);
         return response.Data
             .Select(item => new TwoFactorProvider(item.Type, item.Enabled))
             .ToList()
@@ -57,7 +64,11 @@ public sealed class TwoFactorService : ITwoFactorService
         string pw, CancellationToken ct = default)
     {
         var mphash = ComputeHash(pw); // 若 store 未加载会抛 TwoFactorOperationException
-        var response = await _api.GetAuthenticatorAsync(new PasswordVerifyRequest(mphash), ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        var response = await api.GetAuthenticatorAsync(new PasswordVerifyRequest(mphash), linked.Token);
+        _session.ThrowIfExpired(lease);
 
         var secret = response.Key;
         var email = LoadPersisted().Email;
@@ -74,10 +85,14 @@ public sealed class TwoFactorService : ITwoFactorService
     {
         var mphash = ComputeHash(pw);
 
-        await _api.EnableAuthenticatorAsync(
-            new EnableAuthenticatorRequest(Key: secret, Token: code, MasterPasswordHash: mphash), ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        await api.EnableAuthenticatorAsync(
+            new EnableAuthenticatorRequest(Key: secret, Token: code, MasterPasswordHash: mphash), linked.Token);
 
-        var recover = await _api.GetRecoverAsync(new PasswordVerifyRequest(mphash), ct);
+        var recover = await api.GetRecoverAsync(new PasswordVerifyRequest(mphash), linked.Token);
+        _session.ThrowIfExpired(lease);
         return recover.Code ?? string.Empty;
     }
 
@@ -88,7 +103,11 @@ public sealed class TwoFactorService : ITwoFactorService
     public async Task<string?> BeginEmailSetupAsync(string pw, CancellationToken ct = default)
     {
         var mphash = ComputeHash(pw);
-        var response = await _api.GetEmailAsync(new PasswordVerifyRequest(mphash), ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        var response = await api.GetEmailAsync(new PasswordVerifyRequest(mphash), linked.Token);
+        _session.ThrowIfExpired(lease);
         return response.Email;
     }
 
@@ -99,7 +118,11 @@ public sealed class TwoFactorService : ITwoFactorService
     public async Task SendEmailAsync(string pw, string email, CancellationToken ct = default)
     {
         var mphash = ComputeHash(pw);
-        await _api.SendEmailAsync(new SendEmailRequest(Email: email, MasterPasswordHash: mphash), ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        await api.SendEmailAsync(new SendEmailRequest(Email: email, MasterPasswordHash: mphash), linked.Token);
+        _session.ThrowIfExpired(lease);
     }
 
     // -----------------------------------------------------------------------
@@ -109,8 +132,12 @@ public sealed class TwoFactorService : ITwoFactorService
     public async Task EnableEmailAsync(string pw, string email, string token, CancellationToken ct = default)
     {
         var mphash = ComputeHash(pw);
-        await _api.EnableEmailAsync(
-            new EmailVerifyRequest(Email: email, Token: token, MasterPasswordHash: mphash), ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        await api.EnableEmailAsync(
+            new EmailVerifyRequest(Email: email, Token: token, MasterPasswordHash: mphash), linked.Token);
+        _session.ThrowIfExpired(lease);
     }
 
     // -----------------------------------------------------------------------
@@ -120,7 +147,11 @@ public sealed class TwoFactorService : ITwoFactorService
     public async Task DisableAsync(string pw, int type, CancellationToken ct = default)
     {
         var mphash = ComputeHash(pw);
-        await _api.DisableAsync(new DisableTwoFactorRequest(MasterPasswordHash: mphash, Type: type), ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        await api.DisableAsync(new DisableTwoFactorRequest(MasterPasswordHash: mphash, Type: type), linked.Token);
+        _session.ThrowIfExpired(lease);
     }
 
     // -----------------------------------------------------------------------

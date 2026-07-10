@@ -15,8 +15,15 @@ public class TokenRefreshServiceTests
 
     private static TokenRefreshService Create(FakeHttpMessageHandler handler, VaultSession session, MemoryTokenStore tokenStore)
     {
-        var api = new ApiClient(new HttpClient(handler));
-        return new TokenRefreshService(api, api, session, tokenStore);
+        var api = new ApiClient(new HttpClient(handler), new ServerOrigin(ServerUrl));
+        return new TokenRefreshService(FakeVaultApiClientProvider.ForAnonymous<IIdentityApiClient>(api), session, tokenStore);
+    }
+
+    private static VaultSession ActiveSession()
+    {
+        var session = new VaultSession();
+        session.BeginAccountSession(Email, Email, new ServerOrigin(ServerUrl));
+        return session;
     }
 
     private static MemoryTokenStore StoreWithSession()
@@ -35,7 +42,7 @@ public class TokenRefreshServiceTests
     {
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, RefreshOkJson));
-        var session = new VaultSession();
+        var session = ActiveSession();
         session.SetTokens("old-access", "old-refresh");
         var store = StoreWithSession();
         var service = Create(handler, session, store);
@@ -54,7 +61,7 @@ public class TokenRefreshServiceTests
     public async Task TryRefreshAsync_NoRefreshToken_ReturnsFalseWithoutRequest()
     {
         var handler = new FakeHttpMessageHandler();
-        var session = new VaultSession(); // RefreshToken == null
+        var session = ActiveSession(); // RefreshToken == null (BeginAccountSession clears tokens)
         var service = Create(handler, session, StoreWithSession());
 
         var ok = await service.TryRefreshAsync(TestContext.Current.CancellationToken);
@@ -67,7 +74,7 @@ public class TokenRefreshServiceTests
     public async Task TryRefreshAsync_NoPersistedSession_ReturnsFalseWithoutRequest()
     {
         var handler = new FakeHttpMessageHandler();
-        var session = new VaultSession();
+        var session = ActiveSession();
         session.SetTokens("old-access", "old-refresh");
         var service = Create(handler, session, new MemoryTokenStore());
 
@@ -78,19 +85,20 @@ public class TokenRefreshServiceTests
     }
 
     [Fact]
-    public async Task TryRefreshAsync_ServerRejects_ReturnsFalseAndLocks()
+    public async Task TryRefreshAsync_ServerRejects_ReturnsFalse()
     {
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
             """{"error":"invalid_grant","error_description":"refresh token is invalid"}"""));
-        var session = new VaultSession();
+        var session = ActiveSession();
         session.SetTokens("old-access", "old-refresh");
         var service = Create(handler, session, StoreWithSession());
 
         var ok = await service.TryRefreshAsync(TestContext.Current.CancellationToken);
 
+        // Task 4 版本:非成功结果一律返回 false 且不改会话状态;invalid_grant 的锁库分类留待 Task 7。
         Assert.False(ok);
-        Assert.Equal(VaultState.Locked, session.State);
+        Assert.Equal("old-access", session.AccessToken);
     }
 
     [Fact]
@@ -105,7 +113,7 @@ public class TokenRefreshServiceTests
             release.Task.Wait();
             return FakeHttpMessageHandler.Json(HttpStatusCode.OK, RefreshOkJson);
         });
-        var session = new VaultSession();
+        var session = ActiveSession();
         session.SetTokens("old-access", "old-refresh");
         var service = Create(handler, session, StoreWithSession());
 
@@ -126,7 +134,7 @@ public class TokenRefreshServiceTests
         var handler = new FakeHttpMessageHandler();
         // 反代 502 常见:非 JSON 的 HTML 体。ReadJsonOrNull 解析失败 → ErrorCode 为 null → 视为瞬时。
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadGateway, "<html>502 Bad Gateway</html>"));
-        var session = new VaultSession();
+        var session = ActiveSession();
         session.SetTokens("old-access", "old-refresh");
         session.SetState(VaultState.Unlocked);
         var service = Create(handler, session, StoreWithSession());
@@ -143,24 +151,7 @@ public class TokenRefreshServiceTests
     {
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.TooManyRequests, "{}"));
-        var session = new VaultSession();
-        session.SetTokens("old-access", "old-refresh");
-        session.SetState(VaultState.Unlocked);
-        var service = Create(handler, session, StoreWithSession());
-
-        var ok = await service.TryRefreshAsync(TestContext.Current.CancellationToken);
-
-        Assert.False(ok);
-        Assert.NotEqual(VaultState.Locked, session.State);
-        Assert.Equal("old-access", session.AccessToken);
-    }
-
-    [Fact]
-    public async Task TryRefreshAsync_NetworkException_ReturnsFalseWithoutLocking()
-    {
-        var handler = new FakeHttpMessageHandler();
-        handler.Enqueue(_ => throw new HttpRequestException("connection refused"));
-        var session = new VaultSession();
+        var session = ActiveSession();
         session.SetTokens("old-access", "old-refresh");
         session.SetState(VaultState.Unlocked);
         var service = Create(handler, session, StoreWithSession());

@@ -13,13 +13,13 @@ namespace Vault;
 // 文件类型:把文件加密成 EncArrayBuffer,fileLength=buffer.Length,先 v2 创建拿上传 URL,再 multipart 上传。
 public sealed class SendWriteService : ISendWriteService
 {
-    private readonly ISendApiClient _api;
+    private readonly IVaultApiClientProvider _clients;
     private readonly SendCryptoService _crypto;
     private readonly VaultSession _session;
 
-    public SendWriteService(ISendApiClient api, SendCryptoService crypto, VaultSession session)
+    public SendWriteService(IVaultApiClientProvider clients, SendCryptoService crypto, VaultSession session)
     {
-        _api = api;
+        _clients = clients;
         _crypto = crypto;
         _session = session;
     }
@@ -36,15 +36,22 @@ public sealed class SendWriteService : ISendWriteService
             Text: draft.TextContent is null ? null : _crypto.EncryptField(draft.TextContent, cryptoKey),
             Hidden: draft.TextHidden);
 
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ISendApiClient>(lease);
         if (string.IsNullOrEmpty(draft.Id))
-            await _api.CreateTextSendAsync(request, ct);
+            await api.CreateTextSendAsync(request, linked.Token);
         else
-            await _api.UpdateSendAsync(draft.Id, request, ct);
+            await api.UpdateSendAsync(draft.Id, request, linked.Token);
+        _session.ThrowIfExpired(lease);
     }
 
     public async Task SaveFileSendAsync(SendDraftModel draft, byte[] fileBytes, CancellationToken ct = default)
     {
         var userKey = RequireUserKey();
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ISendApiClient>(lease);
 
         // 更新既有文件 Send:服务端文件字节不可变(PUT /api/sends/{id} 收 File=null、不改 send.data,
         // 只更新元数据;没有任何端点能替换既有 Send 的文件字节 —— 与 Bitwarden 官方客户端一致)。
@@ -64,7 +71,8 @@ public sealed class SendWriteService : ISendWriteService
                 var updateRequest = BuildBaseRequest(draft, existingSeed, existingCryptoKey, userKey);
                 updateRequest.Type = (int)SendType.File;
                 // File / FileLength 更新时被服务端忽略(文件不可变),保持 null。
-                await _api.UpdateSendAsync(draft.Id, updateRequest, ct);
+                await api.UpdateSendAsync(draft.Id, updateRequest, linked.Token);
+                _session.ThrowIfExpired(lease);
             }
             finally
             {
@@ -85,20 +93,29 @@ public sealed class SendWriteService : ISendWriteService
         request.File = new SendFileRequest(FileName: encryptedFileName);
         request.FileLength = buffer.Length;
 
-        var response = await _api.CreateFileSendV2Async(request, ct);
-        await _api.UploadSendFileAsync(response.Url, encryptedFileName, buffer, ct);
+        var response = await api.CreateFileSendV2Async(request, linked.Token);
+        await api.UploadSendFileAsync(response.Url, encryptedFileName, buffer, linked.Token);
+        _session.ThrowIfExpired(lease);
     }
 
-    public Task DeleteSendAsync(string sendId, CancellationToken ct = default)
+    public async Task DeleteSendAsync(string sendId, CancellationToken ct = default)
     {
         RequireUserKey();
-        return _api.DeleteSendAsync(sendId, ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ISendApiClient>(lease);
+        await api.DeleteSendAsync(sendId, linked.Token);
+        _session.ThrowIfExpired(lease);
     }
 
     public async Task<Send> RemovePasswordAsync(string sendId, CancellationToken ct = default)
     {
         var userKey = RequireUserKey();
-        var dto = await _api.RemoveSendPasswordAsync(sendId, ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ISendApiClient>(lease);
+        var dto = await api.RemoveSendPasswordAsync(sendId, linked.Token);
+        _session.ThrowIfExpired(lease);
         return Decrypt(dto, userKey);
     }
 

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Api;
 using Api.Dtos;
 using Core.Abstractions;
 using Core.Models;
@@ -43,6 +44,7 @@ public class AuthRequestServiceTests
     private VaultSession MakeUnlockedSession()
     {
         var session = new VaultSession();
+        session.BeginAccountSession("test-account", "test@example.com", new ServerOrigin("https://vault.example"));
         session.SetUnlockedKey(_userKey);
         return session;
     }
@@ -57,7 +59,7 @@ public class AuthRequestServiceTests
         ITokenStore? tokenStore = null)
     {
         return new AuthRequestService(
-            api,
+            FakeVaultApiClientProvider.ForAuthenticated<IAuthRequestApiClient>(api),
             _crypto,
             session ?? MakeUnlockedSession(),
             tokenStore ?? MakeTokenStore(),

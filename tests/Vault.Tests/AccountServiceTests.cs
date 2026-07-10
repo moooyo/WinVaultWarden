@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Api;
 using Core.Abstractions;
 using Core.Enums;
 using Core.Models;
@@ -43,6 +44,7 @@ public class AccountServiceTests
             null));
 
         var session = new VaultSession();
+        session.BeginAccountSession("test-account", Email, new ServerOrigin("https://vault.example"));
         session.SetTokens("access", "refresh");
         session.SetUnlockedKey(userKey);
 
@@ -60,7 +62,7 @@ public class AccountServiceTests
         // 通过重新创建确保传入正确引用（构造函数接受 session+store）
         cacheStore ??= new FakeCacheStore();
         var cache = new VaultCacheService(cacheStore, new VaultDecryptor(_crypto), session);
-        return new AccountService(_crypto, api, session, store, auth, cache);
+        return new AccountService(_crypto, FakeVaultApiClientProvider.ForAuthenticated<IAccountApiClient>(api), session, store, auth, cache);
     }
 
     // ---- Test 1: ChangePassword 发送重包 key 并登出 ----
@@ -327,12 +329,13 @@ public class AccountServiceTests
             protectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
 
         var session = new VaultSession();
+        session.BeginAccountSession("test-account", Email, new ServerOrigin("https://vault.example"));
         session.SetTokens("access", "refresh");
         session.SetUnlockedKey(userKey);
 
         var cacheStore = new FakeCacheStore();
         var cache = new VaultCacheService(cacheStore, new VaultDecryptor(recording), session);
-        var svc = new AccountService(recording, new FakeAccountApiClient(),
+        var svc = new AccountService(recording, FakeVaultApiClientProvider.ForAuthenticated<IAccountApiClient>(new FakeAccountApiClient()),
             session, store, new FakeAuthService(session, store), cache);
 
         // 清掉 setup 阶段记录的 key,只观察 Verify 内部(ValidateCurrentPassword)产生的密钥

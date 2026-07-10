@@ -13,20 +13,20 @@ public sealed class AttachmentService : IAttachmentService
 {
     public const long MaxPlaintextBytes = Core.Services.AttachmentLimits.MaxPlaintextBytes;
 
-    private readonly IAttachmentApiClient _api;
+    private readonly IVaultApiClientProvider _clients;
     private readonly AttachmentCryptoService _crypto;
     private readonly VaultDecryptor _decryptor;
     private readonly VaultSession _session;
     private readonly ISyncService _sync;
 
     public AttachmentService(
-        IAttachmentApiClient api,
+        IVaultApiClientProvider clients,
         AttachmentCryptoService crypto,
         VaultDecryptor decryptor,
         VaultSession session,
         ISyncService sync)
     {
-        _api = api;
+        _clients = clients;
         _crypto = crypto;
         _decryptor = decryptor;
         _session = session;
@@ -40,7 +40,11 @@ public sealed class AttachmentService : IAttachmentService
         if (plaintext.LongLength > MaxPlaintextBytes)
             throw new AttachmentTooLargeException(plaintext.LongLength, MaxPlaintextBytes);
 
-        var dto = await _api.GetCipherAsync(cipherId, ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IAttachmentApiClient>(lease);
+
+        var dto = await api.GetCipherAsync(cipherId, linked.Token);
         var itemKey = _decryptor.ResolveItemKey(dto, userKey);
 
         // 每附件随机 64 字节 attKey,仅在本方法内用于加密文件名/文件体并包裹进 key 字段;
@@ -50,15 +54,15 @@ public sealed class AttachmentService : IAttachmentService
         var buffer = _crypto.EncryptFile(plaintext, attKey);
         var wrapped = _crypto.WrapKey(attKey, itemKey);
 
-        var resp = await _api.CreateAttachmentV2Async(
-            cipherId, new AttachmentUploadRequest(wrapped, encName, buffer.LongLength), ct);
+        var resp = await api.CreateAttachmentV2Async(
+            cipherId, new AttachmentUploadRequest(wrapped, encName, buffer.LongLength), linked.Token);
 
         // 两步上传:第一步(post_attachment_v2)已在服务端落库一条附件记录,之后才传文件体。
         // 第二步(文件体)失败或被取消时,若不清理会留下下不动的孤儿附件记录、持续占用配额。
         // 因此包裹第二步:任何异常(含 OperationCanceledException)都 best-effort 删除刚建的记录,再原样重抛。
         try
         {
-            await _api.UploadAttachmentDataAsync(resp.Url, encName, buffer, ct);
+            await api.UploadAttachmentDataAsync(resp.Url, encName, buffer, linked.Token);
         }
         catch
         {
@@ -66,7 +70,7 @@ public sealed class AttachmentService : IAttachmentService
             // 删除自身失败绝不能掩盖原始异常——吞掉补偿异常,由下方 throw 原样重抛原始异常。
             try
             {
-                await _api.DeleteAttachmentAsync(cipherId, resp.AttachmentId, CancellationToken.None);
+                await api.DeleteAttachmentAsync(cipherId, resp.AttachmentId, CancellationToken.None);
             }
             catch
             {
@@ -76,6 +80,7 @@ public sealed class AttachmentService : IAttachmentService
             throw;
         }
 
+        _session.ThrowIfExpired(lease);
         await ResyncAsync(ct);
         return CurrentAttachments(cipherId);
     }
@@ -83,7 +88,10 @@ public sealed class AttachmentService : IAttachmentService
     public async Task<byte[]> DownloadAsync(string cipherId, string attachmentId, CancellationToken ct = default)
     {
         var userKey = RequireUserKey();
-        var dto = await _api.GetCipherAsync(cipherId, ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IAttachmentApiClient>(lease);
+        var dto = await api.GetCipherAsync(cipherId, linked.Token);
         var itemKey = _decryptor.ResolveItemKey(dto, userKey);
 
         var att = dto.Attachments?.FirstOrDefault(a => a.Id == attachmentId)
@@ -93,7 +101,8 @@ public sealed class AttachmentService : IAttachmentService
             : _crypto.UnwrapKey(att.Key, itemKey);
         var url = att.Url ?? throw new InvalidOperationException("Attachment url missing.");
 
-        var bytes = await _api.DownloadAttachmentBytesAsync(url, ct);
+        var bytes = await api.DownloadAttachmentBytesAsync(url, linked.Token);
+        _session.ThrowIfExpired(lease);
         return _crypto.DecryptFile(bytes, attKey);
     }
 
@@ -101,7 +110,11 @@ public sealed class AttachmentService : IAttachmentService
         string cipherId, string attachmentId, CancellationToken ct = default)
     {
         RequireUserKey();
-        await _api.DeleteAttachmentAsync(cipherId, attachmentId, ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IAttachmentApiClient>(lease);
+        await api.DeleteAttachmentAsync(cipherId, attachmentId, linked.Token);
+        _session.ThrowIfExpired(lease);
         await ResyncAsync(ct);
         return CurrentAttachments(cipherId);
     }

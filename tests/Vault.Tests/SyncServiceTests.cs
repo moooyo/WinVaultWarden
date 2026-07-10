@@ -1,5 +1,6 @@
 using System.Net;
 using Api;
+using Core.Models;
 using Crypto;
 using Vault;
 using Xunit;
@@ -17,14 +18,14 @@ public class SyncServiceTests
         var userKey = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, SyncJson()));
-        var api = new ApiClient(new HttpClient(handler));
-        api.SetBaseAddress(Server);
+        var api = new ApiClient(new HttpClient(handler), new ServerOrigin(Server));
         var session = new VaultSession();
+        session.BeginAccountSession("test-account", "me@example.com", new ServerOrigin(Server));
         session.SetUnlockedKey(userKey);
         var decryptor = new VaultDecryptor(crypto);
         var store = new FakeCacheStore();
         var cache = new VaultCacheService(store, decryptor, session);
-        var sync = new SyncService(api, decryptor, session, cache);
+        var sync = new SyncService(FakeVaultApiClientProvider.ForAuthenticated<IReadonlyApiClient>(api), decryptor, session, cache);
 
         await sync.SyncCoreAsync(Server, TestContext.Current.CancellationToken);
 

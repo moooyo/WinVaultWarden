@@ -17,6 +17,8 @@ public sealed class SendAccessResult
     /// <summary>文件型 Send 的 file_id(来自 SendFileDto.Id)。用于 access-file 中间步骤。</summary>
     public string? FileId { get; init; }
     public string AccessId { get; init; } = "";
+    /// <summary>访问时使用的分享 URL 来源(从分享 URL 自身解析,而非当前登录账户)。文件下载沿用同一匿名 origin。</summary>
+    public ServerOrigin Origin { get; init; }
     public byte[] Seed { get; init; } = Array.Empty<byte>();
     /// <summary>访问时使用的密码证明(base64)。文件下载中间步骤需重新提交。</summary>
     public string? PasswordProof { get; init; }

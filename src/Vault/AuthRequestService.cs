@@ -15,20 +15,20 @@ namespace Vault;
 // DenyAsync    → PUT 拒绝，Key="" RequestApproved=false。
 public sealed class AuthRequestService : IAuthRequestService
 {
-    private readonly IAuthRequestApiClient _api;
+    private readonly IVaultApiClientProvider _clients;
     private readonly CryptoService _crypto;
     private readonly VaultSession _session;
     private readonly ITokenStore _tokenStore;
     private readonly FingerprintService _fingerprint;
 
     public AuthRequestService(
-        IAuthRequestApiClient api,
+        IVaultApiClientProvider clients,
         CryptoService crypto,
         VaultSession session,
         ITokenStore tokenStore,
         FingerprintService fingerprint)
     {
-        _api = api;
+        _clients = clients;
         _crypto = crypto;
         _session = session;
         _tokenStore = tokenStore;
@@ -38,7 +38,11 @@ public sealed class AuthRequestService : IAuthRequestService
     /// <inheritdoc />
     public async Task<IReadOnlyList<PendingAuthRequest>> ListPendingAsync(CancellationToken ct = default)
     {
-        var resp = await _api.GetPendingAsync(ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IAuthRequestApiClient>(lease);
+        var resp = await api.GetPendingAsync(linked.Token);
+        _session.ThrowIfExpired(lease);
 
         // D1: 为每个请求派生指纹短语(账户邮箱 + 请求方公钥),供审批前人工核对。
         // 邮箱取自持久化会话 = 登录邮箱,与请求设备使用的 loginEmail 一致,使两端短语相同。
@@ -87,14 +91,18 @@ public sealed class AuthRequestService : IAuthRequestService
         var publicKeyDer = Convert.FromBase64String(publicKey);
         var encKey = _crypto.EncryptRsa(userKey.FullKey, publicKeyDer).ToString();
 
-        await _api.ApproveAsync(
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IAuthRequestApiClient>(lease);
+        await api.ApproveAsync(
             id,
             new AuthResponseRequest(
                 DeviceIdentifier: persisted.DeviceIdentifier,
                 Key: encKey,
                 MasterPasswordHash: null,
                 RequestApproved: true),
-            ct);
+            linked.Token);
+        _session.ThrowIfExpired(lease);
     }
 
     /// <inheritdoc />
@@ -103,13 +111,17 @@ public sealed class AuthRequestService : IAuthRequestService
         if (!_tokenStore.TryLoad(out var persisted))
             throw new AuthRequestOperationException("无法读取会话信息，请重新登录。");
 
-        await _api.ApproveAsync(
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IAuthRequestApiClient>(lease);
+        await api.ApproveAsync(
             id,
             new AuthResponseRequest(
                 DeviceIdentifier: persisted.DeviceIdentifier,
                 Key: "",
                 MasterPasswordHash: null,
                 RequestApproved: false),
-            ct);
+            linked.Token);
+        _session.ThrowIfExpired(lease);
     }
 }

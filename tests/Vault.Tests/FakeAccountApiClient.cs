@@ -3,16 +3,12 @@ using Api.Dtos;
 
 namespace Vault.Tests;
 
-public sealed class FakeAccountApiClient : IAccountApiClient, IApiEndpointConfig
+public sealed class FakeAccountApiClient : IAccountApiClient, IRegistrationApiClient
 {
     public ProfileUpdateRequest? Profile;
     public ChangePasswordRequest? Password;
     public ChangeKdfRequest? Kdf;
     public Exception? Throw;
-
-    public string? LastBaseAddress;
-
-    public void SetBaseAddress(string b) { LastBaseAddress = b; }
 
     public Task UpdateProfileAsync(ProfileUpdateRequest r, CancellationToken ct = default)
     {

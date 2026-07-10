@@ -9,14 +9,14 @@ namespace Vault;
 
 public sealed class EmergencyAccessService : IEmergencyAccessService
 {
-    private readonly IEmergencyAccessApiClient _api;
+    private readonly IVaultApiClientProvider _clients;
     private readonly CryptoService _crypto;
     private readonly VaultDecryptor _decryptor;
     private readonly VaultSession _session;
 
-    public EmergencyAccessService(IEmergencyAccessApiClient api, CryptoService crypto, VaultDecryptor decryptor, VaultSession session)
+    public EmergencyAccessService(IVaultApiClientProvider clients, CryptoService crypto, VaultDecryptor decryptor, VaultSession session)
     {
-        _api = api;
+        _clients = clients;
         _crypto = crypto;
         _decryptor = decryptor;
         _session = session;
@@ -26,7 +26,11 @@ public sealed class EmergencyAccessService : IEmergencyAccessService
 
     public async Task<IReadOnlyList<EmergencyContact>> GetTrustedAsync(CancellationToken ct = default)
     {
-        var res = await _api.GetTrustedAsync(ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
+        var res = await api.GetTrustedAsync(linked.Token);
+        _session.ThrowIfExpired(lease);
         return (res.Data ?? Array.Empty<EmergencyAccessGranteeDetailsDto>())
             .Select(d => new EmergencyContact(
                 d.Id,
@@ -39,54 +43,115 @@ public sealed class EmergencyAccessService : IEmergencyAccessService
             .ToArray();
     }
 
-    public Task InviteAsync(string email, EmergencyAccessType type, int waitTimeDays, CancellationToken ct = default)
-        => _api.InviteAsync(new EmergencyAccessInviteRequest { Email = email, Type = (int)type, WaitTimeDays = waitTimeDays }, ct);
+    public async Task InviteAsync(string email, EmergencyAccessType type, int waitTimeDays, CancellationToken ct = default)
+    {
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
+        await api.InviteAsync(new EmergencyAccessInviteRequest { Email = email, Type = (int)type, WaitTimeDays = waitTimeDays }, linked.Token);
+        _session.ThrowIfExpired(lease);
+    }
 
-    public Task ReinviteAsync(string id, CancellationToken ct = default)
-        => _api.ReinviteAsync(id, ct);
+    public async Task ReinviteAsync(string id, CancellationToken ct = default)
+    {
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
+        await api.ReinviteAsync(id, linked.Token);
+        _session.ThrowIfExpired(lease);
+    }
 
     public async Task ConfirmAsync(string id, string granteeId, CancellationToken ct = default)
     {
         var userKey = _session.UserKey ?? throw new InvalidOperationException("Vault is locked.");
-        var pk = await _api.GetPublicKeyAsync(granteeId, ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
+        var pk = await api.GetPublicKeyAsync(granteeId, linked.Token);
         if (string.IsNullOrEmpty(pk.PublicKey))
             throw new EmergencyAccessOperationException("Grantee has no public key.");
         byte[] pubDer = Convert.FromBase64String(pk.PublicKey);
         var enc = _crypto.EncryptRsa(userKey.FullKey, pubDer);
-        await _api.ConfirmAsync(id, new EmergencyAccessConfirmRequest { Key = enc.ToString() }, ct);
+        await api.ConfirmAsync(id, new EmergencyAccessConfirmRequest { Key = enc.ToString() }, linked.Token);
+        _session.ThrowIfExpired(lease);
     }
 
-    public Task UpdateAsync(string id, EmergencyAccessType type, int waitTimeDays, CancellationToken ct = default)
-        => _api.UpdateAsync(id, new EmergencyAccessUpdateRequest { Type = (int)type, WaitTimeDays = waitTimeDays }, ct);
+    public async Task UpdateAsync(string id, EmergencyAccessType type, int waitTimeDays, CancellationToken ct = default)
+    {
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
+        await api.UpdateAsync(id, new EmergencyAccessUpdateRequest { Type = (int)type, WaitTimeDays = waitTimeDays }, linked.Token);
+        _session.ThrowIfExpired(lease);
+    }
 
-    public Task RemoveAsync(string id, CancellationToken ct = default)
-        => _api.DeleteAsync(id, ct);
+    public async Task RemoveAsync(string id, CancellationToken ct = default)
+    {
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
+        await api.DeleteAsync(id, linked.Token);
+        _session.ThrowIfExpired(lease);
+    }
 
-    public Task ApproveAsync(string id, CancellationToken ct = default)
-        => _api.ApproveAsync(id, ct);
+    public async Task ApproveAsync(string id, CancellationToken ct = default)
+    {
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
+        await api.ApproveAsync(id, linked.Token);
+        _session.ThrowIfExpired(lease);
+    }
 
-    public Task RejectAsync(string id, CancellationToken ct = default)
-        => _api.RejectAsync(id, ct);
+    public async Task RejectAsync(string id, CancellationToken ct = default)
+    {
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
+        await api.RejectAsync(id, linked.Token);
+        _session.ThrowIfExpired(lease);
+    }
 
     // ===== 受托方（Grantee）— Task 6 =====
 
     public async Task<IReadOnlyList<GrantedAccess>> GetGrantedAsync(CancellationToken ct = default)
     {
-        var res = await _api.GetGrantedAsync(ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
+        var res = await api.GetGrantedAsync(linked.Token);
+        _session.ThrowIfExpired(lease);
         return (res.Data ?? Array.Empty<EmergencyAccessGrantorDetailsDto>())
             .Select(d => new GrantedAccess(d.Id, d.GrantorId, d.Email, d.Name,
                 (EmergencyAccessStatus)d.Status, (EmergencyAccessType)d.Type, d.WaitTimeDays))
             .ToArray();
     }
 
-    public Task AcceptAsync(string id, string token, CancellationToken ct = default)
-        => _api.AcceptAsync(id, new EmergencyAccessAcceptRequest { Token = token }, ct);
+    public async Task AcceptAsync(string id, string token, CancellationToken ct = default)
+    {
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
+        await api.AcceptAsync(id, new EmergencyAccessAcceptRequest { Token = token }, linked.Token);
+        _session.ThrowIfExpired(lease);
+    }
 
-    public Task InitiateAsync(string id, CancellationToken ct = default) => _api.InitiateAsync(id, ct);
+    public async Task InitiateAsync(string id, CancellationToken ct = default)
+    {
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
+        await api.InitiateAsync(id, linked.Token);
+        _session.ThrowIfExpired(lease);
+    }
 
     public async Task<RecoveredVault> ViewAsync(string id, string grantorEmail, CancellationToken ct = default)
     {
-        var res = await _api.ViewAsync(id, ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
+        var res = await api.ViewAsync(id, linked.Token);
+        _session.ThrowIfExpired(lease);
         var grantorKey = RecoverGrantorKey(res.KeyEncrypted);
         try
         {
@@ -103,7 +168,11 @@ public sealed class EmergencyAccessService : IEmergencyAccessService
 
     public async Task TakeoverAndResetPasswordAsync(string id, string grantorEmail, string newPassword, CancellationToken ct = default)
     {
-        var res = await _api.TakeoverAsync(id, ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
+        var res = await api.TakeoverAsync(id, linked.Token);
+        _session.ThrowIfExpired(lease);
         var grantorKey = RecoverGrantorKey(res.KeyEncrypted);
         byte[]? newMasterKey = null;
         try
@@ -112,7 +181,8 @@ public sealed class EmergencyAccessService : IEmergencyAccessService
                 (Core.Enums.KdfType)res.Kdf, res.KdfIterations, res.KdfMemory, res.KdfParallelism);
             var newHash = _crypto.ComputeMasterPasswordHash(newMasterKey, newPassword);
             var protectedKey = _crypto.ProtectUserKey(newMasterKey, grantorKey);   // EncString
-            await _api.PasswordAsync(id, new EmergencyAccessPasswordRequest { NewMasterPasswordHash = newHash, Key = protectedKey.ToString() }, ct);
+            await api.PasswordAsync(id, new EmergencyAccessPasswordRequest { NewMasterPasswordHash = newHash, Key = protectedKey.ToString() }, linked.Token);
+            _session.ThrowIfExpired(lease);
         }
         finally
         {

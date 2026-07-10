@@ -6,7 +6,7 @@ namespace Api;
 // 读取操作用 POST + masterPasswordHash 验证身份；
 // 启用/禁用操作返回更新后的状态或空 200；
 // 失败抛 VaultWriteException。
-public interface ITwoFactorApiClient
+public interface ITwoFactorApiClient : IAuthenticatedApiRole
 {
     // GET api/two-factor — 获取账户所有已配置提供者的列表与启用状态。
     Task<TwoFactorProvidersResponse> GetProvidersAsync(CancellationToken ct = default);

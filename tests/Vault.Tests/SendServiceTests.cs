@@ -1,5 +1,7 @@
+using Api;
 using Api.Dtos;
 using Core.Enums;
+using Core.Models;
 using Crypto;
 using Vault;
 using Xunit;
@@ -15,11 +17,12 @@ public class SendServiceTests
     {
         var userKey = new SymmetricCryptoKey(UserKeyBytes);
         var session = new VaultSession();
+        session.BeginAccountSession("test-account", "test@test.com", new Core.Models.ServerOrigin(serverUrl));
         session.SetUnlockedKey(userKey);
         session.SetAccount(new Core.Models.AccountInfo("test-account", "test@test.com", new Core.Models.ServerOrigin(serverUrl), "T", "PBKDF2"));
         var crypto = new SendCryptoService(new CryptoService());
         var api = new FakeSendApiClient();
-        return (new SendService(api, crypto, session), api, crypto, userKey);
+        return (new SendService(FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(api), crypto, session), api, crypto, userKey);
     }
 
     // 用真实 SendCryptoService 把明文加密成服务端形态的 SendResponseDto。
@@ -124,7 +127,7 @@ public class SendServiceTests
     public async Task GetSends_WhenLocked_Throws()
     {
         var crypto = new SendCryptoService(new CryptoService());
-        var service = new SendService(new FakeSendApiClient(), crypto, new VaultSession());
+        var service = new SendService(FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(new FakeSendApiClient()), crypto, new VaultSession());
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.GetSendsAsync(TestContext.Current.CancellationToken));

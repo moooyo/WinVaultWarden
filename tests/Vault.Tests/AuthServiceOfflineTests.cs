@@ -140,8 +140,8 @@ public class AuthServiceOfflineTests
         var onlineHandler = new FakeHttpMessageHandler();
         onlineHandler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
             """{"access_token":"recovered-access","refresh_token":"rotated-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
-        var onlineApi = new ApiClient(new HttpClient(onlineHandler));
-        var refresher = new TokenRefreshService(onlineApi, onlineApi, session, tokenStore);
+        var onlineApi = new ApiClient(new HttpClient(onlineHandler), new ServerOrigin("https://vault.example"));
+        var refresher = new TokenRefreshService(FakeVaultApiClientProvider.ForAnonymous<IIdentityApiClient>(onlineApi), session, tokenStore);
 
         var refreshed = await refresher.TryRefreshAsync(TestContext.Current.CancellationToken);
 
@@ -153,10 +153,12 @@ public class AuthServiceOfflineTests
     private AuthService CreateAuthService(
         FakeHttpMessageHandler handler, VaultSession session, MemoryTokenStore tokenStore, VaultCacheService cache)
     {
-        var api = new ApiClient(new HttpClient(handler));
+        var api = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
         var decryptor = new VaultDecryptor(_crypto);
-        var bootstrapper = new VaultBootstrapper(new SyncService(api, decryptor, session, cache), api, session);
-        return new AuthService(api, api, _crypto, session, tokenStore, bootstrapper, cache);
+        var provider = new FakeVaultApiClientProvider().AddAnonymous<IIdentityApiClient>(api).AddAuthenticated<IReadonlyApiClient>(api);
+        var bootstrapper = new VaultBootstrapper(new SyncService(provider, decryptor, session, cache), provider, session);
+        var refresher = new TokenRefreshService(provider, session, tokenStore);
+        return new AuthService(provider, _crypto, session, tokenStore, bootstrapper, cache, refresher);
     }
 
     // 预置一条加密缓存(不经过 session 解锁/加锁,避免 Dispose 清零测试仍要复用的 fixture.UserKey)。

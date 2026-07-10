@@ -10,14 +10,14 @@ namespace Vault;
 // 写后整库重拉,保证本地快照与服务端一致(设计决策,见 spec)。
 public sealed class VaultWriteService : IVaultWriteService
 {
-    private readonly IVaultWriteApiClient _api;
+    private readonly IVaultApiClientProvider _clients;
     private readonly CipherEncryptor _encryptor;
     private readonly ISyncService _sync;
     private readonly VaultSession _session;
 
-    public VaultWriteService(IVaultWriteApiClient api, CipherEncryptor encryptor, ISyncService sync, VaultSession session)
+    public VaultWriteService(IVaultApiClientProvider clients, CipherEncryptor encryptor, ISyncService sync, VaultSession session)
     {
-        _api = api;
+        _clients = clients;
         _encryptor = encryptor;
         _sync = sync;
         _session = session;
@@ -26,46 +26,66 @@ public sealed class VaultWriteService : IVaultWriteService
     public async Task SaveCipherAsync(Cipher cipher, CancellationToken ct = default)
     {
         var userKey = RequireUserKey();
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IVaultWriteApiClient>(lease);
         var request = _encryptor.Encrypt(cipher, userKey);
         if (string.IsNullOrEmpty(cipher.Id))
-            await _api.CreateCipherAsync(request, ct);
+            await api.CreateCipherAsync(request, linked.Token);
         else
-            await _api.UpdateCipherAsync(cipher.Id, request, ct);
+            await api.UpdateCipherAsync(cipher.Id, request, linked.Token);
+        _session.ThrowIfExpired(lease);
         await ResyncAsync(ct);
     }
 
     public async Task DeleteCipherAsync(string cipherId, bool permanent, CancellationToken ct = default)
     {
         RequireUserKey();
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IVaultWriteApiClient>(lease);
         if (permanent)
-            await _api.HardDeleteCipherAsync(cipherId, ct);
+            await api.HardDeleteCipherAsync(cipherId, linked.Token);
         else
-            await _api.SoftDeleteCipherAsync(cipherId, ct);
+            await api.SoftDeleteCipherAsync(cipherId, linked.Token);
+        _session.ThrowIfExpired(lease);
         await ResyncAsync(ct);
     }
 
     public async Task RestoreCipherAsync(string cipherId, CancellationToken ct = default)
     {
         RequireUserKey();
-        await _api.RestoreCipherAsync(cipherId, ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IVaultWriteApiClient>(lease);
+        await api.RestoreCipherAsync(cipherId, linked.Token);
+        _session.ThrowIfExpired(lease);
         await ResyncAsync(ct);
     }
 
     public async Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default)
     {
         var userKey = RequireUserKey();
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IVaultWriteApiClient>(lease);
         var request = new FolderRequest { Name = _encryptor.EncryptFolderName(name, userKey) };
         if (string.IsNullOrEmpty(folderId))
-            await _api.CreateFolderAsync(request, ct);
+            await api.CreateFolderAsync(request, linked.Token);
         else
-            await _api.UpdateFolderAsync(folderId, request, ct);
+            await api.UpdateFolderAsync(folderId, request, linked.Token);
+        _session.ThrowIfExpired(lease);
         await ResyncAsync(ct);
     }
 
     public async Task DeleteFolderAsync(string folderId, CancellationToken ct = default)
     {
         RequireUserKey();
-        await _api.DeleteFolderAsync(folderId, ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IVaultWriteApiClient>(lease);
+        await api.DeleteFolderAsync(folderId, linked.Token);
+        _session.ThrowIfExpired(lease);
         await ResyncAsync(ct);
     }
 
@@ -73,7 +93,11 @@ public sealed class VaultWriteService : IVaultWriteService
     {
         RequireUserKey();
         if (ids.Count == 0) return;
-        await _api.BulkMoveCiphersAsync(ids, string.IsNullOrWhiteSpace(folderId) ? null : folderId, ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IVaultWriteApiClient>(lease);
+        await api.BulkMoveCiphersAsync(ids, string.IsNullOrWhiteSpace(folderId) ? null : folderId, linked.Token);
+        _session.ThrowIfExpired(lease);
         await ResyncAsync(ct);
     }
 
@@ -81,10 +105,14 @@ public sealed class VaultWriteService : IVaultWriteService
     {
         RequireUserKey();
         if (ids.Count == 0) return;
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IVaultWriteApiClient>(lease);
         if (permanent)
-            await _api.BulkHardDeleteCiphersAsync(ids, ct);
+            await api.BulkHardDeleteCiphersAsync(ids, linked.Token);
         else
-            await _api.BulkSoftDeleteCiphersAsync(ids, ct);
+            await api.BulkSoftDeleteCiphersAsync(ids, linked.Token);
+        _session.ThrowIfExpired(lease);
         await ResyncAsync(ct);
     }
 
@@ -92,7 +120,11 @@ public sealed class VaultWriteService : IVaultWriteService
     {
         RequireUserKey();
         if (ids.Count == 0) return;
-        await _api.BulkRestoreCiphersAsync(ids, ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IVaultWriteApiClient>(lease);
+        await api.BulkRestoreCiphersAsync(ids, linked.Token);
+        _session.ThrowIfExpired(lease);
         await ResyncAsync(ct);
     }
 

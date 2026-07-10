@@ -2,6 +2,7 @@ using System.Net;
 using Api;
 using Core.Enums;
 using Core.Models;
+using Core.Session;
 using Vault;
 using Xunit;
 
@@ -12,7 +13,9 @@ public class TokenRefreshIntegrationTests
     [Fact]
     public async Task Pipeline_On401_RefreshesAndRetriesWithNewToken()
     {
+        var origin = new ServerOrigin("https://vault.example");
         var session = new VaultSession();
+        session.BeginAccountSession("me@example.com", "me@example.com", origin);
         session.SetTokens("old-access", "old-refresh");
         var tokenStore = new MemoryTokenStore();
         tokenStore.Save(new PersistedSession("https://vault.example", "me@example.com", "device-id",
@@ -27,15 +30,18 @@ public class TokenRefreshIntegrationTests
         // 延迟解析打破构造环:回调捕获稍后赋值的 refresher。
         TokenRefreshService refresher = null!;
         var authHandler = new AuthHeaderHandler(
-            () => session.AccessToken,
+            origin,
+            () => session.AccessToken is { } token
+                ? new AccessTokenBinding("me@example.com", origin, session.Generation, token)
+                : null,
             ct => refresher.TryRefreshAsync(ct))
         {
             InnerHandler = handler,
         };
         using var pipeline = new HttpClient(authHandler) { BaseAddress = new Uri("https://vault.example/") };
-        var api = new ApiClient(pipeline);
-        api.SetBaseAddress("https://vault.example");
-        refresher = new TokenRefreshService(api, api, session, tokenStore);
+        var api = new ApiClient(pipeline, origin);
+        refresher = new TokenRefreshService(
+            FakeVaultApiClientProvider.ForAnonymous<IIdentityApiClient>(api), session, tokenStore);
 
         var response = await pipeline.GetAsync("api/sync", TestContext.Current.CancellationToken);
 

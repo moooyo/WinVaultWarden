@@ -57,6 +57,7 @@ public class NotificationDispatcherTests
     private VaultSession NewUnlockedSession()
     {
         var session = new VaultSession();
+        session.BeginAccountSession("test-account", "test@test.com", new ServerOrigin("https://vault.example"));
         session.SetUnlockedKey(_userKey);
         return session;
     }
@@ -71,9 +72,11 @@ public class NotificationDispatcherTests
         FakeNotificationSyncService? sync = null)
     {
         var decryptor = new VaultDecryptor(_crypto);
+        var clients = new FakeVaultApiClientProvider()
+            .AddAuthenticated<IAttachmentApiClient>(cipherApi ?? new FakeAttachmentApiClient())
+            .AddAuthenticated<IReadonlyApiClient>(readApi ?? new FakeNotificationReadonlyApiClient());
         return new NotificationDispatcher(
-            cipherApi ?? new FakeAttachmentApiClient(),
-            readApi ?? new FakeNotificationReadonlyApiClient(),
+            clients,
             decryptor,
             session,
             sync ?? new FakeNotificationSyncService());

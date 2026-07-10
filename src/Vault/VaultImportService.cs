@@ -10,14 +10,14 @@ namespace Vault;
 // 写后整库重拉,保证本地快照与服务端一致(与 VaultWriteService 一致的设计决策)。
 public sealed class VaultImportService : IVaultImportService
 {
-    private readonly IVaultWriteApiClient _api;
+    private readonly IVaultApiClientProvider _clients;
     private readonly CipherEncryptor _encryptor;
     private readonly ISyncService _sync;
     private readonly VaultSession _session;
 
-    public VaultImportService(IVaultWriteApiClient api, CipherEncryptor encryptor, ISyncService sync, VaultSession session)
+    public VaultImportService(IVaultApiClientProvider clients, CipherEncryptor encryptor, ISyncService sync, VaultSession session)
     {
-        _api = api;
+        _clients = clients;
         _encryptor = encryptor;
         _sync = sync;
         _session = session;
@@ -45,7 +45,11 @@ public sealed class VaultImportService : IVaultImportService
         var folders = data.Folders.Select(f => new FolderRequest { Name = _encryptor.EncryptFolderName(f.Name, userKey) }).ToArray();
         var rels = data.Relations.Select(r => new ImportRelationship { Key = r.CipherIndex, Value = r.FolderIndex }).ToArray();
 
-        await _api.ImportCiphersAsync(new ImportRequest { Ciphers = ciphers, Folders = folders, FolderRelationships = rels }, ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IVaultWriteApiClient>(lease);
+        await api.ImportCiphersAsync(new ImportRequest { Ciphers = ciphers, Folders = folders, FolderRelationships = rels }, linked.Token);
+        _session.ThrowIfExpired(lease);
         await ResyncAsync(ct);
 
         return data.Ciphers.Count;

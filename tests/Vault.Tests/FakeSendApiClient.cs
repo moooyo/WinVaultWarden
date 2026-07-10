@@ -4,7 +4,7 @@ using Api.Dtos;
 namespace Vault.Tests;
 
 // 共享的 ISendApiClient 手写测试替身。捕获请求,返回预置响应。Tasks 6/7/8 复用。
-public sealed class FakeSendApiClient : ISendApiClient
+public sealed class FakeSendApiClient : ISendApiClient, IPublicSendApiClient
 {
     public List<string> Calls { get; } = new();
     public SendRequest? LastCreateText { get; private set; }

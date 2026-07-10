@@ -20,7 +20,7 @@ public sealed class AccountService : IAccountService
     private const int MaxNameLength = 50;
 
     private readonly CryptoService _crypto;
-    private readonly IAccountApiClient _api;
+    private readonly IVaultApiClientProvider _clients;
     private readonly VaultSession _session;
     private readonly ITokenStore _tokenStore;
     private readonly IAuthService _auth;
@@ -28,14 +28,14 @@ public sealed class AccountService : IAccountService
 
     public AccountService(
         CryptoService crypto,
-        IAccountApiClient api,
+        IVaultApiClientProvider clients,
         VaultSession session,
         ITokenStore tokenStore,
         IAuthService auth,
         VaultCacheService cache)
     {
         _crypto = crypto;
-        _api = api;
+        _clients = clients;
         _session = session;
         _tokenStore = tokenStore;
         _auth = auth;
@@ -56,7 +56,11 @@ public sealed class AccountService : IAccountService
         if (trimmed.Length > MaxNameLength)
             throw new AccountOperationException($"名字不能超过 {MaxNameLength} 个字符（当前 {trimmed.Length} 个）。");
 
-        await _api.UpdateProfileAsync(new ProfileUpdateRequest(trimmed, "en-US"), ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IAccountApiClient>(lease);
+        await api.UpdateProfileAsync(new ProfileUpdateRequest(trimmed, "en-US"), linked.Token);
+        _session.ThrowIfExpired(lease);
     }
 
     // -----------------------------------------------------------------------
@@ -125,11 +129,15 @@ public sealed class AccountService : IAccountService
             CryptographicOperations.ZeroMemory(newMasterKey);
         }
 
-        await _api.ChangePasswordAsync(new ChangePasswordRequest(
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IAccountApiClient>(lease);
+        await api.ChangePasswordAsync(new ChangePasswordRequest(
             MasterPasswordHash: oldHash,
             NewMasterPasswordHash: newHash,
             MasterPasswordHint: hint,
-            Key: wrappedKey), ct);
+            Key: wrappedKey), linked.Token);
+        _session.ThrowIfExpired(lease);
 
         // 改密后旧缓存虽仍可被同一 userKey 解密,但为对齐 D2、避免与新 KDF/密码状态漂移,清缓存、下次同步重建。
         _cache.Clear();
@@ -227,7 +235,11 @@ public sealed class AccountService : IAccountService
                 MasterKeyWrappedUserKey: wrappedKey),
             MasterPasswordHash: oldHash);
 
-        await _api.ChangeKdfAsync(request, ct);
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IAccountApiClient>(lease);
+        await api.ChangeKdfAsync(request, linked.Token);
+        _session.ThrowIfExpired(lease);
         // 改 KDF 参数后旧缓存的 schema 头虽仍有效,但为对齐 D2、避免 KDF 参数漂移,清缓存、下次同步重建。
         _cache.Clear();
         await _auth.LogoutAsync(ct);

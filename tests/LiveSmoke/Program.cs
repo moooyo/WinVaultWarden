@@ -5,6 +5,7 @@ using Core.Abstractions;
 using Core.Enums;
 using Core.Models;
 using Core.Services;
+using Core.Session;
 using Crypto;
 using Vault;
 
@@ -41,54 +42,45 @@ var session = new VaultSession();
 var crypto = new CryptoService();
 var tokenStore = new MemoryTokenStore();
 
+var origin = new Core.Models.ServerOrigin(serverUrl);
+var apiFactory = new ApiClientFactory();
 ITokenRefresher? refresher = null;
-var authHandler = new AuthHeaderHandler(
-    () => session.AccessToken,
-    ct => refresher!.TryRefreshAsync(ct))
-{
-    InnerHandler = new HttpClientHandler(),
-};
-var http = new HttpClient(authHandler);
-var api = new ApiClient(http);
-refresher = new TokenRefreshService(api, api, session, tokenStore);
+var clients = new VaultApiClientProvider(
+    apiFactory,
+    session,
+    (_, ct) => refresher!.TryRefreshAsync(ct));
 
 var decryptor = new VaultDecryptor(crypto);
 var cache = new VaultCacheService(new NullCacheStore(), decryptor, session);
-var bootstrapper = new VaultBootstrapper(new SyncService(api, decryptor, session, cache), api, session);
-var auth = new AuthService(api, api, crypto, session, tokenStore, bootstrapper, cache);
-var sync = new SyncService(api, decryptor, session, cache);
+var sync = new SyncService(clients, decryptor, session, cache);
+var bootstrapper = new VaultBootstrapper(sync, clients, session);
+refresher = new TokenRefreshService(clients, session, tokenStore);
+var auth = new AuthService(clients, crypto, session, tokenStore, bootstrapper, cache, refresher);
 var encryptor = new CipherEncryptor(crypto);
-var writeService = new VaultWriteService(api, encryptor, sync, session);
+var writeService = new VaultWriteService(clients, encryptor, sync, session);
 
 var sendCrypto = new SendCryptoService(crypto);
-ISendApiClient sendApi = api;
-var sendService = new SendService(sendApi, sendCrypto, session);
-var sendWriteService = new SendWriteService(sendApi, sendCrypto, session);
-var sendAccessService = new SendAccessService(sendApi, sendCrypto);
+var sendService = new SendService(clients, sendCrypto, session);
+var sendWriteService = new SendWriteService(clients, sendCrypto, session);
+var sendAccessService = new SendAccessService(clients, sendCrypto);
 
 var attachmentCrypto = new AttachmentCryptoService(crypto);
-IAttachmentApiClient attachmentApi = api;
-var attachmentService = new AttachmentService(attachmentApi, attachmentCrypto, decryptor, session, sync);
+var attachmentService = new AttachmentService(clients, attachmentCrypto, decryptor, session, sync);
 
-IAccountApiClient accountApi = api;
-var accountService = new AccountService(crypto, accountApi, session, tokenStore, auth, cache);
+var accountService = new AccountService(crypto, clients, session, tokenStore, auth, cache);
 
-ITwoFactorApiClient twoFactorApi = api;
-var twoFactorService = new TwoFactorService(crypto, twoFactorApi, tokenStore);
+var twoFactorService = new TwoFactorService(crypto, clients, session, tokenStore);
 
-IAuthRequestApiClient authRequestApi = api;
 var fingerprint = new FingerprintService();
-var authRequestService = new AuthRequestService(authRequestApi, crypto, session, tokenStore, fingerprint);
+var authRequestService = new AuthRequestService(clients, crypto, session, tokenStore, fingerprint);
 
 try
 {
-    api.SetBaseAddress(serverUrl);
-
     // ── 1. Server config (deserializes ConfigResponse) ───────────────────────
     Console.WriteLine("[1] GET /api/config");
     try
     {
-        var cfg = await api.GetConfigAsync();
+        var cfg = await clients.GetAnonymous<IIdentityApiClient>(origin).GetConfigAsync();
         Step("config fetched", cfg is not null, $"version={cfg?.Version}");
     }
     catch (Exception ex) { Step("config fetched", false, ex.Message); }
@@ -717,7 +709,7 @@ try
     // ── 24. Import / Export ───────────────────────────────────────────────────
     Console.WriteLine("[io] Import / Export");
     {
-        var importSvc = new VaultImportService(api, encryptor, sync, session);
+        var importSvc = new VaultImportService(clients, encryptor, sync, session);
         var exportSvc = new VaultExportService(new VaultService(session));
         var ioFolderName = $"WVW-IO-{run}";
         var ioLoginName = $"WVW-IO-Login-{run}";
@@ -804,7 +796,7 @@ async Task TestCipherType(string label, Cipher cipher, Func<Cipher, (bool ok, st
 // ── Registration helper: uses production Vault.RegisterService path ──────────
 async Task RegisterAsync()
 {
-    var registerService = new Vault.RegisterService(crypto, api, api);
+    var registerService = new Vault.RegisterService(crypto, clients);
     try
     {
         await registerService.RegisterAsync(serverUrl, email, "WVW Smoke", password, null);
@@ -959,8 +951,9 @@ string BuildShareUrlFromSession(
     Core.Models.Send send, string serverBase, SendCryptoService sc, ISendService svc, VaultSession sess)
 {
     // Re-read the raw DTO so we can access the wrapped `key` (the Core.Models.Send
-    // projection intentionally drops it). The sendApi field is in scope here.
-    var raw = sendApi.GetSendsAsync().GetAwaiter().GetResult();
+    // projection intentionally drops it). Resolve the authenticated Send role via the
+    // provider using the current session lease.
+    var raw = clients.GetAuthenticated<ISendApiClient>(sess.CaptureLease()).GetSendsAsync().GetAwaiter().GetResult();
     var dto = raw.Data.First(d => d.Id == send.Id);
     var seed = sc.UnwrapSeed(dto.Key!, sess.UserKey!);
     return sc.BuildShareUrl(serverBase, send.AccessId, seed);
@@ -1055,7 +1048,7 @@ async Task AuthRequestRoundTripAsync()
         var accessCode = Convert.ToBase64String(RandomNumberGenerator.GetBytes(25));
 
         // 1. 创建 auth-request
-        var resp = await authRequestApi.CreateAsync(new Api.Dtos.AuthRequestRequest(
+        var resp = await clients.GetAnonymous<IPublicAuthRequestApiClient>(origin).CreateAsync(new Api.Dtos.AuthRequestRequest(
             AccessCode: accessCode,
             DeviceIdentifier: persisted.DeviceIdentifier,
             Email: email,
@@ -1073,7 +1066,7 @@ async Task AuthRequestRoundTripAsync()
         Step("auth-request: ApproveAsync succeeded", true);
 
         // 4. 发起方轮询响应，解密 Key，与会话 UserKey 比对
-        var getResp = await authRequestApi.GetResponseAsync(createdId, accessCode);
+        var getResp = await clients.GetAnonymous<IPublicAuthRequestApiClient>(origin).GetResponseAsync(createdId, accessCode);
         Step("auth-request: GetResponse key non-null", getResp.Key is not null, getResp.Key?[..Math.Min(20, getResp.Key?.Length ?? 0)]);
         if (getResp.Key is not null)
         {
@@ -1194,11 +1187,10 @@ async Task NotificationsPushRoundTripAsync()
                     beforeDispatch ? "RemoveFolder had no effect" : "confirmed absent");
 
                 var dispatcher = new NotificationDispatcher(
-                    cipherApi: attachmentApi,
-                    readApi: api,
-                    decryptor: decryptor,
-                    session: session,
-                    sync: sync);
+                    clients,
+                    decryptor,
+                    session,
+                    sync);
 
                 await dispatcher.DispatchAsync(received, CancellationToken.None);
 
@@ -1242,7 +1234,7 @@ async Task NotificationsPushRoundTripAsync()
 
 // ── BuildStack: construct an independent service graph for one account. ──────
 // Returns an anonymous-record-style tuple of the pieces needed for the EA test.
-(ApiClient api, VaultSession session, CryptoService crypto, AuthService auth,
+(IVaultApiClientProvider clients, VaultSession session, CryptoService crypto, AuthService auth,
  SyncService sync, VaultWriteService write, AccountService account,
  EmergencyAccessService ea)
 BuildStack(string url)
@@ -1250,27 +1242,20 @@ BuildStack(string url)
     var s = new VaultSession();
     var c = new CryptoService();
     var ts = new MemoryTokenStore();
+    var factory = new ApiClientFactory();
     ITokenRefresher? ref2 = null;
-    var handler = new AuthHeaderHandler(
-        () => s.AccessToken,
-        ct2 => ref2!.TryRefreshAsync(ct2))
-    { InnerHandler = new HttpClientHandler() };
-    var h = new HttpClient(handler);
-    var a = new ApiClient(h);
-    ref2 = new TokenRefreshService(a, a, s, ts);
+    var localClients = new VaultApiClientProvider(factory, s, (_, ct2) => ref2!.TryRefreshAsync(ct2));
     var dec = new VaultDecryptor(c);
     var cache2 = new VaultCacheService(new NullCacheStore(), dec, s);
-    var boot = new VaultBootstrapper(new SyncService(a, dec, s, cache2), a, s);
-    var auth2 = new AuthService(a, a, c, s, ts, boot, cache2);
-    var sync2 = new SyncService(a, dec, s, cache2);
+    var sync2 = new SyncService(localClients, dec, s, cache2);
+    var boot = new VaultBootstrapper(sync2, localClients, s);
+    ref2 = new TokenRefreshService(localClients, s, ts);
+    var auth2 = new AuthService(localClients, c, s, ts, boot, cache2, ref2);
     var enc2 = new CipherEncryptor(c);
-    var write2 = new VaultWriteService(a, enc2, sync2, s);
-    IAccountApiClient acctApi = a;
-    var acct2 = new AccountService(c, acctApi, s, ts, auth2, cache2);
-    IEmergencyAccessApiClient eaApi = a;
-    var ea2 = new EmergencyAccessService(eaApi, c, dec, s);
-    a.SetBaseAddress(url);
-    return (a, s, c, auth2, sync2, write2, acct2, ea2);
+    var write2 = new VaultWriteService(localClients, enc2, sync2, s);
+    var acct2 = new AccountService(c, localClients, s, ts, auth2, cache2);
+    var ea2 = new EmergencyAccessService(localClients, c, dec, s);
+    return (localClients, s, c, auth2, sync2, write2, acct2, ea2);
 }
 
 // ── Emergency Access: two throwaway accounts (grantor A, grantee B) ──────────
@@ -1286,7 +1271,7 @@ async Task EmergencyAccessRoundTripAsync()
 
     // ── Step 1: Register A and B ────────────────────────────────────────────
     {
-        var regSvc = new Vault.RegisterService(crypto, api, api);
+        var regSvc = new Vault.RegisterService(crypto, clients);
         foreach (var (em, label) in new[] { (emailA, "A"), (emailB, "B") })
         {
             try
@@ -1470,7 +1455,7 @@ async Task EmergencyAccessRoundTripAsync()
                     newEaPassword, emailA, Core.Enums.KdfType.Pbkdf2, 600_000, null, null);
                 var hashA = cleanA.crypto.ComputeMasterPasswordHash(masterKeyA, newEaPassword);
                 System.Security.Cryptography.CryptographicOperations.ZeroMemory(masterKeyA);
-                IEmergencyAccessApiClient eaApiA = cleanA.api;
+                IEmergencyAccessApiClient eaApiA = cleanA.clients.GetAuthenticated<IEmergencyAccessApiClient>(cleanA.session.CaptureLease());
                 await eaApiA.DeleteAccountAsync(new Api.Dtos.DeleteAccountRequest { MasterPasswordHash = hashA });
                 Step("ea: cleanup delete account A (best-effort)", true, emailA);
             }
@@ -1485,7 +1470,7 @@ async Task EmergencyAccessRoundTripAsync()
                         eaPassword, emailA, Core.Enums.KdfType.Pbkdf2, 600_000, null, null);
                     var hashA2 = cleanA2.crypto.ComputeMasterPasswordHash(masterKeyA2, eaPassword);
                     System.Security.Cryptography.CryptographicOperations.ZeroMemory(masterKeyA2);
-                    IEmergencyAccessApiClient eaApiA2 = cleanA2.api;
+                    IEmergencyAccessApiClient eaApiA2 = cleanA2.clients.GetAuthenticated<IEmergencyAccessApiClient>(cleanA2.session.CaptureLease());
                     await eaApiA2.DeleteAccountAsync(new Api.Dtos.DeleteAccountRequest { MasterPasswordHash = hashA2 });
                     Step("ea: cleanup delete account A (best-effort)", true, emailA + " (orig pw)");
                 }
@@ -1512,7 +1497,7 @@ async Task EmergencyAccessRoundTripAsync()
                     eaPassword, emailB, Core.Enums.KdfType.Pbkdf2, 600_000, null, null);
                 var hashB = cleanB.crypto.ComputeMasterPasswordHash(masterKeyB, eaPassword);
                 System.Security.Cryptography.CryptographicOperations.ZeroMemory(masterKeyB);
-                IEmergencyAccessApiClient eaApiB = cleanB.api;
+                IEmergencyAccessApiClient eaApiB = cleanB.clients.GetAuthenticated<IEmergencyAccessApiClient>(cleanB.session.CaptureLease());
                 await eaApiB.DeleteAccountAsync(new Api.Dtos.DeleteAccountRequest { MasterPasswordHash = hashB });
                 Step("ea: cleanup delete account B (best-effort)", true, emailB);
             }

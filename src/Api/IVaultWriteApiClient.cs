@@ -4,7 +4,7 @@ namespace Api;
 
 // 个人密码库写操作。每个方法对应一个 Vaultwarden 端点;
 // 4xx 失败统一抛 VaultWriteException(message 取自服务端错误体)。
-public interface IVaultWriteApiClient
+public interface IVaultWriteApiClient : IAuthenticatedApiRole
 {
     Task CreateCipherAsync(CipherRequest request, CancellationToken ct = default);
     Task UpdateCipherAsync(string cipherId, CipherRequest request, CancellationToken ct = default);

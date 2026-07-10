@@ -2,7 +2,7 @@ using Api.Dtos;
 
 namespace Api;
 
-public interface IEmergencyAccessApiClient
+public interface IEmergencyAccessApiClient : IAuthenticatedApiRole
 {
     Task<ListResponse<EmergencyAccessGranteeDetailsDto>> GetTrustedAsync(CancellationToken ct = default);
     Task<ListResponse<EmergencyAccessGrantorDetailsDto>> GetGrantedAsync(CancellationToken ct = default);

@@ -12,12 +12,12 @@ namespace Vault;
 //                2) GET 下载 URL 取加密字节,再 DecryptBuffer。
 public sealed class SendAccessService : ISendAccessService
 {
-    private readonly ISendApiClient _api;
+    private readonly IVaultApiClientProvider _clients;
     private readonly SendCryptoService _crypto;
 
-    public SendAccessService(ISendApiClient api, SendCryptoService crypto)
+    public SendAccessService(IVaultApiClientProvider clients, SendCryptoService crypto)
     {
-        _api = api;
+        _clients = clients;
         _crypto = crypto;
     }
 
@@ -26,12 +26,16 @@ public sealed class SendAccessService : ISendAccessService
         if (!_crypto.TryParseShareUrl(shareUrl, out var accessId, out var seed))
             throw new FormatException("无法解析 Send 分享 URL。");
 
+        var origin = new ServerOrigin(
+            new Uri(shareUrl, UriKind.Absolute).GetLeftPart(UriPartial.Authority));
+
         var cryptoKey = _crypto.DeriveCryptoKey(seed);
         string? passwordProof = string.IsNullOrEmpty(password)
             ? null
             : _crypto.ComputePasswordProof(password, seed);
 
-        var dto = await _api.AccessSendAsync(accessId, passwordProof, ct);
+        var api = _clients.GetAnonymous<IPublicSendApiClient>(origin);
+        var dto = await api.AccessSendAsync(accessId, passwordProof, ct);
 
         var type = (SendType)dto.Type;
         string? textContent = dto.Text is null ? null : _crypto.DecryptField(dto.Text.Text, cryptoKey);
@@ -52,6 +56,7 @@ public sealed class SendAccessService : ISendAccessService
             SendId = sendId,
             FileId = fileId,
             AccessId = accessId,
+            Origin = origin,
             Seed = seed,
             PasswordProof = passwordProof,
         };
@@ -59,12 +64,13 @@ public sealed class SendAccessService : ISendAccessService
 
     public async Task<byte[]> DownloadFileAsync(SendAccessResult accessed, CancellationToken ct = default)
     {
+        var api = _clients.GetAnonymous<IPublicSendApiClient>(accessed.Origin);
         string downloadUrl;
 
         // 优先用 sendId+fileId 走两步协议(真实服务端需要中间 POST 换取带 JWT 的下载 URL)。
         if (!string.IsNullOrEmpty(accessed.SendId) && !string.IsNullOrEmpty(accessed.FileId))
         {
-            var dlResponse = await _api.AccessSendFileAsync(
+            var dlResponse = await api.AccessSendFileAsync(
                 accessed.SendId, accessed.FileId, accessed.PasswordProof, ct);
             downloadUrl = dlResponse.Url;
         }
@@ -79,7 +85,7 @@ public sealed class SendAccessService : ISendAccessService
         }
 
         var cryptoKey = _crypto.DeriveCryptoKey(accessed.Seed);
-        var buffer = await _api.DownloadSendFileBytesAsync(downloadUrl, ct);
+        var buffer = await api.DownloadSendFileBytesAsync(downloadUrl, ct);
         return _crypto.DecryptBuffer(buffer, cryptoKey);
     }
 }

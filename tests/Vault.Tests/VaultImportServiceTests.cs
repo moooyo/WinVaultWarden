@@ -57,8 +57,9 @@ public class VaultImportServiceTests
         var api = new CapturingImportApi();
         var sync = new FakeSync();
         var session = new VaultSession();
+        session.BeginAccountSession("test-account", "test@test.com", new Core.Models.ServerOrigin("https://vault.example"));
         session.SetUnlockedKey(new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray()));
-        var svc = new VaultImportService(api, new CipherEncryptor(new CryptoService()), sync, session);
+        var svc = new VaultImportService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(api), new CipherEncryptor(new CryptoService()), sync, session);
 
         // 1 folder + 1 login in that folder
         var json = "{\"encrypted\":false,\"folders\":[{\"id\":\"f0\",\"name\":\"Work\"}]," +
@@ -83,8 +84,9 @@ public class VaultImportServiceTests
         // R22:写入已在服务端成功,但写后重同步失败 → 抛 VaultRefreshException(区分"写失败"与"写成功但刷新失败")。
         var api = new CapturingImportApi();
         var session = new VaultSession();
+        session.BeginAccountSession("test-account", "test@test.com", new Core.Models.ServerOrigin("https://vault.example"));
         session.SetUnlockedKey(new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray()));
-        var svc = new VaultImportService(api, new CipherEncryptor(new CryptoService()), new ThrowingSync(), session);
+        var svc = new VaultImportService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(api), new CipherEncryptor(new CryptoService()), new ThrowingSync(), session);
 
         var json = "{\"encrypted\":false,\"folders\":[],\"items\":[{\"type\":1,\"name\":\"A\",\"login\":{\"username\":\"u\",\"password\":\"p\",\"uris\":[]}}]}";
         await Assert.ThrowsAsync<VaultRefreshException>(() =>
@@ -95,12 +97,12 @@ public class VaultImportServiceTests
 
     [Fact]
     public void Parse_MalformedJson_ReturnsError() =>
-        Assert.NotNull(new VaultImportService(new CapturingImportApi(), new CipherEncryptor(new CryptoService()), new FakeSync(), new VaultSession())
+        Assert.NotNull(new VaultImportService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(new CapturingImportApi()), new CipherEncryptor(new CryptoService()), new FakeSync(), new VaultSession())
             .Parse(ImportFormat.Json, "{bad").Error);
 
     [Fact]
     public async Task ImportAsync_WhenLocked_Throws() =>
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            new VaultImportService(new CapturingImportApi(), new CipherEncryptor(new CryptoService()), new FakeSync(), new VaultSession())
+            new VaultImportService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(new CapturingImportApi()), new CipherEncryptor(new CryptoService()), new FakeSync(), new VaultSession())
                 .ImportAsync(ImportFormat.Json, "{\"items\":[]}", TestContext.Current.CancellationToken));
 }
