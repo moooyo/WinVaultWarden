@@ -11,7 +11,7 @@ namespace Vault;
 
 /// <summary>
 /// 账户管理编排层：UpdateName / ChangePassword / ChangeKdf。
-/// 改密和改 KDF 成功后强制 LogoutAsync（会话清空，用户需重新登录）。
+/// 改密和改 KDF 只做服务端变更,不在此登出;由 App 层生命周期协调器经 CredentialChanged intent 统一登出。
 /// 需要 vault 已解锁（session.UserKey != null）。
 /// </summary>
 public sealed class AccountService : IAccountService
@@ -144,8 +144,7 @@ public sealed class AccountService : IAccountService
             Key: wrappedKey), linked.Token).ConfigureAwait(false);
         _session.ThrowIfExpired(lease);
 
-        // 强制重新登录:核心 LogoutAsync 已按"先失效、后清 store/cache"顺序执行一次,不在此重复清缓存。
-        await _auth.LogoutAsync(CancellationToken.None).ConfigureAwait(false);
+        // 不在此登出:会话保持不变,由 App 层生命周期协调器经 CredentialChanged intent 统一登出并清 store/cache。
     }
 
     // -----------------------------------------------------------------------
@@ -249,8 +248,7 @@ public sealed class AccountService : IAccountService
         var api = _clients.GetAuthenticated<IAccountApiClient>(lease);
         await api.ChangeKdfAsync(request, linked.Token).ConfigureAwait(false);
         _session.ThrowIfExpired(lease);
-        // 强制重新登录:核心 LogoutAsync 已按"先失效、后清 store/cache"顺序执行一次,不在此重复清缓存。
-        await _auth.LogoutAsync(CancellationToken.None).ConfigureAwait(false);
+        // 不在此登出:会话保持不变,由 App 层生命周期协调器经 CredentialChanged intent 统一登出并清 store/cache。
     }
 
     // -----------------------------------------------------------------------

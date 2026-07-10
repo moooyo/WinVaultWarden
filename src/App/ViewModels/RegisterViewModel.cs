@@ -4,7 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace App.ViewModels;
 
-public partial class RegisterViewModel : ObservableObject
+public partial class RegisterViewModel : ObservableObject, ISensitiveState
 {
     private const string BitwardenUsUrl = "https://vault.bitwarden.com";
     private const string BitwardenEuUrl = "https://vault.bitwarden.eu";
@@ -68,6 +68,14 @@ public partial class RegisterViewModel : ObservableObject
     public RegisterViewModel(IRegisterUiService registerUi)
     {
         _registerUi = registerUi;
+    }
+
+    // 锁屏/登出时清空注册页机密输入:主密码、确认密码与提示。幂等。
+    public void ClearSensitive()
+    {
+        MasterPassword = string.Empty;
+        ConfirmPassword = string.Empty;
+        MasterPasswordHint = null;
     }
 
     // ── 注册操作 ──────────────────────────────────────────────────────────

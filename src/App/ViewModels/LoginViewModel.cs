@@ -15,7 +15,7 @@ public enum LoginStage
     PinUnlock,
 }
 
-public partial class LoginViewModel : ObservableObject
+public partial class LoginViewModel : ObservableObject, ISensitiveState
 {
     private const string BitwardenUsUrl = "https://vault.bitwarden.com";
     private const string BitwardenEuUrl = "https://vault.bitwarden.eu";
@@ -27,6 +27,7 @@ public partial class LoginViewModel : ObservableObject
     private readonly IPinService? _pin;
     private readonly IWindowsHelloAuthenticator? _hello;
     private readonly IHelloUnlockService? _helloUnlock;
+    private readonly IAppLifecycleCoordinator? _lifecycle;
     private Action? _onSuccess;
     private IReadOnlyList<int> _twoFactorProviders = Array.Empty<int>();
 
@@ -77,13 +78,15 @@ public partial class LoginViewModel : ObservableObject
         IPinService? pin = null,
         AccountPrefill? prefill = null,
         IWindowsHelloAuthenticator? hello = null,
-        IHelloUnlockService? helloUnlock = null)
+        IHelloUnlockService? helloUnlock = null,
+        IAppLifecycleCoordinator? lifecycle = null)
     {
         _auth = auth;
         _demoVault = demoVault;
         _pin = pin;
         _hello = hello;
         _helloUnlock = helloUnlock;
+        _lifecycle = lifecycle;
 
         // 注册成功后经 AccountPrefill(DI 单例)把服务器/邮箱预填带到新建的 LoginViewModel(Transient,
         // 注册页设置的实例会被登录页新建的实例取代,直接在旧实例上 PrepareAccount 会丢失,R10)。取用即清。
@@ -347,17 +350,20 @@ public partial class LoginViewModel : ObservableObject
     [RelayCommand]
     private async Task SwitchAccountAsync()
     {
-        if (IsBusy)
+        // 切换账户 = 登出当前会话:唯一经生命周期协调器请求 Logout(禁止旁路直接 auth.LogoutAsync)。
+        // 协调器完成清理后 ShowLogin 会重建全新登录页,故此处不再自行复位表单字段。
+        if (IsBusy || _lifecycle is null)
             return;
+        await _lifecycle.RequestAsync(AppLifecycleIntent.Logout);
+    }
 
-        await _auth.LogoutAsync();
-        SelectedServerOptionIndex = 0;
-        ServerUrl = BitwardenUsUrl;
-        Email = string.Empty;
+    // 锁屏/登出时清空登录页所有机密输入:主密码、PIN、2FA 验证码与其可选项。幂等。
+    public void ClearSensitive()
+    {
         MasterPassword = string.Empty;
+        Pin = string.Empty;
         TwoFactorCode = string.Empty;
-        Status = string.Empty;
-        Stage = LoginStage.Account;
+        TwoFactorProviderOptions = [];
     }
 
     private void ContinueToPassword()

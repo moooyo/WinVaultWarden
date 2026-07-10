@@ -14,7 +14,7 @@ public enum SecuritySeverity
     Critical
 }
 
-public partial class SecurityReportViewModel : ObservableObject
+public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
 {
     private readonly IVaultHealthUiService _service;
 
@@ -173,5 +173,15 @@ public partial class SecurityReportViewModel : ObservableObject
         {
             IsCheckingExposed = false;
         }
+    }
+
+    // 锁屏/登出时清空安全报告的机密足迹:重复/弱/不安全/已泄露分组与错误。幂等。
+    public void ClearSensitive()
+    {
+        ReusedGroups.Clear();
+        WeakItems.Clear();
+        UnsecuredItems.Clear();
+        ExposedItems.Clear();
+        ExposedError = null;
     }
 }

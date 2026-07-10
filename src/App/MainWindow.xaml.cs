@@ -39,6 +39,10 @@ public sealed partial class MainWindow : Window
     private readonly FrameNavigationService _nav =
         global::App.App.Services.GetRequiredService<FrameNavigationService>();
 
+    // 全项目唯一的生命周期协调器:所有 lock/logout/exit 入口只请求 intent,禁止旁路直接 Lock/Logout/Exit。
+    private readonly IAppLifecycleCoordinator _lifecycle =
+        global::App.App.Services.GetRequiredService<IAppLifecycleCoordinator>();
+
     private readonly IntPtr _hwnd;
     private Services.TrayIconService? _tray;
     private bool _realExit;
@@ -71,16 +75,8 @@ public sealed partial class MainWindow : Window
             root.AddHandler(UIElement.KeyDownEvent, new Microsoft.UI.Xaml.Input.KeyEventHandler((_, _) => _timeout.NotifyActivity()), true);
         }
 
-        // 最小化 → 立即锁定;若「最小化到托盘」则隐藏窗口(仍先锁定,更安全)。
-        AppWindow.Changed += (_, _) =>
-        {
-            if (AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized })
-            {
-                _timeout.LockNow();
-                if (Services.TrayPolicy.ShouldHideOnMinimize(AppPreferences.Current.ShowTrayIcon, AppPreferences.Current.MinimizeToTray))
-                    AppWindow.Hide();
-            }
-        };
+        // 最小化 → 立即锁定;若「最小化到托盘」则隐藏窗口(仍先锁定,更安全)。经协调器统一处理。
+        AppWindow.Changed += OnAppWindowChanged;
 
         // 系统锁屏/切换会话 → 立即锁定(最佳努力:打包环境可能不触发)。
         try
@@ -107,19 +103,8 @@ public sealed partial class MainWindow : Window
         ApplyScreenshotSetting(AppPreferences.Current.AllowScreenshots);
         ViewModels.SettingsViewModel.AllowScreenshotsSettingChanged += OnAllowScreenshotsSettingChanged;
 
-        // 关闭窗口 → 若「关闭到托盘」则取消关闭、隐藏（真实退出仅经托盘「退出」）。
-        AppWindow.Closing += (_, e) =>
-        {
-            if (!_realExit &&
-                Services.TrayPolicy.ShouldHideOnClose(AppPreferences.Current.ShowTrayIcon, AppPreferences.Current.CloseToTray))
-            {
-                e.Cancel = true;
-                // 隐藏到托盘前先锁定(与最小化路径一致,更安全):否则走近无人值守机器单击托盘
-                // 即可看到明文整库,且已复制的密码仍留在剪贴板。LockNow 经 OnTimeoutRequested 连带清剪贴板(S2)。
-                _timeout.LockNow();
-                AppWindow.Hide();
-            }
-        };
+        // 关闭窗口 → 经协调器统一处理(关闭到托盘先锁定并隐藏;真实退出走 Exit intent 完成清理后退出)。
+        AppWindow.Closing += OnAppWindowClosing;
 
         // 窗口关闭时清理托盘（NIM_DELETE + 还原 WndProc），并退订设置事件。
         Closed += (_, _) =>
@@ -136,35 +121,48 @@ public sealed partial class MainWindow : Window
 
     private async void OnTimeoutRequested(object? sender, VaultTimeoutAction action)
     {
-        ClearClipboardSecrets();
-        try
-        {
-            if (action == VaultTimeoutAction.Logout)
-            {
-                await global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
-                await global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync();
-            }
-            else
-            {
-                await global::App.App.Services.GetRequiredService<IAuthService>().LockAsync();
-            }
-        }
-        catch { /* 宁可多锁一次:即便 auth 调用失败也导航到登录/解锁屏 */ }
-        ShowLogin();
+        await _lifecycle.RequestAsync(action == VaultTimeoutAction.Logout
+            ? AppLifecycleIntent.Logout
+            : AppLifecycleIntent.Lock);
     }
 
-    // 锁定/登出时主动清除本应用写入剪贴板的密钥(密码/TOTP/Send 链接)。空闲超时/最小化/
-    // 系统会话锁均经 OnTimeoutRequested 汇聚,故仅需在此与「lock」/「logout」/托盘锁三处调用。
-    private static void ClearClipboardSecrets()
+    // 最小化 → 请求 Lock intent(协调器清理),再按设置隐藏到托盘。
+    private async void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
-        try { global::App.App.Services.GetRequiredService<IClipboardService>().ClearSecretsNow(); }
-        catch { /* 剪贴板不可用不致命 */ }
+        if (sender.Presenter is not OverlappedPresenter { State: OverlappedPresenterState.Minimized })
+            return;
+
+        await _lifecycle.RequestAsync(AppLifecycleIntent.Lock);
+        if (Services.TrayPolicy.ShouldHideOnMinimize(
+            AppPreferences.Current.ShowTrayIcon,
+            AppPreferences.Current.MinimizeToTray))
+            sender.Hide();
+    }
+
+    // 关闭窗口 → 关闭到托盘则先 Lock 再隐藏;否则请求 Exit intent(协调器清理后经 ExitAfterLifecycle 退出)。
+    private async void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs e)
+    {
+        if (_realExit)
+            return;
+
+        e.Cancel = true;
+        if (Services.TrayPolicy.ShouldHideOnClose(
+            AppPreferences.Current.ShowTrayIcon,
+            AppPreferences.Current.CloseToTray))
+        {
+            await _lifecycle.RequestAsync(AppLifecycleIntent.Lock);
+            sender.Hide();
+            return;
+        }
+
+        await _lifecycle.RequestAsync(AppLifecycleIntent.Exit);
     }
 
     private void OnSessionSwitch(object sender, Microsoft.Win32.SessionSwitchEventArgs e)
     {
         if (e.Reason == Microsoft.Win32.SessionSwitchReason.SessionLock)
-            DispatcherQueue.TryEnqueue(() => _timeout.LockNow());
+            DispatcherQueue.TryEnqueue(async () =>
+                await _lifecycle.RequestAsync(AppLifecycleIntent.Lock));
     }
 
     private void OnFirstActivated(object sender, WindowActivatedEventArgs args)
@@ -235,9 +233,30 @@ public sealed partial class MainWindow : Window
         _nav.GoToLoginPage();
     }
 
+    // 生命周期协调器完成清理后重新展示登录页,并保持敏感 UI 关闭,直到 ShowVault 里 MarkSessionReady 重新开放。
+    public void ShowLoginAfterLifecycle()
+    {
+        ShowLogin();
+        SetSensitiveUiEnabled(false);
+    }
+
+    // 敏感操作 UI 门禁:锁屏/登出等生命周期过渡期间禁用主导航,避免过渡中触发新的敏感操作。
+    public void SetSensitiveUiEnabled(bool enabled) => Nav.IsEnabled = enabled;
+
+    // 生命周期协调器完成清理后真实退出进程(此前已阻断新敏感操作、清空会话与瞬态)。
+    public void ExitAfterLifecycle()
+    {
+        _realExit = true;
+        _tray?.Dispose();
+        _tray = null;
+        Microsoft.UI.Xaml.Application.Current.Exit();
+    }
+
     // 登录成功:显示主导航壳。
     public void ShowVault()
     {
+        // 会话就绪:重新开放先前被生命周期过渡禁用的敏感 UI(仅当当前无过渡在途)。
+        _lifecycle.MarkSessionReady();
         ApplyVaultWindowLayout();
         PopulateFolderNavigation();
         LoginHost.Visibility = Visibility.Collapsed;
@@ -368,29 +387,16 @@ public sealed partial class MainWindow : Window
                 _nav.GoToSecurityReport();
                 break;
             case "lock":
-                try
-                {
-                    ClearClipboardSecrets();
-                    await global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
-                    await global::App.App.Services.GetRequiredService<IAuthService>().LockAsync();
-                }
-                catch { /* 宁可多锁一次:即便清理/锁定失败也导航到锁屏(R16) */ }
-                ShowLogin();
+                await _lifecycle.RequestAsync(AppLifecycleIntent.Lock);
                 break;
             case "logout":
                 if (await global::App.Views.DialogHelper.ConfirmAsync(
-                        Nav.XamlRoot, "退出登录", "确定退出登录?将清除本地会话,需重新登录。", "退出登录"))
+                    Nav.XamlRoot,
+                    "退出登录",
+                    "确定退出登录?将清除本地会话,需重新登录。",
+                    "退出登录"))
                 {
-                    try
-                    {
-                        ClearClipboardSecrets();
-                        await global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
-                        await global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync();
-                        // 登出清空本地图标缓存(锁定不清:锁定保留账户,图标可复用)。
-                        global::App.App.Services.GetRequiredService<IFaviconCache>().Clear();
-                    }
-                    catch { /* 即便清理失败也导航到登录屏(R16) */ }
-                    ShowLogin();
+                    await _lifecycle.RequestAsync(AppLifecycleIntent.Logout);
                 }
                 break;
             case "io":
@@ -451,30 +457,14 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    private void LockFromTray()
-    {
+    private void LockFromTray() =>
         DispatcherQueue.TryEnqueue(async () =>
         {
-            ClearClipboardSecrets();
-            try
-            {
-                await global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StopAsync();
-                await global::App.App.Services.GetRequiredService<IAuthService>().LockAsync();
-            }
-            catch { /* 宁可多锁一次:即便调用失败也导航到登录/解锁屏 */ }
-            ShowLogin();
+            await _lifecycle.RequestAsync(AppLifecycleIntent.Lock);
             RestoreFromTray();
         });
-    }
 
-    private void ExitApp()
-    {
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            _realExit = true;
-            _tray?.Dispose();
-            _tray = null;
-            Microsoft.UI.Xaml.Application.Current.Exit();
-        });
-    }
+    private void ExitApp() =>
+        DispatcherQueue.TryEnqueue(async () =>
+            await _lifecycle.RequestAsync(AppLifecycleIntent.Exit));
 }

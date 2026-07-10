@@ -159,11 +159,9 @@ public sealed partial class SettingsPage : Page
             var hint = string.IsNullOrWhiteSpace(hintBox.Text) ? null : hintBox.Text.Trim();
             await ViewModel.ChangePasswordAsync(currentBox.Password, newBox.Password, confirmBox.Password, hint);
 
+            // 成功由 App 层协调器统一登出并回登录页(SettingsViewModel 发 CredentialChanged intent)。
             if (string.IsNullOrEmpty(ViewModel.OperationError))
-            {
-                NavigateToLogin();
                 return;
-            }
 
             errorText.Text = ViewModel.OperationError;
             errorText.Visibility = Visibility.Visible;
@@ -220,11 +218,9 @@ public sealed partial class SettingsPage : Page
             var iterations = double.IsNaN(iterationsBox.Value) ? 600000 : (int)iterationsBox.Value;
             await ViewModel.ChangeIterationsAsync(currentBox.Password, iterations);
 
+            // 成功由 App 层协调器统一登出并回登录页(SettingsViewModel 发 CredentialChanged intent)。
             if (string.IsNullOrEmpty(ViewModel.OperationError))
-            {
-                NavigateToLogin();
                 return;
-            }
 
             errorText.Text = ViewModel.OperationError;
             errorText.Visibility = Visibility.Visible;
@@ -742,17 +738,5 @@ public sealed partial class SettingsPage : Page
     private void OnEmergencyAccessCardClick(object sender, RoutedEventArgs e)
     {
         global::App.App.Services.GetRequiredService<global::App.Services.INavigationService>().GoToEmergencyAccess();
-    }
-
-    // ── 成功后导航到锁定/登录页 ──────────────────────────────────────────────
-
-    private static void NavigateToLogin()
-    {
-        var auth = global::App.App.Services.GetRequiredService<IAuthService>();
-        _ = auth.LockAsync().ContinueWith(_ =>
-        {
-            global::App.App.Services.GetRequiredService<global::App.Services.IUiDispatcher>()
-                .Enqueue(() => global::App.App.MainWindow?.ShowLogin());
-        }, System.Threading.Tasks.TaskScheduler.Default);
     }
 }

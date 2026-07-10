@@ -142,19 +142,17 @@ public class LoginViewModelAuthTests
     }
 
     [Fact]
-    public async Task SwitchAccountCommand_LogsOutAndReturnsToAccountStage()
+    public async Task SwitchAccountCommand_UsesLifecycleCoordinator()
     {
         var auth = new FakeAuthService();
-        var vm = new LoginViewModel(auth);
+        var lifecycle = new RecordingLifecycle();
+        var vm = new LoginViewModel(auth, null, lifecycle: lifecycle);
         vm.PrepareUnlock("https://vault.example", "me@example.com");
 
         await vm.SwitchAccountCommand.ExecuteAsync(null);
 
-        Assert.True(auth.LoggedOut);
-        Assert.True(vm.IsAccountStage);
-        Assert.Equal("https://vault.bitwarden.com", vm.ServerUrl);
-        Assert.Equal(string.Empty, vm.Email);
-        Assert.Equal(string.Empty, vm.Status);
+        // 切换账户只经协调器请求 Logout intent;不再旁路直接 auth.LogoutAsync。
+        Assert.Equal(AppLifecycleIntent.Logout, lifecycle.Requested);
     }
 
     [Fact]
@@ -343,6 +341,19 @@ public class LoginViewModelAuthTests
 
         Assert.False(auth2.UnlockHelloCalled);
         Assert.True(vm2.IsBusy);
+    }
+
+    private sealed class RecordingLifecycle : IAppLifecycleCoordinator
+    {
+        public bool IsTransitioning => false;
+        public AppLifecycleIntent? Requested { get; private set; }
+        public Task RequestAsync(AppLifecycleIntent intent)
+        {
+            Requested = intent;
+            return Task.CompletedTask;
+        }
+        public void MarkSessionReady() { }
+        public void FailClosedSynchronously() { }
     }
 
     private sealed class FakeHello : IWindowsHelloAuthenticator

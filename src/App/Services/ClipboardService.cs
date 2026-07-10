@@ -54,13 +54,29 @@ public sealed class ClipboardService : IClipboardService
     }
 
     // 锁定/登出时主动清除:停掉自动清定时器,并把本应用写入的密钥立即从剪贴板清掉。
-    // compare-then-clear(ClearIfUnchangedAsync)只清仍是本应用写入的值,不误清用户随后复制的其他内容。
+    // 同步 fail-closed 路径:直接 Clipboard.Clear()(不做 compare-then-clear 的异步读取),
+    // 任何失败脱敏上报后吞掉,绝不外抛——安全清理不得因剪贴板不可用而中断。
+    public async Task ClearSecretsAsync(CancellationToken ct = default)
+    {
+        _clearTimer?.Stop();
+        var expected = Interlocked.Exchange(ref _lastSecret, null);
+        if (string.IsNullOrEmpty(expected))
+            return;
+        ct.ThrowIfCancellationRequested();
+        await ClearIfUnchangedAsync(expected);
+    }
+
     public void ClearSecretsNow()
     {
         _clearTimer?.Stop();
-        if (!string.IsNullOrEmpty(_lastSecret))
-            _ = ClearIfUnchangedAsync(_lastSecret);
-        _lastSecret = null;
+        var hadSecret = !string.IsNullOrEmpty(Interlocked.Exchange(ref _lastSecret, null));
+        if (!hadSecret)
+            return;
+        try { Clipboard.Clear(); }
+        catch (Exception ex)
+        {
+            CrashLogger.WriteRedacted("ClipboardClear", ex);
+        }
     }
 
     // 仅当剪贴板当前文本仍是本次写入的密钥时才清除,避免清掉用户随后复制的其他内容。

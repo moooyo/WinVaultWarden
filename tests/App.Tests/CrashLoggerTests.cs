@@ -40,6 +40,22 @@ public class CrashLoggerTests
     }
 
     [Fact]
+    public void FormatRedacted_ContainsTypesButNoExceptionMessages()
+    {
+        var exception = new InvalidOperationException(
+            "top-secret",
+            new FormatException("inner-secret"));
+
+        var entry = CrashLogger.FormatRedacted("Lifecycle:stop", exception, FixedNow);
+
+        Assert.Contains("Lifecycle:stop", entry);
+        Assert.Contains("System.InvalidOperationException", entry);
+        Assert.Contains("System.FormatException", entry);
+        Assert.DoesNotContain("top-secret", entry);
+        Assert.DoesNotContain("inner-secret", entry);
+    }
+
+    [Fact]
     public void Write_CreatesLogsDirAndAppends()
     {
         var baseDir = NewTempDir();

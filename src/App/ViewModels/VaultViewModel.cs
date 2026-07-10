@@ -6,7 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace App.ViewModels;
 
-public partial class VaultViewModel : ObservableObject
+public partial class VaultViewModel : ObservableObject, ISensitiveState
 {
     private readonly IVaultUiService _service;
     private readonly IClipboardService? _clipboard;
@@ -630,6 +630,26 @@ public partial class VaultViewModel : ObservableObject
         _selectedIds.Clear();
         OnPropertyChanged(nameof(SelectedCount));
         OnPropertyChanged(nameof(HasSelection));
+    }
+
+    // 锁屏/登出时清空内存中的明文足迹:选中项、详情、编辑草稿、搜索与全部条目/过滤集合。
+    // 幂等:重复调用安全(集合已空、属性已置默认值)。
+    public void ClearSensitive()
+    {
+        SelectedItem = null;
+        Detail = null;
+        EditorDraft = null;
+        _editingId = null;
+        IsEditing = false;
+        SearchText = string.Empty;
+        OperationError = string.Empty;
+        EditorError = string.Empty;
+        AttachmentBusyText = string.Empty;
+        ClearSelection();
+        Items.Clear();
+        FilteredItems.Clear();
+        GroupedItems.Clear();
+        Filters.Clear();
     }
 
     partial void OnIsSelectionModeChanged(bool value)

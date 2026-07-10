@@ -8,7 +8,7 @@ using Vault;
 
 namespace App.ViewModels;
 
-public partial class EmergencyAccessViewModel : ObservableObject
+public partial class EmergencyAccessViewModel : ObservableObject, ISensitiveState
 {
     private readonly IEmergencyAccessUiService _service;
     private readonly VaultSession? _session;
@@ -290,5 +290,17 @@ public partial class EmergencyAccessViewModel : ObservableObject
 
         TrustedByOthers.Clear();
         foreach (var g in granted) TrustedByOthers.Add(g);
+    }
+
+    // 锁屏/登出时清空紧急访问的机密足迹:恢复出的授予方密码库、接管新密码、联系人/授权列表。幂等。
+    public void ClearSensitive()
+    {
+        RecoveredVault = null;
+        RecoveredItems.Clear();
+        TakeoverNewPassword = string.Empty;
+        InviteEmail = string.Empty;
+        SelectedGrantorEmail = string.Empty;
+        MyContacts.Clear();
+        TrustedByOthers.Clear();
     }
 }

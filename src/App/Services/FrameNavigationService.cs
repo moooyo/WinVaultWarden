@@ -33,4 +33,22 @@ public sealed class FrameNavigationService : INavigationService
     // ── 登录流导航(LoginFrame)──────────────────────────────────────────────
     public void GoToRegister() => _loginFrame?.Navigate(typeof(RegisterPage));
     public void GoToLoginPage() => _loginFrame?.Navigate(typeof(LoginPage));
+
+    /// <summary>
+    /// 锁定/登出时清空两个 Frame 的内容与前后导航栈,防止锁屏后仍能经后退栈回到明文页面。
+    /// </summary>
+    public void ResetForLock()
+    {
+        Reset(_contentFrame);
+        Reset(_loginFrame);
+    }
+
+    private static void Reset(Frame? frame)
+    {
+        if (frame is null)
+            return;
+        frame.Content = null;
+        frame.BackStack.Clear();
+        frame.ForwardStack.Clear();
+    }
 }

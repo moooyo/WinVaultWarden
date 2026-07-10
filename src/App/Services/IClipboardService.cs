@@ -14,4 +14,13 @@ public interface IClipboardService
     // 锁定/登出时主动清除本应用写入剪贴板的密钥(compare-then-clear,只清仍是本应用写入的值)。
     // 默认空实现,保证未覆写的实现(测试替身)仍可编译。
     void ClearSecretsNow() { }
+
+    // 可等待的清理:供生命周期协调器在异步清理阶段 await,确保剪贴板密钥先清干净再继续。
+    // 默认回退到同步 ClearSecretsNow,保证未覆写的实现(测试替身)仍可编译。
+    Task ClearSecretsAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        ClearSecretsNow();
+        return Task.CompletedTask;
+    }
 }

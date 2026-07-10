@@ -66,7 +66,8 @@ public static class ServiceConfiguration
         services.AddSingleton<IAuthRequestUiService>(sp =>
             new AuthRequestUiService(sp.GetRequiredService<IAuthRequestService>()));
         services.AddTransient<IEmergencyAccessUiService, EmergencyAccessUiService>();
-        services.AddTransient<EmergencyAccessViewModel>();
+        services.AddTransient<EmergencyAccessViewModel>(sp =>
+            TrackSensitive(sp, ActivatorUtilities.CreateInstance<EmergencyAccessViewModel>(sp)));
         services.AddSingleton<IPasskeyApprovalService, PasskeyApprovalDialogService>();
         services.AddSingleton<BrowserPasskeyRequestHandler>();
         services.AddSingleton<IPeerAuthorizer, ClientPeerAuthorizer>(); // M1：管道 peer 鉴别
@@ -95,28 +96,32 @@ public static class ServiceConfiguration
         services.AddSingleton<IRegisterUiService>(sp =>
             new RegisterUiService(sp.GetRequiredService<IRegisterService>()));
         services.AddTransient<RegisterViewModel>(sp =>
-            new RegisterViewModel(sp.GetRequiredService<IRegisterUiService>()));
+            TrackSensitive(sp, new RegisterViewModel(sp.GetRequiredService<IRegisterUiService>())));
 
         services.AddSingleton<AccountPrefill>(); // 注册→登录 的一次性预填暂存(R10)
         // 显式工厂(而非裸 AddTransient<LoginViewModel>()):确保 Hello 服务被真正注入,
         // 否则登录页解锁阶段的 Windows Hello 按钮在生产环境永远不会显示(H7)。
-        services.AddTransient<LoginViewModel>(sp => new LoginViewModel(
+        services.AddTransient<LoginViewModel>(sp => TrackSensitive(sp, new LoginViewModel(
             sp.GetRequiredService<IAuthService>(),
             sp.GetService<IDemoVaultSessionService>(),
             sp.GetRequiredService<IPinService>(),
             sp.GetRequiredService<AccountPrefill>(),
             sp.GetRequiredService<IWindowsHelloAuthenticator>(),
-            sp.GetRequiredService<IHelloUnlockService>()));
-        services.AddTransient<VaultViewModel>();
+            sp.GetRequiredService<IHelloUnlockService>(),
+            sp.GetRequiredService<IAppLifecycleCoordinator>())));
+        services.AddTransient<VaultViewModel>(sp =>
+            TrackSensitive(sp, ActivatorUtilities.CreateInstance<VaultViewModel>(sp)));
         services.AddTransient<SendViewModel>();
-        services.AddTransient<GeneratorViewModel>();
+        services.AddTransient<GeneratorViewModel>(sp =>
+            TrackSensitive(sp, ActivatorUtilities.CreateInstance<GeneratorViewModel>(sp)));
         services.AddTransient<SettingsViewModel>(sp =>
             new SettingsViewModel(
                 sp.GetRequiredService<IAccountUiService>(),
                 sp.GetRequiredService<ITwoFactorUiService>(),
                 sp.GetRequiredService<IPinService>(),
                 sp.GetRequiredService<IWindowsHelloAuthenticator>(),
-                sp.GetRequiredService<IHelloUnlockService>()));
+                sp.GetRequiredService<IHelloUnlockService>(),
+                sp.GetRequiredService<IAppLifecycleCoordinator>()));
         services.AddTransient<DevicesViewModel>(sp =>
             new DevicesViewModel(
                 sp.GetRequiredService<IDeviceUiService>(),
@@ -133,12 +138,14 @@ public static class ServiceConfiguration
         services.AddSingleton<IVaultHealthService, Vault.VaultHealthService>();
         services.AddTransient<IVaultHealthUiService, VaultHealthUiService>();
         services.AddSingleton<ISavedSearchStore, AppPreferencesSavedSearchStore>();
-        services.AddTransient<SecurityReportViewModel>();
+        services.AddTransient<SecurityReportViewModel>(sp =>
+            TrackSensitive(sp, ActivatorUtilities.CreateInstance<SecurityReportViewModel>(sp)));
 
         // ── 导入 / 导出 ──────────────────────────────────────────────────────────
         services.AddSingleton<IVaultExportService, Vault.VaultExportService>();
         services.AddSingleton<IVaultImportService, Vault.VaultImportService>();
-        services.AddTransient<ImportExportViewModel>();
+        services.AddTransient<ImportExportViewModel>(sp =>
+            TrackSensitive(sp, ActivatorUtilities.CreateInstance<ImportExportViewModel>(sp)));
 
         // WebSocket 推送通知
         services.AddSingleton<INotificationDispatcher>(sp =>
@@ -178,15 +185,64 @@ public static class ServiceConfiguration
                 onAuthRequestsChanged: () => Dispatch(() =>
                     global::App.App.MainWindow?.RefreshRequestsList()),
                 onLoggedOut: () => Dispatch(async () =>
+                    await sp.GetRequiredService<IAppLifecycleCoordinator>()
+                        .RequestAsync(AppLifecycleIntent.RemoteLogout)));
+        });
+
+        // ── 生命周期协调:唯一注册点 ──────────────────────────────────────────
+        // 先注册两个 registry(弱引用敏感状态 / 强引用瞬态操作),再注册全项目唯一的协调器。
+        services.AddSingleton<ISensitiveStateRegistry>(_ =>
+            new SensitiveStateRegistry(ex =>
+                CrashLogger.WriteRedacted("SensitiveStateRegistry", ex)));
+        services.AddSingleton<ITransientOperationRegistry>(_ =>
+            new TransientOperationRegistry(ex =>
+                CrashLogger.WriteRedacted("TransientOperationRegistry", ex)));
+
+        services.AddSingleton<IAppLifecycleCoordinator>(sp =>
+        {
+            var session = sp.GetRequiredService<VaultSession>();
+            var auth = sp.GetRequiredService<IAuthService>();
+            var transients = sp.GetRequiredService<ITransientOperationRegistry>();
+            var sensitive = sp.GetRequiredService<ISensitiveStateRegistry>();
+            var clipboard = sp.GetRequiredService<IClipboardService>();
+            var navigation = sp.GetRequiredService<FrameNavigationService>();
+
+            return new AppLifecycleCoordinator(new AppLifecycleHooks(
+                BlockSensitiveOperations: () =>
+                    global::App.App.MainWindow?.SetSensitiveUiEnabled(false),
+                AllowSensitiveOperations: () =>
+                    global::App.App.MainWindow?.SetSensitiveUiEnabled(true),
+                InvalidateSession: () => session.Lock(),
+                StopBackgroundAsync: () =>
+                    sp.GetRequiredService<NotificationsHost>().StopAsync(),
+                CloseTransientsAsync: transients.CancelAndCloseAllAsync,
+                CloseTransientsSynchronously: transients.CancelAndCloseAllSynchronously,
+                ClearClipboardAsync: () => clipboard.ClearSecretsAsync(CancellationToken.None),
+                ClearClipboardSynchronously: clipboard.ClearSecretsNow,
+                ClearSensitiveState: sensitive.ClearAll,
+                ResetFrames: navigation.ResetForLock,
+                LockSessionAsync: () => auth.LockAsync(CancellationToken.None),
+                LogoutSessionAsync: async () =>
                 {
-                    // 服务端推送登出:主动清剪贴板密钥,登出后清空本地图标缓存。
-                    try { sp.GetRequiredService<IClipboardService>().ClearSecretsNow(); } catch { }
-                    await global::App.App.Services.GetRequiredService<IAuthService>().LogoutAsync();
-                    try { sp.GetRequiredService<IFaviconCache>().Clear(); } catch { }
-                    global::App.App.MainWindow?.ShowLogin();
-                }));
+                    await auth.LogoutAsync(CancellationToken.None);
+                    sp.GetRequiredService<IFaviconCache>().Clear();
+                },
+                ShowLogin: () => global::App.App.MainWindow?.ShowLoginAfterLifecycle(),
+                ExitProcess: () => global::App.App.MainWindow?.ExitAfterLifecycle(),
+                FailClosedSession: () => session.Lock(),
+                ReportFailure: (step, ex) =>
+                    CrashLogger.WriteRedacted($"Lifecycle:{step}", ex)));
         });
 
         return services.BuildServiceProvider();
+    }
+
+    // 唯一敏感状态弱登记入口:构造后立即弱引用登记到 registry,锁屏/登出时统一 ClearSensitive。
+    // registry 只持弱引用,不会因此阻止页面/VM 被回收。
+    private static T TrackSensitive<T>(IServiceProvider sp, T instance)
+        where T : class, ISensitiveState
+    {
+        sp.GetRequiredService<ISensitiveStateRegistry>().Register(instance);
+        return instance;
     }
 }

@@ -183,27 +183,15 @@ public class SettingsPageXamlTests
         Assert.Contains("Minimum = 100000", src, StringComparison.Ordinal);
     }
 
-    // ── 成功后导航行为断言 ────────────────────────────────────────────────────
+    // ── 成功后交由生命周期协调器统一处理(页面内不再直接锁定/导航) ────────────────
 
     [Fact]
-    public void OnSuccess_CallsNavigateToLogin()
+    public void OnSuccess_DoesNotNavigateInPage()
     {
         var src = LoadCodeBehind();
-        Assert.Contains("NavigateToLogin", src, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void NavigateToLogin_CallsLockAsync()
-    {
-        var src = LoadCodeBehind();
-        Assert.Contains("LockAsync", src, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void NavigateToLogin_CallsShowLogin()
-    {
-        var src = LoadCodeBehind();
-        Assert.Contains("ShowLogin", src, StringComparison.Ordinal);
+        // Task 2:改密/改 KDF 成功后页面不再 NavigateToLogin;SettingsViewModel 发 CredentialChanged intent,
+        // 由唯一生命周期协调器统一登出并回登录页。
+        Assert.DoesNotContain("NavigateToLogin", src, StringComparison.Ordinal);
     }
 
     // ── Task 7: TwoFactorCard 断言 ────────────────────────────────────────────

@@ -33,7 +33,7 @@ public class SecurityHygieneSourceTests
         Assert.Contains("SetRevealed(false)", src);
     }
 
-    // ── S2: 关闭到托盘前先锁定 ───────────────────────────────────────────────
+    // ── S2: 关闭到托盘前先锁定(经生命周期协调器 Lock intent) ───────────────
 
     [Fact]
     public void CloseToTray_LocksBeforeHiding()
@@ -44,11 +44,11 @@ public class SecurityHygieneSourceTests
         Assert.True(idx >= 0, "close-to-tray 分支未找到");
         var block = src.Substring(idx, Math.Min(500, src.Length - idx));
 
-        var lockIdx = block.IndexOf("LockNow", StringComparison.Ordinal);
-        var hideIdx = block.IndexOf("AppWindow.Hide", StringComparison.Ordinal);
-        Assert.True(lockIdx >= 0, "close-to-tray 未调用 LockNow");
+        var lockIdx = block.IndexOf("AppLifecycleIntent.Lock", StringComparison.Ordinal);
+        var hideIdx = block.IndexOf(".Hide()", StringComparison.Ordinal);
+        Assert.True(lockIdx >= 0, "close-to-tray 未请求 Lock intent");
         Assert.True(hideIdx >= 0, "close-to-tray 未调用 Hide");
-        Assert.True(lockIdx < hideIdx, "LockNow 必须在 Hide 之前");
+        Assert.True(lockIdx < hideIdx, "Lock intent 必须在 Hide 之前");
     }
 
     // ── S4: 关闭"允许截图"→ 对窗口设 WDA_EXCLUDEFROMCAPTURE ──────────────────

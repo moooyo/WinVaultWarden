@@ -1,3 +1,4 @@
+using App.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Core.Services;
@@ -6,7 +7,7 @@ namespace App.ViewModels;
 
 // 导入/导出页 VM：导出侧只产出明文字符串交给 code-behind 落盘；导入侧解析预览 + 实际导入。
 // 不接触文件 I/O、picker、ContentDialog —— 这些留在 code-behind，保证本类可脱离 WinUI 单元测试。
-public partial class ImportExportViewModel : ObservableObject
+public partial class ImportExportViewModel : ObservableObject, ISensitiveState
 {
     private readonly IVaultExportService _export;
     private readonly IVaultImportService _import;
@@ -94,5 +95,16 @@ public partial class ImportExportViewModel : ObservableObject
         {
             ResultMessage = $"导入失败: {ex.Message}";
         }
+    }
+
+    // 锁屏/登出时清空导入/导出的机密足迹:导入内容(可能含明文条目)、预览计数与状态消息。幂等。
+    public void ClearSensitive()
+    {
+        ImportContent = string.Empty;
+        PreviewCipherCount = 0;
+        PreviewFolderCount = 0;
+        ImportError = null;
+        ResultMessage = null;
+        ExportStatus = null;
     }
 }

@@ -70,10 +70,10 @@ public class AccountServiceTests
         return new AccountService(_crypto, FakeVaultApiClientProvider.ForAuthenticated<IAccountApiClient>(api), session, store, auth, cache);
     }
 
-    // ---- Test 1: ChangePassword 发送重包 key 并登出 ----
+    // ---- Test 1: ChangePassword 发送重包 key 但不登出(登出由 App 层生命周期协调器统一处理) ----
 
     [Fact]
-    public async Task ChangePassword_sends_rewrapped_key_then_logs_out()
+    public async Task ChangePassword_sends_rewrapped_key_without_logout()
     {
         var (session, store, userKey, _) = BuildUnlockedSession();
         // 在 session 被 clear（userKey 内存被清零）之前，先保留一份 key 字节副本
@@ -112,12 +112,13 @@ public class AccountServiceTests
         var decrypted = _crypto.DecryptUserKey(stretchedNew, EncString.Parse(api.Password.Key));
         Assert.Equal(expectedKeyBytes, decrypted.FullKey);
 
-        // 改密后强制登出：session.UserKey 已清零 / tokenStore 已清空
-        Assert.True(auth.LoggedOut);
-        Assert.Null(session.UserKey);
-        Assert.False(store.TryLoad(out _));
-        // 改密成功后清离线缓存（P1-1/D2）
-        Assert.Equal(1, cacheStore.ClearCount);
+        // Task 2:AccountService 不再自行登出;会话保持解锁、token store 保留,
+        // 由 App 层生命周期协调器经 CredentialChanged intent 统一登出并清 store/cache。
+        Assert.False(auth.LoggedOut);
+        Assert.NotNull(session.UserKey);
+        Assert.True(store.TryLoad(out _));
+        // AccountService 不再清离线缓存(改由 App 层协调器 logout 清理)
+        Assert.Equal(0, cacheStore.ClearCount);
     }
 
     // ---- Test 2: ChangePassword 旧密码错误时抛出 AccountOperationException ----
@@ -177,10 +178,10 @@ public class AccountServiceTests
         Assert.False(auth.LoggedOut);
     }
 
-    // ---- Test 4: ChangeKdf 成功时发送正确请求并登出 ----
+    // ---- Test 4: ChangeKdf 成功时发送正确请求但不登出(登出由 App 层生命周期协调器统一处理) ----
 
     [Fact]
-    public async Task ChangeKdf_sends_correct_request_and_logs_out()
+    public async Task ChangeKdf_sends_correct_request_without_logout()
     {
         var (session, store, userKey, _) = BuildUnlockedSession();
         // 在 session 被 clear（userKey 内存被清零）之前，先保留一份 key 字节副本
@@ -232,12 +233,13 @@ public class AccountServiceTests
         CryptographicOperations.ZeroMemory(oldMk);
         Assert.Equal(expectedOldHash, api.Kdf.MasterPasswordHash);
 
-        // 登出
-        Assert.True(auth.LoggedOut);
-        Assert.Null(session.UserKey);
-        Assert.False(store.TryLoad(out _));
-        // 改 KDF 成功后清离线缓存（P1-1/D2）
-        Assert.Equal(1, cacheStore.ClearCount);
+        // Task 2:AccountService 不再自行登出;会话保持解锁、token store 保留,
+        // 由 App 层生命周期协调器经 CredentialChanged intent 统一登出并清 store/cache。
+        Assert.False(auth.LoggedOut);
+        Assert.NotNull(session.UserKey);
+        Assert.True(store.TryLoad(out _));
+        // AccountService 不再清离线缓存(改由 App 层协调器 logout 清理)
+        Assert.Equal(0, cacheStore.ClearCount);
     }
 
     // ---- Test 5: UpdateName 名字过长时客户端拒绝 ----

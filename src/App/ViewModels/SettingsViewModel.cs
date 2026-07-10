@@ -18,6 +18,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IPinService? _pin;
     private readonly IWindowsHelloAuthenticator? _hello;
     private readonly IHelloUnlockService? _helloUnlock;
+    private readonly IAppLifecycleCoordinator? _lifecycle;
 
     [ObservableProperty]
     public partial int SelectedSessionTimeoutIndex { get; set; } = AppPreferences.Current.SessionTimeoutIndex;
@@ -143,7 +144,11 @@ public partial class SettingsViewModel : ObservableObject
     {
     }
 
-    public SettingsViewModel(IAccountUiService accountUi) => _accountUi = accountUi;
+    public SettingsViewModel(IAccountUiService accountUi, IAppLifecycleCoordinator? lifecycle = null)
+    {
+        _accountUi = accountUi;
+        _lifecycle = lifecycle;
+    }
 
     public SettingsViewModel(ITwoFactorUiService twoFactorUi) => _twoFactorUi = twoFactorUi;
 
@@ -161,13 +166,15 @@ public partial class SettingsViewModel : ObservableObject
         ITwoFactorUiService twoFactorUi,
         IPinService? pin = null,
         IWindowsHelloAuthenticator? hello = null,
-        IHelloUnlockService? helloUnlock = null)
+        IHelloUnlockService? helloUnlock = null,
+        IAppLifecycleCoordinator? lifecycle = null)
     {
         _accountUi = accountUi;
         _twoFactorUi = twoFactorUi;
         _pin = pin;
         _hello = hello;
         _helloUnlock = helloUnlock;
+        _lifecycle = lifecycle;
     }
 
     public string AccountEmail => _accountUi?.GetAccount().Email ?? string.Empty;
@@ -232,6 +239,9 @@ public partial class SettingsViewModel : ObservableObject
         try
         {
             await _accountUi.ChangePasswordAsync(current, next, confirm, hint, ct);
+            // 改密成功后由 App 层统一登出:发 CredentialChanged intent,协调器清理并回登录页。
+            if (_lifecycle is not null)
+                await _lifecycle.RequestAsync(AppLifecycleIntent.CredentialChanged);
         }
         catch (OperationCanceledException)
         {
@@ -300,6 +310,9 @@ public partial class SettingsViewModel : ObservableObject
         try
         {
             await _accountUi.ChangeIterationsAsync(current, iterations, ct);
+            // 改 KDF 成功后由 App 层统一登出:发 CredentialChanged intent,协调器清理并回登录页。
+            if (_lifecycle is not null)
+                await _lifecycle.RequestAsync(AppLifecycleIntent.CredentialChanged);
         }
         catch (OperationCanceledException)
         {

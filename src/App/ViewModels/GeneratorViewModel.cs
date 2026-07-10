@@ -15,7 +15,7 @@ public enum GeneratorMode
     Username,
 }
 
-public partial class GeneratorViewModel : ObservableObject
+public partial class GeneratorViewModel : ObservableObject, ISensitiveState
 {
     private readonly IClipboardService? _clipboard;
     private readonly PasswordStrengthEvaluator? _strength;
@@ -277,7 +277,7 @@ public partial class GeneratorViewModel : ObservableObject
             History.RemoveAt(History.Count - 1);
     }
 
-    // 锁定/退出时清除内存中的明文密钥足迹(本批仅提供,接入留后续)。
+    // 锁屏/登出时清除内存中的明文密钥足迹:历史与当前生成结果。经 DI TrackSensitive 弱登记后由协调器统一调用。
     public void ClearSensitive()
     {
         History.Clear();

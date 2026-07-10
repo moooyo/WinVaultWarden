@@ -472,7 +472,8 @@ public class SettingsViewModelTests
     private static (SettingsViewModel vm, FakeAccountService svc) Build(
         bool throwOnRename = false,
         bool throwOnChangePwd = false,
-        bool throwOnChangeKdf = false)
+        bool throwOnChangeKdf = false,
+        IAppLifecycleCoordinator? lifecycle = null)
     {
         var svc = new FakeAccountService
         {
@@ -482,7 +483,71 @@ public class SettingsViewModelTests
         };
         var vault = new FakeVaultService();
         var ui = new AccountUiService(vault, svc);
-        return (new SettingsViewModel(ui), svc);
+        return (new SettingsViewModel(ui, lifecycle), svc);
+    }
+
+    // Task 2:改密/改 KDF 成功走生命周期协调器 CredentialChanged;失败零次。
+    private sealed class RecordingLifecycle : IAppLifecycleCoordinator
+    {
+        public List<AppLifecycleIntent> Requests { get; } = new();
+        public bool IsTransitioning => false;
+        public Task RequestAsync(AppLifecycleIntent intent)
+        {
+            Requests.Add(intent);
+            return Task.CompletedTask;
+        }
+        public void MarkSessionReady() { }
+        public void FailClosedSynchronously() { }
+    }
+
+    [Fact]
+    public async Task ChangePassword_Success_RequestsCredentialChangedOnce()
+    {
+        var lifecycle = new RecordingLifecycle();
+        var (vm, _) = Build(lifecycle: lifecycle);
+
+        await vm.ChangePasswordAsync("current", "newPwd", "newPwd", null);
+
+        Assert.Equal(string.Empty, vm.OperationError);
+        Assert.Single(lifecycle.Requests);
+        Assert.Equal(AppLifecycleIntent.CredentialChanged, lifecycle.Requests[0]);
+    }
+
+    [Fact]
+    public async Task ChangePassword_Failure_RequestsNoLifecycleIntent()
+    {
+        var lifecycle = new RecordingLifecycle();
+        var (vm, _) = Build(throwOnChangePwd: true, lifecycle: lifecycle);
+
+        await vm.ChangePasswordAsync("current", "newPwd", "newPwd", null);
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.Empty(lifecycle.Requests);
+    }
+
+    [Fact]
+    public async Task ChangeIterations_Success_RequestsCredentialChangedOnce()
+    {
+        var lifecycle = new RecordingLifecycle();
+        var (vm, _) = Build(lifecycle: lifecycle);
+
+        await vm.ChangeIterationsAsync("current", 600000);
+
+        Assert.Equal(string.Empty, vm.OperationError);
+        Assert.Single(lifecycle.Requests);
+        Assert.Equal(AppLifecycleIntent.CredentialChanged, lifecycle.Requests[0]);
+    }
+
+    [Fact]
+    public async Task ChangeIterations_Failure_RequestsNoLifecycleIntent()
+    {
+        var lifecycle = new RecordingLifecycle();
+        var (vm, _) = Build(throwOnChangeKdf: true, lifecycle: lifecycle);
+
+        await vm.ChangeIterationsAsync("current", 600000);
+
+        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.Empty(lifecycle.Requests);
     }
 
     // -----------------------------------------------------------------------

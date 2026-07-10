@@ -68,4 +68,41 @@ public static class CrashLogger
             return null;
         }
     }
+
+    /// <summary>
+    /// 脱敏格式化:只记录异常类型链与 HResult,不含任何异常消息/栈(可能夹带机密)。
+    /// 供生命周期安全清理等敏感路径使用。now 由调用方传入以便测试确定性。
+    /// </summary>
+    public static string FormatRedacted(
+        string source,
+        Exception exception,
+        DateTimeOffset now)
+    {
+        var types = new List<string>();
+        for (Exception? current = exception;
+             current is not null;
+             current = current.InnerException)
+        {
+            types.Add(current.GetType().FullName ?? current.GetType().Name);
+        }
+
+        return $"[{now.ToUniversalTime():o}] {source}: "
+            + string.Join(" --> ", types)
+            + $"; HResult=0x{exception.HResult:X8}{Environment.NewLine}";
+    }
+
+    /// <summary>
+    /// 把一条脱敏日志写入 LocalApplicationData/WinVaultWarden 下的滚动崩溃日志。
+    /// 失败静默返回 null,绝不抛出——供 async void / 兜底清理路径调用。
+    /// </summary>
+    public static string? WriteRedacted(string source, Exception exception)
+    {
+        var baseDirectory = Path.Combine(
+            Environment.GetFolderPath(
+                Environment.SpecialFolder.LocalApplicationData),
+            "WinVaultWarden");
+        return Write(
+            baseDirectory,
+            FormatRedacted(source, exception, DateTimeOffset.UtcNow));
+    }
 }
