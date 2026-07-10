@@ -32,8 +32,11 @@ public class DevicesPageStateXamlTests
         Assert.Contains("ViewModel.Error", infoBar.Attribute("Message")?.Value);
 
         var isOpen = infoBar.Attribute("IsOpen")?.Value ?? "";
-        Assert.Contains("ViewModel.ShowRequestsError", isOpen);
+        Assert.Contains("ViewModel.HasError", isOpen);
         Assert.DoesNotContain("Converter", isOpen);
+
+        var visibility = infoBar.Attribute("Visibility")?.Value ?? "";
+        Assert.Contains("ViewModel.HasError", visibility);
     }
 
     [Fact]
@@ -51,7 +54,7 @@ public class DevicesPageStateXamlTests
 
     [Theory]
     [InlineData("DevicesLoadingPanel", "ViewModel.ShowRequestsLoading")]
-    [InlineData("DevicesErrorInfoBar", "ViewModel.ShowRequestsError")]
+    [InlineData("DevicesErrorInfoBar", "ViewModel.HasError")]
     [InlineData("RequestsEmptyText", "ViewModel.ShowRequestsEmpty")]
     [InlineData("PendingRequestsRepeater", "ViewModel.ShowRequestsContent")]
     public void RequestStates_AreMutuallyExplicit(string name, string binding)
@@ -60,6 +63,16 @@ public class DevicesPageStateXamlTests
         var element = document.Descendants()
             .Single(node => node.Attribute(X + "Name")?.Value == name);
         Assert.Contains(binding, element.Attribute("Visibility")?.Value);
+    }
+
+    [Fact]
+    public void PendingRequestsRepeater_UsesCanOperateForIsEnabled()
+    {
+        var document = LoadXaml();
+        var repeater = document.Descendants()
+            .Single(node => node.Attribute(X + "Name")?.Value == "PendingRequestsRepeater");
+
+        Assert.Contains("ViewModel.CanOperate", repeater.Attribute("IsEnabled")?.Value);
     }
 
     private static XDocument LoadXaml()

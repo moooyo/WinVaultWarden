@@ -212,16 +212,21 @@ public class DevicesViewModelTests
     [Fact]
     public async Task ApproveAsync_ServiceThrows_SetsError_ItemStaysInList()
     {
-        var fake = new ThrowingAuthRequestService("批准失败");
+        var fake = new FakeAuthRequestService
+        {
+            ApproveOverride = (_, _, _) => Task.FromException(new AuthRequestOperationException("批准失败"))
+        };
+        fake.AddRequest(new PendingAuthRequest("r1", "Android", "1.1.1.1", "2025-01-01T00:00:00Z", "pk"));
         var vm = new DevicesViewModel(new MockDeviceUiService(), new AuthRequestUiService(fake));
-        // 手动插入一个 item 模拟已刷新状态
-        var item = new AuthRequestItem("r1", "Android", "1.1.1.1", "2025/1/1 10:00", "pk");
-        vm.PendingRequests.Add(item);
+
+        await vm.RefreshRequestsAsync();
+        var item = vm.PendingRequests.Single();
 
         await vm.ApproveAsync(item, (_, _) => Task.FromResult(true));
 
         Assert.NotNull(vm.Error);
         Assert.Single(vm.PendingRequests); // item 未被移除
+        Assert.Equal(DataPageState.Content, vm.RequestsState);
     }
 
     [Fact]
@@ -235,6 +240,25 @@ public class DevicesViewModelTests
 
         Assert.NotNull(vm.Error);
         Assert.False(string.IsNullOrEmpty(vm.Error));
+    }
+
+    [Fact]
+    public async Task ApproveAsync_ServiceThrowsOperationCanceled_ReturnsCancelledAndPreservesContent()
+    {
+        var fake = new FakeAuthRequestService();
+        fake.AddRequest(new PendingAuthRequest("r1", "Android", "1.2.3.4", "2025-01-01T10:00:00Z", "pk"));
+        fake.ApproveOverride = (_, _, _) => Task.FromException(new OperationCanceledException());
+
+        var vm = new DevicesViewModel(new MockDeviceUiService(), new AuthRequestUiService(fake));
+        await vm.RefreshRequestsAsync();
+        var item = vm.PendingRequests.Single();
+
+        var result = await vm.ApproveAsync(item, (_, _) => Task.FromResult(true), CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
+        Assert.Single(vm.PendingRequests);
+        Assert.Equal(DataPageState.Content, vm.RequestsState);
+        Assert.Null(vm.Error);
     }
 
     // 用户在指纹确认弹窗点“取消” → 绝不加密下发，条目保留。
@@ -329,6 +353,37 @@ public class DevicesViewModelTests
         Assert.False(string.IsNullOrEmpty(vm.Error));
     }
 
+    [Fact]
+    public async Task RefreshRequestsAsync_CancellationRestoresExistingCollectionState()
+    {
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fake = new FakeAuthRequestService
+        {
+            ListOverride = async ct =>
+            {
+                entered.TrySetResult(true);
+                await Task.Delay(Timeout.Infinite, ct);
+                return Array.Empty<PendingAuthRequest>();
+            }
+        };
+        var vm = new DevicesViewModel(new MockDeviceUiService(), new AuthRequestUiService(fake));
+        vm.PendingRequests.Add(new AuthRequestItem("r1", "Android", "1.1.1.1", "2025/1/1 10:00", "pk"));
+
+        var cts = new CancellationTokenSource();
+        var refreshTask = vm.RefreshRequestsAsync(cts.Token);
+        await entered.Task;
+        Assert.True(vm.ShowRequestsLoading);
+
+        cts.Cancel();
+
+        var result = await refreshTask;
+
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
+        Assert.Equal(DataPageState.Content, vm.RequestsState);
+        Assert.Single(vm.PendingRequests);
+        Assert.Null(vm.Error);
+    }
+
     // ── Task 6: Gate / 四态 / Deny 确认 ─────────────────────────────────────
 
     [Fact]
@@ -399,15 +454,20 @@ public class DevicesViewModelTests
         public List<string> ApprovedIds { get; } = new();
         public Dictionary<string, string> ApprovedPublicKeys { get; } = new();
         public List<string> DeniedIds { get; } = new();
+        public Func<CancellationToken, Task<IReadOnlyList<PendingAuthRequest>>>? ListOverride { get; set; }
+        public Func<string, string, CancellationToken, Task>? ApproveOverride { get; set; }
+        public Func<string, CancellationToken, Task>? DenyOverride { get; set; }
 
         public void AddRequest(PendingAuthRequest r) => _requests.Add(r);
         public void Clear() => _requests.Clear();
 
         public Task<IReadOnlyList<PendingAuthRequest>> ListPendingAsync(CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<PendingAuthRequest>>(_requests.ToList());
+            ListOverride?.Invoke(ct) ?? Task.FromResult<IReadOnlyList<PendingAuthRequest>>(_requests.ToList());
 
         public Task ApproveAsync(string id, string publicKey, CancellationToken ct = default)
         {
+            if (ApproveOverride is not null)
+                return ApproveOverride(id, publicKey, ct);
             ApprovedIds.Add(id);
             ApprovedPublicKeys[id] = publicKey;
             return Task.CompletedTask;
@@ -415,6 +475,8 @@ public class DevicesViewModelTests
 
         public Task DenyAsync(string id, CancellationToken ct = default)
         {
+            if (DenyOverride is not null)
+                return DenyOverride(id, ct);
             DeniedIds.Add(id);
             return Task.CompletedTask;
         }

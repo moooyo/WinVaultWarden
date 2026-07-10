@@ -64,8 +64,7 @@ public partial class DevicesViewModel : ObservableObject
         if (_authRequests is null)
         {
             const string unavailable = "设备登录授权服务不可用";
-            Error = unavailable;
-            RequestsState = DataPageState.Error;
+            SetLoadFailure(unavailable);
             return UiOperationResult<IReadOnlyList<AuthRequestItem>>.Failure(unavailable);
         }
         if (!_operations.TryEnter(out var operation))
@@ -83,16 +82,17 @@ public partial class DevicesViewModel : ObservableObject
                 foreach (var item in items)
                     PendingRequests.Add(item);
                 RequestsState = items.Count == 0 ? DataPageState.Empty : DataPageState.Content;
+                Error = null;
                 return UiOperationResult<IReadOnlyList<AuthRequestItem>>.Success(items);
             }
             catch (OperationCanceledException)
             {
+                RestoreRequestsState();
                 return UiOperationResult<IReadOnlyList<AuthRequestItem>>.Cancelled();
             }
             catch (AuthRequestOperationException ex)
             {
-                Error = ex.Message;
-                RequestsState = DataPageState.Error;
+                SetLoadFailure(ex.Message);
                 return UiOperationResult<IReadOnlyList<AuthRequestItem>>.Failure(ex.Message);
             }
             finally
@@ -112,7 +112,7 @@ public partial class DevicesViewModel : ObservableObject
         CancellationToken ct = default)
     {
         if (_authRequests is null)
-            return Fail("设备登录授权服务不可用");
+            return FailOperation("设备登录授权服务不可用");
         if (!_operations.TryEnter(out var operation))
             return UiOperationResult.Busy();
 
@@ -137,15 +137,16 @@ public partial class DevicesViewModel : ObservableObject
                 await _authRequests.ApproveAsync(item.Id, item.PublicKey, ct);
                 PendingRequests.Remove(item);
                 RequestsState = PendingRequests.Count == 0 ? DataPageState.Empty : DataPageState.Content;
+                Error = null;
                 return UiOperationResult.Success();
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
                 return UiOperationResult.Cancelled();
             }
             catch (AuthRequestOperationException ex)
             {
-                return Fail(ex.Message);
+                return FailOperation(ex.Message);
             }
             finally
             {
@@ -164,7 +165,7 @@ public partial class DevicesViewModel : ObservableObject
         CancellationToken ct = default)
     {
         if (_authRequests is null)
-            return Fail("设备登录授权服务不可用");
+            return FailOperation("设备登录授权服务不可用");
         if (!_operations.TryEnter(out var operation))
             return UiOperationResult.Busy();
 
@@ -179,6 +180,7 @@ public partial class DevicesViewModel : ObservableObject
                 await _authRequests.DenyAsync(item.Id, ct);
                 PendingRequests.Remove(item);
                 RequestsState = PendingRequests.Count == 0 ? DataPageState.Empty : DataPageState.Content;
+                Error = null;
                 return UiOperationResult.Success();
             }
             catch (OperationCanceledException)
@@ -187,7 +189,7 @@ public partial class DevicesViewModel : ObservableObject
             }
             catch (AuthRequestOperationException ex)
             {
-                return Fail(ex.Message);
+                return FailOperation(ex.Message);
             }
             finally
             {
@@ -196,10 +198,20 @@ public partial class DevicesViewModel : ObservableObject
         }
     }
 
-    private UiOperationResult Fail(string error)
+    private void RestoreRequestsState()
+    {
+        RequestsState = PendingRequests.Count == 0 ? DataPageState.Empty : DataPageState.Content;
+    }
+
+    private void SetLoadFailure(string error)
     {
         Error = error;
         RequestsState = DataPageState.Error;
+    }
+
+    private UiOperationResult FailOperation(string error)
+    {
+        Error = error;
         return UiOperationResult.Failure(error);
     }
 }

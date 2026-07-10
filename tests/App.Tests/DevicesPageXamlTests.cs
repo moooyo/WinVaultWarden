@@ -99,6 +99,17 @@ public class DevicesPageXamlTests
     }
 
     [Fact]
+    public void PendingSection_RepeaterIsDisabledByCanOperate()
+    {
+        var doc = Load();
+        var repeater = doc.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "ContentControl"
+                && e.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value == "PendingRequestsRepeater");
+        Assert.NotNull(repeater);
+        Assert.Contains("ViewModel.CanOperate", repeater!.Attribute("IsEnabled")?.Value);
+    }
+
+    [Fact]
     public void PendingSection_DataTemplate_HasAuthRequestItemDataType()
     {
         var doc = Load();
