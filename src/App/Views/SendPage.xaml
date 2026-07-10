@@ -19,22 +19,12 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" ColumnSpacing="8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <InfoBar x:Name="SendErrorInfoBar"
-                     IsClosable="True"
-                     Severity="Error"
-                     IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
-                     Message="{x:Bind ViewModel.Error, Mode=OneWay}" />
-            <ProgressRing x:Name="SendBusyRing"
-                          Grid.Column="1"
-                          Width="20" Height="20"
-                          VerticalAlignment="Center"
-                          IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
-        </Grid>
+        <InfoBar x:Name="SendErrorInfoBar"
+                 Grid.Row="0"
+                 IsClosable="True"
+                 Severity="Error"
+                 IsOpen="{x:Bind ViewModel.ShowError, Mode=OneWay}"
+                 Message="{x:Bind ViewModel.Error, Mode=OneWay}" />
 
         <Grid Grid.Row="1" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
@@ -95,11 +85,21 @@
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         </Grid>
 
-        <StackPanel Grid.Row="4"
+        <ProgressRing x:Name="SendLoadingRing"
+                      Grid.Row="4"
+                      Width="36" Height="36"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Top"
+                      Margin="0,72,0,0"
+                      IsActive="{x:Bind ViewModel.ShowLoading, Mode=OneWay}"
+                      Visibility="{x:Bind ViewModel.ShowLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+
+        <StackPanel x:Name="SendEmptyPanel"
+                    Grid.Row="4"
                     HorizontalAlignment="Center"
                     Spacing="{StaticResource SpacingMedium}"
                     Margin="0,72,0,0"
-                    Visibility="{x:Bind ViewModel.NoItems, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    Visibility="{x:Bind ViewModel.ShowEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}">
             <FontIcon Glyph="&#xE724;" FontSize="44"
                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                       HorizontalAlignment="Center" />
@@ -112,10 +112,11 @@
                        HorizontalAlignment="Center" />
         </StackPanel>
 
-        <ListView Grid.Row="4"
-                  ItemsSource="{x:Bind ViewModel.FilteredItems}"
+        <ListView x:Name="SendContentList"
+                  Grid.Row="4"
+                  ItemsSource="{x:Bind ViewModel.FilteredItems, Mode=OneWay}"
                   SelectionMode="None"
-                  Visibility="{x:Bind ViewModel.HasItems, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                  Visibility="{x:Bind ViewModel.ShowContent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:SendListItem">
                     <Grid MinHeight="52" Padding="8,4" ColumnSpacing="12"

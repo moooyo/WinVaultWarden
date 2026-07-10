@@ -53,7 +53,7 @@ public class RealSendUiServiceTests
         draft.HideEmail = true;
         draft.Password = "pw";
 
-        await svc.CreateSendAsync(draft, fileBytes: null, CancellationToken.None);
+        await svc.CreateSendAsync(draft, file: null, CancellationToken.None);
 
         var saved = write.LastTextDraft!;
         Assert.Equal(CoreSendType.Text, saved.Type);
@@ -70,7 +70,7 @@ public class RealSendUiServiceTests
     }
 
     [Fact]
-    public async Task CreateSendAsync_FileDraft_CreatesWithReopenableSource()
+    public async Task CreateSendAsync_FileDraft_ForwardsReopenableSourceToWriteService()
     {
         var write = new FakeSendWriteService();
         var svc = new SendUiService(new FakeSendService(), write, new FakeSendAccessService());
@@ -79,18 +79,35 @@ public class RealSendUiServiceTests
         draft.FileName = "合同.zip";
         draft.DeletionDateLabel = "30 天";
         var bytes = new byte[] { 1, 2, 3, 4 };
+        var source = MemorySource("合同.zip", bytes);
 
-        await svc.CreateSendAsync(draft, bytes, CancellationToken.None);
+        await svc.CreateSendAsync(draft, source, CancellationToken.None);
 
         Assert.Equal(CoreSendType.File, write.LastCreateDraft!.Type);
         Assert.Equal("合同.zip", write.LastCreateDraft.FileName);
-        var source = write.LastCreateSource!;
-        Assert.Equal("合同.zip", source.FileName);
-        Assert.Equal(bytes.LongLength, source.Length);
+        // App 边界直接转发前层可重开源,绝不复制字节或另做包装。
+        Assert.Same(source, write.LastCreateSource);
+        Assert.Equal("合同.zip", write.LastCreateSource!.FileName);
+        Assert.Equal(bytes.LongLength, write.LastCreateSource.Length);
         // 主契约要求可重开源：连续两次打开都得到相同内容。
-        Assert.Equal(bytes, await ReadAll(source));
-        Assert.Equal(bytes, await ReadAll(source));
+        Assert.Equal(bytes, await ReadAll(write.LastCreateSource));
+        Assert.Equal(bytes, await ReadAll(write.LastCreateSource));
     }
+
+    [Fact]
+    public void SendFileSource_ValidateLength_RejectsOverLimit_BeforeAnyOpen()
+    {
+        // App 选择文件时(StorageFileSendSource.CreateAsync)在构造可重开源、开流之前先按明文口径校验上限,
+        // 故 >500 MiB 文件从不进入加密/上传。此处固化上限阈值与边界(恰好 500 MiB 允许)。
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            SendFileSource.ValidateLength(SendFileSource.MaxPlaintextBytes + 1));
+        SendFileSource.ValidateLength(SendFileSource.MaxPlaintextBytes);
+    }
+
+    private static SendFileSource MemorySource(string fileName, byte[] bytes) => new(
+        fileName,
+        bytes.LongLength,
+        _ => ValueTask.FromResult<Stream>(new MemoryStream(bytes, writable: false)));
 
     private static async Task<byte[]> ReadAll(Core.Models.SendFileSource source)
     {
@@ -229,22 +246,22 @@ public class RealSendUiServiceTests
         draft.WrappedKey = "2.origwrappedkey==";
         draft.DeletionDateLabel = "7 天";
 
-        await svc.UpdateSendAsync("s-5", draft, fileBytes: null, CancellationToken.None);
+        await svc.UpdateSendAsync("s-5", draft, file: null, CancellationToken.None);
 
         var saved = write.LastMetadataDraft!;
         Assert.Equal("s-5", saved.Id);
         Assert.Equal("2.origwrappedkey==", saved.Key);
         Assert.Equal(CoreSendType.File, saved.Type);
-        // 未重选文件（fileBytes==null）绝不触发创建/替换，只更新元数据。
+        // 未重选文件（file==null）绝不触发创建/替换，只更新元数据（不开流）。
         Assert.Null(write.LastCreateSource);
         Assert.Null(write.LastReplaceSource);
     }
 
     [Fact]
-    public async Task UpdateSendAsync_FileDraft_WithNewBytes_ReplacesExistingViaStream()
+    public async Task UpdateSendAsync_FileDraft_WithNewSource_ReplacesExistingViaStream()
     {
-        // 编辑既有文件 Send 且重选了文件字节 → 走 ReplaceFileSendAsync（建+传新件再删旧件），
-        // App 边界把字节包装成可重开源，绝不把 null 当零字节，也不再走 byte[] 上传。
+        // 编辑既有文件 Send 且重选了文件 → 走 ReplaceFileSendAsync（建+传新件再删旧件），
+        // App 边界直接转发前层可重开源，绝不把 null 当零字节，也不再走 byte[] 上传。
         var write = new FakeSendWriteService();
         var svc = new SendUiService(new FakeSendService(), write, new FakeSendAccessService());
         var draft = SendEditorDraft.CreateDefault(AppSendType.File);
@@ -253,12 +270,14 @@ public class RealSendUiServiceTests
         draft.WrappedKey = "2.origwrappedkey==";
         draft.DeletionDateLabel = "7 天";
         var bytes = new byte[] { 9, 8, 7, 6 };
+        var source = MemorySource("报告-v2.pdf", bytes);
 
-        await svc.UpdateSendAsync("s-5", draft, bytes, CancellationToken.None);
+        await svc.UpdateSendAsync("s-5", draft, source, CancellationToken.None);
 
         Assert.Equal("s-5", write.LastReplaceId);
         Assert.Equal(CoreSendType.File, write.LastReplaceDraft!.Type);
         Assert.Equal("2.origwrappedkey==", write.LastReplaceDraft.Key);
+        Assert.Same(source, write.LastReplaceSource);
         Assert.Equal("报告-v2.pdf", write.LastReplaceSource!.FileName);
         Assert.Equal(bytes.LongLength, write.LastReplaceSource.Length);
         Assert.Null(write.LastMetadataDraft);

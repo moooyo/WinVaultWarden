@@ -37,6 +37,11 @@ public class SendUiServiceDemoTests
     private static SendUiService DemoService(VaultSession session) =>
         new(new ThrowingSendService(), new ThrowingSendWriteService(), new ThrowingSendAccessService(), session);
 
+    private static SendFileSource MemorySource(string fileName, byte[] bytes) => new(
+        fileName,
+        bytes.LongLength,
+        _ => ValueTask.FromResult<Stream>(new MemoryStream(bytes, writable: false)));
+
     [Fact]
     public async Task GetSendsAsync_InDemoMode_ReturnsSessionSends_WithoutHittingNetwork()
     {
@@ -62,7 +67,7 @@ public class SendUiServiceDemoTests
         draft.Name = "一次性口令";
         draft.Text = "123456";
 
-        var item = await svc.CreateSendAsync(draft, fileBytes: null, CancellationToken.None);
+        var item = await svc.CreateSendAsync(draft, file: null, CancellationToken.None);
 
         Assert.Equal("一次性口令", item.Name);
         var stored = Assert.Single(session.Sends);
@@ -79,7 +84,7 @@ public class SendUiServiceDemoTests
         draft.Name = "合同";
         draft.FileName = "合同.zip";
 
-        await svc.CreateSendAsync(draft, new byte[] { 1, 2, 3, 4 }, CancellationToken.None);
+        await svc.CreateSendAsync(draft, MemorySource("合同.zip", new byte[] { 1, 2, 3, 4 }), CancellationToken.None);
 
         var stored = Assert.Single(session.Sends);
         Assert.Equal(CoreSendType.File, stored.Type);
@@ -96,7 +101,7 @@ public class SendUiServiceDemoTests
         draft.Name = "新名";
         draft.Text = "updated";
 
-        var item = await svc.UpdateSendAsync("s1", draft, fileBytes: null, CancellationToken.None);
+        var item = await svc.UpdateSendAsync("s1", draft, file: null, CancellationToken.None);
 
         Assert.Equal("s1", item.Id);
         var stored = Assert.Single(session.Sends);
@@ -171,7 +176,7 @@ public class SendUiServiceDemoTests
         var draft = SendEditorDraft.FromExisting(existing);
         draft.Name = "doc2";
 
-        await svc.UpdateSendAsync("f1", draft, fileBytes: null, CancellationToken.None);
+        await svc.UpdateSendAsync("f1", draft, file: null, CancellationToken.None);
 
         var stored = Assert.Single(session.Sends);
         Assert.Equal("f1", stored.Id);

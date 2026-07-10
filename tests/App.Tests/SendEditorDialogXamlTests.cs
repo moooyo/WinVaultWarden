@@ -81,6 +81,35 @@ public class SendEditorDialogXamlTests
         Assert.Contains("ShowCustomDeletionPicker", picker.Attribute("Visibility")?.Value ?? string.Empty);
     }
 
+    [Fact]
+    public void DialogHasInlineRetryableErrorAndPrimaryDeferralHandler()
+    {
+        // 保存在 Primary deferral 内完成:失败时 args.Cancel=true 保留对话框、经内联 InfoBar 展示可重试错误,
+        // 且区分 Failed 与 Busy/Cancelled。
+        var xaml = XamlText();
+        var code = CodeBehindText();
+        Assert.Contains("SendEditorErrorInfoBar", xaml);
+        Assert.Contains("args.GetDeferral()", code);
+        Assert.Contains("args.Cancel = true", code);
+        Assert.Contains("UiOperationStatus.Failed", code);
+    }
+
+    [Fact]
+    public void RadioButtons_BindCheckedStateToDraftType()
+    {
+        // 单选按钮的 IsChecked 绑定真实草稿类型(OneWay),编辑既有文件 Send 时初始化不会把 File 误显为 Text。
+        var document = LoadDialogXaml();
+        var radios = document.Descendants(Xaml + "RadioButton").ToList();
+        Assert.Equal(2, radios.Count);
+        var checkedBindings = radios
+            .Select(r => r.Attribute("IsChecked")?.Value ?? string.Empty)
+            .ToList();
+        Assert.Contains(checkedBindings, v => v.Contains("Draft.IsText"));
+        Assert.Contains(checkedBindings, v => v.Contains("Draft.IsFile"));
+        // 不得再有硬编码 IsChecked="True" 覆盖真实类型。
+        Assert.DoesNotContain(checkedBindings, v => v == "True");
+    }
+
     private static XDocument LoadDialogXaml()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -94,6 +123,24 @@ public class SendEditorDialogXamlTests
         }
 
         throw new FileNotFoundException("Could not find SendEditorDialog.xaml from the test output directory.");
+    }
+
+    private static string XamlText() => ReadSource("SendEditorDialog.xaml");
+    private static string CodeBehindText() => ReadSource("SendEditorDialog.xaml.cs");
+
+    private static string ReadSource(string fileName)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var path = Path.Combine(directory.FullName, "src", "App", "Views", fileName);
+            if (File.Exists(path))
+                return File.ReadAllText(path);
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException($"Could not find {fileName} from the test output directory.");
     }
 
     private static string? ResourceValue(XDocument document, string key) =>

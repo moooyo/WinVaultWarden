@@ -9,7 +9,7 @@ public class SendPageStateXamlTests
     private static readonly XNamespace X = "http://schemas.microsoft.com/winfx/2006/xaml";
 
     [Fact]
-    public void HasErrorInfoBar_BoundToError()
+    public void ErrorInfoBar_BoundToShowError()
     {
         var document = LoadXaml();
         var infoBar = document
@@ -18,29 +18,41 @@ public class SendPageStateXamlTests
 
         Assert.Equal("Error", infoBar.Attribute("Severity")?.Value);
         Assert.Contains("ViewModel.Error", infoBar.Attribute("Message")?.Value);
-        Assert.Contains("ViewModel.HasError", infoBar.Attribute("IsOpen")?.Value);
+        Assert.Contains("ViewModel.ShowError", infoBar.Attribute("IsOpen")?.Value);
     }
 
     [Fact]
-    public void HasProgressRing_BoundToIsBusy()
+    public void LoadingRing_BoundToShowLoading()
     {
         var document = LoadXaml();
         var ring = document
             .Descendants(Xaml + "ProgressRing")
-            .Single(r => r.Attribute(X + "Name")?.Value == "SendBusyRing");
+            .Single(r => r.Attribute(X + "Name")?.Value == "SendLoadingRing");
 
-        Assert.Contains("ViewModel.IsBusy", ring.Attribute("IsActive")?.Value);
+        Assert.Contains("ViewModel.ShowLoading", ring.Attribute("IsActive")?.Value);
     }
 
     [Fact]
-    public void KeepsExistingNoItemsEmptyState()
+    public void EmptyPanel_BoundToShowEmpty()
     {
         var document = LoadXaml();
-        var emptyPanel = document
+        var panel = document
             .Descendants(Xaml + "StackPanel")
-            .Where(p => p.Attribute("Visibility")?.Value?.Contains("ViewModel.NoItems") == true);
+            .Single(p => p.Attribute(X + "Name")?.Value == "SendEmptyPanel");
 
-        Assert.Single(emptyPanel);
+        Assert.Contains("ViewModel.ShowEmpty", panel.Attribute("Visibility")?.Value);
+    }
+
+    [Fact]
+    public void ContentList_BoundToShowContentAndFilteredItems()
+    {
+        var document = LoadXaml();
+        var list = document
+            .Descendants(Xaml + "ListView")
+            .Single(l => l.Attribute(X + "Name")?.Value == "SendContentList");
+
+        Assert.Contains("ViewModel.ShowContent", list.Attribute("Visibility")?.Value);
+        Assert.Contains("ViewModel.FilteredItems", list.Attribute("ItemsSource")?.Value);
     }
 
     private static XDocument LoadXaml()

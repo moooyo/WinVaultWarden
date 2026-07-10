@@ -120,7 +120,8 @@ public static class ServiceConfiguration
             sp.GetRequiredService<IAppLifecycleCoordinator>())));
         services.AddTransient<VaultViewModel>(sp =>
             TrackSensitive(sp, ActivatorUtilities.CreateInstance<VaultViewModel>(sp)));
-        services.AddTransient<SendViewModel>();
+        services.AddTransient<SendViewModel>(sp =>
+            TrackSensitive(sp, ActivatorUtilities.CreateInstance<SendViewModel>(sp)));
         services.AddTransient<GeneratorViewModel>(sp =>
             TrackSensitive(sp, ActivatorUtilities.CreateInstance<GeneratorViewModel>(sp)));
         services.AddTransient<SettingsViewModel>(sp =>

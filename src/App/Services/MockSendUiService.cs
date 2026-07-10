@@ -56,13 +56,13 @@ public sealed class MockSendUiService : ISendUiService
     public Task<IReadOnlyList<SendListItem>> GetSendsAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<SendListItem>>(_sends.ToList());
 
-    public Task<SendListItem> CreateSendAsync(SendEditorDraft draft, byte[]? fileBytes, CancellationToken ct = default)
+    public Task<SendListItem> CreateSendAsync(SendEditorDraft draft, Core.Models.SendFileSource? file, CancellationToken ct = default)
     {
         var item = CreateSend(draft);
         return Task.FromResult(item);
     }
 
-    public Task<SendListItem> UpdateSendAsync(string id, SendEditorDraft draft, byte[]? fileBytes, CancellationToken ct = default)
+    public Task<SendListItem> UpdateSendAsync(string id, SendEditorDraft draft, Core.Models.SendFileSource? file, CancellationToken ct = default)
     {
         var name = draft.Type == SendType.File && !string.IsNullOrWhiteSpace(draft.FileName) ? draft.FileName : draft.Name;
         var index = _sends.FindIndex(s => s.Id == id);

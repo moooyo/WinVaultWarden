@@ -5,8 +5,8 @@ namespace App.Services;
 public interface ISendUiService
 {
     Task<IReadOnlyList<SendListItem>> GetSendsAsync(CancellationToken ct = default);
-    Task<SendListItem> CreateSendAsync(SendEditorDraft draft, byte[]? fileBytes, CancellationToken ct = default);
-    Task<SendListItem> UpdateSendAsync(string id, SendEditorDraft draft, byte[]? fileBytes, CancellationToken ct = default);
+    Task<SendListItem> CreateSendAsync(SendEditorDraft draft, Core.Models.SendFileSource? file, CancellationToken ct = default);
+    Task<SendListItem> UpdateSendAsync(string id, SendEditorDraft draft, Core.Models.SendFileSource? file, CancellationToken ct = default);
     Task DeleteSendAsync(string id, CancellationToken ct = default);
     string? CopyShareLink(SendListItem item);
     Task<SendReceivedResult> OpenReceivedLinkAsync(string url, string? password, CancellationToken ct = default);

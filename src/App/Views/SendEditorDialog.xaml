@@ -18,19 +18,27 @@
 
     <StackPanel Width="520"
                 Spacing="18">
+            <InfoBar x:Name="SendEditorErrorInfoBar"
+                     Severity="Error"
+                     IsClosable="True"
+                     AutomationProperties.AutomationId="SendEditorErrorInfoBar" />
+
             <Grid ColumnSpacing="16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <RadioButton Grid.Column="0"
+                <RadioButton x:Name="TextSendTypeButton"
+                             Grid.Column="0"
                              Content="文本"
                              GroupName="SendType"
-                             IsChecked="True"
+                             IsChecked="{x:Bind Draft.IsText, Mode=OneWay}"
                              Checked="OnTextChecked" />
-                <RadioButton Grid.Column="1"
+                <RadioButton x:Name="FileSendTypeButton"
+                             Grid.Column="1"
                              Content="文件"
                              GroupName="SendType"
+                             IsChecked="{x:Bind Draft.IsFile, Mode=OneWay}"
                              Checked="OnFileChecked" />
             </Grid>
 

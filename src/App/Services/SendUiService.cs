@@ -47,39 +47,41 @@ public sealed class SendUiService : ISendUiService
         return send is null ? null : SendEditorDraft.FromExisting(send);
     }
 
-    public async Task<SendListItem> CreateSendAsync(SendEditorDraft draft, byte[]? fileBytes, CancellationToken ct = default)
+    public async Task<SendListItem> CreateSendAsync(SendEditorDraft draft, SendFileSource? file, CancellationToken ct = default)
     {
         if (IsDemo)
         {
-            var created = BuildDemoSend(draft, fileBytes, id: Guid.NewGuid().ToString("N"), existing: null);
+            var created = BuildDemoSend(draft, file, id: Guid.NewGuid().ToString("N"), existing: null);
             _session!.UpsertSend(created);
             return ToListItem(created);
         }
 
         var model = ToDraftModel(draft, id: null);
-        await WriteSendAsync(model, id: null, fileBytes, ct);
+        await WriteSendAsync(model, id: null, file, ct);
         return await ReloadItemAsync(draft, ct);
     }
 
-    public async Task<SendListItem> UpdateSendAsync(string id, SendEditorDraft draft, byte[]? fileBytes, CancellationToken ct = default)
+    public async Task<SendListItem> UpdateSendAsync(string id, SendEditorDraft draft, SendFileSource? file, CancellationToken ct = default)
     {
         if (IsDemo)
         {
             var existing = _session!.Sends.FirstOrDefault(s => s.Id == id);
-            var updated = BuildDemoSend(draft, fileBytes, id, existing);
+            var updated = BuildDemoSend(draft, file, id, existing);
             _session!.UpsertSend(updated);
             return ToListItem(updated);
         }
 
         var model = ToDraftModel(draft, id);
-        await WriteSendAsync(model, id, fileBytes, ct);
+        await WriteSendAsync(model, id, file, ct);
         return await ReloadItemAsync(draft, ct, id);
     }
 
-    // 文件型 Send 的单一流契约边界:创建(id==null)与替换(id!=null 且重选了字节)都把 UI 选到的字节
-    // 包装成可重开内存源交给写入层的【流式】实现;仅改元数据(id!=null 且未重选文件)只走 PUT。
-    // 绝不把 null 当零字节,也不保留任何 byte[] 上传重载。
-    private async Task WriteSendAsync(SendDraftModel model, string? id, byte[]? fileBytes, CancellationToken ct)
+    // 文件型 Send 的单一流契约边界:直接消费前层可重开 SendFileSource,不再在 App 做任何 byte[] 适配。
+    //   创建(id==null)必须提供文件源 → CreateFileSendAsync(streaming);
+    //   替换(id!=null 且重选了文件)→ ReplaceFileSendAsync(建+传新件再删旧件,streaming);
+    //   仅改元数据(id!=null 且未重选文件,file==null)→ UpdateFileSendMetadataAsync 只发 PUT,绝不重传字节。
+    // 绝不把 null 当零字节,也不保留任何 byte[] 上传重载。上限校验在选择文件时(StorageFileSendSource)已完成。
+    private async Task WriteSendAsync(SendDraftModel model, string? id, SendFileSource? file, CancellationToken ct)
     {
         if (model.Type != CoreSendType.File)
         {
@@ -88,21 +90,18 @@ public sealed class SendUiService : ISendUiService
         }
 
         if (id is null)
-            await _write.CreateFileSendAsync(model, RequireMemorySource(model.FileName!, fileBytes), ct);
-        else if (fileBytes is null)
-            await _write.UpdateFileSendMetadataAsync(model, ct);
-        else
-            await _write.ReplaceFileSendAsync(id, model, RequireMemorySource(model.FileName!, fileBytes), ct);
-
-        static SendFileSource RequireMemorySource(string fileName, byte[]? bytes)
         {
-            if (bytes is null)
+            if (file is null)
                 throw new InvalidOperationException("创建文件 Send 必须选择文件。");
-            SendFileSource.ValidateLength(bytes.LongLength);
-            return new SendFileSource(
-                fileName,
-                bytes.LongLength,
-                _ => ValueTask.FromResult<Stream>(new MemoryStream(bytes, writable: false)));
+            await _write.CreateFileSendAsync(model, file, ct);
+        }
+        else if (file is null)
+        {
+            await _write.UpdateFileSendMetadataAsync(model, ct);
+        }
+        else
+        {
+            await _write.ReplaceFileSendAsync(id, model, file, ct);
         }
     }
 
@@ -192,23 +191,23 @@ public sealed class SendUiService : ISendUiService
     private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
     // 演示/离线会话:直接把可编辑草稿映射成内存 Send 领域模型(不加密、不上传)。ShareUrl 为占位链接,
-    // 仅供「复制链接」演示。文件 Send 若未重新选取文件(fileBytes==null)则复用既有 File 元数据
-    // (Size/SizeName/FileId/FileName),避免 FromExisting 不带文件字节导致的大小归零;
-    // HasPassword 同理在草稿未填新密码时沿用既有值(FromExisting 不回填明文密码)。
-    private static Send BuildDemoSend(SendEditorDraft draft, byte[]? fileBytes, string id, Send? existing)
+    // 仅供「复制链接」演示。文件 Send 若未重新选取文件(file==null)则复用既有 File 元数据
+    // (Size/SizeName/FileId/FileName),避免 FromExisting 不带文件源导致的大小归零;
+    // 重选文件时大小取 file.Length(绝不打开流读取字节);HasPassword 同理在草稿未填新密码时沿用既有值。
+    private static Send BuildDemoSend(SendEditorDraft draft, SendFileSource? file, string id, Send? existing)
     {
         var type = MapType(draft.Type);
-        SendFile? file = null;
+        SendFile? sendFile = null;
         if (type == CoreSendType.File)
         {
-            if (fileBytes is null && existing?.File is not null)
+            if (file is null && existing?.File is not null)
             {
-                file = existing.File;
+                sendFile = existing.File;
             }
             else
             {
-                long fileSize = fileBytes?.Length ?? 0;
-                file = new SendFile(NullIfBlank(draft.FileName) ?? draft.Name.Trim(), fileSize, HumanSize(fileSize), id);
+                long fileSize = file?.Length ?? existing?.File?.Size ?? 0;
+                sendFile = new SendFile(NullIfBlank(draft.FileName) ?? draft.Name.Trim(), fileSize, HumanSize(fileSize), id);
             }
         }
 
@@ -220,7 +219,7 @@ public sealed class SendUiService : ISendUiService
             Name = draft.Name.Trim(),
             Notes = NullIfBlank(draft.Notes),
             Text = type == CoreSendType.Text ? new SendText(draft.Text, draft.HideTextByDefault) : null,
-            File = file,
+            File = sendFile,
             MaxAccessCount = draft.MaxAccessCount,
             ExpirationDate = draft.ExpirationDate,
             DeletionDate = draft.ToDeletionDate(),

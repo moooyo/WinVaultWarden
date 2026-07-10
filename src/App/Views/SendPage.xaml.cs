@@ -25,6 +25,13 @@ public sealed partial class SendPage : Page
         _ = ViewModel.LoadAsync();
     }
 
+    // 离开页面时取消进行中的加载,使迟到结果被丢弃、不再写回已被替换的页面 VM。
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+        ViewModel.CancelLoad();
+    }
+
     /// <summary>供 NotificationsHost 在收到 SendsChanged 推送后从 UI 线程调用，重新加载 Send 列表。</summary>
     public void RefreshSendList() => _ = ViewModel.LoadAsync();
 
@@ -33,11 +40,7 @@ public sealed partial class SendPage : Page
 
     private async void OnAddSendClick(object sender, RoutedEventArgs e)
     {
-        var root = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot;
-        var dialog = new SendEditorDialog { XamlRoot = root };
-        await DialogHelper.ShowTrackedAsync(dialog);
-        if (dialog.Saved)
-            await ViewModel.CreateSendAsync(dialog.Draft, dialog.Draft.FileBytes);
+        await ShowEditorAsync(null, SendEditorDraft.CreateDefault(SendType.Text));
     }
 
     private void OnCopyLinkClick(object sender, RoutedEventArgs e)
@@ -70,11 +73,31 @@ public sealed partial class SendPage : Page
         if (draft is null)
             return;
 
+        await ShowEditorAsync(item, draft);
+    }
+
+    // 打开 Send 编辑器:保存在对话框 Primary deferral 内完成(创建/更新委托),对话框关闭后不再另行上传。
+    // item 为 null → 新增;否则 → 编辑。无论成败,关闭后清空草稿敏感值(文本/密码/备注/文件源/wrapped key)。
+    private async Task ShowEditorAsync(SendListItem? item, SendEditorDraft draft)
+    {
         var root = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot;
-        var dialog = new SendEditorDialog(draft) { XamlRoot = root };
-        await DialogHelper.ShowTrackedAsync(dialog);
-        if (dialog.Saved)
-            await ViewModel.UpdateSendFromDraftAsync(item, dialog.Draft, dialog.Draft.FileBytes);
+        var dialog = new SendEditorDialog(
+            draft,
+            isEditMode: item is not null,
+            async (value, ct) => item is null
+                ? await ViewModel.CreateSendAsync(value, value.ReplacementFile, ct)
+                : await ViewModel.UpdateSendFromDraftAsync(item, value, value.ReplacementFile, ct))
+        {
+            XamlRoot = root,
+        };
+        try
+        {
+            await DialogHelper.ShowTrackedAsync(dialog, draft.ClearSensitive);
+        }
+        finally
+        {
+            draft.ClearSensitive();
+        }
     }
 
     private async void OnDeleteSendClick(object sender, RoutedEventArgs e)

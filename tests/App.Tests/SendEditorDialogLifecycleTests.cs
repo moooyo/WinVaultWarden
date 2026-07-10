@@ -7,35 +7,25 @@ namespace App.Tests;
 public class SendEditorDialogLifecycleTests
 {
     [Fact]
-    public void SetType_WhenBindingsAreNotReady_DoesNotThrowAndUpdatesDraft()
+    public void InitializationCheckedEvent_DoesNotChangeExistingFileType()
     {
-        var draft = SendEditorDraft.CreateDefault(SendType.Text);
-
-        var exception = Record.Exception(() =>
-            SendEditorDialogLifecycle.SetType(draft, SendType.File, canUpdateBindings: false, updateBindings: null));
-
-        Assert.Null(exception);
-        Assert.Equal(SendType.File, draft.Type);
-    }
-
-    [Fact]
-    public void SetType_WhenInitializationIsNotComplete_DoesNotInvokeExistingUpdater()
-    {
+        // 编辑既有文件 Send 时,对话框初始化会先触发默认 Text RadioButton 的 Checked,此时 bindings 尚未就绪
+        // (canUpdateBindings=false)。必须忽略该早期事件,否则会把 File 草稿类型误改成 Text 并清空文件选择。
         var draft = SendEditorDraft.CreateDefault(SendType.File);
-        var updateCount = 0;
+        var updates = 0;
 
         SendEditorDialogLifecycle.SetType(
             draft,
             SendType.Text,
             canUpdateBindings: false,
-            updateBindings: () => updateCount++);
+            () => updates++);
 
-        Assert.Equal(SendType.Text, draft.Type);
-        Assert.Equal(0, updateCount);
+        Assert.Equal(SendType.File, draft.Type);
+        Assert.Equal(0, updates);
     }
 
     [Fact]
-    public void SetType_WhenBindingsAreReady_RefreshesBindings()
+    public void SetType_WhenBindingsAreReady_ChangesTypeAndRefreshesBindings()
     {
         var draft = SendEditorDraft.CreateDefault(SendType.File);
         var updateCount = 0;
@@ -44,5 +34,17 @@ public class SendEditorDialogLifecycleTests
 
         Assert.Equal(SendType.Text, draft.Type);
         Assert.Equal(1, updateCount);
+    }
+
+    [Fact]
+    public void SetType_WhenBindingsAreReady_ToleratesNullUpdater()
+    {
+        var draft = SendEditorDraft.CreateDefault(SendType.Text);
+
+        var exception = Record.Exception(() =>
+            SendEditorDialogLifecycle.SetType(draft, SendType.File, canUpdateBindings: true, updateBindings: null));
+
+        Assert.Null(exception);
+        Assert.Equal(SendType.File, draft.Type);
     }
 }

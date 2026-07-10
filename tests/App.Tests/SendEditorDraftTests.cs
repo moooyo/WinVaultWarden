@@ -49,14 +49,37 @@ public class SendEditorDraftTests
     }
 
     [Fact]
-    public void FileBytes_DefaultsNull_AndIsSettable()
+    public void ReplacementFile_DefaultsNull_AndExposesLength()
     {
         var draft = SendEditorDraft.CreateDefault(SendType.File);
-        Assert.Null(draft.FileBytes);
+        Assert.Null(draft.ReplacementFile);
+        Assert.Null(draft.ReplacementFileLength);
 
-        draft.FileBytes = new byte[] { 9, 9 };
+        draft.ReplacementFile = new Core.Models.SendFileSource(
+            "a.bin", 3, _ => ValueTask.FromResult<Stream>(new MemoryStream(new byte[] { 1, 2, 3 }, writable: false)));
 
-        Assert.Equal(new byte[] { 9, 9 }, draft.FileBytes);
+        Assert.Equal("a.bin", draft.ReplacementFile.FileName);
+        Assert.Equal(3, draft.ReplacementFileLength);
+    }
+
+    [Fact]
+    public void ClearSensitive_DropsTextPasswordNotesReplacementFileAndKey()
+    {
+        var draft = SendEditorDraft.CreateDefault(SendType.File);
+        draft.Text = "secret";
+        draft.Password = "pw";
+        draft.Notes = "note";
+        draft.WrappedKey = "2.k==";
+        draft.ReplacementFile = new Core.Models.SendFileSource(
+            "a.bin", 1, _ => ValueTask.FromResult<Stream>(new MemoryStream(new byte[] { 1 }, writable: false)));
+
+        draft.ClearSensitive();
+
+        Assert.Equal(string.Empty, draft.Text);
+        Assert.Equal(string.Empty, draft.Password);
+        Assert.Equal(string.Empty, draft.Notes);
+        Assert.Null(draft.ReplacementFile);
+        Assert.Null(draft.WrappedKey);
     }
 
     [Fact]
@@ -111,6 +134,8 @@ public class SendEditorDraftTests
         // 绝对删除日期 → 走"自定义",ToDeletionDate 使用 DeletionDate 而非相对天数默认。
         Assert.Equal("自定义", draft.DeletionDateLabel);
         Assert.Equal("2.origwrapped==", draft.WrappedKey);
+        // 编辑既有 Send 默认不替换文件字节。
+        Assert.Null(draft.ReplacementFile);
         // 密码只有 PBKDF2 证明、无法还原明文,故留空;更新时服务端保留原密码。
         Assert.Equal(string.Empty, draft.Password);
     }
@@ -135,5 +160,6 @@ public class SendEditorDraftTests
         Assert.Equal("季度报告", draft.Name);
         Assert.Equal("报告.pdf", draft.FileName);
         Assert.Equal("2.filewrapped==", draft.WrappedKey);
+        Assert.Null(draft.ReplacementFile);
     }
 }
