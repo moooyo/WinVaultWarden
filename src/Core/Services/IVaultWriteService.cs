@@ -1,4 +1,5 @@
 using Core.Models;
+using Core.Session;
 
 namespace Core.Services;
 
@@ -8,6 +9,12 @@ public interface IVaultWriteService
 {
     // cipher.Id 为空 → 新建;否则 → 更新。
     Task SaveCipherAsync(Cipher cipher, CancellationToken ct = default);
+
+    // lease-bound 重载:复用请求入口捕获的同一 lease,跨审批/网络 await 边界后仍以原 lease
+    // 校验会话未被 Lock/切换账户,防止陈旧请求把凭据写入或同步到别的账户。默认实现委托无 lease
+    // 重载(供不关心 lease 的测试替身复用);真实 VaultWriteService 覆盖为按传入 lease 严格门禁。
+    Task SaveCipherAsync(Cipher cipher, VaultSessionLease lease, CancellationToken ct = default) =>
+        SaveCipherAsync(cipher, ct);
 
     // permanent=false → 移入回收站(软删除);true → 永久删除。
     Task DeleteCipherAsync(string cipherId, bool permanent, CancellationToken ct = default);

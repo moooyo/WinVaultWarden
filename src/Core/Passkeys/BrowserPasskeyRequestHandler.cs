@@ -27,29 +27,74 @@ public sealed class BrowserPasskeyRequestHandler
         if (!PasskeyRequestParser.TryParse(request, out var parsed, out var parseError))
             return Error(request.Id, parseError!);
 
-        return parsed!.Type switch
+        // 入口只捕获一次 lease,并把它的取消令牌与外部 ct 链接:此后所有候选读取/审批/签名/保存
+        // 都以这唯一 lease 校验,任何跨 await 期间的 Lock/切换账户都会使 lease 失效并稳定失败。
+        VaultSessionLease lease;
+        try
         {
-            "passkey.get" => await HandleGetAsync(request.Id, (PasskeyGetPayload)parsed.Payload, ct),
-            "passkey.create" => await HandleCreateAsync(request.Id, (PasskeyCreatePayload)parsed.Payload, ct),
-            _ => Error(request.Id, "unsupported_passkey_type", "Unsupported passkey request type."),
-        };
+            lease = _vault.CaptureLease();
+        }
+        catch (InvalidOperationException)
+        {
+            return Error(
+                request.Id,
+                "vault_locked",
+                "Unlock WinVaultWarden before using passkeys.");
+        }
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            ct, lease.CancellationToken);
+        try
+        {
+            return parsed!.Type switch
+            {
+                "passkey.get" => await HandleGetAsync(
+                    lease,
+                    request.Id,
+                    (PasskeyGetPayload)parsed.Payload,
+                    linked.Token),
+                "passkey.create" => await HandleCreateAsync(
+                    lease,
+                    request.Id,
+                    (PasskeyCreatePayload)parsed.Payload,
+                    linked.Token),
+                _ => Error(
+                    request.Id,
+                    "unsupported_passkey_type",
+                    "Unsupported passkey request type."),
+            };
+        }
+        catch (OperationCanceledException) when (
+            lease.CancellationToken.IsCancellationRequested
+            && !ct.IsCancellationRequested)
+        {
+            return Error(
+                request.Id,
+                "vault_locked",
+                "The vault session expired before the passkey operation completed.");
+        }
     }
 
-    private async Task<BrowserPasskeyResponse> HandleCreateAsync(string? requestId, PasskeyCreatePayload payload, CancellationToken ct)
+    private async Task<BrowserPasskeyResponse> HandleCreateAsync(
+        VaultSessionLease lease,
+        string? requestId,
+        PasskeyCreatePayload payload,
+        CancellationToken ct)
     {
-        if (_vault.Snapshot.State != VaultState.Unlocked)
-            return Error(requestId, "vault_locked", "Unlock WinVaultWarden before creating passkeys.");
         if (!TryGetEffectiveRpId(payload.Origin, payload.Rp?.Id ?? payload.RpId, out var rpId, out var rpError))
             return Error(requestId, rpError!);
 
         var algorithms = (payload.PubKeyCredParams ?? []).Select(p => p.Alg).ToArray();
 
+        // lease-bound 快照:只读取本次请求 lease 对应会话的条目。
+        var ciphers = _vault.GetCiphers(lease);
+
         // excludeCredentials:若本库已有该 rpId 的凭据且其 CredentialId 在排除列表 → InvalidStateError。
         var excluded = (payload.ExcludeCredentials ?? []).Select(c => c.Id).Where(x => !string.IsNullOrWhiteSpace(x)).ToHashSet(StringComparer.Ordinal);
-        if (excluded.Count > 0 && ExistingCredentialsForRp(rpId!).Any(c => excluded.Contains(c.CredentialId!)))
+        if (excluded.Count > 0 && ExistingCredentialsForRp(ciphers, rpId!).Any(c => excluded.Contains(c.CredentialId!)))
             return Error(requestId, "credential_excluded", "A passkey already exists for this site.");
 
-        var existingLogins = _vault.GetCiphers()
+        var existingLogins = ciphers
             .Where(c => !c.IsDeleted && c.Type == CipherType.Login)
             .Select(c => new PasskeyLoginTarget(c.Id, c.Name))
             .ToArray();
@@ -67,6 +112,7 @@ public sealed class BrowserPasskeyRequestHandler
                 existingLogins,
                 userVerificationRequirement),
             ct);
+        _vault.ThrowIfExpired(lease);
 
         if (ValidateApproval(
                 requestId,
@@ -90,14 +136,16 @@ public sealed class BrowserPasskeyRequestHandler
                 algorithms,
                 ApprovalEvidence: approval.Evidence,
                 CredProps: HasCredProps(payload.Extensions)));
+            _vault.ThrowIfExpired(lease);
 
             var cipher = approval.CreateNew
                 ? BuildNewLoginCipher(payload.Rp?.Name ?? rpId!, result.Credential)
-                : AttachToExisting(approval.CipherId!, result.Credential);
+                : AttachToExisting(ciphers, approval.CipherId!, result.Credential);
             if (cipher is null)
                 return Error(requestId, "cipher_not_found", "The selected item was not found.");
 
-            await _write.SaveCipherAsync(cipher, ct);
+            await _write.SaveCipherAsync(cipher, lease, ct);
+            _vault.ThrowIfExpired(lease);
 
             return new BrowserPasskeyResponse(requestId, "passkey.create", true,
                 JsonSerializer.SerializeToElement(result.Payload, PasskeyJsonContext.Default.PasskeyCreateAttestationPayload));
@@ -109,21 +157,20 @@ public sealed class BrowserPasskeyRequestHandler
     }
 
     private async Task<BrowserPasskeyResponse> HandleGetAsync(
+        VaultSessionLease lease,
         string? requestId,
         PasskeyGetPayload payload,
         CancellationToken ct)
     {
-        if (_vault.Snapshot.State != VaultState.Unlocked)
-            return Error(requestId, "vault_locked", "Unlock WinVaultWarden before using passkeys.");
-
         if (!TryGetEffectiveRpId(payload.Origin, payload.RpId, out var rpId, out var rpError))
             return Error(requestId, rpError!);
 
+        var ciphers = _vault.GetCiphers(lease);
         var allowedCredentialIds = (payload.AllowCredentials ?? [])
             .Select(credential => credential.Id)
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .ToArray();
-        var credential = FindCredential(rpId!, allowedCredentialIds);
+        var credential = FindCredential(ciphers, rpId!, allowedCredentialIds);
         if (credential is null)
             return Error(requestId, "no_credential", "No matching passkey was found for this site.");
 
@@ -141,6 +188,7 @@ public sealed class BrowserPasskeyRequestHandler
                 credential.Credential.UserDisplayName,
                 userVerificationRequirement),
             ct);
+        _vault.ThrowIfExpired(lease);
 
         if (ValidateApproval(
                 requestId,
@@ -162,6 +210,7 @@ public sealed class BrowserPasskeyRequestHandler
                     allowedCredentialIds,
                     ApprovalEvidence: approval.Evidence,
                     CrossOrigin: payload.CrossOrigin));
+            _vault.ThrowIfExpired(lease);
 
             return new BrowserPasskeyResponse(
                 requestId,
@@ -182,13 +231,16 @@ public sealed class BrowserPasskeyRequestHandler
         }
     }
 
-    private PasskeyCredentialCandidate? FindCredential(string rpId, IReadOnlyList<string> allowedCredentialIds)
+    private static PasskeyCredentialCandidate? FindCredential(
+        IReadOnlyList<Cipher> ciphers,
+        string rpId,
+        IReadOnlyList<string> allowedCredentialIds)
     {
         var allowed = allowedCredentialIds.Count == 0
             ? null
             : allowedCredentialIds.ToHashSet(StringComparer.Ordinal);
 
-        return _vault.GetCiphers()
+        return ciphers
             .Where(cipher => !cipher.IsDeleted && cipher.Type == CipherType.Login && cipher.Login?.HasFido2Credentials == true)
             .SelectMany(cipher => cipher.Login!.Fido2Credentials.Select(credential => new PasskeyCredentialCandidate(cipher, credential)))
             .FirstOrDefault(candidate =>
@@ -197,9 +249,11 @@ public sealed class BrowserPasskeyRequestHandler
                 && (allowed is null || allowed.Contains(candidate.Credential.CredentialId!)));
     }
 
-    // 返回本地密码库中属于该 rpId 的全部 Fido2 凭据(用于 excludeCredentials 排重判断)。
-    private IEnumerable<CipherFido2Credential> ExistingCredentialsForRp(string rpId) =>
-        _vault.GetCiphers()
+    // 返回给定 lease-bound 快照中属于该 rpId 的全部 Fido2 凭据(用于 excludeCredentials 排重判断)。
+    private static IEnumerable<CipherFido2Credential> ExistingCredentialsForRp(
+        IReadOnlyList<Cipher> ciphers,
+        string rpId) =>
+        ciphers
             .Where(cipher => !cipher.IsDeleted && cipher.Type == CipherType.Login && cipher.Login?.HasFido2Credentials == true)
             .SelectMany(cipher => cipher.Login!.Fido2Credentials)
             .Where(credential => string.Equals(credential.RpId, rpId, StringComparison.OrdinalIgnoreCase)
@@ -216,10 +270,13 @@ public sealed class BrowserPasskeyRequestHandler
         },
     };
 
-    // 将新凭据附加到既有 Login 条目;找不到条目或条目不是 Login 时返回 null(由调用方转为错误响应)。
-    private Cipher? AttachToExisting(string cipherId, CipherFido2Credential credential)
+    // 将新凭据附加到既有 Login 条目(基于同一 lease-bound 快照);找不到条目或条目不是 Login 时返回 null。
+    private static Cipher? AttachToExisting(
+        IReadOnlyList<Cipher> ciphers,
+        string cipherId,
+        CipherFido2Credential credential)
     {
-        var existing = _vault.GetCiphers().FirstOrDefault(c => !c.IsDeleted && c.Id == cipherId);
+        var existing = ciphers.FirstOrDefault(c => !c.IsDeleted && c.Id == cipherId);
         if (existing?.Login is null)
             return null;
 

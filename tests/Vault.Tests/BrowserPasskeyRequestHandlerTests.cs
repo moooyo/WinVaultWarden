@@ -5,12 +5,75 @@ using Core.Models;
 using Core.Passkeys;
 using Core.Services;
 using Core.Session;
+using Crypto;
+using Vault;
 using Xunit;
 
 namespace Vault.Tests;
 
 public class BrowserPasskeyRequestHandlerTests
 {
+    [Fact]
+    public async Task HandleGet_LockDuringApproval_DoesNotSign()
+    {
+        var session = NewUnlockedPasskeySession(out var lease, ExistingCredentialCipher());
+        var approval = new BlockingApprovalService();
+        var write = new FakeVaultWriteService();
+        var handler = new BrowserPasskeyRequestHandler(
+            new VaultService(session), write, approval);
+        using var payload = GetPayload();
+
+        var running = handler.HandleAsync(
+            new BrowserPasskeyRequest("get-1", "passkey.get", payload.RootElement),
+            CancellationToken.None);
+        await approval.UseEntered.Task;
+        session.Lock();
+        approval.CompleteUse(new PasskeyUseApprovalResult(
+            new PasskeyApprovalEvidence(
+                Approved: true,
+                UserPresent: true,
+                UserVerified: true),
+            CipherId: null,
+            CredentialId: null));
+
+        var response = await running;
+
+        Assert.False(response.Ok);
+        Assert.Equal("vault_locked", response.Error?.Code);
+        Assert.False(session.IsCurrent(lease));
+        Assert.Null(write.Saved);
+    }
+
+    [Fact]
+    public async Task HandleCreate_LockDuringApproval_DoesNotSaveCredential()
+    {
+        var session = NewUnlockedPasskeySession(out _, ExistingLoginWithoutPasskey());
+        var approval = new BlockingApprovalService();
+        var write = new FakeVaultWriteService();
+        var handler = new BrowserPasskeyRequestHandler(
+            new VaultService(session), write, approval);
+        using var payload = CreatePayload();
+
+        var running = handler.HandleAsync(
+            new BrowserPasskeyRequest("create-1", "passkey.create", payload.RootElement),
+            CancellationToken.None);
+        await approval.CreateEntered.Task;
+        session.Lock();
+        approval.CompleteCreate(new PasskeyCreateApprovalResult(
+            new PasskeyApprovalEvidence(
+                Approved: true,
+                UserPresent: true,
+                UserVerified: true),
+            CreateNew: true,
+            CipherId: null));
+
+        var response = await running;
+
+        Assert.False(response.Ok);
+        Assert.Equal("vault_locked", response.Error?.Code);
+        Assert.Null(write.Saved);
+    }
+
     [Fact]
     public async Task HandleAsync_GetAssertion_SignsMatchingCredentialAfterApproval()
     {
@@ -525,34 +588,146 @@ public class BrowserPasskeyRequestHandlerTests
         }
     }
 
-    private sealed class FakeVaultService : IVaultService
+    private static VaultSession NewUnlockedPasskeySession(
+        out VaultSessionLease lease,
+        params Cipher[] ciphers)
     {
-        private readonly IReadOnlyList<Cipher> _ciphers;
-
-        public FakeVaultService(VaultState state, IReadOnlyList<Cipher> ciphers)
+        var session = new VaultSession();
+        var origin = new ServerOrigin("https://vault.example");
+        lease = session.BeginAccountSession("account-a", "octo@example.com", origin);
+        var key = new SymmetricCryptoKey(new byte[64]);
+        session.TryCommit(lease, () =>
         {
-            _ciphers = ciphers;
-            Snapshot = new FakeSnapshot(state);
+            session.SetUnlockedKey(key);
+            session.SetSnapshot(new DecryptedVault(
+                new AccountInfo(
+                    "account-a",
+                    "octo@example.com",
+                    origin,
+                    "O",
+                    string.Empty),
+                [],
+                ciphers,
+                0,
+                0));
+        });
+        return session;
+    }
+
+    private static Cipher ExistingCredentialCipher()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var credentialId = WebAuthnCrypto.EncodeBase64Url([1, 2, 3, 4]);
+        return new Cipher
+        {
+            Id = "cipher-1",
+            Type = CipherType.Login,
+            Name = "GitHub",
+            Login = new CipherLogin("octo@example.com", null, null, [])
+            {
+                Fido2Credentials = [Credential(key, credentialId)],
+            },
+        };
+    }
+
+    private static Cipher ExistingLoginWithoutPasskey() => new()
+    {
+        Id = "c-9",
+        Type = CipherType.Login,
+        Name = "GitHub",
+        Login = new CipherLogin("octo@example.com", null, null, []),
+    };
+
+    private static JsonDocument GetPayload() =>
+        JsonDocument.Parse(
+            """
+            {
+              "origin": "https://github.com",
+              "rpId": "github.com",
+              "challenge": "AQIDBA",
+              "allowCredentials": [],
+              "userVerification": "preferred",
+              "timeout": 60000
+            }
+            """);
+
+    private sealed class BlockingApprovalService : IPasskeyApprovalService
+    {
+        private readonly TaskCompletionSource<PasskeyUseApprovalResult> _use =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<PasskeyCreateApprovalResult> _create =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource UseEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource CreateEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<PasskeyUseApprovalResult> ConfirmUseAsync(
+            PasskeyApprovalRequest request,
+            CancellationToken ct = default)
+        {
+            UseEntered.TrySetResult();
+            return await _use.Task.WaitAsync(ct);
         }
 
-        public IVaultSnapshot Snapshot { get; }
+        public async Task<PasskeyCreateApprovalResult> ConfirmCreateAsync(
+            PasskeyCreateApprovalRequest request,
+            CancellationToken ct = default)
+        {
+            CreateEntered.TrySetResult();
+            return await _create.Task.WaitAsync(ct);
+        }
 
-        public IReadOnlyList<Cipher> GetCiphers() => _ciphers;
+        public void CompleteUse(PasskeyUseApprovalResult result) =>
+            _use.TrySetResult(result);
 
-        public IReadOnlyList<Folder> GetFolders() => [];
+        public void CompleteCreate(PasskeyCreateApprovalResult result) =>
+            _create.TrySetResult(result);
+    }
 
-        public IReadOnlyList<DeviceInfo> GetDevices() => [];
+    private sealed class FakeVaultService : IVaultService
+    {
+        private readonly VaultSession _session = new();
 
-        public VaultSessionLease CaptureLease() =>
-            throw new InvalidOperationException("This fake has no vault session.");
+        public FakeVaultService(
+            VaultState state,
+            IReadOnlyList<Cipher> ciphers)
+        {
+            if (state != VaultState.Unlocked)
+                return;
+            var origin = new ServerOrigin("https://vault.example");
+            var lease = _session.BeginAccountSession(
+                "account-a", "a@example.com", origin);
+            var key = new SymmetricCryptoKey(new byte[64]);
+            _session.TryCommit(lease, () =>
+            {
+                _session.SetUnlockedKey(key);
+                _session.SetSnapshot(new DecryptedVault(
+                    new AccountInfo(
+                        "account-a",
+                        "a@example.com",
+                        origin,
+                        "A",
+                        string.Empty),
+                    [],
+                    ciphers,
+                    0,
+                    0));
+            });
+        }
 
-        public bool IsCurrent(VaultSessionLease lease) => false;
-
+        public IVaultSnapshot Snapshot => _session;
+        public IReadOnlyList<Cipher> GetCiphers() => _session.Ciphers;
+        public IReadOnlyList<Folder> GetFolders() => _session.Folders;
+        public IReadOnlyList<DeviceInfo> GetDevices() => _session.Devices;
+        public VaultSessionLease CaptureLease() => _session.CaptureLease();
+        public bool IsCurrent(VaultSessionLease lease) =>
+            _session.IsCurrent(lease);
         public void ThrowIfExpired(VaultSessionLease lease) =>
-            throw new OperationCanceledException(lease.CancellationToken);
-
+            _session.ThrowIfExpired(lease);
         public IReadOnlyList<Cipher> GetCiphers(VaultSessionLease lease) =>
-            throw new OperationCanceledException(lease.CancellationToken);
+            _session.GetCiphers(lease);
     }
 
     private sealed class FakeVaultWriteService : IVaultWriteService
@@ -560,6 +735,12 @@ public class BrowserPasskeyRequestHandlerTests
         public Cipher? Saved { get; private set; }
 
         public Task SaveCipherAsync(Cipher cipher, CancellationToken ct = default)
+        {
+            Saved = cipher;
+            return Task.CompletedTask;
+        }
+
+        public Task SaveCipherAsync(Cipher cipher, VaultSessionLease lease, CancellationToken ct = default)
         {
             Saved = cipher;
             return Task.CompletedTask;
@@ -585,28 +766,5 @@ public class BrowserPasskeyRequestHandlerTests
 
         public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) =>
             throw new NotSupportedException();
-    }
-
-    private sealed class FakeSnapshot : IVaultSnapshot
-    {
-        public FakeSnapshot(VaultState state) => State = state;
-
-        public VaultState State { get; }
-
-        public IReadOnlyList<Cipher> Ciphers => [];
-
-        public IReadOnlyList<Folder> Folders => [];
-
-        public IReadOnlyList<DeviceInfo> Devices => [];
-
-        public AccountInfo Account => AccountInfo.Empty;
-
-        public int SkippedCipherCount => 0;
-
-        public bool DataStale => false;
-
-        public long Generation => 0;
-
-        public int SkippedFolderCount => 0;
     }
 }
