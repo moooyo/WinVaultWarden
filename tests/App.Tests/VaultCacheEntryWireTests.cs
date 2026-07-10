@@ -10,7 +10,14 @@ public class VaultCacheEntryWireTests
     [Fact]
     public void VaultCacheEntry_context_matches_reflection_wire()
     {
-        var e = new VaultCacheEntry(1, "me@x", "https://v", DateTimeOffset.UnixEpoch, "{}");
+        var e = new VaultCacheEntry(
+            2,
+            "account-1",
+            new ServerOrigin("https://v"),
+            7,
+            "me@x",
+            DateTimeOffset.UnixEpoch,
+            "{}");
         // AppJsonContext 对整个 partial class 设置了 WriteIndented=true(供 session.bin/preferences.json 复用),
         // 反射基线须带同一开关才能字节级对齐,否则纯格式差异会掩盖真正的线格(字段名/大小写)回归。
         var web = new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true };

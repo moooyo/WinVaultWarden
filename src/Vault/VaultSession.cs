@@ -12,6 +12,13 @@ public sealed class VaultSession : IVaultSnapshot
     private IReadOnlyList<DeviceInfo> _devices = Array.Empty<DeviceInfo>();
     private IReadOnlyList<Send> _sends = Array.Empty<Send>();
 
+    // Generation/stamp/CTS 是本会话身份轮换的唯一真源(见类尾 lease 相关方法)。
+    private long _generation;
+    private string? _accountId;
+    private ServerOrigin? _origin;
+    private Guid _stamp;
+    private CancellationTokenSource? _leaseCts;
+
     public VaultState State { get; private set; } = VaultState.LoggedOut;
     public string? AccessToken { get; private set; }
     public string? RefreshToken { get; private set; }
@@ -19,7 +26,13 @@ public sealed class VaultSession : IVaultSnapshot
     public string? EncryptedPrivateKey { get; private set; }
     public AccountInfo Account { get; private set; } = AccountInfo.Empty;
     public int SkippedCipherCount { get; private set; }
+    public int SkippedFolderCount { get; private set; }
     public bool DataStale { get; private set; }
+
+    public long Generation
+    {
+        get { lock (_gate) return _generation; }
+    }
 
     // 演示/离线会话标记(DEBUG「使用演示保险库」入口置位)。为 true 时,网络回读路径改从会话内存中
     // 的离线数据取值,不发起任何 HTTP 请求——演示会话没有配置服务端地址,任何相对 URI 请求都会抛
@@ -283,24 +296,244 @@ public sealed class VaultSession : IVaultSnapshot
             RepromptSatisfied = true;
     }
 
-    public void Lock()
+    /// <summary>
+    /// 以给定账户身份开启一个新会话:轮换 generation、取消旧租约、清空敏感状态,
+    /// 并返回绑定新 generation 的租约供调用方随后 TryCommit 写入解密后的数据。
+    /// </summary>
+    public VaultSessionLease BeginAccountSession(string accountId, string email, ServerOrigin origin)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accountId);
         lock (_gate)
         {
+            RotateLeaseNoLock(accountId, origin, persistedGeneration: null);
             ClearSensitiveState();
-            State = VaultState.Locked;
+            Account = new AccountInfo(
+                accountId,
+                email,
+                origin,
+                string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim()[..1].ToUpperInvariant(),
+                string.Empty);
+            State = VaultState.Unlocking;
+            return CurrentLeaseNoLock();
         }
     }
 
-    public void Clear()
+    /// <summary>
+    /// 从磁盘恢复的持久化会话重建租约。若当前内存会话已经就是同一 account+origin+generation
+    /// 且租约尚未取消,直接复用现有租约(幂等),否则轮换 generation 并清空敏感状态后进入 Locked。
+    /// </summary>
+    public VaultSessionLease RestorePersistedSession(PersistedSession persisted)
+    {
+        ArgumentNullException.ThrowIfNull(persisted);
+        if (!persisted.HasValidBinding)
+            throw new InvalidDataException("Persisted session binding is invalid.");
+
+        lock (_gate)
+        {
+            if (_accountId == persisted.AccountId
+                && _origin == persisted.Origin
+                && _generation == persisted.Generation
+                && _leaseCts is { IsCancellationRequested: false })
+                return CurrentLeaseNoLock();
+
+            RotateLeaseNoLock(persisted.AccountId, persisted.Origin, persisted.Generation);
+            ClearSensitiveState();
+            Account = new AccountInfo(
+                persisted.AccountId,
+                persisted.Email,
+                persisted.Origin,
+                persisted.Email.Trim()[..1].ToUpperInvariant(),
+                string.Empty);
+            State = VaultState.Locked;
+            return CurrentLeaseNoLock();
+        }
+    }
+
+    /// <summary>捕获当前会话的租约快照,供后续 IsCurrent/TryCommit 校验之用。无活跃会话则抛出。</summary>
+    public VaultSessionLease CaptureLease()
     {
         lock (_gate)
         {
+            if (_accountId is null || _origin is null || _leaseCts is null)
+                throw new InvalidOperationException("No account session is active.");
+            return CurrentLeaseNoLock();
+        }
+    }
+
+    /// <summary>租约是否仍对应当前 generation/账户/来源(未被 Lock/Logout/Switch 轮换)。</summary>
+    public bool IsCurrent(VaultSessionLease lease)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        lock (_gate) return IsCurrentNoLock(lease);
+    }
+
+    /// <summary>租约已失效时抛出 <see cref="OperationCanceledException"/>,携带该租约的取消令牌。</summary>
+    public void ThrowIfExpired(VaultSessionLease lease)
+    {
+        if (!IsCurrent(lease))
+            throw new OperationCanceledException("Vault session lease expired.", lease.CancellationToken);
+    }
+
+    /// <summary>
+    /// 在同一 _gate 内校验租约仍然当前、再执行 mutation——校验和变更之间不留可被并发 Lock/Logout/
+    /// Switch 插入的窗口。租约已失效时返回 false 且不执行 mutation。
+    /// </summary>
+    public bool TryCommit(VaultSessionLease lease, Action mutation)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(mutation);
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease))
+                return false;
+            mutation();
+            return true;
+        }
+    }
+
+    /// <summary>租约仍当前时返回 UserKey 的独立拷贝(调用方拥有其生命周期),否则返回 false。</summary>
+    public bool TryCopyUserKey(VaultSessionLease lease, out SymmetricCryptoKey? key)
+    {
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease) || UserKey is null)
+            {
+                key = null;
+                return false;
+            }
+            key = new SymmetricCryptoKey(UserKey.FullKey.ToArray());
+            return true;
+        }
+    }
+
+    /// <summary>租约仍当前且已有 access token 时,返回绑定 account/origin/generation 的令牌快照。</summary>
+    public AccessTokenBinding? GetAccessTokenBinding(VaultSessionLease lease)
+    {
+        lock (_gate)
+        {
+            return IsCurrentNoLock(lease) && !string.IsNullOrWhiteSpace(AccessToken)
+                ? new AccessTokenBinding(lease.AccountId, lease.Origin, lease.Generation, AccessToken)
+                : null;
+        }
+    }
+
+    /// <summary>在同一 gate 内校验租约后返回条目快照(copy-on-write),租约失效则抛出取消异常。</summary>
+    public IReadOnlyList<Cipher> GetCiphers(VaultSessionLease lease)
+    {
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease))
+                throw new OperationCanceledException(
+                    "Vault session lease expired.",
+                    lease.CancellationToken);
+            return _ciphers;
+        }
+    }
+
+    /// <summary>租约仍当前时返回 access/refresh token 快照,否则返回 false 且置空(不泄露过期令牌)。</summary>
+    public bool TryGetTokenSnapshot(
+        VaultSessionLease lease,
+        out string? accessToken,
+        out string? refreshToken)
+    {
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease))
+            {
+                accessToken = null;
+                refreshToken = null;
+                return false;
+            }
+            accessToken = AccessToken;
+            refreshToken = RefreshToken;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// 锁定:第一动作即轮换 generation 并取消旧租约,再清空敏感状态。仍有活跃账户时返回新租约,
+    /// 否则(未曾开启任何账户会话)返回 null。
+    /// </summary>
+    public VaultSessionLease? Lock()
+    {
+        lock (_gate)
+        {
+            var accountId = _accountId;
+            var origin = _origin;
+            RotateLeaseNoLock(accountId, origin, persistedGeneration: null);
+            ClearSensitiveState();
+            State = VaultState.Locked;
+            return accountId is null || origin is null ? null : CurrentLeaseNoLock();
+        }
+    }
+
+    /// <summary>登出:第一动作即轮换 generation(账户置空)并取消旧租约,再清空敏感状态。</summary>
+    public void Logout()
+    {
+        lock (_gate)
+        {
+            RotateLeaseNoLock(null, null, persistedGeneration: null);
             ClearSensitiveState();
             Account = AccountInfo.Empty;
             State = VaultState.LoggedOut;
         }
     }
+
+    [Obsolete("Task 7 removes this alias after all callers migrate to Logout.")]
+    public void Clear() => Logout();
+
+    /// <summary>
+    /// 唯一的 generation/stamp/CTS 变更点。必须在 _gate 内调用。取消旧 CTS 在赋新值之后执行,
+    /// 确保"generation 已经推进"先于"旧 token 被观察到取消"对外可见,任何取消回调异常都不得
+    /// 阻断新会话生效(仅吞掉 AggregateException,不吞其他致命异常)。
+    /// </summary>
+    private void RotateLeaseNoLock(
+        string? accountId,
+        ServerOrigin? origin,
+        long? persistedGeneration)
+    {
+        var previous = _leaseCts;
+        var next = checked(_generation + 1);
+        _generation = persistedGeneration is long restored
+            ? Math.Max(next, restored)
+            : next;
+        _accountId = accountId;
+        _origin = origin;
+        _stamp = Guid.NewGuid();
+        _leaseCts = accountId is null || origin is null
+            ? null
+            : new CancellationTokenSource();
+
+        if (previous is not null)
+        {
+            try
+            {
+                previous.Cancel();
+            }
+            catch (AggregateException)
+            {
+                // A cancellation callback cannot prevent generation invalidation.
+            }
+            finally
+            {
+                previous.Dispose();
+            }
+        }
+    }
+
+    private bool IsCurrentNoLock(VaultSessionLease lease) =>
+        _leaseCts is { IsCancellationRequested: false }
+        && lease.Generation == _generation
+        && lease.AccountId == _accountId
+        && lease.Origin == _origin
+        && lease.Stamp == _stamp;
+
+    private VaultSessionLease CurrentLeaseNoLock() => new(
+        _generation,
+        _accountId ?? throw new InvalidOperationException("No account is active."),
+        _origin ?? throw new InvalidOperationException("No origin is active."),
+        _leaseCts?.Token ?? throw new InvalidOperationException("No lease token is active."),
+        _stamp);
 
     private void ClearSensitiveState()
     {
@@ -324,6 +557,7 @@ public sealed class VaultSession : IVaultSnapshot
         IsDemo = false;
         EncryptedPrivateKey = null;
         SkippedCipherCount = 0;
+        SkippedFolderCount = 0;
         DataStale = false;
         RepromptSatisfied = false;
     }

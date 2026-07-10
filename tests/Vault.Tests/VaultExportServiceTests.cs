@@ -23,6 +23,13 @@ public class VaultExportServiceTests
         public IReadOnlyList<Cipher> GetCiphers() => _ciphers;
         public IReadOnlyList<Folder> GetFolders() => _folders;
         public IReadOnlyList<DeviceInfo> GetDevices() => Array.Empty<DeviceInfo>();
+        public Core.Session.VaultSessionLease CaptureLease() =>
+            throw new InvalidOperationException("This fake has no vault session.");
+        public bool IsCurrent(Core.Session.VaultSessionLease lease) => false;
+        public void ThrowIfExpired(Core.Session.VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
+        public IReadOnlyList<Cipher> GetCiphers(Core.Session.VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
     }
 
     private static Cipher[] ActiveAndTrashed() => new[]

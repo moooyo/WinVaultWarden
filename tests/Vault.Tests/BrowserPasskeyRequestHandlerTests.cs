@@ -542,6 +542,17 @@ public class BrowserPasskeyRequestHandlerTests
         public IReadOnlyList<Folder> GetFolders() => [];
 
         public IReadOnlyList<DeviceInfo> GetDevices() => [];
+
+        public VaultSessionLease CaptureLease() =>
+            throw new InvalidOperationException("This fake has no vault session.");
+
+        public bool IsCurrent(VaultSessionLease lease) => false;
+
+        public void ThrowIfExpired(VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
+
+        public IReadOnlyList<Cipher> GetCiphers(VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
     }
 
     private sealed class FakeVaultWriteService : IVaultWriteService
@@ -593,5 +604,9 @@ public class BrowserPasskeyRequestHandlerTests
         public int SkippedCipherCount => 0;
 
         public bool DataStale => false;
+
+        public long Generation => 0;
+
+        public int SkippedFolderCount => 0;
     }
 }

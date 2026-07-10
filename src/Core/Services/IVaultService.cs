@@ -9,4 +9,8 @@ public interface IVaultService
     IReadOnlyList<Cipher> GetCiphers();
     IReadOnlyList<Folder> GetFolders();
     IReadOnlyList<DeviceInfo> GetDevices();
+    VaultSessionLease CaptureLease();
+    bool IsCurrent(VaultSessionLease lease);
+    void ThrowIfExpired(VaultSessionLease lease);
+    IReadOnlyList<Cipher> GetCiphers(VaultSessionLease lease);
 }

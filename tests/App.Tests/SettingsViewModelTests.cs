@@ -401,9 +401,11 @@ public class SettingsViewModelTests
         public IReadOnlyList<Folder> Folders => [];
         public IReadOnlyList<DeviceInfo> Devices => [];
         public AccountInfo Account { get; } =
-            new("test@example.com", "https://vault.example.com", "T", "PBKDF2 · 600000");
+            new("test-account", "test@example.com", new ServerOrigin("https://vault.example.com"), "T", "PBKDF2 · 600000");
         public int SkippedCipherCount => 0;
         public bool DataStale => false;
+        public long Generation => 0;
+        public int SkippedFolderCount => 0;
     }
 
     private sealed class FakeVaultService : IVaultService
@@ -412,6 +414,13 @@ public class SettingsViewModelTests
         public IReadOnlyList<Cipher> GetCiphers() => [];
         public IReadOnlyList<Folder> GetFolders() => [];
         public IReadOnlyList<DeviceInfo> GetDevices() => [];
+        public VaultSessionLease CaptureLease() =>
+            throw new InvalidOperationException("This fake has no vault session.");
+        public bool IsCurrent(VaultSessionLease lease) => false;
+        public void ThrowIfExpired(VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
+        public IReadOnlyList<Cipher> GetCiphers(VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
     }
 
     // -----------------------------------------------------------------------

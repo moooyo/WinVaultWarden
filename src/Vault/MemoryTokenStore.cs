@@ -10,10 +10,15 @@ public sealed class MemoryTokenStore : ITokenStore
     public bool TryLoad(out PersistedSession session)
     {
         session = _session!;
-        return _session is not null;
+        return _session is { HasValidBinding: true };
     }
 
-    public void Save(PersistedSession session) => _session = session;
+    public void Save(PersistedSession session)
+    {
+        if (!session.HasValidBinding)
+            throw new InvalidDataException("Persisted session binding is invalid.");
+        _session = session;
+    }
 
     public void Clear() => _session = null;
 }

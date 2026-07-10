@@ -34,7 +34,9 @@ public sealed class DpapiTokenStore : ITokenStore
             var protectedBytes = File.ReadAllBytes(_path);
             jsonBytes = ProtectedData.Unprotect(protectedBytes, null, DataProtectionScope.CurrentUser);
             var loaded = JsonSerializer.Deserialize(jsonBytes, AppJsonContext.Default.PersistedSession);
-            if (loaded is null)
+            // fail-closed:缺失 account/origin/generation 绑定的旧记录一律拒绝返回,迫使用户
+            // 用下一次正常登录创建 schema 2 记录,而不是把未绑定身份的 session 当作当前账户使用。
+            if (loaded is null || !loaded.HasValidBinding)
                 return false;
 
             session = loaded;

@@ -11,4 +11,6 @@ public interface IVaultSnapshot
     AccountInfo Account { get; }
     int SkippedCipherCount { get; }
     bool DataStale { get; }
+    long Generation { get; }
+    int SkippedFolderCount { get; }
 }

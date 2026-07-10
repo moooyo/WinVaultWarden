@@ -69,6 +69,13 @@ public class RealVaultUiServiceAttachmentTests
         public IReadOnlyList<Folder> GetFolders() => Array.Empty<Folder>();
         public IReadOnlyList<DeviceInfo> GetDevices() => Array.Empty<DeviceInfo>();
         public IVaultSnapshot Snapshot => throw new NotSupportedException();
+        public VaultSessionLease CaptureLease() =>
+            throw new InvalidOperationException("This fake has no vault session.");
+        public bool IsCurrent(VaultSessionLease lease) => false;
+        public void ThrowIfExpired(VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
+        public IReadOnlyList<Cipher> GetCiphers(VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
     }
 
     private sealed class NoopWrite : IVaultWriteService

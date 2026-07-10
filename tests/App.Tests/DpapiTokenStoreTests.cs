@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using App.Services;
 using Core.Enums;
 using Core.Models;
@@ -13,7 +15,10 @@ public class DpapiTokenStoreTests
         var path = Path.Combine(Path.GetTempPath(), "WinVaultWarden.Tests", Guid.NewGuid().ToString("N"), "session.bin");
         var store = new DpapiTokenStore(path);
         var session = new PersistedSession(
-            "https://vault.example",
+            PersistedSession.CurrentSchemaVersion,
+            "account-1",
+            new ServerOrigin("https://vault.example"),
+            7,
             "me@example.com",
             "device-id",
             "refresh-token",
@@ -47,8 +52,18 @@ public class DpapiTokenStoreTests
         var path = Path.Combine(Path.GetTempPath(), "WinVaultWarden.Tests", Guid.NewGuid().ToString("N"), "session.bin");
         var store = new DpapiTokenStore(path);
         var first = new PersistedSession(
-            "https://vault.example", "me@example.com", "device-id",
-            "refresh-1", "puk", KdfType.Pbkdf2, 600_000, null, null);
+            PersistedSession.CurrentSchemaVersion,
+            "account-1",
+            new ServerOrigin("https://vault.example"),
+            7,
+            "me@example.com",
+            "device-id",
+            "refresh-1",
+            "puk",
+            KdfType.Pbkdf2,
+            600_000,
+            null,
+            null);
 
         store.Save(first);
         store.Save(first with { RefreshToken = "refresh-2" }); // 覆盖
@@ -67,8 +82,18 @@ public class DpapiTokenStoreTests
         var path = Path.Combine(Path.GetTempPath(), "WinVaultWarden.Tests", Guid.NewGuid().ToString("N"), "session.bin");
         var store = new DpapiTokenStore(path);
         var session = new PersistedSession(
-            "https://vault.example", "me@example.com", "device-id",
-            "refresh", "puk", KdfType.Pbkdf2, 600_000, null, null)
+            PersistedSession.CurrentSchemaVersion,
+            "account-1",
+            new ServerOrigin("https://vault.example"),
+            7,
+            "me@example.com",
+            "device-id",
+            "refresh",
+            "puk",
+            KdfType.Pbkdf2,
+            600_000,
+            null,
+            null)
         {
             TwoFactorToken = "remember-jwt",
         };
@@ -89,8 +114,18 @@ public class DpapiTokenStoreTests
         var path = Path.Combine(Path.GetTempPath(), "WinVaultWarden.Tests", Guid.NewGuid().ToString("N"), "session.bin");
         var store = new DpapiTokenStore(path);
         var session = new PersistedSession(
-            "https://vault.example", "me@example.com", "device-id",
-            "refresh", "puk", KdfType.Pbkdf2, 600_000, null, null)
+            PersistedSession.CurrentSchemaVersion,
+            "account-1",
+            new ServerOrigin("https://vault.example"),
+            7,
+            "me@example.com",
+            "device-id",
+            "refresh",
+            "puk",
+            KdfType.Pbkdf2,
+            600_000,
+            null,
+            null)
         {
             HelloProtectedUserKey = "2.hellowrapped==",
             HelloChallenge = "Y2hhbGxlbmdl",
@@ -102,5 +137,48 @@ public class DpapiTokenStoreTests
         Assert.Equal("2.hellowrapped==", loaded.HelloProtectedUserKey);
         Assert.Equal("Y2hhbGxlbmdl", loaded.HelloChallenge);
         Assert.DoesNotContain("2.hellowrapped==", File.ReadAllText(path)); // DPAPI 加密,不留明文
+    }
+
+    [Fact]
+    public void TryLoad_LegacySessionWithoutBinding_ReturnsFalse()
+    {
+        // fail-closed 回归:schema 1(旧字段名 serverUrl,无 accountId/generation)的记录必须被拒绝,
+        // 不能被静默当作当前账户的会话使用——即便 DPAPI 解密本身成功。
+        if (!OperatingSystem.IsWindows())
+            return;
+        var directory = Path.Combine(
+            AppContext.BaseDirectory,
+            "WinVaultWarden.Tests",
+            Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(directory, "session.bin");
+        Directory.CreateDirectory(directory);
+        var legacyJson = Encoding.UTF8.GetBytes(
+            """
+            {
+              "serverUrl":"https://vault.example",
+              "email":"me@example.com",
+              "deviceIdentifier":"device-id",
+              "refreshToken":"refresh",
+              "protectedUserKey":"2.key",
+              "kdfType":0,
+              "kdfIterations":600000
+            }
+            """);
+        try
+        {
+            File.WriteAllBytes(
+                path,
+                ProtectedData.Protect(
+                    legacyJson,
+                    null,
+                    DataProtectionScope.CurrentUser));
+            var store = new DpapiTokenStore(path);
+            Assert.False(store.TryLoad(out _));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(legacyJson);
+            Directory.Delete(directory, recursive: true);
+        }
     }
 }

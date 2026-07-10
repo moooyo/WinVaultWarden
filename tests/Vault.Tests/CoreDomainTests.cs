@@ -61,5 +61,7 @@ public class CoreDomainTests
         public AccountInfo Account { get; } = new("test-account", "me@example.com", new Core.Models.ServerOrigin("https://vault.example"), "M", "PBKDF2 600000");
         public int SkippedCipherCount => 0;
         public bool DataStale => false;
+        public long Generation => 0;
+        public int SkippedFolderCount => 0;
     }
 }

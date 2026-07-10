@@ -8,7 +8,28 @@ public sealed class FakeCacheStore : ICacheStore
     private VaultCacheEntry? _entry;
     public int SaveCount { get; private set; }
     public int ClearCount { get; private set; }
-    public void SaveVaultCache(VaultCacheEntry entry) { _entry = entry; SaveCount++; }
+    public VaultCacheEntry? LastSaved { get; private set; }
+    public Action? BeforeSave { get; set; }
+    public Action? BeforeClear { get; set; }
+    public List<string> Operations { get; } = [];
+
+    public void SaveVaultCache(VaultCacheEntry entry)
+    {
+        BeforeSave?.Invoke();
+        _entry = entry;
+        LastSaved = entry;
+        SaveCount++;
+        Operations.Add("save");
+    }
+
     public bool TryLoadVaultCache(out VaultCacheEntry entry) { entry = _entry!; return _entry is not null; }
-    public void ClearVaultCache() { _entry = null; ClearCount++; }
+
+    public void ClearVaultCache()
+    {
+        BeforeClear?.Invoke();
+        _entry = null;
+        LastSaved = null;
+        ClearCount++;
+        Operations.Add("clear");
+    }
 }

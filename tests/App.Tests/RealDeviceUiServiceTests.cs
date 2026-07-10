@@ -31,6 +31,13 @@ public class RealDeviceUiServiceTests
         public IReadOnlyList<Cipher> GetCiphers() => Snapshot.Ciphers;
         public IReadOnlyList<Folder> GetFolders() => Snapshot.Folders;
         public IReadOnlyList<DeviceInfo> GetDevices() => Snapshot.Devices;
+        public VaultSessionLease CaptureLease() =>
+            throw new InvalidOperationException("This fake has no vault session.");
+        public bool IsCurrent(VaultSessionLease lease) => false;
+        public void ThrowIfExpired(VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
+        public IReadOnlyList<Cipher> GetCiphers(VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
     }
 
     private sealed class TestSnapshot : IVaultSnapshot
@@ -38,7 +45,7 @@ public class RealDeviceUiServiceTests
         public VaultState State => VaultState.Unlocked;
         public IReadOnlyList<Cipher> Ciphers { get; } = [];
         public IReadOnlyList<Folder> Folders { get; } = [];
-        public AccountInfo Account { get; } = new("me@example.com", "https://vault.example", "M", "PBKDF2 600000");
+        public AccountInfo Account { get; } = new("test-account", "me@example.com", new ServerOrigin("https://vault.example"), "M", "PBKDF2 600000");
         public IReadOnlyList<DeviceInfo> Devices { get; } =
         [
             new DeviceInfo("d1", "Desktop", 6, "d1", DateTimeOffset.Parse("2026-06-24T00:00:00Z"), true),
@@ -46,5 +53,7 @@ public class RealDeviceUiServiceTests
         ];
         public int SkippedCipherCount => 0;
         public bool DataStale => false;
+        public long Generation => 0;
+        public int SkippedFolderCount => 0;
     }
 }

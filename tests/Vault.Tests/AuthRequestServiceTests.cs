@@ -28,15 +28,15 @@ public class AuthRequestServiceTests
     {
         var store = new MemoryTokenStore();
         store.Save(new PersistedSession(
-            ServerUrl: "http://10.0.1.20:8080",
-            Email: "test@example.com",
-            DeviceIdentifier: DeviceId,
-            RefreshToken: "rt-token",
-            ProtectedUserKey: "2.xxx|yyy|zzz",
-            KdfType: Core.Enums.KdfType.Pbkdf2,
-            KdfIterations: 600000,
-            KdfMemory: null,
-            KdfParallelism: null));
+            "http://10.0.1.20:8080",
+            "test@example.com",
+            DeviceId,
+            "rt-token",
+            "2.xxx|yyy|zzz",
+            Core.Enums.KdfType.Pbkdf2,
+            600000,
+            null,
+            null));
         return store;
     }
 

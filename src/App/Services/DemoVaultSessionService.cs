@@ -23,17 +23,29 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
 
     public Task OpenDemoVaultAsync(CancellationToken ct = default)
     {
-        _session.Clear();
-        _session.SetUnlockedKey(new SymmetricCryptoKey(Enumerable.Range(1, 64).Select(i => (byte)i).ToArray()));
-        _session.SetSnapshot(BuildVault());
-        _session.SetDevices(
-        [
-            new DeviceInfo("demo-device", "WinVaultWarden Dev", 6, "demo-device", DemoDate(24, 9, 0), false),
-        ]);
-        // 演示 Send 存入会话内存,并把会话标记为演示/离线——SendUiService 据此从内存取值,
-        // 避免在未配置服务端地址的演示会话里对 /api/sends 发起相对 URI 请求而抛异常。
-        _session.SetSends(BuildSends());
-        _session.MarkDemo();
+        var lease = _session.BeginAccountSession(
+            "demo-account",
+            "demo@winvaultwarden.local",
+            new ServerOrigin("http://localhost"));
+        var key = new SymmetricCryptoKey(
+            Enumerable.Range(1, 64).Select(i => (byte)i).ToArray());
+        if (!_session.TryCommit(lease, () =>
+        {
+            _session.SetUnlockedKey(key);
+            _session.SetSnapshot(BuildVault());
+            _session.SetDevices(
+            [
+                new DeviceInfo("demo-device", "WinVaultWarden Dev", 6, "demo-device", DemoDate(24, 9, 0), false),
+            ]);
+            // 演示 Send 存入会话内存,并把会话标记为演示/离线——SendUiService 据此从内存取值,
+            // 避免在未配置服务端地址的演示会话里对 /api/sends 发起相对 URI 请求而抛异常。
+            _session.SetSends(BuildSends());
+            _session.MarkDemo();
+        }))
+        {
+            key.Dispose();
+            throw new OperationCanceledException(lease.CancellationToken);
+        }
         return Task.CompletedTask;
     }
 

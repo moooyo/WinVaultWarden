@@ -17,4 +17,13 @@ public sealed class VaultService : IVaultService
     public IReadOnlyList<Folder> GetFolders() => _session.Folders;
 
     public IReadOnlyList<DeviceInfo> GetDevices() => _session.Devices;
+
+    public VaultSessionLease CaptureLease() => _session.CaptureLease();
+
+    public bool IsCurrent(VaultSessionLease lease) => _session.IsCurrent(lease);
+
+    public void ThrowIfExpired(VaultSessionLease lease) => _session.ThrowIfExpired(lease);
+
+    public IReadOnlyList<Cipher> GetCiphers(VaultSessionLease lease) =>
+        _session.GetCiphers(lease);
 }

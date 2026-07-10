@@ -14,8 +14,14 @@ public class DpapiVaultCacheStoreTests
 
         var path = Path.Combine(Path.GetTempPath(), "WinVaultWarden.Tests", Guid.NewGuid().ToString("N"), "vault-cache.bin");
         var store = new DpapiVaultCacheStore(path);
-        var entry = new VaultCacheEntry(1, "me@example.com", "https://vault.example",
-            DateTimeOffset.UnixEpoch, "{\"secret-cipher-json\":\"2.abc\"}");
+        var entry = new VaultCacheEntry(
+            2,
+            "account-1",
+            new ServerOrigin("https://vault.example"),
+            7,
+            "me@example.com",
+            DateTimeOffset.UnixEpoch,
+            "{\"secret-cipher-json\":\"2.abc\"}");
 
         store.SaveVaultCache(entry);
 

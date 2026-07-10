@@ -125,6 +125,13 @@ public class RealVaultUiServiceTests
         public IReadOnlyList<Cipher> GetCiphers() => _ciphers;
         public IReadOnlyList<Folder> GetFolders() => System.Array.Empty<Folder>();
         public IReadOnlyList<DeviceInfo> GetDevices() => System.Array.Empty<DeviceInfo>();
+        public VaultSessionLease CaptureLease() =>
+            throw new InvalidOperationException("This fake has no vault session.");
+        public bool IsCurrent(VaultSessionLease lease) => false;
+        public void ThrowIfExpired(VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
+        public IReadOnlyList<Cipher> GetCiphers(VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
     }
 
     private sealed class TestVaultService : IVaultService
@@ -133,12 +140,19 @@ public class RealVaultUiServiceTests
         public IReadOnlyList<Cipher> GetCiphers() => Snapshot.Ciphers;
         public IReadOnlyList<Folder> GetFolders() => Snapshot.Folders;
         public IReadOnlyList<DeviceInfo> GetDevices() => Snapshot.Devices;
+        public VaultSessionLease CaptureLease() =>
+            throw new InvalidOperationException("This fake has no vault session.");
+        public bool IsCurrent(VaultSessionLease lease) => false;
+        public void ThrowIfExpired(VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
+        public IReadOnlyList<Cipher> GetCiphers(VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
     }
 
     private sealed class TestSnapshot : IVaultSnapshot
     {
         public VaultState State => VaultState.Unlocked;
-        public AccountInfo Account { get; } = new("me@example.com", "https://vault.example", "M", "PBKDF2 600000");
+        public AccountInfo Account { get; } = new("test-account", "me@example.com", new ServerOrigin("https://vault.example"), "M", "PBKDF2 600000");
         public IReadOnlyList<Folder> Folders { get; } =
         [
             new Folder { Id = "f1", Name = "Work", RevisionDate = DateTimeOffset.Parse("2026-06-24T00:00:00Z") },
@@ -218,6 +232,8 @@ public class RealVaultUiServiceTests
 
         public int SkippedCipherCount => 0;
         public bool DataStale => false;
+        public long Generation => 0;
+        public int SkippedFolderCount => 0;
     }
 }
 
@@ -355,6 +371,13 @@ file sealed class MutableVaultService : IVaultService
     public IReadOnlyList<Cipher> GetCiphers() => Ciphers;
     public IReadOnlyList<Folder> GetFolders() => Folders;
     public IReadOnlyList<DeviceInfo> GetDevices() => System.Array.Empty<DeviceInfo>();
+    public Core.Session.VaultSessionLease CaptureLease() =>
+        throw new InvalidOperationException("This fake has no vault session.");
+    public bool IsCurrent(Core.Session.VaultSessionLease lease) => false;
+    public void ThrowIfExpired(Core.Session.VaultSessionLease lease) =>
+        throw new OperationCanceledException(lease.CancellationToken);
+    public IReadOnlyList<Cipher> GetCiphers(Core.Session.VaultSessionLease lease) =>
+        throw new OperationCanceledException(lease.CancellationToken);
 }
 
 file sealed class RecordingWriteService : IVaultWriteService

@@ -17,6 +17,13 @@ public class VaultHealthServiceTests
         public IReadOnlyList<Cipher> GetCiphers() => _c;
         public IReadOnlyList<Folder> GetFolders() => Array.Empty<Folder>();
         public IReadOnlyList<DeviceInfo> GetDevices() => Array.Empty<DeviceInfo>();
+        public Core.Session.VaultSessionLease CaptureLease() =>
+            throw new InvalidOperationException("This fake has no vault session.");
+        public bool IsCurrent(Core.Session.VaultSessionLease lease) => false;
+        public void ThrowIfExpired(Core.Session.VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
+        public IReadOnlyList<Cipher> GetCiphers(Core.Session.VaultSessionLease lease) =>
+            throw new OperationCanceledException(lease.CancellationToken);
     }
     private sealed class FakePwned : IPwnedPasswordsClient
     { public Task<int> GetBreachCountAsync(string p, CancellationToken ct = default) => Task.FromResult(0); }
