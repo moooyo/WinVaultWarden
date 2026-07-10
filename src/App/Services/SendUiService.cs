@@ -57,10 +57,7 @@ public sealed class SendUiService : ISendUiService
         }
 
         var model = ToDraftModel(draft, id: null);
-        if (model.Type == CoreSendType.File)
-            await _write.SaveFileSendAsync(model, fileBytes ?? Array.Empty<byte>(), ct);
-        else
-            await _write.SaveTextSendAsync(model, ct);
+        await WriteSendAsync(model, id: null, fileBytes, ct);
         return await ReloadItemAsync(draft, ct);
     }
 
@@ -75,11 +72,38 @@ public sealed class SendUiService : ISendUiService
         }
 
         var model = ToDraftModel(draft, id);
-        if (model.Type == CoreSendType.File)
-            await _write.SaveFileSendAsync(model, fileBytes ?? Array.Empty<byte>(), ct);
-        else
-            await _write.SaveTextSendAsync(model, ct);
+        await WriteSendAsync(model, id, fileBytes, ct);
         return await ReloadItemAsync(draft, ct, id);
+    }
+
+    // 文件型 Send 的单一流契约边界:创建(id==null)与替换(id!=null 且重选了字节)都把 UI 选到的字节
+    // 包装成可重开内存源交给写入层的【流式】实现;仅改元数据(id!=null 且未重选文件)只走 PUT。
+    // 绝不把 null 当零字节,也不保留任何 byte[] 上传重载。
+    private async Task WriteSendAsync(SendDraftModel model, string? id, byte[]? fileBytes, CancellationToken ct)
+    {
+        if (model.Type != CoreSendType.File)
+        {
+            await _write.SaveTextSendAsync(model, ct);
+            return;
+        }
+
+        if (id is null)
+            await _write.CreateFileSendAsync(model, RequireMemorySource(model.FileName!, fileBytes), ct);
+        else if (fileBytes is null)
+            await _write.UpdateFileSendMetadataAsync(model, ct);
+        else
+            await _write.ReplaceFileSendAsync(id, model, RequireMemorySource(model.FileName!, fileBytes), ct);
+
+        static SendFileSource RequireMemorySource(string fileName, byte[]? bytes)
+        {
+            if (bytes is null)
+                throw new InvalidOperationException("创建文件 Send 必须选择文件。");
+            SendFileSource.ValidateLength(bytes.LongLength);
+            return new SendFileSource(
+                fileName,
+                bytes.LongLength,
+                _ => ValueTask.FromResult<Stream>(new MemoryStream(bytes, writable: false)));
+        }
     }
 
     public Task DeleteSendAsync(string id, CancellationToken ct = default)

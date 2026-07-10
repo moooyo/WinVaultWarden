@@ -154,18 +154,20 @@ public sealed class ApiClient :
             ApiJsonContext.Default.SendRequest, ApiJsonContext.Default.SendFileUploadV2Response, ct);
 
     public async Task UploadSendFileAsync(
-        string uploadUrl, string encryptedFileName, byte[] encryptedBuffer, CancellationToken ct = default)
+        string uploadUrl, string encryptedFileName, StreamUploadContent encryptedContent, CancellationToken ct = default)
     {
-        var content = new MultipartFormDataContent();
-        var part = new ByteArrayContent(encryptedBuffer);
+        using var multipart = new MultipartFormDataContent();
+        var part = new StreamingHttpContent(encryptedContent);
         part.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
         // 字段名固定 "data";文件名必须等于加密后的 fileName(服务端会逐字节比对)。
-        content.Add(part, "data", encryptedFileName);
+        multipart.Add(part, "data", encryptedFileName);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, ResolveExternal(NormalizeServerPath(uploadUrl)))
         {
-            Content = content,
+            Content = multipart,
         };
+        // 流式内容不可重放:禁用 401 自动重试,否则 transport 会缓冲整份密文并重开源(见 Task 3)。
+        request.Options.Set(AuthHeaderHandler.DisableAutomaticRetryKey, true);
         await SendWriteCore(request, ct);
     }
 

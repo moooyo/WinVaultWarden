@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using Api;
@@ -5,12 +6,16 @@ using Api.Dtos;
 using Core.Enums;
 using Core.Models;
 using Core.Services;
+using Core.Session;
 using Crypto;
 
 namespace Vault;
 
 // Send 写编排:生成/复用 seed → 派生 cryptoKey → 加密字段 → 用 UserKey 包裹 seed → 组 SendRequest → 创建/更新。
-// 文件类型:把文件加密成 EncArrayBuffer,fileLength=buffer.Length,先 v2 创建拿上传 URL,再 multipart 上传。
+// 文件类型(Task 12):以固定 IV 两遍式常量内存流加密成 EncArrayBuffer,fileLength=加密后精确字节数,
+// 先 v2 创建拿上传 URL(vaultwarden src/api/core/sends.rs:303-355 先存元数据记录),再 streaming multipart 上传;
+// 上传失败/取消用【独立 15s 令牌】补偿删除孤儿记录(delete 路由 sends.rs:668),清理再失败抛 SendUploadCompensationException。
+// 替换 = 先建+传新件再删旧件;删旧失败则回滚删新件。元数据更新只发 PUT,绝不重传文件字节(put_send 忽略 File,sends.rs:631-645)。
 // 更新(文本/文件元数据)必须复用 draft.Key 解出的原 seed,绝不轮换(见 ResolveSeed);
 // 密码变更是显式三态(SendPasswordChange.Keep/Set/Remove),Remove 必须先等元数据 PUT 成功,
 // 再调用专用 remove-password 路由(见 vaultwarden src/api/core/sends.rs:686-705),任一步失败不得伪装成功。
@@ -66,50 +71,115 @@ public sealed class SendWriteService : ISendWriteService
         }
     }
 
-    // Task 12 之前的过渡适配器:文件创建走 v2 create + upload;既有文件 Send 的更新(无论调用方是否
-    // 重选了文件字节)一律转发到 UpdateFileSendMetadataAsync —— 服务端没有任何端点能替换既有 Send 的
-    // 文件字节(put_send 收到 File=null 时忽略 file data,见 vaultwarden src/api/core/sends.rs:631-643),
-    // 与 Bitwarden 官方客户端一致。Task 12 会拆出显式的 CreateFileSendAsync/ReplaceFileSendAsync。
-    [Obsolete("Task 12 replaces this adapter with CreateFileSendAsync, UpdateFileSendMetadataAsync, and ReplaceFileSendAsync.")]
-    public async Task SaveFileSendAsync(SendDraftModel draft, byte[] fileBytes, CancellationToken ct = default)
+    // 创建新文件 Send:先在任何 API 前校验明文上限,再生成新 seed;v2 建记录拿上传 URL → streaming 上传。
+    // 上传失败/取消一律用【独立 15s 令牌】补偿删除刚建的孤儿记录(见 CreateFileCoreAsync)。
+    public async Task<SendFileWriteResult> CreateFileSendAsync(SendDraftModel draft, SendFileSource file, CancellationToken ct = default)
     {
         if (!string.IsNullOrEmpty(draft.Id))
-        {
-            await UpdateFileSendMetadataAsync(draft, ct);
-            return;
-        }
-
+            throw new InvalidOperationException("CreateFileSendAsync requires a new Send draft.");
+        SendFileSource.ValidateLength(file.Length);
         var lease = _session.CaptureLease();
         if (!_session.TryCopyUserKey(lease, out var copiedKey))
             throw new InvalidOperationException("Vault is locked.");
-        using var userKey = copiedKey!;
+        using var userKey = copiedKey;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
-        var api = _clients.GetAuthenticated<ISendApiClient>(lease);
-
-        if (draft.PasswordChange is SendPasswordChange.Remove)
-            throw new InvalidOperationException("新 Send 不能移除尚不存在的密码。");
-
-        // 创建新文件 Send:v2 建记录拿上传 URL → multipart 上传加密字节。
-        var seed = ResolveSeed(draft, userKey);
+        var seed = _crypto.GenerateSeed();
         try
         {
-            using var cryptoKey = _crypto.DeriveCryptoKey(seed);
-
-            var buffer = _crypto.EncryptToBuffer(fileBytes, cryptoKey);
-            var encryptedFileName = _crypto.EncryptField(draft.FileName ?? string.Empty, cryptoKey);
-
-            var request = BuildBaseRequest(draft, seed, cryptoKey, userKey);
-            request.Type = (int)SendType.File;
-            request.File = new SendFileRequest(FileName: encryptedFileName);
-            request.FileLength = buffer.Length;
-
-            var response = await api.CreateFileSendV2Async(request, linked.Token);
-            await api.UploadSendFileAsync(response.Url, encryptedFileName, buffer, linked.Token);
-            _session.ThrowIfExpired(lease);
+            var api = _clients.GetAuthenticated<ISendApiClient>(lease);
+            return await CreateFileCoreAsync(
+                lease, api, userKey!, draft, file, seed, replacedExisting: false, ct: linked.Token);
         }
         finally
         {
             CryptographicOperations.ZeroMemory(seed);
+        }
+    }
+
+    // 替换既有文件 Send:服务端无法原地替换文件字节,故【先建+传新件,再删旧件】。
+    // 复用旧 draft.Key 解出的原 seed 加密新件(WithId(null) 让其按"创建"处理)。
+    // 删旧失败 → 回滚删新件(独立令牌补偿),并把原始删旧异常抛出;任何一步失败都不得伪装成功。
+    public async Task<SendFileWriteResult> ReplaceFileSendAsync(string existingSendId, SendDraftModel draft, SendFileSource file, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(existingSendId);
+        SendFileSource.ValidateLength(file.Length);
+        var lease = _session.CaptureLease();
+        if (!_session.TryCopyUserKey(lease, out var copiedKey))
+            throw new InvalidOperationException("Vault is locked.");
+        using var userKey = copiedKey;
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var seed = ResolveSeed(draft, userKey!);
+        try
+        {
+            var api = _clients.GetAuthenticated<ISendApiClient>(lease);
+            var created = await CreateFileCoreAsync(
+                lease, api, userKey!, draft.WithId(null), file, seed, replacedExisting: true, ct: linked.Token);
+            try
+            {
+                await api.DeleteSendAsync(existingSendId, linked.Token);
+                _session.ThrowIfExpired(lease);
+                return created;
+            }
+            catch (Exception deleteOldError)
+            {
+                await DeleteOrThrowCompensationAsync(api, created.SendId, deleteOldError);
+                throw;
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(seed);
+        }
+    }
+
+    // 文件创建的公共核心(创建/替换共用):任何 API 前再次校验长度,以固定 IV 两遍式常量内存流加密上传;
+    // 上传失败/取消用独立令牌补偿删除,清理再失败则抛 SendUploadCompensationException(暴露孤儿 SendId)。
+    private async Task<SendFileWriteResult> CreateFileCoreAsync(
+        VaultSessionLease lease,
+        ISendApiClient api,
+        SymmetricCryptoKey userKey,
+        SendDraftModel draft,
+        SendFileSource file,
+        byte[] seed,
+        bool replacedExisting,
+        CancellationToken ct)
+    {
+        SendFileSource.ValidateLength(file.Length);
+        using var cryptoKey = _crypto.DeriveCryptoKey(seed);
+        var encryptedName = _crypto.EncryptField(file.FileName, cryptoKey);
+        var upload = await _crypto.PrepareFileUploadAsync(file, cryptoKey, ct);
+        var request = BuildBaseRequest(draft, seed, cryptoKey, userKey);
+        request.Type = (int)SendType.File;
+        request.File = new SendFileRequest(encryptedName);
+        request.FileLength = checked((int)upload.Length);
+        var response = await api.CreateFileSendV2Async(request, ct);
+        try
+        {
+            await api.UploadSendFileAsync(response.Url, encryptedName, upload, ct);
+        }
+        catch (Exception uploadError)
+        {
+            await DeleteOrThrowCompensationAsync(api, response.SendResponse.Id, uploadError);
+            throw;
+        }
+        _session.ThrowIfExpired(lease);
+        return new SendFileWriteResult(response.SendResponse.Id, response.SendResponse.AccessId, replacedExisting);
+    }
+
+    // 用【独立 15s 令牌】删除孤儿 Send:与调用方令牌解耦,即使调用方已取消也能完成清理。
+    // 清理成功 → 原始错误由调用方 rethrow;清理失败 → 抛可操作的 SendUploadCompensationException(不泄露密钥)。
+    private static async Task DeleteOrThrowCompensationAsync(ISendApiClient api, string sendId, Exception originalError)
+    {
+        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        try
+        {
+            await api.DeleteSendAsync(sendId, cleanup.Token);
+        }
+        catch (Exception cleanupError)
+        {
+            Trace.TraceError(
+                "Send compensation delete failed for id {0}: {1}", sendId, cleanupError.GetType().Name);
+            throw new SendUploadCompensationException(sendId, originalError, cleanupError);
         }
     }
 
@@ -157,17 +227,6 @@ public sealed class SendWriteService : ISendWriteService
         _session.ThrowIfExpired(lease);
     }
 
-    public async Task<Send> RemovePasswordAsync(string sendId, CancellationToken ct = default)
-    {
-        var userKey = RequireUserKey();
-        var lease = _session.CaptureLease();
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
-        var api = _clients.GetAuthenticated<ISendApiClient>(lease);
-        var dto = await api.RemoveSendPasswordAsync(sendId, linked.Token);
-        _session.ThrowIfExpired(lease);
-        return Decrypt(dto, userKey);
-    }
-
     // 解析本次写入应使用的 seed:创建(Id 为空)生成新 seed;更新必须从 draft.Key 解包复用原 seed,
     // 绝不为更新生成新 seed —— 否则服务端仍以旧 seed 加密的字段(文件名/文件字节/文本)将永久无法解密。
     private byte[] ResolveSeed(SendDraftModel draft, SymmetricCryptoKey userKey)
@@ -206,43 +265,6 @@ public sealed class SendWriteService : ISendWriteService
             DeletionDate = ToIso(draft.DeletionDate)!,
             Disabled = draft.Disabled,
             HideEmail = draft.HideEmail,
-        };
-    }
-
-    private Send Decrypt(SendResponseDto dto, SymmetricCryptoKey userKey)
-    {
-        var seed = _crypto.UnwrapSeed(dto.Key!, userKey);
-        var cryptoKey = _crypto.DeriveCryptoKey(seed);
-
-        SendText? text = dto.Text is null
-            ? null
-            : new SendText(_crypto.DecryptField(dto.Text.Text, cryptoKey), dto.Text.Hidden);
-
-        SendFile? file = null;
-        if (dto.File is not null)
-        {
-            var fileName = _crypto.DecryptField(dto.File.FileName, cryptoKey) ?? string.Empty;
-            var size = dto.File.Size ?? 0L;
-            file = new SendFile(fileName, size, dto.File.SizeName, dto.File.Id);
-        }
-
-        return new Send
-        {
-            Id = dto.Id,
-            AccessId = dto.AccessId,
-            Type = (SendType)dto.Type,
-            Name = _crypto.DecryptField(dto.Name, cryptoKey) ?? string.Empty,
-            Notes = _crypto.DecryptField(dto.Notes, cryptoKey),
-            Text = text,
-            File = file,
-            MaxAccessCount = dto.MaxAccessCount,
-            AccessCount = dto.AccessCount,
-            ExpirationDate = dto.ExpirationDate,
-            DeletionDate = dto.DeletionDate,
-            Disabled = dto.Disabled,
-            HideEmail = dto.HideEmail,
-            HasPassword = !string.IsNullOrEmpty(dto.Password),
-            Key = dto.Key,
         };
     }
 

@@ -102,10 +102,11 @@ public class SendApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
         var client = NewClient(handler);
-        var buffer = new byte[] { 2, 9, 9, 9 };
+        var upload = new StreamUploadContent(
+            4, (output, ct) => output.WriteAsync(new byte[] { 2, 9, 9, 9 }, ct).AsTask());
 
         await client.UploadSendFileAsync(
-            "/sends/s1/file/file-1", "2.report.pdf", buffer, TestContext.Current.CancellationToken);
+            "/sends/s1/file/file-1", "2.report.pdf", upload, TestContext.Current.CancellationToken);
 
         var req = handler.Requests[0];
         Assert.Equal(HttpMethod.Post, req.Method);
@@ -116,6 +117,29 @@ public class SendApiClientTests
         // body contains the multipart "data" part whose filename == encrypted file name
         Assert.Contains("name=data", handler.Bodies[0].Replace("\"", ""));
         Assert.Contains("filename=2.report.pdf", handler.Bodies[0].Replace("\"", ""));
+    }
+
+    [Fact]
+    public async Task Upload_UsesStreamingHttpContent_WithoutByteArrayContent()
+    {
+        HttpContent? dataPart = null;
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(request =>
+        {
+            var multipart = Assert.IsType<MultipartFormDataContent>(request.Content);
+            dataPart = Assert.Single(multipart);
+            return FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}");
+        });
+        var client = new ApiClient(
+            new HttpClient(handler), new ServerOrigin("https://vault.example"));
+        var upload = new StreamUploadContent(
+            3, (output, ct) => output.WriteAsync(new byte[] { 1, 2, 3 }, ct).AsTask());
+
+        await client.UploadSendFileAsync(
+            "/sends/s1/file/f1", "2.encrypted-name", upload, TestContext.Current.CancellationToken);
+
+        Assert.IsType<StreamingHttpContent>(dataPart);
+        Assert.IsNotType<ByteArrayContent>(dataPart);
     }
 
     [Fact]

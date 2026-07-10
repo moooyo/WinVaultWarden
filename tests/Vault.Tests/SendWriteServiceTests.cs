@@ -40,6 +40,11 @@ public class SendWriteServiceTests
         PasswordChange = password is null ? new SendPasswordChange.Keep() : new SendPasswordChange.Set(password),
     };
 
+    private static SendFileSource MemorySource(string fileName, byte[] bytes) => new(
+        fileName,
+        bytes.LongLength,
+        _ => ValueTask.FromResult<Stream>(new MemoryStream(bytes, writable: false)));
+
     [Fact]
     public async Task SaveTextSend_New_EncryptsFieldsAndCreates()
     {
@@ -107,7 +112,7 @@ public class SendWriteServiceTests
     }
 
     [Fact]
-    public async Task SaveFileSend_EncryptsBufferAndUploadsToReturnedUrl()
+    public async Task CreateFileSend_EncryptsFieldsAndStreamsToReturnedUrl()
     {
         var (service, api, _, _) = NewService();
         // SendFileUploadV2Response 是位置记录,须用位置构造函数语法。
@@ -131,9 +136,13 @@ public class SendWriteServiceTests
             DeletionDate = DateTimeOffset.UtcNow.AddDays(7),
         };
 
-        await service.SaveFileSendAsync(draft, fileBytes, TestContext.Current.CancellationToken);
+        var result = await service.CreateFileSendAsync(
+            draft, MemorySource("report.pdf", fileBytes), TestContext.Current.CancellationToken);
 
         Assert.Equal(new[] { "create-file-v2", "upload" }, api.Calls);
+        Assert.Equal("s-9", result.SendId);
+        Assert.Equal("acc-9", result.AccessId);
+        Assert.False(result.ReplacedExisting);
         var req = api.LastCreateFileV2!;
         Assert.Equal((int)SendType.File, req.Type);
         Assert.NotNull(req.File);
@@ -152,41 +161,7 @@ public class SendWriteServiceTests
     }
 
     [Fact]
-    public async Task SaveFileSend_Existing_NoNewBytes_UpdatesViaPut_NotCreate_AndPreservesSeed()
-    {
-        // F2:编辑既有文件 Send 必须走 PUT /api/sends/{id}(update),绝不 create-file-v2/upload,
-        // 否则会新建重复件并留下空文件;且回传的 key 必须仍包裹【同一个 seed】,保持服务端文件可解密。
-        var (service, api, crypto, userKey) = NewService();
-        var originalSeed = crypto.GenerateSeed();
-        var wrappedKey = crypto.WrapSeed(originalSeed, userKey);
-        var draft = new SendDraftModel
-        {
-            Id = "s-11",
-            Type = SendType.File,
-            Name = "renamed doc",
-            Notes = "updated notes",
-            FileName = "report.pdf",
-            Key = wrappedKey,
-            DeletionDate = DateTimeOffset.UtcNow.AddDays(5),
-        };
-
-        await service.SaveFileSendAsync(draft, Array.Empty<byte>(), TestContext.Current.CancellationToken);
-
-        Assert.Equal("update", Assert.Single(api.Calls));
-        Assert.DoesNotContain("create-file-v2", api.Calls);
-        Assert.DoesNotContain("upload", api.Calls);
-        Assert.Equal("s-11", api.LastUpdateId);
-        Assert.Equal((int)SendType.File, api.LastUpdate!.Type);
-        // key 仍解回同一 seed —— 服务端既有文件/文件名(旧 seed 加密)保持可解密。
-        var sentSeed = crypto.UnwrapSeed(api.LastUpdate!.Key, userKey);
-        Assert.Equal(originalSeed, sentSeed);
-        // name 是用原 seed 派生的 cryptoKey 加密的 EncString(密文,非明文)。
-        Assert.StartsWith("2.", api.LastUpdate.Name);
-        Assert.NotEqual("renamed doc", api.LastUpdate.Name);
-    }
-
-    [Fact]
-    public async Task SaveFileSend_Existing_MissingWrappedKey_Throws()
+    public async Task UpdateFileSendMetadata_MissingWrappedKey_Throws()
     {
         // 没有原 wrapped key 无法复用 seed,必须显式失败而非静默用新 seed 破坏文件。
         var (service, _, _, _) = NewService();
@@ -200,7 +175,25 @@ public class SendWriteServiceTests
         };
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.SaveFileSendAsync(draft, Array.Empty<byte>(), TestContext.Current.CancellationToken));
+            service.UpdateFileSendMetadataAsync(draft, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CreateFileSend_WithExistingId_Throws()
+    {
+        // 创建入口只接受新草稿(Id 为空);带 Id 必须显式失败,避免误把替换当创建。
+        var (service, _, _, _) = NewService();
+        var draft = new SendDraftModel
+        {
+            Id = "s-1",
+            Type = SendType.File,
+            Name = "x",
+            FileName = "x.bin",
+            DeletionDate = DateTimeOffset.UtcNow.AddDays(3),
+        };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateFileSendAsync(draft, MemorySource("x.bin", new byte[] { 1 }), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -210,42 +203,8 @@ public class SendWriteServiceTests
 
         await service.DeleteSendAsync("s-3", TestContext.Current.CancellationToken);
 
-        Assert.Equal("delete", Assert.Single(api.Calls));
+        Assert.Equal("delete:s-3", Assert.Single(api.Calls));
         Assert.Equal("s-3", api.LastDeleteId);
-    }
-
-    [Fact]
-    public async Task RemovePassword_CallsRemoveAndReturnsDecryptedSend()
-    {
-        var (service, api, crypto, userKey) = NewService();
-        var seed = crypto.GenerateSeed();
-        var cryptoKey = crypto.DeriveCryptoKey(seed);
-        api.RemovePasswordResult = new SendResponseDto(
-            Id: "s-4",
-            AccessId: "acc-4",
-            Type: 0,
-            Name: crypto.EncryptField("Named", cryptoKey),
-            Notes: null,
-            Text: new SendTextDto(Text: crypto.EncryptField("body", cryptoKey), Hidden: false),
-            File: null,
-            Key: crypto.WrapSeed(seed, userKey),
-            MaxAccessCount: null,
-            AccessCount: 0,
-            Password: null,
-            AuthType: 0,
-            Disabled: false,
-            HideEmail: false,
-            RevisionDate: null,
-            ExpirationDate: null,
-            DeletionDate: DateTimeOffset.UtcNow.AddDays(2),
-            Object: "send");
-
-        var send = await service.RemovePasswordAsync("s-4", TestContext.Current.CancellationToken);
-
-        Assert.Equal("remove-password", Assert.Single(api.Calls));
-        Assert.Equal("s-4", api.LastRemovePasswordId);
-        Assert.Equal("Named", send.Name);
-        Assert.False(send.HasPassword);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using Api;
 using Api.Dtos;
+using Core.Models;
 
 namespace Vault.Tests;
 
@@ -16,6 +17,14 @@ public sealed class FakeSendApiClient : ISendApiClient, IPublicSendApiClient
     public string? LastUploadUrl { get; private set; }
     public string? LastUploadFileName { get; private set; }
     public byte[]? LastUploadBuffer { get; private set; }
+
+    // Task 12 补偿事务测试注入点:上传/删除失败、单个 sendId 的删除失败、上传失败前的副作用回调,
+    // 以及记录清理删除是否用了【未取消】的独立令牌(证明补偿删除不复用被取消的调用方令牌)。
+    public Exception? UploadThrows { get; set; }
+    public Exception? DeleteThrows { get; set; }
+    public Dictionary<string, Exception> DeleteFailures { get; } = [];
+    public Action? BeforeUploadFailure { get; set; }
+    public bool DeleteTokenWasCanceled { get; private set; }
     public string? LastAccessId { get; private set; }
     public string? LastAccessPasswordProof { get; private set; }
     public string? LastDownloadUrl { get; private set; }
@@ -54,14 +63,35 @@ public sealed class FakeSendApiClient : ISendApiClient, IPublicSendApiClient
     public Task<SendFileUploadV2Response> CreateFileSendV2Async(SendRequest request, CancellationToken ct = default)
     { Calls.Add("create-file-v2"); LastCreateFileV2 = request; return Task.FromResult(CreateFileV2Result); }
 
-    public Task UploadSendFileAsync(string uploadUrl, string encryptedFileName, byte[] encryptedBuffer, CancellationToken ct = default)
-    { Calls.Add("upload"); LastUploadUrl = uploadUrl; LastUploadFileName = encryptedFileName; LastUploadBuffer = encryptedBuffer; return Task.CompletedTask; }
+    // 真正执行 streaming delegate(把密文写进内存缓冲以便断言),失败前先触发 BeforeUploadFailure 副作用。
+    public async Task UploadSendFileAsync(string uploadUrl, string encryptedFileName, StreamUploadContent encryptedContent, CancellationToken ct = default)
+    {
+        Calls.Add("upload");
+        LastUploadUrl = uploadUrl;
+        LastUploadFileName = encryptedFileName;
+        if (UploadThrows is not null)
+        {
+            BeforeUploadFailure?.Invoke();
+            throw UploadThrows;
+        }
+        await using var output = new MemoryStream();
+        await encryptedContent.WriteAsync(output, ct);
+        LastUploadBuffer = output.ToArray();
+    }
 
     public Task<SendResponseDto> UpdateSendAsync(string sendId, SendRequest request, CancellationToken ct = default)
     { Calls.Add("update"); LastUpdateId = sendId; LastUpdate = request; return Task.FromResult(UpdateResult); }
 
+    // 记录令牌是否已取消(补偿删除必须用未取消的独立令牌);按 sendId 精确注入失败,或全局 DeleteThrows。
     public Task DeleteSendAsync(string sendId, CancellationToken ct = default)
-    { Calls.Add("delete"); LastDeleteId = sendId; return Task.CompletedTask; }
+    {
+        DeleteTokenWasCanceled = ct.IsCancellationRequested;
+        ct.ThrowIfCancellationRequested();
+        Calls.Add($"delete:{sendId}");
+        LastDeleteId = sendId;
+        var failure = DeleteFailures.GetValueOrDefault(sendId) ?? DeleteThrows;
+        return failure is null ? Task.CompletedTask : Task.FromException(failure);
+    }
 
     public Task<SendResponseDto> RemoveSendPasswordAsync(string sendId, CancellationToken ct = default)
     { Calls.Add("remove-password"); LastRemovePasswordId = sendId; return Task.FromResult(RemovePasswordResult); }

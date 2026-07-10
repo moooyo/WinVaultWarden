@@ -55,10 +55,13 @@ public class SendContractTests
         // Compile-time assertion that the interface members exist with the contract signatures.
         Assert.Contains(typeof(ISendService).GetMethod("GetSendsAsync")!.ReturnType.Name, "Task`1");
         Assert.NotNull(typeof(ISendWriteService).GetMethod("SaveTextSendAsync"));
-        Assert.NotNull(typeof(ISendWriteService).GetMethod("SaveFileSendAsync"));
+        Assert.NotNull(typeof(ISendWriteService).GetMethod("CreateFileSendAsync"));
+        Assert.NotNull(typeof(ISendWriteService).GetMethod("ReplaceFileSendAsync"));
         Assert.NotNull(typeof(ISendWriteService).GetMethod("UpdateFileSendMetadataAsync"));
         Assert.NotNull(typeof(ISendWriteService).GetMethod("DeleteSendAsync"));
-        Assert.NotNull(typeof(ISendWriteService).GetMethod("RemovePasswordAsync"));
+        // Task 12：byte[] 适配器 SaveFileSendAsync 与公共 RemovePasswordAsync 入口已删除,不得复活。
+        Assert.Null(typeof(ISendWriteService).GetMethod("SaveFileSendAsync"));
+        Assert.Null(typeof(ISendWriteService).GetMethod("RemovePasswordAsync"));
         Assert.NotNull(typeof(ISendAccessService).GetMethod("AccessAsync"));
         Assert.NotNull(typeof(ISendAccessService).GetMethod("DownloadFileAsync"));
     }

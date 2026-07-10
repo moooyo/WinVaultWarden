@@ -1,6 +1,8 @@
+using System.Buffers;
 using System.Security.Cryptography;
 using System.Text;
 using Core.Enums;
+using Core.Models;
 
 namespace Crypto;
 
@@ -61,6 +63,137 @@ public sealed class SendCryptoService
     // 解析 EncArrayBuffer:byte0(=2),iv=[1..17],mac=[17..49],ct=[49..]。
     public byte[] DecryptBuffer(byte[] buffer, SymmetricCryptoKey cryptoKey)
         => _crypto.Decrypt(EncArrayBuffer.Unpack(buffer), cryptoKey);
+
+    // 两遍式常量内存流加密,产出与 EncryptToBuffer 逐字节一致的 EncArrayBuffer,但绝不把明文/密文整份载入内存。
+    // 布局 = [ (byte)2, iv(16), mac(32), ct ],mac = HMAC-SHA256(macKey, iv‖ct),与 CryptoService.Encrypt/Decrypt 一致。
+    // 因 MAC 位于密文之前,而计算 MAC 需读完全部密文,故必须两遍:
+    //   第一遍(ComputeFileMacAsync):重开源、以固定 iv/密钥做 AES-CBC 加密并把密文喂给 IncrementalHash,只得到 MAC;
+    //   第二遍(WriteAsync 委托):重开源、复用【同一】iv/密钥,把 [2, iv, mac, ct] 直接写进目标流。
+    // AES-CBC + PKCS7 在相同 iv/密钥/明文下确定,两遍密文必然一致,故第一遍算出的 MAC 可鉴别第二遍写出的密文。
+    // 返回的 Length 是加密后精确字节数,供上传方设置 Content-Length 与服务端长度比对。
+    public async Task<StreamUploadContent> PrepareFileUploadAsync(
+        SendFileSource source,
+        SymmetricCryptoKey cryptoKey,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(cryptoKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(source.FileName);
+        ArgumentNullException.ThrowIfNull(source.OpenReadAsync);
+        SendFileSource.ValidateLength(source.Length);
+        if (cryptoKey.MacKey is null)
+            throw new CryptographicException("Send file encryption requires a MAC key.");
+
+        var iv = RandomNumberGenerator.GetBytes(16);
+        var mac = await ComputeFileMacAsync(source, cryptoKey, iv, ct).ConfigureAwait(false);
+        // 1(header)+16(iv)+32(mac)+PKCS7 密文长度(明文长度向上取整到下一个 16 字节块)。
+        var encryptedLength = checked(49L + ((source.Length / 16L) + 1L) * 16L);
+
+        return new StreamUploadContent(
+            encryptedLength,
+            async (destination, writeCt) =>
+            {
+                await destination.WriteAsync(
+                    new[] { (byte)EncryptionType.AesCbc256_HmacSha256_B64 }, writeCt).ConfigureAwait(false);
+                await destination.WriteAsync(iv, writeCt).ConfigureAwait(false);
+                await destination.WriteAsync(mac, writeCt).ConfigureAwait(false);
+                await using var plaintext = await source.OpenReadAsync(writeCt).ConfigureAwait(false);
+                using var aes = Aes.Create();
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+                aes.Key = cryptoKey.EncKey;
+                aes.IV = iv;
+                await using var encrypting = new CryptoStream(
+                    destination, aes.CreateEncryptor(), CryptoStreamMode.Write, leaveOpen: true);
+                await CopyExactlyAsync(plaintext, encrypting, source.Length, writeCt).ConfigureAwait(false);
+                await encrypting.FlushFinalBlockAsync(writeCt).ConfigureAwait(false);
+            });
+    }
+
+    // 第一遍:重开源,以固定 iv/密钥做 AES-CBC 加密,把 iv 与流式密文喂进 HMAC,得到 mac。绝不缓存密文。
+    private static async Task<byte[]> ComputeFileMacAsync(
+        SendFileSource source,
+        SymmetricCryptoKey key,
+        byte[] iv,
+        CancellationToken ct)
+    {
+        using var hash = IncrementalHash.CreateHMAC(HashAlgorithmName.SHA256, key.MacKey!);
+        hash.AppendData(iv);
+        await using var plaintext = await source.OpenReadAsync(ct).ConfigureAwait(false);
+        using var aes = Aes.Create();
+        aes.Mode = CipherMode.CBC;
+        aes.Padding = PaddingMode.PKCS7;
+        aes.Key = key.EncKey;
+        aes.IV = iv;
+        await using var sink = new IncrementalHashWriteStream(hash);
+        await using var encrypting = new CryptoStream(
+            sink, aes.CreateEncryptor(), CryptoStreamMode.Write, leaveOpen: true);
+        await CopyExactlyAsync(plaintext, encrypting, source.Length, ct).ConfigureAwait(false);
+        await encrypting.FlushFinalBlockAsync(ct).ConfigureAwait(false);
+        return hash.GetHashAndReset();
+    }
+
+    // 精确拷贝 expectedLength 字节:多读到(源在选择后变长)或读不满(变短)都抛 InvalidDataException,
+    // 保证两遍读到的内容一致,且服务端长度比对不会失败。使用租借缓冲,归还前清零,常量内存。
+    private static async Task CopyExactlyAsync(
+        Stream source,
+        Stream destination,
+        long expectedLength,
+        CancellationToken ct)
+    {
+        var buffer = ArrayPool<byte>.Shared.Rent(81_920);
+        long total = 0;
+        try
+        {
+            while (true)
+            {
+                var read = await source.ReadAsync(buffer, ct).ConfigureAwait(false);
+                if (read == 0)
+                    break;
+                total = checked(total + read);
+                if (total > expectedLength)
+                    throw new InvalidDataException("Send file grew after selection.");
+                await destination.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+            }
+            if (total != expectedLength)
+                throw new InvalidDataException("Send file length changed after selection.");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(buffer);
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    // 只写、把写入内容转发给 IncrementalHash 的适配流:让 CryptoStream 的密文直接进入 HMAC,无需中间缓冲。
+    private sealed class IncrementalHashWriteStream(IncrementalHash hash) : Stream
+    {
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            hash.AppendData(buffer, offset, count);
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
+        {
+            ct.ThrowIfCancellationRequested();
+            hash.AppendData(buffer.Span);
+            return ValueTask.CompletedTask;
+        }
+
+        public override void Flush() { }
+        public override Task FlushAsync(CancellationToken ct) => Task.CompletedTask;
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+    }
 
     // 密码证明 = base64( PBKDF2-SHA256(pw, salt=seed, iter=100000, 32B) )。发往服务端,非明文。
     public string ComputePasswordProof(string password, byte[] seed)

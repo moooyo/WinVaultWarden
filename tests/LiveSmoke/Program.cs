@@ -502,7 +502,15 @@ try
         HideEmail = false,
         PasswordChange = new SendPasswordChange.Keep(),
     };
-    await sendWriteService.SaveFileSendAsync(fileDraft, filePayload);
+    var fileSource = new SendFileSource(
+        fileDraft.FileName!,
+        filePayload.LongLength,
+        _ => ValueTask.FromResult<Stream>(new MemoryStream(filePayload, writable: false)));
+    var fileResult = await sendWriteService.CreateFileSendAsync(fileDraft, fileSource);
+    Step(
+        "send: file Send create returned ids",
+        !string.IsNullOrWhiteSpace(fileResult.SendId) && !string.IsNullOrWhiteSpace(fileResult.AccessId),
+        fileResult.SendId);
 
     var fileSend = (await sendService.GetSendsAsync()).FirstOrDefault(s => s.Name == fileSendName);
     Step("send: file create + list shows it", fileSend is not null, fileSend?.Id);

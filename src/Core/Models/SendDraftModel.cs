@@ -22,4 +22,23 @@ public sealed class SendDraftModel
     public bool Disabled { get; init; }
     public bool HideEmail { get; init; }
     public SendPasswordChange PasswordChange { get; init; } = new SendPasswordChange.Keep();
+
+    // 复制本草稿并替换 Id(替换语义:以 Id=null 让写入层把"新件"当作创建,同时保留其余字段与原 wrapped seed)。
+    public SendDraftModel WithId(string? id) => new()
+    {
+        Id = id,
+        Key = Key,
+        Type = Type,
+        Name = Name,
+        Notes = Notes,
+        TextContent = TextContent,
+        TextHidden = TextHidden,
+        FileName = FileName,
+        MaxAccessCount = MaxAccessCount,
+        ExpirationDate = ExpirationDate,
+        DeletionDate = DeletionDate,
+        Disabled = Disabled,
+        HideEmail = HideEmail,
+        PasswordChange = PasswordChange,
+    };
 }

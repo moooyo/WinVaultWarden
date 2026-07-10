@@ -70,7 +70,7 @@ public class RealSendUiServiceTests
     }
 
     [Fact]
-    public async Task CreateSendAsync_FileDraft_CallsSaveFileWithBytes()
+    public async Task CreateSendAsync_FileDraft_CreatesWithReopenableSource()
     {
         var write = new FakeSendWriteService();
         var svc = new SendUiService(new FakeSendService(), write, new FakeSendAccessService());
@@ -82,9 +82,22 @@ public class RealSendUiServiceTests
 
         await svc.CreateSendAsync(draft, bytes, CancellationToken.None);
 
-        Assert.Equal(CoreSendType.File, write.LastFileDraft!.Type);
-        Assert.Equal("合同.zip", write.LastFileDraft.FileName);
-        Assert.Equal(bytes, write.LastFileBytes);
+        Assert.Equal(CoreSendType.File, write.LastCreateDraft!.Type);
+        Assert.Equal("合同.zip", write.LastCreateDraft.FileName);
+        var source = write.LastCreateSource!;
+        Assert.Equal("合同.zip", source.FileName);
+        Assert.Equal(bytes.LongLength, source.Length);
+        // 主契约要求可重开源：连续两次打开都得到相同内容。
+        Assert.Equal(bytes, await ReadAll(source));
+        Assert.Equal(bytes, await ReadAll(source));
+    }
+
+    private static async Task<byte[]> ReadAll(Core.Models.SendFileSource source)
+    {
+        await using var stream = await source.OpenReadAsync(CancellationToken.None);
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer);
+        return buffer.ToArray();
     }
 
     [Fact]
@@ -218,10 +231,37 @@ public class RealSendUiServiceTests
 
         await svc.UpdateSendAsync("s-5", draft, fileBytes: null, CancellationToken.None);
 
-        var saved = write.LastFileDraft!;
+        var saved = write.LastMetadataDraft!;
         Assert.Equal("s-5", saved.Id);
         Assert.Equal("2.origwrappedkey==", saved.Key);
         Assert.Equal(CoreSendType.File, saved.Type);
+        // 未重选文件（fileBytes==null）绝不触发创建/替换，只更新元数据。
+        Assert.Null(write.LastCreateSource);
+        Assert.Null(write.LastReplaceSource);
+    }
+
+    [Fact]
+    public async Task UpdateSendAsync_FileDraft_WithNewBytes_ReplacesExistingViaStream()
+    {
+        // 编辑既有文件 Send 且重选了文件字节 → 走 ReplaceFileSendAsync（建+传新件再删旧件），
+        // App 边界把字节包装成可重开源，绝不把 null 当零字节，也不再走 byte[] 上传。
+        var write = new FakeSendWriteService();
+        var svc = new SendUiService(new FakeSendService(), write, new FakeSendAccessService());
+        var draft = SendEditorDraft.CreateDefault(AppSendType.File);
+        draft.Name = "报告";
+        draft.FileName = "报告-v2.pdf";
+        draft.WrappedKey = "2.origwrappedkey==";
+        draft.DeletionDateLabel = "7 天";
+        var bytes = new byte[] { 9, 8, 7, 6 };
+
+        await svc.UpdateSendAsync("s-5", draft, bytes, CancellationToken.None);
+
+        Assert.Equal("s-5", write.LastReplaceId);
+        Assert.Equal(CoreSendType.File, write.LastReplaceDraft!.Type);
+        Assert.Equal("2.origwrappedkey==", write.LastReplaceDraft.Key);
+        Assert.Equal("报告-v2.pdf", write.LastReplaceSource!.FileName);
+        Assert.Equal(bytes.LongLength, write.LastReplaceSource.Length);
+        Assert.Null(write.LastMetadataDraft);
     }
 
     private sealed class FakeSendService : ISendService
@@ -235,20 +275,24 @@ public class RealSendUiServiceTests
     private sealed class FakeSendWriteService : ISendWriteService
     {
         public SendDraftModel? LastTextDraft { get; private set; }
-        public SendDraftModel? LastFileDraft { get; private set; }
-        public byte[]? LastFileBytes { get; private set; }
+        public SendDraftModel? LastCreateDraft { get; private set; }
+        public SendFileSource? LastCreateSource { get; private set; }
+        public SendDraftModel? LastMetadataDraft { get; private set; }
+        public string? LastReplaceId { get; private set; }
+        public SendDraftModel? LastReplaceDraft { get; private set; }
+        public SendFileSource? LastReplaceSource { get; private set; }
         public string? LastDeletedId { get; private set; }
 
         public Task SaveTextSendAsync(SendDraftModel draft, CancellationToken ct = default)
         { LastTextDraft = draft; return Task.CompletedTask; }
-        public Task SaveFileSendAsync(SendDraftModel draft, byte[] fileBytes, CancellationToken ct = default)
-        { LastFileDraft = draft; LastFileBytes = fileBytes; return Task.CompletedTask; }
+        public Task<SendFileWriteResult> CreateFileSendAsync(SendDraftModel draft, SendFileSource file, CancellationToken ct = default)
+        { LastCreateDraft = draft; LastCreateSource = file; return Task.FromResult(new SendFileWriteResult("new", "acc-new", false)); }
         public Task UpdateFileSendMetadataAsync(SendDraftModel draft, CancellationToken ct = default)
-        { LastFileDraft = draft; return Task.CompletedTask; }
+        { LastMetadataDraft = draft; return Task.CompletedTask; }
+        public Task<SendFileWriteResult> ReplaceFileSendAsync(string existingSendId, SendDraftModel draft, SendFileSource file, CancellationToken ct = default)
+        { LastReplaceId = existingSendId; LastReplaceDraft = draft; LastReplaceSource = file; return Task.FromResult(new SendFileWriteResult("new", "acc-new", true)); }
         public Task DeleteSendAsync(string sendId, CancellationToken ct = default)
         { LastDeletedId = sendId; return Task.CompletedTask; }
-        public Task<Send> RemovePasswordAsync(string sendId, CancellationToken ct = default)
-        => Task.FromResult(new Send { Id = sendId, AccessId = "acc", DeletionDate = DateTimeOffset.UtcNow });
     }
 
     private sealed class FakeSendAccessService : ISendAccessService
