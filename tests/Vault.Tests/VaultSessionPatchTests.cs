@@ -28,7 +28,8 @@ public class VaultSessionPatchTests
             new AccountInfo("test-account", "me@example.com", new ServerOrigin("https://vault.example"), "M", "PBKDF2 600000"),
             folders,
             ciphers,
-            0));
+            SkippedCipherCount: 0,
+            SkippedFolderCount: 0));
         return session;
     }
 

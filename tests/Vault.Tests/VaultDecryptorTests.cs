@@ -151,9 +151,9 @@ public class VaultDecryptorTests
     }
 
     [Fact]
-    public void Decrypt_BadFolder_IsSkipped_GoodFolderAndCipherRemain()
+    public void Decrypt_BadFolder_IsSkipped_GoodFolderAndCiphersRemain()
     {
-        var wrongKey = new SymmetricCryptoKey(RandomNumberGenerator.GetBytes(64));
+        using var wrongKey = new SymmetricCryptoKey(RandomNumberGenerator.GetBytes(64));
         var folders = new[]
         {
             new FolderDto("f-bad", Enc("cannot decrypt", wrongKey), DateTimeOffset.Parse("2026-06-01T00:00:00Z")),
@@ -215,7 +215,7 @@ public class VaultDecryptorTests
     [Fact]
     public void Decrypt_BadCipher_IsSkippedGoodRemains()
     {
-        var wrongKey = new SymmetricCryptoKey(RandomNumberGenerator.GetBytes(64));
+        using var wrongKey = new SymmetricCryptoKey(RandomNumberGenerator.GetBytes(64));
         var bad = new CipherDto("c-bad", (int)CipherType.Login, Enc("Bad", wrongKey), null, null, null, null, false, 0,
             new LoginDto(Enc("x", wrongKey), null, null, null), null, null, null, null, null, null, null, null);
 

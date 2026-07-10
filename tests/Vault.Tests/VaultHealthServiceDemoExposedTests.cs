@@ -32,7 +32,7 @@ public class VaultHealthServiceDemoExposedTests
                 Id = "b", Type = Core.Enums.CipherType.Login, Name = "Strong",
                 Login = new CipherLogin("u", "Qx7$mZ2!vKp9", null, System.Array.Empty<CipherLoginUri>()),
             },
-        }, 0));
+        }, SkippedCipherCount: 0, SkippedFolderCount: 0));
         session.MarkDemo();
         var eval = new PasswordStrengthEvaluator(new Omnimatch(new DictionaryMatcher(FrequencyDictionaries.Load())));
         var svc = new VaultHealthService(new VaultService(session), eval, new ThrowingPwned(), session);

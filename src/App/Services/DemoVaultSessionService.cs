@@ -80,7 +80,8 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             new AccountInfo("demo-account", "demo@winvaultwarden.local", new ServerOrigin("http://localhost"), "D", "Demo"),
             [folder, folderWork, folderPersonal, folderFinance],
             BuildCiphers(folder.Id, folderWork.Id, folderPersonal.Id, folderFinance.Id),
-            0);
+            SkippedCipherCount: 0,
+            SkippedFolderCount: 0);
     }
 
     private static IReadOnlyList<Cipher> BuildCiphers(string folderId, string workFolderId, string personalFolderId, string financeFolderId) =>

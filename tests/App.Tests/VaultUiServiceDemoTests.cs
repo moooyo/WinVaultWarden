@@ -18,7 +18,12 @@ public class VaultUiServiceDemoTests
     {
         var session = new VaultSession();
         session.SetUnlockedKey(new SymmetricCryptoKey(Enumerable.Range(1, 64).Select(i => (byte)i).ToArray()));
-        session.SetSnapshot(new DecryptedVault(AccountInfo.Empty, System.Array.Empty<Folder>(), ciphers, 0));
+        session.SetSnapshot(new DecryptedVault(
+            AccountInfo.Empty,
+            System.Array.Empty<Folder>(),
+            ciphers,
+            SkippedCipherCount: 0,
+            SkippedFolderCount: 0));
         session.MarkDemo();
         return session;
     }

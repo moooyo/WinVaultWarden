@@ -12,7 +12,7 @@ public sealed record DecryptedVault(
     IReadOnlyList<Folder> Folders,
     IReadOnlyList<Cipher> Ciphers,
     int SkippedCipherCount,
-    int SkippedFolderCount = 0);
+    int SkippedFolderCount);
 
 public sealed class VaultDecryptor
 {
@@ -241,7 +241,7 @@ public sealed class VaultDecryptor
     }
 
     private static bool IsCipherDecryptException(Exception ex) =>
-        ex is CryptographicException or FormatException or ArgumentException;
+        ex is CryptographicException or FormatException or ArgumentException or InvalidOperationException;
 
     private static bool IsFolderDecryptException(Exception ex) =>
         ex is CryptographicException or FormatException or ArgumentException;

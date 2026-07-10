@@ -59,7 +59,8 @@ public class AttachmentServiceTests
             new AccountInfo("test-account", "me@example.com", new ServerOrigin("https://vault.example"), "M", string.Empty),
             Array.Empty<Folder>(),
             new[] { cipher },
-            0);
+            SkippedCipherCount: 0,
+            SkippedFolderCount: 0);
 
     private static Cipher CipherWithAttachments(string id, params CipherAttachment[] attachments)
         => new()

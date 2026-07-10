@@ -10,7 +10,7 @@ public interface IVaultSnapshot
     IReadOnlyList<DeviceInfo> Devices { get; }
     AccountInfo Account { get; }
     int SkippedCipherCount { get; }
+    int SkippedFolderCount { get; }
     bool DataStale { get; }
     long Generation { get; }
-    int SkippedFolderCount { get; }
 }

@@ -24,7 +24,8 @@ public class VaultSessionTests
             new AccountInfo("test-account", "me@example.com", new ServerOrigin("https://vault.example"), "M", "PBKDF2 600000"),
             [folder],
             [cipher],
-            0));
+            SkippedCipherCount: 0,
+            SkippedFolderCount: 0));
         session.SetDevices([device]);
 
         Assert.Equal(VaultState.Unlocked, session.State);
@@ -100,7 +101,7 @@ public class VaultSessionTests
         session.SetUnlockedKey(key);
         session.Lock(); // 模拟同步在途期间被并发锁定
 
-        session.SetSnapshot(new DecryptedVault(account, [], ciphers, SkippedCipherCount: 2));
+        session.SetSnapshot(new DecryptedVault(account, [], ciphers, SkippedCipherCount: 2, SkippedFolderCount: 0));
 
         Assert.Equal(Core.Session.VaultState.Locked, session.State);
         Assert.Empty(session.Ciphers);          // 明文未回灌
@@ -134,15 +135,15 @@ public class VaultSessionTests
         var account = new AccountInfo("test-account", "me@example.com", new ServerOrigin("https://vault.example"), "M", "PBKDF2 600000");
 
         session.SetUnlockedKey(key);
-        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 0), dataStale: true);
+        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 0, SkippedFolderCount: 0), dataStale: true);
         Assert.True(session.DataStale);
 
         session.SetUnlockedKey(key);
-        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 0), dataStale: false);
+        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 0, SkippedFolderCount: 0), dataStale: false);
         Assert.False(session.DataStale);
 
         session.SetUnlockedKey(key);
-        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 0), dataStale: true);
+        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 0, SkippedFolderCount: 0), dataStale: true);
         session.Lock();
         Assert.False(session.DataStale);
     }
