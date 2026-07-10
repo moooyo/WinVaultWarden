@@ -55,6 +55,10 @@ public static class BitwardenJsonCodec
         var export = JsonSerializer.Deserialize(json, BwJsonContext.Default.BwExport)
             ?? throw new JsonException("Bitwarden export JSON 为空或无法解析。");
 
+        // 必须在构造任何 Folder/Cipher 领域对象之前拒绝，避免把加密块当明文误解析。
+        if (export.Encrypted)
+            throw new EncryptedBitwardenJsonNotSupportedException();
+
         var folders = export.Folders.Select(f => new Folder
         {
             Id = f.Id ?? string.Empty,
@@ -108,11 +112,47 @@ public static class BitwardenJsonCodec
 
     private static BwLogin ToBw(CipherLogin l) => new(
         l.Username, l.Password, l.Totp,
-        l.Uris.Count == 0 ? null : l.Uris.Select(u => new BwUri(u.Uri, u.Match)).ToArray());
+        l.Uris.Count == 0 ? null : l.Uris.Select(u => new BwUri(u.Uri, u.Match)).ToArray(),
+        l.Fido2Credentials.Count == 0 ? null : l.Fido2Credentials.Select(ToBw).ToArray());
 
     private static CipherLogin FromBw(BwLogin l) => new(
         l.Username, l.Password, l.Totp,
-        l.Uris is null ? Array.Empty<CipherLoginUri>() : l.Uris.Select(u => new CipherLoginUri(u.Uri, u.Match)).ToArray());
+        l.Uris is null ? Array.Empty<CipherLoginUri>() : l.Uris.Select(u => new CipherLoginUri(u.Uri, u.Match)).ToArray())
+    {
+        Fido2Credentials = l.Fido2Credentials is null
+            ? Array.Empty<CipherFido2Credential>()
+            : l.Fido2Credentials.Select(FromBw).ToArray(),
+    };
+
+    private static BwFido2Credential ToBw(CipherFido2Credential c) => new(
+        c.CredentialId ?? string.Empty,
+        c.KeyType ?? string.Empty,
+        c.KeyAlgorithm ?? string.Empty,
+        c.KeyCurve ?? string.Empty,
+        c.KeyValue ?? string.Empty,
+        c.RpId ?? string.Empty,
+        c.UserHandle,
+        c.UserName,
+        (c.Counter ?? 0).ToString(CultureInfo.InvariantCulture),
+        c.RpName,
+        c.UserDisplayName,
+        c.Discoverable ? "true" : "false",
+        c.CreationDate);
+
+    private static CipherFido2Credential FromBw(BwFido2Credential c) => new(
+        c.CredentialId,
+        c.KeyType,
+        c.KeyAlgorithm,
+        c.KeyCurve,
+        c.KeyValue,
+        c.RpId,
+        c.UserHandle,
+        c.UserName,
+        long.TryParse(c.Counter, NumberStyles.None, CultureInfo.InvariantCulture, out var counter) ? counter : null,
+        c.RpName,
+        c.UserDisplayName,
+        string.Equals(c.Discoverable, "true", StringComparison.OrdinalIgnoreCase),
+        c.CreationDate);
 
     private static BwCard ToBw(CipherCard c) => new(c.CardholderName, c.Number, c.ExpMonth, c.ExpYear, c.Code, c.Brand);
 

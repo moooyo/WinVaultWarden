@@ -61,6 +61,100 @@ public class BitwardenJsonCodecTests
     }
 
     [Fact]
+    public void RoundTrip_LoginWithFido2Credentials_PreservesEveryField()
+    {
+        var created = DateTimeOffset.Parse("2026-06-24T00:00:00Z");
+        var credential = new CipherFido2Credential(
+            "credential-id",
+            "public-key",
+            "ECDSA",
+            "P-256",
+            "private-key-pkcs8",
+            "example.com",
+            "user-handle",
+            "user@example.com",
+            42,
+            "Example",
+            "Example User",
+            true,
+            created);
+        var cipher = new Cipher
+        {
+            Id = "c1",
+            Type = CipherType.Login,
+            Name = "Example",
+            Login = new CipherLogin("user@example.com", "password", null, [])
+            {
+                Fido2Credentials = [credential],
+            },
+        };
+
+        var parsed = BitwardenJsonCodec.Parse(
+            BitwardenJsonCodec.Serialize([cipher], []));
+        var actual = Assert.Single(
+            Assert.Single(parsed.Ciphers).Login!.Fido2Credentials);
+
+        Assert.Equal(credential, actual);
+    }
+
+    [Fact]
+    public void Serialize_Fido2Credential_WritesWireFieldsAsSpecified()
+    {
+        var created = DateTimeOffset.Parse("2026-06-24T00:00:00Z");
+        var credential = new CipherFido2Credential(
+            "credential-id",
+            "public-key",
+            "ECDSA",
+            "P-256",
+            "private-key-pkcs8",
+            "example.com",
+            "user-handle",
+            "user@example.com",
+            42,
+            "Example",
+            "Example User",
+            true,
+            created);
+        var cipher = new Cipher
+        {
+            Id = "c1",
+            Type = CipherType.Login,
+            Name = "Example",
+            Login = new CipherLogin("user@example.com", "password", null, [])
+            {
+                Fido2Credentials = [credential],
+            },
+        };
+
+        var json = BitwardenJsonCodec.Serialize([cipher], []);
+
+        // counter 与 discoverable 在 wire 上是字符串（分别为十进制数字与 "true"/"false"），
+        // creationDate 精确保留；私钥（keyValue）以明文写入未加密导出——这是用户显式选择的备份内容。
+        Assert.Contains("\"credentialId\":\"credential-id\"", json);
+        Assert.Contains("\"keyValue\":\"private-key-pkcs8\"", json);
+        Assert.Contains("\"rpId\":\"example.com\"", json);
+        Assert.Contains("\"userHandle\":\"user-handle\"", json);
+        Assert.Contains("\"userName\":\"user@example.com\"", json);
+        Assert.Contains("\"counter\":\"42\"", json);
+        Assert.Contains("\"rpName\":\"Example\"", json);
+        Assert.Contains("\"userDisplayName\":\"Example User\"", json);
+        Assert.Contains("\"discoverable\":\"true\"", json);
+        Assert.Contains("\"creationDate\":\"2026-06-24T00:00:00", json);
+    }
+
+    [Fact]
+    public void Parse_EncryptedTrue_ThrowsActionableException()
+    {
+        var ex = Assert.Throws<EncryptedBitwardenJsonNotSupportedException>(() =>
+            BitwardenJsonCodec.Parse(
+                "{\"encrypted\":true,\"folders\":[],\"items\":[]}"));
+
+        Assert.Equal(
+            "不支持加密的 Bitwarden JSON；请先导出未加密 JSON 后重试。",
+            ex.Message);
+    }
+
+    [Fact]
     public void Parse_MalformedJson_Throws() =>
         Assert.ThrowsAny<Exception>(() => BitwardenJsonCodec.Parse("{ not json"));
 

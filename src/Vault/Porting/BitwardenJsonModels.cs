@@ -28,9 +28,32 @@ public sealed record BwItem(
     IReadOnlyList<BwField>? Fields,
     IReadOnlyList<BwPasswordHistory>? PasswordHistory);
 
-public sealed record BwLogin(string? Username, string? Password, string? Totp, IReadOnlyList<BwUri>? Uris);
+public sealed record BwLogin(
+    string? Username,
+    string? Password,
+    string? Totp,
+    IReadOnlyList<BwUri>? Uris,
+    IReadOnlyList<BwFido2Credential>? Fido2Credentials = null);
 
 public sealed record BwUri(string? Uri, int? Match);
+
+// FIDO2/Passkey 凭据的 wire DTO，字段名与大小写、可空性均须与 Bitwarden 未加密导出保持一致：
+// counter 是十进制数字字符串、discoverable 是 "true"/"false" 小写字符串，creationDate 精确保留。
+// keyValue 是明文私钥（PKCS8）——导出是用户显式选择的未加密备份内容，不得记录到日志。
+public sealed record BwFido2Credential(
+    string CredentialId,
+    string KeyType,
+    string KeyAlgorithm,
+    string KeyCurve,
+    string KeyValue,
+    string RpId,
+    string? UserHandle,
+    string? UserName,
+    string Counter,
+    string? RpName,
+    string? UserDisplayName,
+    string Discoverable,
+    DateTimeOffset? CreationDate);
 
 public sealed record BwCard(
     string? CardholderName,

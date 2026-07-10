@@ -101,6 +101,92 @@ public class VaultImportServiceTests
         Assert.NotNull(api.Last); // 写已成功(异常仅来自写后刷新)
     }
 
+    private sealed record ImportFixture(
+        VaultImportService Service,
+        CapturingImportApi Api,
+        FakeSync Sync);
+
+    private static ImportFixture NewImportFixture()
+    {
+        var api = new CapturingImportApi();
+        var sync = new FakeSync();
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession(
+            "account-a",
+            "a@example.com",
+            new Core.Models.ServerOrigin("https://a.example"));
+        var key = new SymmetricCryptoKey(
+            Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
+        session.TryCommit(lease, () =>
+        {
+            session.SetUnlockedKey(key);
+            session.SetTokens("access-a", "refresh-a");
+        });
+        var service = new VaultImportService(
+            FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(api),
+            new CipherEncryptor(new CryptoService()),
+            sync,
+            session);
+        return new ImportFixture(service, api, sync);
+    }
+
+    [Fact]
+    public async Task ImportAsync_EncryptedTrue_MakesNoApiOrSyncCall()
+    {
+        var fixture = NewImportFixture();
+
+        await Assert.ThrowsAsync<Porting.EncryptedBitwardenJsonNotSupportedException>(() =>
+            fixture.Service.ImportAsync(
+                ImportFormat.Json,
+                "{\"encrypted\":true,\"folders\":[],\"items\":[]}",
+                TestContext.Current.CancellationToken));
+
+        Assert.Null(fixture.Api.Last);
+        Assert.Equal(0, fixture.Sync.Calls);
+    }
+
+    [Fact]
+    public async Task ImportAsync_Fido2Credentials_AreEncryptedIntoCipherRequest()
+    {
+        var fixture = NewImportFixture();
+        const string json =
+            """
+            {
+              "encrypted": false,
+              "folders": [],
+              "items": [{
+                "type": 1,
+                "name": "Example",
+                "login": {
+                  "username": "user@example.com",
+                  "uris": [],
+                  "fido2Credentials": [{
+                    "credentialId": "credential-id",
+                    "keyType": "public-key",
+                    "keyAlgorithm": "ECDSA",
+                    "keyCurve": "P-256",
+                    "keyValue": "private-key-pkcs8",
+                    "rpId": "example.com",
+                    "counter": "42",
+                    "discoverable": "true"
+                  }]
+                }
+              }]
+            }
+            """;
+
+        await fixture.Service.ImportAsync(
+            ImportFormat.Json, json, TestContext.Current.CancellationToken);
+
+        var request = Assert.Single(
+            Assert.Single(fixture.Api.Last!.Ciphers)
+                .Login!.Fido2Credentials!);
+        Assert.StartsWith("2.", request.CredentialId);
+        Assert.StartsWith("2.", request.KeyValue);
+        Assert.StartsWith("2.", request.Counter);
+        Assert.StartsWith("2.", request.Discoverable);
+    }
+
     [Fact]
     public void Parse_MalformedJson_ReturnsError() =>
         Assert.NotNull(new VaultImportService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(new CapturingImportApi()), new CipherEncryptor(new CryptoService()), new FakeSync(), new VaultSession())
