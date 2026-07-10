@@ -22,9 +22,7 @@ public class AuthServicePinTests
     {
         var fixture = CreatePinFixture();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(
-            "https://vault.example",
-            Email,
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("https://vault.example"), 1, Email,
             "device-id",
             "stored-refresh",
             fixture.ProtectedUserKey,
@@ -60,9 +58,7 @@ public class AuthServicePinTests
     {
         var fixture = CreatePinFixture();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(
-            "https://vault.example",
-            Email,
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("https://vault.example"), 1, Email,
             "device-id",
             "stored-refresh",
             fixture.ProtectedUserKey,
@@ -94,9 +90,7 @@ public class AuthServicePinTests
     {
         var fixture = CreatePinFixture();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(
-            "https://vault.example",
-            Email,
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("https://vault.example"), 1, Email,
             "device-id",
             "stored-refresh",
             fixture.ProtectedUserKey,
@@ -125,9 +119,7 @@ public class AuthServicePinTests
     public async Task UnlockWithPinAsync_NoPinSet_ReturnsFailure()
     {
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(
-            "https://vault.example",
-            Email,
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("https://vault.example"), 1, Email,
             "device-id",
             "stored-refresh",
             "2.unrelated",

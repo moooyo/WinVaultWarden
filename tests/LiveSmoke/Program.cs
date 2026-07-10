@@ -48,7 +48,7 @@ ITokenRefresher? refresher = null;
 var clients = new VaultApiClientProvider(
     apiFactory,
     session,
-    (_, ct) => refresher!.TryRefreshAsync(ct));
+    (lease, ct) => refresher!.TryRefreshAsync(lease, ct));
 
 var decryptor = new VaultDecryptor(crypto);
 var cache = new VaultCacheService(new NullCacheStore(), decryptor, session);
@@ -1244,7 +1244,7 @@ BuildStack(string url)
     var ts = new MemoryTokenStore();
     var factory = new ApiClientFactory();
     ITokenRefresher? ref2 = null;
-    var localClients = new VaultApiClientProvider(factory, s, (_, ct2) => ref2!.TryRefreshAsync(ct2));
+    var localClients = new VaultApiClientProvider(factory, s, (lease, ct2) => ref2!.TryRefreshAsync(lease, ct2));
     var dec = new VaultDecryptor(c);
     var cache2 = new VaultCacheService(new NullCacheStore(), dec, s);
     var sync2 = new SyncService(localClients, dec, s, cache2);

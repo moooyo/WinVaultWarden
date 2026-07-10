@@ -32,9 +32,7 @@ public class AccountServiceTests
         var protectedUserKey = _crypto.Encrypt(userKey.FullKey, stretchedKey).ToString();
 
         var store = new MemoryTokenStore();
-        store.Save(new PersistedSession(
-            "https://vault.example",
-            Email,
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("https://vault.example"), 1, Email,
             "device-id",
             "refresh",
             protectedUserKey,
@@ -324,8 +322,7 @@ public class AccountServiceTests
         var protectedUserKey = recording.Encrypt(userKey.FullKey, stretched).ToString();
 
         var store = new MemoryTokenStore();
-        store.Save(new PersistedSession(
-            "https://vault.example", Email, "device-id", "refresh",
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("https://vault.example"), 1, Email, "device-id", "refresh",
             protectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
 
         var session = new VaultSession();
@@ -411,7 +408,7 @@ public sealed class FakeAuthService : IAuthService
     {
         LoggedOut = true;
         _store?.Clear();
-        _session?.Clear();
+        _session?.Logout();
         return Task.CompletedTask;
     }
 }

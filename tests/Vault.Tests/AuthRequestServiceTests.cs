@@ -28,9 +28,7 @@ public class AuthRequestServiceTests
     private MemoryTokenStore MakeTokenStore()
     {
         var store = new MemoryTokenStore();
-        store.Save(new PersistedSession(
-            "http://10.0.1.20:8080",
-            "test@example.com",
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, "test@example.com", new ServerOrigin("http://10.0.1.20:8080"), 1, "test@example.com",
             DeviceId,
             "rt-token",
             "2.xxx|yyy|zzz",

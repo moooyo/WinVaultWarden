@@ -205,6 +205,14 @@ public sealed class FakeTokenRefresher : Core.Services.ITokenRefresher
     public bool Result { get; init; } = true;
     public int CallCount { get; private set; }
 
+    public Task<bool> TryRefreshAsync(
+        Core.Session.VaultSessionLease lease,
+        CancellationToken ct = default)
+    {
+        CallCount++;
+        return Task.FromResult(Result);
+    }
+
     public Task<bool> TryRefreshAsync(CancellationToken ct = default)
     {
         CallCount++;

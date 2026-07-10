@@ -523,9 +523,6 @@ public sealed class VaultSession : IVaultSnapshot
         }
     }
 
-    [Obsolete("Task 7 removes this alias after all callers migrate to Logout.")]
-    public void Clear() => Logout();
-
     /// <summary>
     /// 唯一的 generation/stamp/CTS 变更点。必须在 _gate 内调用。取消旧 CTS 在赋新值之后执行,
     /// 确保"generation 已经推进"先于"旧 token 被观察到取消"对外可见,任何取消回调异常都不得

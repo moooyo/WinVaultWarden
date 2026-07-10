@@ -1,0 +1,198 @@
+using Api;
+using Api.Dtos;
+using Core.Abstractions;
+using Core.Enums;
+using Core.Models;
+using Core.Session;
+using Crypto;
+using Vault;
+using Xunit;
+
+namespace Vault.Tests;
+
+// Task 7:认证生命周期门禁——刷新/登出在 await 期间切账户的竞态,以及 Lock/Logout 的失效优先顺序。
+public class AuthLifecycleOrderingTests
+{
+    [Fact]
+    public async Task TryRefreshAsync_LogoutDuringAwait_DoesNotPersistRotatedToken()
+    {
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var response = new TaskCompletionSource<ConnectTokenResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var identity = new ControlledIdentityApiClient(async _ =>
+        {
+            entered.TrySetResult();
+            return await response.Task;
+        });
+        var session = SessionWithPersistedTokens(out var lease, out var store);
+        var refresher = new TokenRefreshService(
+            FakeVaultApiClientProvider.ForAnonymous<IIdentityApiClient>(identity),
+            session,
+            store);
+
+        var running = refresher.TryRefreshAsync(lease, CancellationToken.None);
+        await entered.Task;
+        session.Logout();
+        store.Clear();
+        response.SetResult(new ConnectTokenResult.Success(new TokenResponse(
+            "new-a",
+            "new-r",
+            3600,
+            "Bearer",
+            "api offline_access",
+            null,
+            null,
+            KdfType.Pbkdf2,
+            600_000)));
+
+        Assert.False(await running);
+        Assert.False(store.TryLoad(out _));
+        Assert.Null(session.AccessToken);
+    }
+
+    [Fact]
+    public async Task TryRefreshAsync_PersistedOriginMismatch_MakesNoRequest()
+    {
+        var identity = new ControlledIdentityApiClient(_ =>
+            throw new InvalidOperationException("must not call identity API"));
+        var session = SessionWithPersistedTokens(out var lease, out var store);
+        Assert.True(store.TryLoad(out var persisted));
+        store.Save(persisted with
+        {
+            Origin = new ServerOrigin("https://b.example"),
+        });
+        var refresher = new TokenRefreshService(
+            FakeVaultApiClientProvider.ForAnonymous<IIdentityApiClient>(identity),
+            session,
+            store);
+
+        var result = await refresher.TryRefreshAsync(
+            lease, CancellationToken.None);
+
+        Assert.False(result);
+        Assert.Equal(0, identity.ConnectCallCount);
+        Assert.Equal("old-access", session.AccessToken);
+    }
+
+    [Fact]
+    public async Task TryRefreshAsync_SwitchToB_DoesNotCommitAOrLockB()
+    {
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var response = new TaskCompletionSource<ConnectTokenResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var identity = new ControlledIdentityApiClient(async _ =>
+        {
+            entered.TrySetResult();
+            return await response.Task;
+        });
+        var session = SessionWithPersistedTokens(out var leaseA, out var store);
+        var refresher = new TokenRefreshService(
+            FakeVaultApiClientProvider.ForAnonymous<IIdentityApiClient>(identity),
+            session,
+            store);
+
+        var running = refresher.TryRefreshAsync(leaseA, CancellationToken.None);
+        await entered.Task;
+        var leaseB = session.BeginAccountSession(
+            "account-b",
+            "b@example.com",
+            new ServerOrigin("https://b.example"));
+        response.SetResult(new ConnectTokenResult.Error(
+            "invalid refresh token",
+            400,
+            "invalid_grant"));
+
+        Assert.False(await running);
+        Assert.True(session.IsCurrent(leaseB));
+        Assert.NotEqual(VaultState.Locked, session.State);
+    }
+
+    [Fact]
+    public async Task Logout_InvalidatesLeaseBeforeClearingStores()
+    {
+        var session = SessionWithPersistedTokens(out var lease, out var tokenStore);
+        var cacheStore = new FakeCacheStore();
+        var cache = CreateCache(cacheStore, session);
+        var observedCurrentDuringClear = true;
+        var order = new List<string>();
+        tokenStore.BeforeClear = () =>
+        {
+            observedCurrentDuringClear = session.IsCurrent(lease);
+            order.Add("token-clear");
+        };
+        cacheStore.BeforeClear = () => order.Add("cache-clear");
+        var service = CreateAuthServiceForLifecycle(session, tokenStore, cache);
+
+        await service.LogoutAsync();
+
+        Assert.False(observedCurrentDuringClear);
+        Assert.True(lease.CancellationToken.IsCancellationRequested);
+        Assert.Equal(["token-clear", "cache-clear"], order);
+    }
+
+    private sealed class RecordingTokenStore : ITokenStore
+    {
+        private PersistedSession? _persisted;
+        public Action? BeforeClear { get; set; }
+
+        public bool TryLoad(out PersistedSession session)
+        {
+            session = _persisted!;
+            return _persisted is not null;
+        }
+
+        public void Save(PersistedSession session) => _persisted = session;
+
+        public void Clear()
+        {
+            BeforeClear?.Invoke();
+            _persisted = null;
+        }
+    }
+
+    private static VaultSession SessionWithPersistedTokens(
+        out VaultSessionLease lease,
+        out RecordingTokenStore store)
+    {
+        var session = new VaultSession();
+        var origin = new ServerOrigin("https://a.example");
+        lease = session.BeginAccountSession("account-a", "a@example.com", origin);
+        session.TryCommit(lease, () =>
+            session.SetTokens("old-access", "old-refresh"));
+        store = new RecordingTokenStore();
+        store.Save(new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            lease.AccountId,
+            lease.Origin,
+            lease.Generation,
+            "a@example.com",
+            "device-a",
+            "old-refresh",
+            "2.protected",
+            KdfType.Pbkdf2,
+            600_000,
+            null,
+            null));
+        return session;
+    }
+
+    private static VaultCacheService CreateCache(
+        FakeCacheStore store,
+        VaultSession session) =>
+        new(store, new VaultDecryptor(new CryptoService()), session);
+
+    private static AuthService CreateAuthServiceForLifecycle(
+        VaultSession session,
+        ITokenStore tokenStore,
+        VaultCacheService cache) =>
+        new(
+            clients: null!,
+            crypto: new CryptoService(),
+            session: session,
+            tokenStore: tokenStore,
+            bootstrapper: null!,
+            cache: cache,
+            refresher: null!);
+}

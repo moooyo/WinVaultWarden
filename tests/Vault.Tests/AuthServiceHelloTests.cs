@@ -31,7 +31,7 @@ public class AuthServiceHelloTests
         var helloProtected = _crypto.Encrypt(fixture.UserKey.FullKey, helloKey).ToString();
 
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(Server, Email, "device-id", "stored-refresh",
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin(Server), 1, Email, "device-id", "stored-refresh",
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null)
         {
             HelloProtectedUserKey = helloProtected,
@@ -58,7 +58,7 @@ public class AuthServiceHelloTests
         using var goodKey = _crypto.DeriveKeyFromSecret(Enumerable.Repeat((byte)5, 256).ToArray());
         var helloProtected = _crypto.Encrypt(fixture.UserKey.FullKey, goodKey).ToString();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(Server, Email, "device-id", "stored-refresh",
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin(Server), 1, Email, "device-id", "stored-refresh",
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null)
         {
             HelloProtectedUserKey = helloProtected,
@@ -82,7 +82,7 @@ public class AuthServiceHelloTests
     {
         var fixture = CreateLoginFixture();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(Server, Email, "device-id", "r",
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin(Server), 1, Email, "device-id", "r",
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
         var session = new VaultSession();
         var service = CreateAuthService(new FakeHttpMessageHandler(), session, tokenStore,

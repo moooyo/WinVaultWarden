@@ -18,7 +18,7 @@ public class TokenRefreshIntegrationTests
         session.BeginAccountSession("me@example.com", "me@example.com", origin);
         session.SetTokens("old-access", "old-refresh");
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession("https://vault.example", "me@example.com", "device-id",
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, "me@example.com", new ServerOrigin("https://vault.example"), 1, "me@example.com", "device-id",
             "old-refresh", "2.protected", KdfType.Pbkdf2, 600_000, null, null));
 
         var handler = new FakeHttpMessageHandler();
@@ -34,7 +34,7 @@ public class TokenRefreshIntegrationTests
             () => session.AccessToken is { } token
                 ? new AccessTokenBinding("me@example.com", origin, session.Generation, token)
                 : null,
-            ct => refresher.TryRefreshAsync(ct))
+            ct => refresher.TryRefreshAsync(session.CaptureLease(), ct))
         {
             InnerHandler = handler,
         };

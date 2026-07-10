@@ -17,7 +17,7 @@ public class HelloUnlockServiceTests
     {
         var userKey = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
         var store = new MemoryTokenStore();
-        store.Save(new PersistedSession("https://vault.example", "me@example.com", "device-id", "refresh",
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, "me@example.com", new ServerOrigin("https://vault.example"), 1, "me@example.com", "device-id", "refresh",
             "2.protected", KdfType.Pbkdf2, 600_000, null, null));
         var session = new VaultSession();
         session.SetTokens("access", "refresh");
@@ -71,7 +71,7 @@ public class HelloUnlockServiceTests
     {
         var userKey = new SymmetricCryptoKey(new byte[64]);
         var store = new MemoryTokenStore();
-        store.Save(new PersistedSession("https://s.example", "e", "d", "r", "2.p", KdfType.Pbkdf2, 600_000, null, null));
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, "e", new ServerOrigin("https://s.example"), 1, "e", "d", "r", "2.p", KdfType.Pbkdf2, 600_000, null, null));
         var session = new VaultSession(); // 未解锁 → UserKey null
         var svc = new HelloUnlockService(_crypto, session, store);
         Assert.ThrowsAny<Exception>(() => svc.SetHello(Sig(1), Challenge));

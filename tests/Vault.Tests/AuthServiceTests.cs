@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using Api;
+using Api.Dtos;
 using Core.Enums;
 using Core.Models;
 using Core.Services;
@@ -34,7 +35,7 @@ public class AuthServiceTests
         var result = await service.LoginAsync("https://vault.example", Email, Password, TestContext.Current.CancellationToken);
 
         Assert.IsType<AuthResult.Success>(result);
-        Assert.Equal("access", session.AccessToken);
+        Assert.Equal(AccessToken(), session.AccessToken);
         Assert.Equal("refresh", session.RefreshToken);
         Assert.Equal(fixture.UserKey.FullKey, session.UserKey!.FullKey);
         Assert.Equal("me@example.com", session.Account.Email);
@@ -133,8 +134,7 @@ public class AuthServiceTests
     {
         var fixture = CreateLoginFixture();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(
-            "https://vault.example", Email, "device-remembered", "old-refresh",
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("https://vault.example"), 1, Email, "device-remembered", "old-refresh",
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null)
         {
             TwoFactorToken = "remember-jwt",
@@ -186,9 +186,7 @@ public class AuthServiceTests
     {
         var fixture = CreateLoginFixture();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(
-            "https://vault.example",
-            Email,
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("https://vault.example"), 1, Email,
             "device-id",
             "stored-refresh",
             fixture.ProtectedUserKey,
@@ -219,7 +217,7 @@ public class AuthServiceTests
     {
         var fixture = CreateLoginFixture();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession("https://vault.example", Email, "device-id", "refresh",
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("https://vault.example"), 1, Email, "device-id", "refresh",
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
         var handler = new FakeHttpMessageHandler();
         var session = new VaultSession();
@@ -324,6 +322,34 @@ public class AuthServiceTests
         Assert.Equal("123456", submitForm["two_factor_token"]);
     }
 
+    [Fact]
+    public async Task LoginAsync_AccessTokenWithoutSub_DoesNotEstablishSession()
+    {
+        var fixture = CreateLoginFixture();
+        var identity = new ControlledIdentityApiClient(_ =>
+            Task.FromResult<ConnectTokenResult>(
+                new ConnectTokenResult.Success(new TokenResponse(
+                    "not-a-jwt",
+                    "refresh-b",
+                    3600,
+                    "Bearer",
+                    "api offline_access",
+                    fixture.ProtectedUserKey,
+                    null,
+                    KdfType.Pbkdf2,
+                    600_000))));
+        var session = new VaultSession();
+        var store = new MemoryTokenStore();
+        var service = CreateAuthService(identity, session, store);
+
+        var result = await service.LoginAsync(
+            "https://b.example", Email, Password, TestContext.Current.CancellationToken);
+
+        Assert.IsType<AuthResult.Failure>(result);
+        Assert.Equal(Core.Session.VaultState.LoggedOut, session.State);
+        Assert.False(store.TryLoad(out _));
+    }
+
     private AuthService CreateAuthService(FakeHttpMessageHandler handler, VaultSession session, MemoryTokenStore tokenStore)
     {
         var api = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
@@ -333,6 +359,15 @@ public class AuthServiceTests
         var bootstrapper = new VaultBootstrapper(new SyncService(provider, decryptor, session, cache), provider, session);
         var refresher = new TokenRefreshService(provider, session, tokenStore);
         return new AuthService(provider, _crypto, session, tokenStore, bootstrapper, cache, refresher);
+    }
+
+    private AuthService CreateAuthService(IIdentityApiClient identity, VaultSession session, MemoryTokenStore tokenStore)
+    {
+        var decryptor = new VaultDecryptor(_crypto);
+        var cache = new VaultCacheService(new FakeCacheStore(), decryptor, session);
+        var provider = FakeVaultApiClientProvider.ForAnonymous<IIdentityApiClient>(identity);
+        var refresher = new TokenRefreshService(provider, session, tokenStore);
+        return new AuthService(provider, _crypto, session, tokenStore, bootstrapper: null!, cache, refresher);
     }
 
     private LoginFixture CreateLoginFixture()
@@ -358,11 +393,24 @@ public class AuthServiceTests
     private static string PreloginJson() =>
         $$"""{"kdf":0,"kdfIterations":{{Iterations}},"kdfMemory":null,"kdfParallelism":null}""";
 
+    // 生成带真实 sub 的三段 JWT(alg=none 仅测试用);AccountId 由 CompleteLoginAsync 从此 sub 派生。
+    private static string AccessToken(string accountId = Email)
+    {
+        static string Base64Url(string s) =>
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(s))
+                .TrimEnd('=')
+                .Replace('+', '-')
+                .Replace('/', '_');
+        var header = Base64Url("""{"alg":"none"}""");
+        var payload = Base64Url($$"""{"sub":"{{accountId}}"}""");
+        return $"{header}.{payload}.signature";
+    }
+
     private static string TokenJson(string protectedUserKey) =>
-        $$"""{"access_token":"access","refresh_token":"refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access","Key":"{{protectedUserKey}}","PrivateKey":null,"Kdf":0,"KdfIterations":{{Iterations}}}""";
+        $$"""{"access_token":"{{AccessToken()}}","refresh_token":"refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access","Key":"{{protectedUserKey}}","PrivateKey":null,"Kdf":0,"KdfIterations":{{Iterations}}}""";
 
     private static string TokenJsonWithTwoFactorToken(string protectedUserKey, string twoFactorToken) =>
-        $$"""{"access_token":"access","refresh_token":"refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access","Key":"{{protectedUserKey}}","PrivateKey":null,"Kdf":0,"KdfIterations":{{Iterations}},"TwoFactorToken":"{{twoFactorToken}}"}""";
+        $$"""{"access_token":"{{AccessToken()}}","refresh_token":"refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access","Key":"{{protectedUserKey}}","PrivateKey":null,"Kdf":0,"KdfIterations":{{Iterations}},"TwoFactorToken":"{{twoFactorToken}}"}""";
 
     private static string SyncJson() =>
         """{"object":"sync","profile":{"id":"me@example.com","email":"me@example.com","name":"Me"},"folders":[],"ciphers":[]}""";

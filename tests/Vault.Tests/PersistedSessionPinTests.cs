@@ -7,7 +7,9 @@ namespace Vault.Tests;
 public class PersistedSessionPinTests
 {
     private static PersistedSession Base() =>
-        new("https://vault.example", "me@example.com", "device-id", "refresh",
+        new(PersistedSession.CurrentSchemaVersion, "me@example.com",
+            new ServerOrigin("https://vault.example"), 1, "me@example.com",
+            "device-id", "refresh",
             "2.protected-user-key", KdfType.Pbkdf2, 600_000, null, null);
 
     [Fact]

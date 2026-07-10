@@ -50,7 +50,7 @@ public class VaultSessionTests
         Assert.All(key.MacKey!, b => Assert.Equal(0, b));
         Assert.Equal("me@example.com", session.Account.Email);
 
-        session.Clear();
+        session.Logout();
 
         Assert.Equal(VaultState.LoggedOut, session.State);
         Assert.Null(session.AccessToken);
@@ -84,7 +84,7 @@ public class VaultSessionTests
         Assert.Equal(5, session.SkippedCipherCount);
         Assert.Equal(2, session.SkippedFolderCount);
 
-        session.Clear();
+        session.Logout();
         Assert.Equal(0, session.SkippedCipherCount);
         Assert.Equal(0, session.SkippedFolderCount);
     }
@@ -168,7 +168,7 @@ public class VaultSessionTests
         session.MarkRepromptSatisfied();
         Assert.True(session.RepromptSatisfied);
 
-        session.Clear();
+        session.Logout();
         Assert.False(session.RepromptSatisfied); // 登出重置
     }
 
@@ -206,7 +206,7 @@ public class VaultSessionTests
         Assert.True(session.IsDemo);
         Assert.Single(session.Sends);
 
-        session.Clear();
+        session.Logout();
 
         Assert.False(session.IsDemo);
         Assert.Empty(session.Sends);

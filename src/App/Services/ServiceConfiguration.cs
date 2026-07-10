@@ -24,12 +24,12 @@ public static class ServiceConfiguration
         services.AddSingleton<ICacheStore, DpapiVaultCacheStore>();
         services.AddSingleton<IApiClientFactory, ApiClientFactory>();
         // 会话绑定的 Api client 供给器:匿名角色按 origin、认证角色按当前 lease 解析。
-        // 忽略 lease 的 refresh 适配仅为过渡;Task 7 收紧为显式 lease。
+        // 401 刷新回调绑定显式 lease(Task 7),仅当租约仍当前时提交轮换后的 token。
         services.AddSingleton<IVaultApiClientProvider>(sp =>
             new VaultApiClientProvider(
                 sp.GetRequiredService<IApiClientFactory>(),
                 sp.GetRequiredService<VaultSession>(),
-                (_, ct) => sp.GetRequiredService<ITokenRefresher>().TryRefreshAsync(ct)));
+                (lease, ct) => sp.GetRequiredService<ITokenRefresher>().TryRefreshAsync(lease, ct)));
         services.AddSingleton<CipherEncryptor>();
         services.AddSingleton<IVaultWriteService, Vault.VaultWriteService>();
         services.AddSingleton<VaultDecryptor>();

@@ -27,7 +27,7 @@ public class AuthServiceOfflineTests
     {
         var fixture = CreateLoginFixture();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(Server, Email, "device-id", "stored-refresh",
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin(Server), 1, Email, "device-id", "stored-refresh",
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => throw new HttpRequestException("offline"));
@@ -51,7 +51,7 @@ public class AuthServiceOfflineTests
     {
         var fixture = CreateLoginFixture();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(Server, Email, "device-id", "stored-refresh",
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin(Server), 1, Email, "device-id", "stored-refresh",
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
@@ -78,7 +78,7 @@ public class AuthServiceOfflineTests
     {
         var fixture = CreateLoginFixture();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(Server, Email, "device-id", "stored-refresh",
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin(Server), 1, Email, "device-id", "stored-refresh",
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => throw new HttpRequestException("offline"));
@@ -101,7 +101,7 @@ public class AuthServiceOfflineTests
     {
         var fixture = CreateLoginFixture();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(Server, Email, "device-id", "stored-refresh",
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin(Server), 1, Email, "device-id", "stored-refresh",
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => throw new HttpRequestException("offline")); // 刷新失败 → 走离线缓存分支
@@ -123,7 +123,7 @@ public class AuthServiceOfflineTests
     {
         var fixture = CreateLoginFixture();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(Server, Email, "device-id", "stored-refresh",
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin(Server), 1, Email, "device-id", "stored-refresh",
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
 
         // 1) 离线解锁:刷新失败 → 从缓存出数据 + 回种 refresh token
@@ -143,7 +143,7 @@ public class AuthServiceOfflineTests
         var onlineApi = new ApiClient(new HttpClient(onlineHandler), new ServerOrigin("https://vault.example"));
         var refresher = new TokenRefreshService(FakeVaultApiClientProvider.ForAnonymous<IIdentityApiClient>(onlineApi), session, tokenStore);
 
-        var refreshed = await refresher.TryRefreshAsync(TestContext.Current.CancellationToken);
+        var refreshed = await refresher.TryRefreshAsync(session.CaptureLease(), TestContext.Current.CancellationToken);
 
         Assert.True(refreshed);
         Assert.Equal("recovered-access", session.AccessToken);

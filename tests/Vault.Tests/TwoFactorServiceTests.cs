@@ -33,9 +33,7 @@ public class TwoFactorServiceTests
         var store = new MemoryTokenStore();
         // ProtectedUserKey 并不会被 TwoFactorService 用到（它不需要解密 vault），
         // 但 PersistedSession 构造函数要求填一个非空值，故填占位字符串。
-        store.Save(new PersistedSession(
-            "http://localhost:8080",
-            Email,
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("http://localhost:8080"), 1, Email,
             "device-id",
             "refresh-token",
             "placeholder-protected-user-key",
@@ -302,9 +300,7 @@ public class TwoFactorServiceTests
         CryptographicOperations.ZeroMemory(mk);
 
         var store = new MemoryTokenStore();
-        store.Save(new PersistedSession(
-            "http://localhost:8080",
-            PlusEmail,
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, PlusEmail, new ServerOrigin("http://localhost:8080"), 1, PlusEmail,
             "device-id",
             "refresh-token",
             "placeholder-protected-user-key",

@@ -17,7 +17,7 @@ public class PinServiceTests
     {
         var userKey = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
         var store = new MemoryTokenStore();
-        store.Save(new PersistedSession("https://vault.example", Email, "device-id", "refresh",
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("https://vault.example"), 1, Email, "device-id", "refresh",
             "2.protected", KdfType.Pbkdf2, Iter, null, null));
         var session = new VaultSession();
         session.SetTokens("access", "refresh");
@@ -67,7 +67,7 @@ public class PinServiceTests
     public void SetPin_WhenLocked_Throws()
     {
         var store = new MemoryTokenStore();
-        store.Save(new PersistedSession("https://vault.example", Email, "device-id", "refresh",
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("https://vault.example"), 1, Email, "device-id", "refresh",
             "2.protected", KdfType.Pbkdf2, Iter, null, null));
         var session = new VaultSession();   // 未 SetUnlockedKey → 锁定
         var pin = new PinService(_crypto, session, store);

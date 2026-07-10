@@ -29,7 +29,7 @@ public class TokenRefreshServiceTests
     private static MemoryTokenStore StoreWithSession()
     {
         var store = new MemoryTokenStore();
-        store.Save(new PersistedSession(ServerUrl, Email, "device-id", "old-refresh", "2.protected",
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin(ServerUrl), 1, Email, "device-id", "old-refresh", "2.protected",
             KdfType.Pbkdf2, 600_000, null, null));
         return store;
     }
@@ -47,7 +47,7 @@ public class TokenRefreshServiceTests
         var store = StoreWithSession();
         var service = Create(handler, session, store);
 
-        var ok = await service.TryRefreshAsync(TestContext.Current.CancellationToken);
+        var ok = await service.TryRefreshAsync(session.CaptureLease(), TestContext.Current.CancellationToken);
 
         Assert.True(ok);
         Assert.Equal("new-access", session.AccessToken);
@@ -64,7 +64,7 @@ public class TokenRefreshServiceTests
         var session = ActiveSession(); // RefreshToken == null (BeginAccountSession clears tokens)
         var service = Create(handler, session, StoreWithSession());
 
-        var ok = await service.TryRefreshAsync(TestContext.Current.CancellationToken);
+        var ok = await service.TryRefreshAsync(session.CaptureLease(), TestContext.Current.CancellationToken);
 
         Assert.False(ok);
         Assert.Empty(handler.Requests);
@@ -78,7 +78,7 @@ public class TokenRefreshServiceTests
         session.SetTokens("old-access", "old-refresh");
         var service = Create(handler, session, new MemoryTokenStore());
 
-        var ok = await service.TryRefreshAsync(TestContext.Current.CancellationToken);
+        var ok = await service.TryRefreshAsync(session.CaptureLease(), TestContext.Current.CancellationToken);
 
         Assert.False(ok);
         Assert.Empty(handler.Requests);
@@ -94,7 +94,7 @@ public class TokenRefreshServiceTests
         session.SetTokens("old-access", "old-refresh");
         var service = Create(handler, session, StoreWithSession());
 
-        var ok = await service.TryRefreshAsync(TestContext.Current.CancellationToken);
+        var ok = await service.TryRefreshAsync(session.CaptureLease(), TestContext.Current.CancellationToken);
 
         Assert.False(ok);
         Assert.Equal(VaultState.Locked, session.State);
@@ -110,7 +110,7 @@ public class TokenRefreshServiceTests
         session.SetState(VaultState.Unlocked);
         var service = Create(handler, session, StoreWithSession());
 
-        var ok = await service.TryRefreshAsync(TestContext.Current.CancellationToken);
+        var ok = await service.TryRefreshAsync(session.CaptureLease(), TestContext.Current.CancellationToken);
 
         Assert.False(ok);
         Assert.NotEqual(VaultState.Locked, session.State);
@@ -139,7 +139,7 @@ public class TokenRefreshServiceTests
         var service = Create(handler, session, StoreWithSession());
 
         // 用 Task.Run 防止 handler 内的同步 Wait 死锁主线程。
-        var refreshA = Task.Run(() => service.TryRefreshAsync(TestContext.Current.CancellationToken));
+        var refreshA = Task.Run(() => service.TryRefreshAsync(session.CaptureLease(), TestContext.Current.CancellationToken));
 
         await httpStarted.Task;   // A 的 HTTP 已在途
 
@@ -172,9 +172,9 @@ public class TokenRefreshServiceTests
         session.SetTokens("old-access", "old-refresh");
         var service = Create(handler, session, StoreWithSession());
 
-        var first = Task.Run(() => service.TryRefreshAsync(TestContext.Current.CancellationToken));
+        var first = Task.Run(() => service.TryRefreshAsync(session.CaptureLease(), TestContext.Current.CancellationToken));
         await gate.Task; // 第一个调用已进入 HTTP(持有信号量)
-        var second = service.TryRefreshAsync(TestContext.Current.CancellationToken); // 第二个排队等信号量
+        var second = service.TryRefreshAsync(session.CaptureLease(), TestContext.Current.CancellationToken); // 第二个排队等信号量
         release.SetResult();
 
         Assert.True(await first);
@@ -194,7 +194,7 @@ public class TokenRefreshServiceTests
         session.SetState(VaultState.Unlocked);
         var service = Create(handler, session, StoreWithSession());
 
-        var ok = await service.TryRefreshAsync(TestContext.Current.CancellationToken);
+        var ok = await service.TryRefreshAsync(session.CaptureLease(), TestContext.Current.CancellationToken);
 
         Assert.False(ok);
         Assert.NotEqual(VaultState.Locked, session.State);
@@ -211,7 +211,7 @@ public class TokenRefreshServiceTests
         session.SetState(VaultState.Unlocked);
         var service = Create(handler, session, StoreWithSession());
 
-        var ok = await service.TryRefreshAsync(TestContext.Current.CancellationToken);
+        var ok = await service.TryRefreshAsync(session.CaptureLease(), TestContext.Current.CancellationToken);
 
         Assert.False(ok);
         Assert.NotEqual(VaultState.Locked, session.State);

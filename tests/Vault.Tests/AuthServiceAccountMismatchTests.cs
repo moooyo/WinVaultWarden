@@ -31,7 +31,7 @@ public class AuthServiceAccountMismatchTests
     {
         var fixture = CreateLoginFixture();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(Server, Email, "device-id", "stored-refresh",
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin(Server), 1, Email, "device-id", "stored-refresh",
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
         var handler = new FakeHttpMessageHandler();
         // token 刷新成功
@@ -57,7 +57,7 @@ public class AuthServiceAccountMismatchTests
     {
         var fixture = CreatePinFixture();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(Server, Email, "device-id", "stored-refresh",
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin(Server), 1, Email, "device-id", "stored-refresh",
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null)
         {
             PinProtectedUserKey = fixture.PinProtectedUserKey,
@@ -87,7 +87,7 @@ public class AuthServiceAccountMismatchTests
         using var helloKey = _crypto.DeriveKeyFromSecret(signature);
         var helloProtected = _crypto.Encrypt(fixture.UserKey.FullKey, helloKey).ToString();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(Server, Email, "device-id", "stored-refresh",
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin(Server), 1, Email, "device-id", "stored-refresh",
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null)
         {
             HelloProtectedUserKey = helloProtected,
@@ -116,7 +116,7 @@ public class AuthServiceAccountMismatchTests
     {
         var fixture = CreateLoginFixture();
         var tokenStore = new MemoryTokenStore();
-        tokenStore.Save(new PersistedSession(Server, Email, "device-id", "stored-refresh",
+        tokenStore.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin(Server), 1, Email, "device-id", "stored-refresh",
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
