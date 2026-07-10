@@ -92,7 +92,7 @@ public sealed partial class EmergencyAccessPage : Page
 
         while (true)
         {
-            var result = await dialog.ShowAsync();
+            var result = await DialogHelper.ShowTrackedAsync(dialog);
             if (result != ContentDialogResult.Primary)
                 return;
 
@@ -200,7 +200,7 @@ public sealed partial class EmergencyAccessPage : Page
 
         while (true)
         {
-            var result = await dialog.ShowAsync();
+            var result = await DialogHelper.ShowTrackedAsync(dialog);
             if (result != ContentDialogResult.Primary)
                 return;
 
@@ -268,7 +268,7 @@ public sealed partial class EmergencyAccessPage : Page
             CloseButtonText = "关闭",
             XamlRoot = XamlRoot,
         };
-        await dialog.ShowAsync();
+        await DialogHelper.ShowTrackedAsync(dialog);
     }
 
     // ── 接管对话框 ────────────────────────────────────────────────────────────
@@ -316,27 +316,41 @@ public sealed partial class EmergencyAccessPage : Page
 
         ViewModel.OperationError = null;
 
-        while (true)
+        try
         {
-            var result = await dialog.ShowAsync();
-            if (result != ContentDialogResult.Primary)
-                return;
-
-            if (pwBox.Password != confirmBox.Password)
+            while (true)
             {
-                errorText.Text = "两次输入的密码不一致";
+                var result = await DialogHelper.ShowTrackedAsync(
+                    dialog,
+                    () =>
+                    {
+                        pwBox.Password = string.Empty;
+                        confirmBox.Password = string.Empty;
+                    });
+                if (result != ContentDialogResult.Primary)
+                    return;
+
+                if (pwBox.Password != confirmBox.Password)
+                {
+                    errorText.Text = "两次输入的密码不一致";
+                    errorText.Visibility = Visibility.Visible;
+                    continue;
+                }
+
+                ViewModel.TakeoverNewPassword = pwBox.Password;
+                await ViewModel.TakeoverCommand.ExecuteAsync(null);
+
+                if (!ViewModel.HasError)
+                    return;
+
+                errorText.Text = ViewModel.OperationError ?? string.Empty;
                 errorText.Visibility = Visibility.Visible;
-                continue;
             }
-
-            ViewModel.TakeoverNewPassword = pwBox.Password;
-            await ViewModel.TakeoverCommand.ExecuteAsync(null);
-
-            if (!ViewModel.HasError)
-                return;
-
-            errorText.Text = ViewModel.OperationError ?? string.Empty;
-            errorText.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            pwBox.Password = string.Empty;
+            confirmBox.Password = string.Empty;
         }
     }
 }

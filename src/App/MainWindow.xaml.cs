@@ -408,15 +408,28 @@ public sealed partial class MainWindow : Window
     private async Task ShowGeneratorDialogAsync()
     {
         // 复用同一 GeneratorDialog 实例:生成器与历史对话框顺序打开(不嵌套),
-        // 查看历史后循环重开生成器,保留其已生成的口令/选项状态。
+        // 查看历史后循环重开生成器,保留其已生成的口令/选项状态。历史对话框本身
+        // 只关闭并回报 ClearRequested,清除确认在其关闭之后由本宿主再单独弹出,
+        // 避免同一 XamlRoot 下两个 ContentDialog 同时 ShowAsync。
         var dialog = new GeneratorDialog { XamlRoot = Nav.XamlRoot };
         while (true)
         {
-            await dialog.ShowAsync();
+            await global::App.Views.DialogHelper.ShowTrackedAsync(dialog);
             if (!dialog.ConsumeHistoryRequest())
                 break;
+
             var history = new GeneratorHistoryDialog(dialog.ViewModel) { XamlRoot = Nav.XamlRoot };
-            await history.ShowAsync();
+            await global::App.Views.DialogHelper.ShowTrackedAsync(history);
+
+            if (history.ClearRequested
+                && await global::App.Views.DialogHelper.ConfirmAsync(
+                    Nav.XamlRoot,
+                    "清除历史记录",
+                    "确定要清除全部生成历史吗?此操作无法撤销。",
+                    "清除"))
+            {
+                dialog.ViewModel.ClearHistoryCommand.Execute(null);
+            }
         }
     }
 

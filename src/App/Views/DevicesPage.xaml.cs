@@ -68,7 +68,7 @@ public sealed partial class DevicesPage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
         };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        return await DialogHelper.ShowTrackedAsync(dialog) == ContentDialogResult.Primary;
     }
 
     private async void OnDenyRequestClick(object sender, RoutedEventArgs e)

@@ -96,7 +96,7 @@ public sealed partial class SettingsPage : Page
 
         while (true)
         {
-            var result = await dialog.ShowAsync();
+            var result = await DialogHelper.ShowTrackedAsync(dialog);
             if (result != ContentDialogResult.Primary)
                 return;
 
@@ -150,21 +150,37 @@ public sealed partial class SettingsPage : Page
 
         ViewModel.OperationError = string.Empty;
 
-        while (true)
+        try
         {
-            var result = await dialog.ShowAsync();
-            if (result != ContentDialogResult.Primary)
-                return;
+            while (true)
+            {
+                var result = await DialogHelper.ShowTrackedAsync(
+                    dialog,
+                    () =>
+                    {
+                        currentBox.Password = string.Empty;
+                        newBox.Password = string.Empty;
+                        confirmBox.Password = string.Empty;
+                    });
+                if (result != ContentDialogResult.Primary)
+                    return;
 
-            var hint = string.IsNullOrWhiteSpace(hintBox.Text) ? null : hintBox.Text.Trim();
-            await ViewModel.ChangePasswordAsync(currentBox.Password, newBox.Password, confirmBox.Password, hint);
+                var hint = string.IsNullOrWhiteSpace(hintBox.Text) ? null : hintBox.Text.Trim();
+                await ViewModel.ChangePasswordAsync(currentBox.Password, newBox.Password, confirmBox.Password, hint);
 
-            // 成功由 App 层协调器统一登出并回登录页(SettingsViewModel 发 CredentialChanged intent)。
-            if (string.IsNullOrEmpty(ViewModel.OperationError))
-                return;
+                // 成功由 App 层协调器统一登出并回登录页(SettingsViewModel 发 CredentialChanged intent)。
+                if (string.IsNullOrEmpty(ViewModel.OperationError))
+                    return;
 
-            errorText.Text = ViewModel.OperationError;
-            errorText.Visibility = Visibility.Visible;
+                errorText.Text = ViewModel.OperationError;
+                errorText.Visibility = Visibility.Visible;
+            }
+        }
+        finally
+        {
+            currentBox.Password = string.Empty;
+            newBox.Password = string.Empty;
+            confirmBox.Password = string.Empty;
         }
     }
 
@@ -209,21 +225,30 @@ public sealed partial class SettingsPage : Page
 
         ViewModel.OperationError = string.Empty;
 
-        while (true)
+        try
         {
-            var result = await dialog.ShowAsync();
-            if (result != ContentDialogResult.Primary)
-                return;
+            while (true)
+            {
+                var result = await DialogHelper.ShowTrackedAsync(
+                    dialog,
+                    () => currentBox.Password = string.Empty);
+                if (result != ContentDialogResult.Primary)
+                    return;
 
-            var iterations = double.IsNaN(iterationsBox.Value) ? 600000 : (int)iterationsBox.Value;
-            await ViewModel.ChangeIterationsAsync(currentBox.Password, iterations);
+                var iterations = double.IsNaN(iterationsBox.Value) ? 600000 : (int)iterationsBox.Value;
+                await ViewModel.ChangeIterationsAsync(currentBox.Password, iterations);
 
-            // 成功由 App 层协调器统一登出并回登录页(SettingsViewModel 发 CredentialChanged intent)。
-            if (string.IsNullOrEmpty(ViewModel.OperationError))
-                return;
+                // 成功由 App 层协调器统一登出并回登录页(SettingsViewModel 发 CredentialChanged intent)。
+                if (string.IsNullOrEmpty(ViewModel.OperationError))
+                    return;
 
-            errorText.Text = ViewModel.OperationError;
-            errorText.Visibility = Visibility.Visible;
+                errorText.Text = ViewModel.OperationError;
+                errorText.Visibility = Visibility.Visible;
+            }
+        }
+        finally
+        {
+            currentBox.Password = string.Empty;
         }
     }
 
@@ -281,30 +306,44 @@ public sealed partial class SettingsPage : Page
             XamlRoot = XamlRoot,
         };
 
-        while (true)
+        try
         {
-            var result = await dialog.ShowAsync();
-            if (result != ContentDialogResult.Primary)
-                return null;
-
-            var pin = pinBox.Password;
-            var confirm = confirmBox.Password;
-
-            if (!Core.Services.PinPolicy.IsValid(pin))
+            while (true)
             {
-                errorText.Text = $"PIN 至少需要 {Core.Services.PinPolicy.MinLength} 位。";
-                errorText.Visibility = Visibility.Visible;
-                continue;
-            }
+                var result = await DialogHelper.ShowTrackedAsync(
+                    dialog,
+                    () =>
+                    {
+                        pinBox.Password = string.Empty;
+                        confirmBox.Password = string.Empty;
+                    });
+                if (result != ContentDialogResult.Primary)
+                    return null;
 
-            if (pin != confirm)
-            {
-                errorText.Text = "两次输入的 PIN 不一致。";
-                errorText.Visibility = Visibility.Visible;
-                continue;
-            }
+                var pin = pinBox.Password;
+                var confirm = confirmBox.Password;
 
-            return pin;
+                if (!Core.Services.PinPolicy.IsValid(pin))
+                {
+                    errorText.Text = $"PIN 至少需要 {Core.Services.PinPolicy.MinLength} 位。";
+                    errorText.Visibility = Visibility.Visible;
+                    continue;
+                }
+
+                if (pin != confirm)
+                {
+                    errorText.Text = "两次输入的 PIN 不一致。";
+                    errorText.Visibility = Visibility.Visible;
+                    continue;
+                }
+
+                return pin;
+            }
+        }
+        finally
+        {
+            pinBox.Password = string.Empty;
+            confirmBox.Password = string.Empty;
         }
     }
 
@@ -331,7 +370,7 @@ public sealed partial class SettingsPage : Page
                     CloseButtonText = "关闭",
                     XamlRoot = XamlRoot,
                 };
-                await dialog.ShowAsync();
+                await DialogHelper.ShowTrackedAsync(dialog);
             }
         }
         else
@@ -392,7 +431,7 @@ public sealed partial class SettingsPage : Page
         enableEmailButton.Click += (_, _) => { action = "email";   menuDialog.Hide(); };
         disableButton.Click     += (_, _) => { action = "disable"; menuDialog.Hide(); };
 
-        await menuDialog.ShowAsync();
+        await DialogHelper.ShowTrackedAsync(menuDialog);
 
         switch (action)
         {
@@ -435,19 +474,23 @@ public sealed partial class SettingsPage : Page
 
         ViewModel.OperationError = string.Empty;
 
-        while (true)
+        try
         {
-            var r1 = await step1Dialog.ShowAsync();
-            if (r1 != ContentDialogResult.Primary) return;
+            while (true)
+            {
+                var r1 = await DialogHelper.ShowTrackedAsync(
+                    step1Dialog,
+                    () => pwBox.Password = string.Empty);
+                if (r1 != ContentDialogResult.Primary) return;
 
-            (secret, otpauth) = await ViewModel.BeginTotpSetupAsync(pwBox.Password);
+                (secret, otpauth) = await ViewModel.BeginTotpSetupAsync(pwBox.Password);
 
-            if (string.IsNullOrEmpty(ViewModel.OperationError))
-                break;
+                if (string.IsNullOrEmpty(ViewModel.OperationError))
+                    break;
 
-            step1Error.Text = ViewModel.OperationError;
-            step1Error.Visibility = Visibility.Visible;
-        }
+                step1Error.Text = ViewModel.OperationError;
+                step1Error.Visibility = Visibility.Visible;
+            }
 
         // 步骤 2：显示 secret/otpauth，让用户输入验证码
         var secretText = new TextBlock
@@ -503,7 +546,9 @@ public sealed partial class SettingsPage : Page
 
         while (true)
         {
-            var r2 = await step2Dialog.ShowAsync();
+            var r2 = await DialogHelper.ShowTrackedAsync(
+                step2Dialog,
+                () => pwBox.Password = string.Empty);
             if (r2 != ContentDialogResult.Primary) return;
 
             recoveryCode = await ViewModel.EnableTotpAsync(pwBox.Password, secret, codeBox.Text.Trim());
@@ -536,7 +581,12 @@ public sealed partial class SettingsPage : Page
             CloseButtonText = "完成",
             XamlRoot = XamlRoot,
         };
-        await step3Dialog.ShowAsync();
+        await DialogHelper.ShowTrackedAsync(step3Dialog);
+        }
+        finally
+        {
+            pwBox.Password = string.Empty;
+        }
     }
 
     // ── Email 两步验证启用对话框（两步：密码+邮箱 → 验证码） ─────────────────
@@ -573,19 +623,23 @@ public sealed partial class SettingsPage : Page
 
         ViewModel.OperationError = string.Empty;
 
-        while (true)
+        try
         {
-            var r1 = await step1Dialog.ShowAsync();
-            if (r1 != ContentDialogResult.Primary) return;
+            while (true)
+            {
+                var r1 = await DialogHelper.ShowTrackedAsync(
+                    step1Dialog,
+                    () => emailPwBox.Password = string.Empty);
+                if (r1 != ContentDialogResult.Primary) return;
 
-            await ViewModel.SendEmailAsync(emailPwBox.Password, emailAddressBox.Text.Trim());
+                await ViewModel.SendEmailAsync(emailPwBox.Password, emailAddressBox.Text.Trim());
 
-            if (string.IsNullOrEmpty(ViewModel.OperationError))
-                break;
+                if (string.IsNullOrEmpty(ViewModel.OperationError))
+                    break;
 
-            step1Error.Text = ViewModel.OperationError;
-            step1Error.Visibility = Visibility.Visible;
-        }
+                step1Error.Text = ViewModel.OperationError;
+                step1Error.Visibility = Visibility.Visible;
+            }
 
         // 步骤 2：输入收到的验证码
         var tokenBox = new TextBox { PlaceholderText = "输入邮件验证码" };
@@ -615,7 +669,9 @@ public sealed partial class SettingsPage : Page
 
         while (true)
         {
-            var r2 = await step2Dialog.ShowAsync();
+            var r2 = await DialogHelper.ShowTrackedAsync(
+                step2Dialog,
+                () => emailPwBox.Password = string.Empty);
             if (r2 != ContentDialogResult.Primary) return;
 
             await ViewModel.EnableEmailAsync(emailPwBox.Password, emailAddressBox.Text.Trim(), tokenBox.Text.Trim());
@@ -634,7 +690,12 @@ public sealed partial class SettingsPage : Page
             CloseButtonText = "完成",
             XamlRoot = XamlRoot,
         };
-        await doneDialog.ShowAsync();
+        await DialogHelper.ShowTrackedAsync(doneDialog);
+        }
+        finally
+        {
+            emailPwBox.Password = string.Empty;
+        }
     }
 
     // ── 禁用双重验证对话框 ──────────────────────────────────────────────────
@@ -652,7 +713,7 @@ public sealed partial class SettingsPage : Page
                 CloseButtonText = "关闭",
                 XamlRoot = XamlRoot,
             };
-            await noneDialog.ShowAsync();
+            await DialogHelper.ShowTrackedAsync(noneDialog);
             return;
         }
 
@@ -701,36 +762,45 @@ public sealed partial class SettingsPage : Page
 
         ViewModel.OperationError = string.Empty;
 
-        while (true)
+        try
         {
-            var rd = await disableDialog.ShowAsync();
-            if (rd != ContentDialogResult.Primary) return;
-
-            if (providerCombo.SelectedItem is not ComboBoxItem selectedItem)
+            while (true)
             {
-                disableError.Text = "请选择要禁用的验证方式";
+                var rd = await DialogHelper.ShowTrackedAsync(
+                    disableDialog,
+                    () => disablePwBox.Password = string.Empty);
+                if (rd != ContentDialogResult.Primary) return;
+
+                if (providerCombo.SelectedItem is not ComboBoxItem selectedItem)
+                {
+                    disableError.Text = "请选择要禁用的验证方式";
+                    disableError.Visibility = Visibility.Visible;
+                    continue;
+                }
+
+                int providerType = (int)selectedItem.Tag;
+                await ViewModel.DisableTwoFactorAsync(disablePwBox.Password, providerType);
+
+                if (string.IsNullOrEmpty(ViewModel.OperationError))
+                    break;
+
+                disableError.Text = ViewModel.OperationError;
                 disableError.Visibility = Visibility.Visible;
-                continue;
             }
 
-            int providerType = (int)selectedItem.Tag;
-            await ViewModel.DisableTwoFactorAsync(disablePwBox.Password, providerType);
-
-            if (string.IsNullOrEmpty(ViewModel.OperationError))
-                break;
-
-            disableError.Text = ViewModel.OperationError;
-            disableError.Visibility = Visibility.Visible;
+            var doneDialog = new ContentDialog
+            {
+                Title = "双重验证已禁用",
+                Content = new TextBlock { Text = "所选两步验证方式已成功禁用。", TextWrapping = TextWrapping.Wrap },
+                CloseButtonText = "完成",
+                XamlRoot = XamlRoot,
+            };
+            await DialogHelper.ShowTrackedAsync(doneDialog);
         }
-
-        var doneDialog = new ContentDialog
+        finally
         {
-            Title = "双重验证已禁用",
-            Content = new TextBlock { Text = "所选两步验证方式已成功禁用。", TextWrapping = TextWrapping.Wrap },
-            CloseButtonText = "完成",
-            XamlRoot = XamlRoot,
-        };
-        await doneDialog.ShowAsync();
+            disablePwBox.Password = string.Empty;
+        }
     }
 
     // ── 紧急访问入口 ─────────────────────────────────────────────────────────

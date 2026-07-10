@@ -35,7 +35,7 @@ public sealed partial class SendPage : Page
     {
         var root = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot;
         var dialog = new SendEditorDialog { XamlRoot = root };
-        await dialog.ShowAsync();
+        await DialogHelper.ShowTrackedAsync(dialog);
         if (dialog.Saved)
             await ViewModel.CreateSendAsync(dialog.Draft, dialog.Draft.FileBytes);
     }
@@ -72,7 +72,7 @@ public sealed partial class SendPage : Page
 
         var root = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot;
         var dialog = new SendEditorDialog(draft) { XamlRoot = root };
-        await dialog.ShowAsync();
+        await DialogHelper.ShowTrackedAsync(dialog);
         if (dialog.Saved)
             await ViewModel.UpdateSendFromDraftAsync(item, dialog.Draft, dialog.Draft.FileBytes);
     }
@@ -103,13 +103,18 @@ public sealed partial class SendPage : Page
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
-        var file = await picker.PickSaveFileAsync();
+        var file = await FilePickerHelper.PickSaveAsync(picker);
         if (file is null)
             return;
 
         var access = global::App.App.Services.GetRequiredService<Core.Services.ISendAccessService>();
         var bytes = await access.DownloadFileAsync(accessed);
-        await Windows.Storage.FileIO.WriteBytesAsync(file, bytes);
+        await FilePickerHelper.RunTrackedAsync<object?>(
+            async ct =>
+            {
+                await Windows.Storage.FileIO.WriteBytesAsync(file, bytes).AsTask(ct);
+                return null;
+            });
     }
 
     private static void SetRowActionsOpacity(object sender, double opacity)

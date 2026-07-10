@@ -99,11 +99,14 @@ public sealed partial class SendEditorDialog : ContentDialog
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
-        var file = await picker.PickSingleFileAsync();
+        var file = await FilePickerHelper.PickSingleAsync(picker);
         if (file is null)
             return;
 
-        var buffer = await Windows.Storage.FileIO.ReadBufferAsync(file);
+        var buffer = await FilePickerHelper.RunTrackedAsync(
+            ct => Windows.Storage.FileIO.ReadBufferAsync(file).AsTask(ct));
+        if (buffer is null)
+            return;
         Draft.FileBytes = buffer.ToArray();
         Draft.FileName = file.Name;
         if (string.IsNullOrWhiteSpace(Draft.Name))

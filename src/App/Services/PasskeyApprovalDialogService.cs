@@ -118,7 +118,7 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
             Content = CreateDialogContent(request),
         };
 
-        var result = await dialog.ShowAsync();
+        var result = await global::App.Views.DialogHelper.ShowTrackedAsync(dialog);
         return result == ContentDialogResult.Primary;
     }
 
@@ -186,7 +186,7 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
             Content = panel,
         };
 
-        var result = await dialog.ShowAsync();
+        var result = await global::App.Views.DialogHelper.ShowTrackedAsync(dialog);
         if (result != ContentDialogResult.Primary)
             return RejectedCreate();
 

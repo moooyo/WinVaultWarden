@@ -45,21 +45,30 @@ public sealed partial class ImportExportPage : Page
             XamlRoot = root,
         };
 
-        while (true)
+        try
         {
-            var result = await dialog.ShowAsync();
-            if (result != ContentDialogResult.Primary)
-                return;
-
-            var ok = await ViewModel.VerifyMasterPasswordAsync(passwordBox.Password);
-            if (!ok)
+            while (true)
             {
-                errorText.Text = "主密码不正确";
-                errorText.Visibility = Visibility.Visible;
-                continue;
-            }
+                var result = await DialogHelper.ShowTrackedAsync(
+                    dialog,
+                    () => passwordBox.Password = string.Empty);
+                if (result != ContentDialogResult.Primary)
+                    return;
 
-            break;
+                var ok = await ViewModel.VerifyMasterPasswordAsync(passwordBox.Password);
+                if (!ok)
+                {
+                    errorText.Text = "主密码不正确";
+                    errorText.Visibility = Visibility.Visible;
+                    continue;
+                }
+
+                break;
+            }
+        }
+        finally
+        {
+            passwordBox.Password = string.Empty;
         }
 
         try
@@ -77,11 +86,16 @@ public sealed partial class ImportExportPage : Page
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
             WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
-            var file = await picker.PickSaveFileAsync();
+            var file = await FilePickerHelper.PickSaveAsync(picker);
             if (file is null)
                 return;
 
-            await Windows.Storage.FileIO.WriteTextAsync(file, ViewModel.ExportToText());
+            await FilePickerHelper.RunTrackedAsync<object?>(
+                async ct =>
+                {
+                    await Windows.Storage.FileIO.WriteTextAsync(file, ViewModel.ExportToText()).AsTask(ct);
+                    return null;
+                });
             ViewModel.ExportStatus = "导出成功";
         }
         catch (Exception ex)
@@ -101,11 +115,15 @@ public sealed partial class ImportExportPage : Page
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
-        var file = await picker.PickSingleFileAsync();
+        var file = await FilePickerHelper.PickSingleAsync(picker);
         if (file is null)
             return;
 
-        ViewModel.ImportContent = await Windows.Storage.FileIO.ReadTextAsync(file);
+        var content = await FilePickerHelper.RunTrackedAsync(
+            ct => Windows.Storage.FileIO.ReadTextAsync(file).AsTask(ct));
+        if (content is null)
+            return;
+        ViewModel.ImportContent = content;
         ViewModel.PreviewImportCommand.Execute(null);
     }
 }

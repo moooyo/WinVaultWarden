@@ -139,14 +139,24 @@ public sealed partial class FieldRow : UserControl
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
         };
-        while (true)
+        try
         {
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-                return false;
-            if (await gate.VerifyAsync(passwordBox.Password))
-                return true;
-            errorText.Text = "主密码不正确";
-            errorText.Visibility = Visibility.Visible;
+            while (true)
+            {
+                var result = await global::App.Views.DialogHelper.ShowTrackedAsync(
+                    dialog,
+                    () => passwordBox.Password = string.Empty);
+                if (result != ContentDialogResult.Primary)
+                    return false;
+                if (await gate.VerifyAsync(passwordBox.Password))
+                    return true;
+                errorText.Text = "主密码不正确";
+                errorText.Visibility = Visibility.Visible;
+            }
+        }
+        finally
+        {
+            passwordBox.Password = string.Empty;
         }
     }
 

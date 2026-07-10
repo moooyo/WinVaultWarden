@@ -105,14 +105,24 @@ public sealed partial class VaultPage : Page
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
         };
-        while (true)
+        try
         {
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-                return false;
-            if (await ViewModel.VerifyRepromptAsync(passwordBox.Password))
-                return true;
-            errorText.Text = "主密码不正确";
-            errorText.Visibility = Visibility.Visible;
+            while (true)
+            {
+                var result = await DialogHelper.ShowTrackedAsync(
+                    dialog,
+                    () => passwordBox.Password = string.Empty);
+                if (result != ContentDialogResult.Primary)
+                    return false;
+                if (await ViewModel.VerifyRepromptAsync(passwordBox.Password))
+                    return true;
+                errorText.Text = "主密码不正确";
+                errorText.Visibility = Visibility.Visible;
+            }
+        }
+        finally
+        {
+            passwordBox.Password = string.Empty;
         }
     }
 
@@ -289,7 +299,7 @@ public sealed partial class VaultPage : Page
             XamlRoot = this.XamlRoot,
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await DialogHelper.ShowTrackedAsync(dialog) == ContentDialogResult.Primary)
             await ViewModel.PermanentDeleteSelectedCommand.ExecuteAsync(null);
     }
 
@@ -375,7 +385,7 @@ public sealed partial class VaultPage : Page
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
         };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary ? input.Text : null;
+        return await DialogHelper.ShowTrackedAsync(dialog) == ContentDialogResult.Primary ? input.Text : null;
     }
 
     private async void OnAddAttachmentClick(object sender, RoutedEventArgs e)
@@ -394,7 +404,7 @@ public sealed partial class VaultPage : Page
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
-        var file = await picker.PickSingleFileAsync();
+        var file = await FilePickerHelper.PickSingleAsync(picker);
         if (file is null)
             return;
 
@@ -412,7 +422,10 @@ public sealed partial class VaultPage : Page
         // 文件被锁/网络盘掉线/拒绝访问会抛异常并从 async void 逸出——就地捕获并经 InfoBar 上报。
         try
         {
-            var buffer = await Windows.Storage.FileIO.ReadBufferAsync(file);
+            var buffer = await FilePickerHelper.RunTrackedAsync(
+                ct => Windows.Storage.FileIO.ReadBufferAsync(file).AsTask(ct));
+            if (buffer is null)
+                return;
             await ViewModel.AddAttachmentAsync(item.Id, buffer.ToArray(), file.Name);
         }
         catch (Exception ex)
@@ -436,7 +449,7 @@ public sealed partial class VaultPage : Page
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
-        var file = await picker.PickSaveFileAsync();
+        var file = await FilePickerHelper.PickSaveAsync(picker);
         if (file is null)
             return;
 
@@ -448,7 +461,12 @@ public sealed partial class VaultPage : Page
         // 并从 async void 逸出——就地捕获并经 InfoBar 上报。
         try
         {
-            await Windows.Storage.FileIO.WriteBytesAsync(file, bytes);
+            await FilePickerHelper.RunTrackedAsync<object?>(
+                async ct =>
+                {
+                    await Windows.Storage.FileIO.WriteBytesAsync(file, bytes).AsTask(ct);
+                    return null;
+                });
         }
         catch (Exception ex)
         {
@@ -513,7 +531,7 @@ public sealed partial class VaultPage : Page
             XamlRoot = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot,
         };
 
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        if (await DialogHelper.ShowTrackedAsync(dialog) != ContentDialogResult.Primary)
             return;
 
         var name = input.Text?.Trim();
