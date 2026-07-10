@@ -56,9 +56,16 @@ public class WebAuthnRegistrationServiceTests
     }
 
     [Fact]
-    public void CreateAttestation_WithoutEs256_Throws()
+    public void CreateAttestation_UnapprovedEvidence_AndWithoutEs256_ThrowsApprovalFirst()
     {
-        Assert.Throws<InvalidOperationException>(() => WebAuthnRegistrationService.CreateAttestation(Req([-257]))); // RS256 only
+        var request = Req(
+            [-257],
+            new PasskeyApprovalEvidence(false, false, false));
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            WebAuthnRegistrationService.CreateAttestation(request));
+
+        Assert.Equal("Passkey approval is required.", error.Message);
     }
 
     [Fact]

@@ -36,11 +36,11 @@ public static class WebAuthnRegistrationService
         WebAuthnCrypto.DecodeBase64Url(request.Challenge);   // validate
         WebAuthnCrypto.DecodeBase64Url(request.UserId);       // validate
 
-        if (!request.Algorithms.Contains(Es256))
-            throw new InvalidOperationException("Only ES256 passkeys are supported.");
-
         if (!request.ApprovalEvidence.Approved)
             throw new InvalidOperationException("Passkey approval is required.");
+
+        if (!request.Algorithms.Contains(Es256))
+            throw new InvalidOperationException("Only ES256 passkeys are supported.");
 
         var effectiveRpId = string.IsNullOrWhiteSpace(request.RpId) ? HostFromOrigin(request.Origin) : request.RpId;
         if (!IsRpIdAllowedForOrigin(effectiveRpId, request.Origin))
