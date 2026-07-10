@@ -28,6 +28,11 @@ public readonly record struct ServerOrigin
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(relativeOrAbsolute);
 
+        if (HasRfcSchemePrefixWithoutAuthority(relativeOrAbsolute))
+            throw new ArgumentException(
+                "RFC scheme prefixes must use '//' before the authority component.",
+                nameof(relativeOrAbsolute));
+
         // Reject protocol-relative ("//", "///") and backslash/UNC paths BEFORE calling
         // Uri.TryCreate, which would silently interpret them as file:// URIs.
         if (relativeOrAbsolute.StartsWith("//", StringComparison.Ordinal) ||
@@ -65,6 +70,24 @@ public readonly record struct ServerOrigin
     }
 
     public override string ToString() => Value;
+
+    private static bool HasRfcSchemePrefixWithoutAuthority(string value)
+    {
+        var colonIndex = value.IndexOf(':');
+        if (colonIndex <= 0 || !char.IsLetter(value[0]))
+            return false;
+
+        for (var i = 1; i < colonIndex; i++)
+        {
+            var character = value[i];
+            if (!char.IsLetterOrDigit(character) && character != '+' && character != '-' && character != '.')
+                return false;
+        }
+
+        return colonIndex + 2 >= value.Length
+            || value[colonIndex + 1] != '/'
+            || value[colonIndex + 2] != '/';
+    }
 
     private static bool TryNormalize(string? value, out string normalized)
     {

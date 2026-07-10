@@ -71,6 +71,9 @@ public sealed class ServerOriginTests
     [InlineData(@"\\evil.example\share")]
     [InlineData("file:///etc/passwd")]
     [InlineData("ftp://evil.example/x")]
+    [InlineData("http:evil.example")]
+    [InlineData("https:evil.example")]
+    [InlineData("ws:evil.example")]
     [InlineData("javascript:alert(1)")]
     [InlineData("data:text/html,hi")]
     [InlineData("https://other.example/api")]
@@ -78,6 +81,16 @@ public sealed class ServerOriginTests
     {
         var origin = new ServerOrigin("https://vault.example");
         Assert.Throws<ArgumentException>(() => origin.Resolve(input));
+    }
+
+    [Fact]
+    public void Resolve_RejectionsStayAsArgumentException()
+    {
+        var origin = new ServerOrigin("https://vault.example");
+
+        var ex = Assert.Throws<ArgumentException>(() => origin.Resolve("http:evil.example"));
+
+        Assert.Equal("relativeOrAbsolute", ex.ParamName);
     }
 
     // A same-origin absolute URL must still be accepted (regression guard).
