@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Text.Json;
 using Core.BrowserIntegration;
 using Core.Passkeys;
 
@@ -214,9 +215,10 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
                 {
                     break;
                 }
-                catch (Exception ex) when (ex is IOException or InvalidDataException or EndOfStreamException)
+                catch (Exception ex) when (
+                    ex is IOException or InvalidDataException or EndOfStreamException or JsonException)
                 {
-                    break; // 管道断开/坏帧:结束该连接,finally 取消并排空全部 active。
+                    break; // 管道断开/坏帧(含 JSON 解析失败):结束该连接,finally 取消并排空全部 active。
                 }
 
                 if (envelope is null)

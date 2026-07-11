@@ -22,6 +22,10 @@ public class NativeMessagingSessionTests
     private const string Id13 = "00000000000000000000000000000013";
     private const string Id31 = "00000000000000000000000000000031";
     private const string Id32 = "00000000000000000000000000000032";
+    private const string Id33 = "00000000000000000000000000000033";
+    private const string Id34 = "00000000000000000000000000000034";
+    private const string Id36 = "00000000000000000000000000000036";
+    private const string Id38 = "00000000000000000000000000000038";
     private const string Id41 = "00000000000000000000000000000041";
     private const string Id51 = "00000000000000000000000000000051";
     private const string Id52 = "00000000000000000000000000000052";
@@ -102,6 +106,104 @@ public class NativeMessagingSessionTests
     }
 
     [Fact]
+    public async Task DeadlineExactlyAtHardCap_FiresOnlyAfterFullCapWindow()
+    {
+        var bridge = new ControlledBridge();
+        await using var fixture = await SessionFixture.StartAsync(bridge);
+
+        await fixture.SendAsync(Request(Id33, TimeSpan.FromSeconds(120)));
+        Assert.Empty(fixture.ResponsesFor(Id33));
+
+        fixture.Time.Advance(TimeSpan.FromSeconds(120));
+
+        var responses = await fixture.WaitForResponsesAsync(
+            r => r.Any(x => x.Id == Id33), TimeSpan.FromSeconds(2));
+        var response = Assert.Single(responses, x => x.Id == Id33);
+        Assert.False(response.Ok);
+        Assert.Equal(PasskeyErrorCodes.DeadlineExceeded, response.Error?.Code);
+    }
+
+    [Fact]
+    public async Task DeadlineJustOverHardCap_ClampsToCapNotToTheRequestedOffset()
+    {
+        var bridge = new ControlledBridge();
+        await using var fixture = await SessionFixture.StartAsync(bridge);
+
+        // 1 ms beyond the cap must still clamp to exactly 120s, not 120.001s.
+        await fixture.SendAsync(Request(Id34, TimeSpan.FromSeconds(120) + TimeSpan.FromMilliseconds(1)));
+
+        fixture.Time.Advance(TimeSpan.FromSeconds(120));
+
+        var responses = await fixture.WaitForResponsesAsync(
+            r => r.Any(x => x.Id == Id34), TimeSpan.FromSeconds(2));
+        var response = Assert.Single(responses, x => x.Id == Id34);
+        Assert.False(response.Ok);
+        Assert.Equal(PasskeyErrorCodes.DeadlineExceeded, response.Error?.Code);
+    }
+
+    // I-1: an out-of-range deadlineUnixMs must never throw (it used to crash the whole persistent
+    // session via DateTimeOffset.FromUnixTimeMilliseconds's ArgumentOutOfRangeException). A wildly
+    // future value — long.MaxValue, one ms past DateTimeOffset.MaxValue's unix-ms range, or a
+    // plausible microsecond-scale unit bug — must clamp to the 120s hard cap, and the session must
+    // keep serving subsequent requests afterwards.
+    [Theory]
+    [InlineData(long.MaxValue)]
+    [InlineData(253402300800000L)]
+    [InlineData(1_780_000_000_000_000L)]
+    public async Task ExtremeFutureDeadline_ClampsToHardCapInsteadOfThrowing(long deadlineUnixMs)
+    {
+        var bridge = new ControlledBridge();
+        await using var fixture = await SessionFixture.StartAsync(bridge);
+        const string id = "00000000000000000000000000000035";
+
+        await fixture.SendAsync(new NativeRequest(
+            id, "passkey.get", GetPayload(), DeadlineUnixMs: deadlineUnixMs, Context: Context()))
+            .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Empty(fixture.ResponsesFor(id));
+
+        fixture.Time.Advance(TimeSpan.FromSeconds(120));
+
+        var responses = await fixture.WaitForResponsesAsync(r => r.Any(x => x.Id == id), TimeSpan.FromSeconds(2));
+        var response = Assert.Single(responses, x => x.Id == id);
+        Assert.False(response.Ok);
+        Assert.Equal(PasskeyErrorCodes.DeadlineExceeded, response.Error?.Code);
+
+        // The session must not have faulted: a normal follow-up request is still processed. Its
+        // deadline must be relative to the *current* fake time (already advanced by 120s above).
+        await fixture.SendAsync(RequestAt(fixture.Time, Id36, TimeSpan.FromSeconds(60)))
+            .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await bridge.SecondRequestSeen.Task.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+    }
+
+    // I-1: long.MinValue and other far-past values must fail immediately (never touching the
+    // bridge) instead of throwing, and must not fault the session either.
+    [Theory]
+    [InlineData(long.MinValue)]
+    [InlineData(0L)]
+    public async Task ExtremePastOrZeroDeadline_FailsImmediatelyInsteadOfThrowing(long deadlineUnixMs)
+    {
+        var bridge = new ControlledBridge();
+        await using var fixture = await SessionFixture.StartAsync(bridge);
+        const string id = "00000000000000000000000000000037";
+
+        await fixture.SendAsync(new NativeRequest(
+            id, "passkey.get", GetPayload(), DeadlineUnixMs: deadlineUnixMs, Context: Context()))
+            .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        var response = Assert.Single(fixture.ResponsesFor(id));
+        Assert.False(response.Ok);
+        Assert.Equal(PasskeyErrorCodes.DeadlineExceeded, response.Error?.Code);
+        Assert.Equal(0, bridge.SendCalls);
+
+        // The session must not have faulted: a normal follow-up request is still processed end to end.
+        await fixture.SendAsync(Request(Id38, TimeSpan.FromSeconds(60)))
+            .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        bridge.Complete(Id38, Success(Id38));
+        var followUp = await fixture.WaitForResponsesAsync(r => r.Any(x => x.Id == Id38), TimeSpan.FromSeconds(2));
+        Assert.True(Assert.Single(followUp, x => x.Id == Id38).Ok);
+    }
+
+    [Fact]
     public async Task DuplicateActiveId_IsRejectedWithRequestInProgress()
     {
         var bridge = new ControlledBridge();
@@ -170,6 +272,13 @@ public class NativeMessagingSessionTests
     internal static NativeRequest Request(string id, TimeSpan deadlineOffset) =>
         new(id, "passkey.get", GetPayload(),
             DeadlineUnixMs: (Epoch + deadlineOffset).ToUnixTimeMilliseconds(),
+            Context: Context());
+
+    // Like Request, but relative to the fixture's *current* fake time rather than the fixed Epoch —
+    // needed for a follow-up request sent after the test has already advanced the clock.
+    internal static NativeRequest RequestAt(TimeProvider time, string id, TimeSpan deadlineOffset) =>
+        new(id, "passkey.get", GetPayload(),
+            DeadlineUnixMs: (time.GetUtcNow() + deadlineOffset).ToUnixTimeMilliseconds(),
             Context: Context());
 
     internal static BrowserPasskeyResponse Success(string id) =>

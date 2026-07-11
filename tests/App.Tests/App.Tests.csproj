@@ -43,6 +43,7 @@
     <Compile Include="..\..\src\App\Services\UiExceptionPolicy.cs" Link="Services\UiExceptionPolicy.cs" />
     <Compile Include="..\..\src\App\Services\AccountPrefill.cs" Link="Services\AccountPrefill.cs" />
     <Compile Include="..\..\src\App\Services\ClientPeerAuthorizer.cs" Link="Services\ClientPeerAuthorizer.cs" />
+    <Compile Include="..\..\src\App\Services\PasskeyBridgeServer.cs" Link="Services\PasskeyBridgeServer.cs" />
     <Compile Include="..\..\src\App\ViewModels\LoginViewModel.cs" Link="ViewModels\LoginViewModel.cs" />
     <Compile Include="..\..\src\App\Services\VaultNavItemBuilder.cs" Link="Services\VaultNavItemBuilder.cs" />
     <Compile Include="..\..\src\App\Services\IClipboardService.cs" Link="Services\IClipboardService.cs" />

@@ -13,7 +13,12 @@ namespace BrowserNativeHost;
 /// a fired deadline emits <see cref="PasskeyErrorCodes.DeadlineExceeded"/>, duplicate ids are rejected
 /// with <see cref="PasskeyErrorCodes.RequestInProgress"/>, and a disconnect (EOF) or
 /// <see cref="StopAsync"/> cancels every active request and drains its worker before returning.
-/// Transport framing and the 1 MiB cap stay in <see cref="NativeMessageProtocol"/>.
+/// Transport framing and the 1 MiB cap stay in <see cref="NativeMessageProtocol"/>. Dispatch of each
+/// already-framed message is itself defended per-message: any exception from a single request's own
+/// parameters/format (other than <see cref="OutOfMemoryException"/>) fails only that request with a
+/// stable <c>invalid_request</c> error and the read loop keeps serving subsequent messages — it must
+/// never fault the whole persistent session (see <see cref="ComputeDeadlineDelay"/>, which is
+/// deliberately integer-only for the same reason: an out-of-range deadline must clamp, not throw).
 /// </summary>
 public sealed class NativeMessagingSession : IAsyncDisposable
 {
@@ -75,7 +80,22 @@ public sealed class NativeMessagingSession : IAsyncDisposable
                 if (message is null)
                     break;
 
-                await DispatchAsync(message, token).ConfigureAwait(false);
+                try
+                {
+                    await DispatchAsync(message, token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    // Session stopping mid-dispatch: fall through to the outer drain, same as a
+                    // cancelled read.
+                    break;
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    // One request's own parameters/format must never fault the whole persistent
+                    // session (I-1): report a stable error for just this message and keep reading.
+                    await TryReportDispatchFailureAsync(message.Id).ConfigureAwait(false);
+                }
             }
         }
         finally
@@ -241,6 +261,20 @@ public sealed class NativeMessagingSession : IAsyncDisposable
         }
     }
 
+    private async Task TryReportDispatchFailureAsync(string? id)
+    {
+        try
+        {
+            await WriteResponseAsync(Error(
+                id, "invalid_request", "The passkey request could not be processed."))
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            // Best-effort: a failure while reporting the failure must not fault the read loop either.
+        }
+    }
+
     private async Task CancelActiveAsync(string? id)
     {
         if (string.IsNullOrEmpty(id) || !_active.TryGetValue(id, out var active))
@@ -280,16 +314,26 @@ public sealed class NativeMessagingSession : IAsyncDisposable
         }
     }
 
+    // I-1: deliberately integer-only. deadlineUnixMs is attacker/extension-controlled and the wire
+    // schema only enforces a lower bound, so it can legally arrive as long.MinValue/MaxValue, one ms
+    // past DateTimeOffset's representable range, or a plausible unit bug (µs/ns instead of ms).
+    // Never feed it to DateTimeOffset.FromUnixTimeMilliseconds — that throws ArgumentOutOfRangeException
+    // for anything outside roughly [year 1, year 9999], which used to escape this single request and
+    // take down the whole persistent session. Comparing plain longs against nowMs/capMs can't throw.
     private TimeSpan ComputeDeadlineDelay(long? deadlineUnixMs)
     {
-        var now = _timeProvider.GetUtcNow();
-        var deadline = deadlineUnixMs is { } ms
-            ? DateTimeOffset.FromUnixTimeMilliseconds(ms)
-            : now + DefaultDeadline;
-        var cap = now + MaximumDeadline;
-        if (deadline > cap)
-            deadline = cap;
-        return deadline - now;
+        if (deadlineUnixMs is not { } ms)
+            return DefaultDeadline;
+
+        var nowMs = _timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+        var capMs = nowMs + (long)MaximumDeadline.TotalMilliseconds;
+
+        if (ms <= nowMs)
+            return TimeSpan.Zero; // Already past (or right now): fail immediately, never touch the bridge.
+        if (ms >= capMs)
+            return MaximumDeadline; // Beyond the hard cap (including any overflow-scale value): clamp.
+
+        return TimeSpan.FromMilliseconds(ms - nowMs);
     }
 
     // Stop accepting input, cancel every active request, and wait for all workers to drain.
