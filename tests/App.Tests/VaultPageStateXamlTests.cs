@@ -86,6 +86,23 @@ public class VaultPageStateXamlTests
         Assert.Contains("BoolToVis", panel.Attribute("Visibility")?.Value);
     }
 
+    [Fact]
+    public void BusyPanel_HasPoliteLiveRegionText()
+    {
+        var document = LoadXaml();
+
+        var busyPanel = document
+            .Descendants(Xaml + "StackPanel")
+            .Single(p => p.Attribute(X + "Name")?.Value == "VaultBusyPanel");
+
+        var hasPoliteText = busyPanel
+            .Descendants(Xaml + "TextBlock")
+            .Any(t => t.Attribute("AutomationProperties.LiveSetting")?.Value == "Polite");
+
+        Assert.True(hasPoliteText,
+            "VaultBusyPanel must contain a TextBlock with AutomationProperties.LiveSetting=\"Polite\".");
+    }
+
     private static XDocument LoadXaml()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

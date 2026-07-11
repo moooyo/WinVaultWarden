@@ -23,7 +23,13 @@ public sealed partial class FieldRow : UserControl
     }
     public static readonly DependencyProperty LabelProperty =
         DependencyProperty.Register(nameof(Label), typeof(string), typeof(FieldRow),
-            new PropertyMetadata("", (d, e) => ((FieldRow)d).LabelText.Text = (string)e.NewValue));
+            new PropertyMetadata("", (d, e) => ((FieldRow)d).OnLabelChanged((string)e.NewValue)));
+
+    private void OnLabelChanged(string label)
+    {
+        LabelText.Text = label;
+        UpdateAutomationNames();
+    }
 
     public string Value
     {
@@ -84,9 +90,19 @@ public sealed partial class FieldRow : UserControl
     {
         _revealed = revealed;
         RevealIcon.Glyph = revealed ? GlyphHide : GlyphView;
-        var label = revealed ? "隐藏" : "显示";
-        AutomationProperties.SetName(RevealButton, label);
-        ToolTipService.SetToolTip(RevealButton, label);
+        ToolTipService.SetToolTip(RevealButton, revealed ? "隐藏" : "显示");
+        UpdateAutomationNames();
+    }
+
+    // 字段级操作按钮的无障碍名包含字段标签,便于 Narrator 逐条区分(如"密码，复制"/"密码，显示")。
+    private void UpdateAutomationNames()
+    {
+        var label = string.IsNullOrWhiteSpace(Label) ? "字段" : Label;
+        AutomationProperties.SetName(CopyButton, $"{label}，复制");
+        AutomationProperties.SetName(
+            RevealButton,
+            $"{label}，{(_revealed ? "隐藏" : "显示")}");
+        AutomationProperties.SetName(OpenButton, $"{label}，打开");
     }
 
     private void Render()

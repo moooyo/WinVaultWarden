@@ -54,6 +54,7 @@
 
             <StackPanel x:Name="EmergencyEmptyPanel"
                         Spacing="8"
+                        AutomationProperties.AutomationId="EmergencyEmptyPanel"
                         Visibility="{x:Bind ViewModel.ShowEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                 <TextBlock Text="尚未设置任何紧急联系人。"
                            Style="{StaticResource CaptionSecondaryTextBlockStyle}" />

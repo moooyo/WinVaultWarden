@@ -7,10 +7,10 @@
     Title="生成器历史记录"
     CloseButtonText="关闭"
     PrimaryButtonText="清除历史记录"
-    PrimaryButtonClick="OnPrimaryButtonClick"
-    MinWidth="520">
+    PrimaryButtonClick="OnPrimaryButtonClick">
 
-    <ListView ItemsSource="{x:Bind ViewModel.History}"
+    <ListView x:Name="GeneratorHistoryContent"
+              ItemsSource="{x:Bind ViewModel.History}"
               SelectionMode="None">
         <ListView.ItemTemplate>
             <DataTemplate x:DataType="models:GeneratorHistoryItem">

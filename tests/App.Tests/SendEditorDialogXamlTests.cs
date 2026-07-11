@@ -25,7 +25,9 @@ public class SendEditorDialogXamlTests
             element => element.Attribute("MinWidth") is not null || element.Attribute("MaxWidth") is not null);
         Assert.Equal("640", ResourceValue(document, "ContentDialogMaxWidth"));
         Assert.Equal("960", ResourceValue(document, "ContentDialogMaxHeight"));
-        Assert.Equal("520", form.Attribute("Width")?.Value);
+        // Task 13: 固定 Width="520" 已移除,改为按 XamlRoot 可用宽度在 code-behind clamp。
+        Assert.Null(form.Attribute("Width"));
+        Assert.Equal("SendEditorContent", form.Attribute(X + "Name")?.Value);
         Assert.Null(form.Attribute("Padding"));
     }
 

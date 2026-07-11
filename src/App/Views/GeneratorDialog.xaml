@@ -9,14 +9,13 @@
     CloseButtonText="关闭"
     PrimaryButtonText="复制并使用"
     PrimaryButtonClick="OnPrimaryButtonClick"
-    DefaultButton="Primary"
-    MinWidth="620">
+    DefaultButton="Primary">
 
     <ContentDialog.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
     </ContentDialog.Resources>
 
-    <ScrollViewer MaxHeight="660">
+    <ScrollViewer x:Name="GeneratorContent" MaxHeight="660">
         <StackPanel Spacing="14">
             <TabView x:Name="GeneratorTabs"
                      IsAddTabButtonVisible="False"

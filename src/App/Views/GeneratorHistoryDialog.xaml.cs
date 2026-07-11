@@ -1,3 +1,4 @@
+using App.Services;
 using App.ViewModels;
 using App.ViewModels.Models;
 using Microsoft.UI.Xaml;
@@ -18,6 +19,18 @@ public sealed partial class GeneratorHistoryDialog : ContentDialog
     {
         ViewModel = viewModel;
         InitializeComponent();
+        Opened += (_, _) => ApplyResponsiveWidth();
+        SizeChanged += (_, _) => ApplyResponsiveWidth();
+    }
+
+    // 按 XamlRoot 可用宽度钳制内容宽度,避免高 DPI/窄窗口下对话框水平裁切。
+    private void ApplyResponsiveWidth()
+    {
+        var rootWidth = XamlRoot?.Size.Width ?? 0;
+        GeneratorHistoryContent.Width = ResponsiveDialogSizing.Clamp(
+            rootWidth,
+            preferredWidth: 520,
+            horizontalMargin: 48);
     }
 
     private void OnCopyClick(object sender, RoutedEventArgs e)

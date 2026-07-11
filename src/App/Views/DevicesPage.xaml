@@ -88,6 +88,7 @@
                 <!-- 加载状态 -->
                 <StackPanel x:Name="DevicesLoadingPanel"
                             HorizontalAlignment="Left"
+                            AutomationProperties.AutomationId="DevicesLoadingPanel"
                             Visibility="{x:Bind ViewModel.ShowRequestsLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <ProgressRing IsActive="True"
                                   Width="24" Height="24"

@@ -72,14 +72,32 @@
         <Grid Grid.Row="3" MinHeight="36" Padding="12,0"
               BorderThickness="0,0,0,1"
               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup>
+                    <VisualState x:Name="WideColumns">
+                        <VisualState.StateTriggers>
+                            <AdaptiveTrigger MinWindowWidth="720" />
+                        </VisualState.StateTriggers>
+                    </VisualState>
+                    <VisualState x:Name="NarrowColumns">
+                        <VisualState.StateTriggers>
+                            <AdaptiveTrigger MinWindowWidth="0" />
+                        </VisualState.StateTriggers>
+                        <VisualState.Setters>
+                            <Setter Target="DeleteDateColumn.Width" Value="0" />
+                            <Setter Target="DeleteDateCell.Visibility" Value="Collapsed" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="180" />
-                <ColumnDefinition Width="104" />
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition x:Name="DeleteDateColumn" Width="*" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Text="名称" VerticalAlignment="Center"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <TextBlock Grid.Column="1" Text="删除日期" VerticalAlignment="Center"
+            <TextBlock x:Name="DeleteDateCell" Grid.Column="1" Text="删除日期" VerticalAlignment="Center"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <TextBlock Grid.Column="2" Text="选项" VerticalAlignment="Center"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -124,10 +142,28 @@
                           PointerExited="OnRowPointerExited"
                           GotFocus="OnRowGotFocus"
                           LostFocus="OnRowLostFocus">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup>
+                                <VisualState x:Name="WideColumns">
+                                    <VisualState.StateTriggers>
+                                        <AdaptiveTrigger MinWindowWidth="720" />
+                                    </VisualState.StateTriggers>
+                                </VisualState>
+                                <VisualState x:Name="NarrowColumns">
+                                    <VisualState.StateTriggers>
+                                        <AdaptiveTrigger MinWindowWidth="0" />
+                                    </VisualState.StateTriggers>
+                                    <VisualState.Setters>
+                                        <Setter Target="DeleteDateColumn.Width" Value="0" />
+                                        <Setter Target="DeleteDateCell.Visibility" Value="Collapsed" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="180" />
-                            <ColumnDefinition Width="104" />
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition x:Name="DeleteDateColumn" Width="*" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Grid ColumnSpacing="10" VerticalAlignment="Center">
                             <Grid.ColumnDefinitions>
@@ -146,7 +182,8 @@
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </StackPanel>
                         </Grid>
-                        <TextBlock Grid.Column="1"
+                        <TextBlock x:Name="DeleteDateCell"
+                                   Grid.Column="1"
                                    Text="{x:Bind DeleteDate}"
                                    AutomationProperties.Name="{x:Bind DeleteDateAccessibleLabel}"
                                    VerticalAlignment="Center"

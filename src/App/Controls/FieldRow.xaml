@@ -26,9 +26,10 @@
                     ToolTipService.ToolTip="打开">
                 <FontIcon Glyph="&#xE8A7;" FontSize="14" />
             </Button>
-            <Button Click="OnCopy"
+            <Button x:Name="CopyButton"
+                    Click="OnCopy"
                     Style="{StaticResource IconButtonStyle}"
-                    AutomationProperties.Name="复制"
+                    AutomationProperties.Name="字段，复制"
                     ToolTipService.ToolTip="复制">
                 <FontIcon Glyph="&#xE8C8;" FontSize="14" />
             </Button>

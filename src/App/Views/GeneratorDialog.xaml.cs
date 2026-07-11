@@ -1,3 +1,4 @@
+using App.Services;
 using App.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml.Controls;
@@ -14,6 +15,18 @@ public sealed partial class GeneratorDialog : ContentDialog
         InitializeComponent();
         GeneratorTabs.SelectedItem ??= PasswordTab;
         UpdatePrimaryButtonState();
+        Opened += (_, _) => ApplyResponsiveWidth();
+        SizeChanged += (_, _) => ApplyResponsiveWidth();
+    }
+
+    // 按 XamlRoot 可用宽度钳制内容宽度,避免高 DPI/窄窗口下对话框水平裁切。
+    private void ApplyResponsiveWidth()
+    {
+        var rootWidth = XamlRoot?.Size.Width ?? 0;
+        GeneratorContent.Width = ResponsiveDialogSizing.Clamp(
+            rootWidth,
+            preferredWidth: 620,
+            horizontalMargin: 48);
     }
 
     private void OnGeneratorTabSelectionChanged(object sender, SelectionChangedEventArgs e)

@@ -39,4 +39,16 @@ public class RowActionAutomationIdXamlTests
         Assert.Contains("SendRowCopyLinkButton", ids);
         Assert.Contains("SendRowMoreButton", ids);
     }
+
+    [Theory]
+    [InlineData("VaultPage.xaml", "VaultNarrowBackButton")]
+    [InlineData("SecurityReportPage.xaml", "SecurityReportRetryButton")]
+    [InlineData("EmergencyAccessPage.xaml", "EmergencyEmptyPanel")]
+    public void NewStateElements_HaveStableAutomationIds(
+        string file,
+        string automationId)
+    {
+        var ids = AutomationIds(Load(file));
+        Assert.Contains(automationId, ids);
+    }
 }

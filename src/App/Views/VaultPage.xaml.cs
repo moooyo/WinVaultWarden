@@ -18,6 +18,10 @@ public sealed partial class VaultPage : Page
 {
     public VaultViewModel ViewModel { get; }
 
+    // 响应式布局阈值:>= 800 DIP 显示双栏(列表+详情);更窄时按是否有详情/编辑态在
+    // NarrowList / NarrowDetail 之间切换,窄详情态显示"返回列表"入口。
+    private const double VaultWideThreshold = 800;
+
     public VaultPage()
     {
         // 用完全限定名避免与命名空间 App.Services 冲突(App 类的静态属性 Services)。
@@ -26,6 +30,30 @@ public sealed partial class VaultPage : Page
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         ViewModel.FoldersChanged += OnVaultFoldersChanged;
         UpdateDetailTemplate();
+    }
+
+    private void OnVaultLayoutSizeChanged(object sender, SizeChangedEventArgs e) =>
+        UpdateVaultLayoutState();
+
+    // 根据当前宽度与详情/编辑态计算并应用响应式布局状态。宽度变化不改变选择/机密,
+    // 只有显式"返回列表"才清空选择(见 OnVaultNarrowBackClick),避免窄宽切换丢数据。
+    private void UpdateVaultLayoutState()
+    {
+        var state = VaultLayoutRoot.ActualWidth >= VaultWideThreshold
+            ? "Wide"
+            : ViewModel.Detail is not null || ViewModel.IsEditing
+                ? "NarrowDetail"
+                : "NarrowList";
+        VaultNarrowBackButton.Visibility =
+            state == "NarrowDetail" ? Visibility.Visible : Visibility.Collapsed;
+        VisualStateManager.GoToState(this, state, true);
+    }
+
+    private void OnVaultNarrowBackClick(object sender, RoutedEventArgs e)
+    {
+        ViewModel.CancelEdit();
+        ViewModel.SelectedItem = null;
+        UpdateVaultLayoutState();
     }
 
     /// <summary>供 NotificationsHost 在收到 VaultChanged 推送后从 UI 线程调用，刷新列表快照。</summary>
@@ -174,12 +202,15 @@ public sealed partial class VaultPage : Page
         base.OnNavigatedTo(e);
         if (e.Parameter is string tag)
             ViewModel.SelectFilterByTag(tag);
+        UpdateVaultLayoutState();
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(VaultViewModel.Detail))
             UpdateDetailTemplate();
+        if (e.PropertyName is nameof(VaultViewModel.Detail) or nameof(VaultViewModel.IsEditing))
+            UpdateVaultLayoutState();
     }
 
     private void OnAddLoginClick(object sender, RoutedEventArgs e) => BeginAdd(VaultItemKind.Login);

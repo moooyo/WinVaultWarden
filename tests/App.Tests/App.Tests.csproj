@@ -91,5 +91,6 @@
     <Compile Include="..\..\src\App\Services\SensitiveStateRegistry.cs" Link="Services\SensitiveStateRegistry.cs" />
     <Compile Include="..\..\src\App\Services\TransientOperationRegistry.cs" Link="Services\TransientOperationRegistry.cs" />
     <Compile Include="..\..\src\App\Services\AppLifecycleCoordinator.cs" Link="Services\AppLifecycleCoordinator.cs" />
+    <Compile Include="..\..\src\App\Services\ResponsiveDialogSizing.cs" Link="Services\ResponsiveDialogSizing.cs" />
   </ItemGroup>
 </Project>

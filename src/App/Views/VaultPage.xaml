@@ -114,14 +114,42 @@
 
     </Page.Resources>
 
-    <Grid>
+    <Grid x:Name="VaultLayoutRoot" SizeChanged="OnVaultLayoutSizeChanged">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="VaultLayoutStates">
+                <VisualState x:Name="Wide">
+                    <VisualState.Setters>
+                        <Setter Target="VaultListColumn.Width" Value="360" />
+                        <Setter Target="VaultDetailColumn.Width" Value="*" />
+                        <Setter Target="VaultListPane.Visibility" Value="Visible" />
+                        <Setter Target="VaultDetailPane.Visibility" Value="Visible" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="NarrowList">
+                    <VisualState.Setters>
+                        <Setter Target="VaultListColumn.Width" Value="*" />
+                        <Setter Target="VaultDetailColumn.Width" Value="0" />
+                        <Setter Target="VaultListPane.Visibility" Value="Visible" />
+                        <Setter Target="VaultDetailPane.Visibility" Value="Collapsed" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="NarrowDetail">
+                    <VisualState.Setters>
+                        <Setter Target="VaultListColumn.Width" Value="0" />
+                        <Setter Target="VaultDetailColumn.Width" Value="*" />
+                        <Setter Target="VaultListPane.Visibility" Value="Collapsed" />
+                        <Setter Target="VaultDetailPane.Visibility" Value="Visible" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="360" MinWidth="320" MaxWidth="420" />
-            <ColumnDefinition Width="*" MinWidth="380" />
+            <ColumnDefinition x:Name="VaultListColumn" Width="360" />
+            <ColumnDefinition x:Name="VaultDetailColumn" Width="*" />
         </Grid.ColumnDefinitions>
 
         <!-- 列表 -->
-        <Grid Grid.Column="0" Padding="12" RowSpacing="10"
+        <Grid x:Name="VaultListPane" Grid.Column="0" Padding="12" RowSpacing="10"
               BorderThickness="0,0,1,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -162,6 +190,7 @@
                 <ProgressRing x:Name="VaultBusyRing"
                               Width="20"
                               Height="20"
+                              AutomationProperties.AutomationId="VaultBusyRing"
                               IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
                 <TextBlock Text="{x:Bind ViewModel.BusyMessage, Mode=OneWay}"
                            VerticalAlignment="Center"
@@ -519,9 +548,20 @@
         </Grid>
 
         <!-- 详情 -->
-        <Grid Grid.Column="1">
+        <Grid x:Name="VaultDetailPane" Grid.Column="1">
         <ScrollViewer Padding="16">
             <StackPanel Spacing="12" MaxWidth="720" HorizontalAlignment="Stretch">
+                <!-- 窄屏详情态返回列表入口:仅 NarrowDetail 可见,由 code-behind 切换。 -->
+                <Button x:Name="VaultNarrowBackButton"
+                        HorizontalAlignment="Left"
+                        Click="OnVaultNarrowBackClick"
+                        AutomationProperties.AutomationId="VaultNarrowBackButton"
+                        AutomationProperties.Name="返回列表"
+                        Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE72B;" FontSize="14" /><TextBlock Text="返回列表" />
+                    </StackPanel>
+                </Button>
                 <StackPanel x:Name="CipherEditorPanel"
                             x:Load="{x:Bind ViewModel.IsEditing, Mode=OneWay}"
                             Spacing="12"

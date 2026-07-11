@@ -16,7 +16,7 @@
         <x:Double x:Key="ContentDialogMaxHeight">960</x:Double>
     </ContentDialog.Resources>
 
-    <StackPanel Width="520"
+    <StackPanel x:Name="SendEditorContent"
                 Spacing="18">
             <InfoBar x:Name="SendEditorErrorInfoBar"
                      Severity="Error"

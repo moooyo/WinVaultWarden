@@ -19,7 +19,7 @@ public sealed partial class MainWindow : Window
     private const double LoginWindowInitialWidthDip = 440;
     private const double LoginWindowInitialHeightDip = 540;
     private const double LoginWindowMeasureWidthDip = 440;
-    private const double LoginWindowMinWidthDip = 440;
+    private const double LoginWindowMinWidthDip = 320;
     private const double LoginWindowMaxWidthDip = 520;
     private const double LoginWindowMinHeightDip = 500;
     private const double LoginWindowMaxHeightDip = 820;

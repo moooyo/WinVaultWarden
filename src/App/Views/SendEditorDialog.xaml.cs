@@ -47,6 +47,18 @@ public sealed partial class SendEditorDialog : ContentDialog
             _canUpdateBindings = true;
             Bindings?.Update();
         };
+        Opened += (_, _) => ApplyResponsiveWidth();
+        SizeChanged += (_, _) => ApplyResponsiveWidth();
+    }
+
+    // 按 XamlRoot 可用宽度钳制内容宽度,避免高 DPI/窄窗口下对话框水平裁切。
+    private void ApplyResponsiveWidth()
+    {
+        var rootWidth = XamlRoot?.Size.Width ?? 0;
+        SendEditorContent.Width = ResponsiveDialogSizing.Clamp(
+            rootWidth,
+            preferredWidth: 520,
+            horizontalMargin: 48);
     }
 
     private void OnTextChecked(object sender, RoutedEventArgs e) => SetType(SendType.Text);
