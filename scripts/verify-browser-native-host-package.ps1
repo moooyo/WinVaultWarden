@@ -78,7 +78,10 @@ if (-not (Test-Path -LiteralPath $appExe -PathType Leaf)) {
     throw "Portable root is missing App.exe next to the Host: $portable"
 }
 
-# --- 3+4. Build an unsigned MSIX, unpack it, and check the package layout + declaration. ---
+# --- 3+4. Build an unsigned MSIX, unpack it, and assert the Host is NOT packaged. ---
+# User decision: browser integration is portable-only. The MSIX package must not carry,
+# register, or claim the Host, so the package root has no BrowserNativeHost.exe and the
+# manifest declares neither a fullTrustProcess nor an appExecutionAlias extension.
 if (-not $SkipMsix) {
     $msixOut = Join-Path $verifyRoot 'msix'
     Remove-Item $msixOut -Recurse -Force -ErrorAction SilentlyContinue
@@ -111,27 +114,33 @@ if (-not $SkipMsix) {
     if ($LASTEXITCODE -ne 0) { throw "makeappx unpack failed ($LASTEXITCODE)." }
 
     $packagedHost = Join-Path $unpacked $hostName
-    if (-not (Test-Path -LiteralPath $packagedHost -PathType Leaf)) {
-        throw "MSIX package root is missing $hostName at $unpacked"
+    if (Test-Path -LiteralPath $packagedHost -PathType Leaf) {
+        throw "MSIX package must NOT carry the Host, but $hostName is present at $unpacked."
     }
-    Write-Host "MSIX Host OK: $packagedHost"
+    $strayHosts = @(Get-ChildItem -LiteralPath $unpacked -Recurse -Filter $hostName -File -ErrorAction SilentlyContinue)
+    if ($strayHosts.Count -ne 0) {
+        throw "MSIX package must NOT carry the Host, but found: $($strayHosts.FullName -join ', ')."
+    }
+    Write-Host "MSIX has no Host (portable-only) OK."
 
     $manifestPath = Join-Path $unpacked 'AppxManifest.xml'
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
         throw "Unpacked MSIX is missing AppxManifest.xml at $unpacked"
     }
-    $xml = [xml](Get-Content -LiteralPath $manifestPath -Raw)
-    $fullTrust = $xml.GetElementsByTagName('*') | Where-Object {
-        $_.GetAttribute('Category') -eq 'windows.fullTrustProcess'
+    $manifestText = Get-Content -LiteralPath $manifestPath -Raw
+    $xml = [xml]$manifestText
+    foreach ($category in @('windows.fullTrustProcess', 'windows.appExecutionAlias')) {
+        $claimed = $xml.GetElementsByTagName('*') | Where-Object {
+            $_.GetAttribute('Category') -eq $category
+        }
+        if ($claimed) {
+            throw "AppxManifest.xml must not declare '$category' for the portable-only Host."
+        }
     }
-    if (-not $fullTrust) {
-        throw "AppxManifest.xml does not declare a windows.fullTrustProcess extension."
+    if ($manifestText -match '(?i)BrowserNativeHost') {
+        throw "AppxManifest.xml must not reference BrowserNativeHost (portable-only)."
     }
-    $declaredExe = @($fullTrust)[0].GetAttribute('Executable')
-    if ($declaredExe -ne $hostName) {
-        throw "fullTrustProcess Executable '$declaredExe' does not match '$hostName'."
-    }
-    Write-Host "MSIX fullTrustProcess declaration OK: $declaredExe"
+    Write-Host "MSIX manifest claims no Host (no fullTrustProcess/appExecutionAlias) OK."
 }
 
 # --- 5. Resolve the shipped templates and assert token/origin correctness. ---

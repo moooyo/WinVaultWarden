@@ -20,7 +20,8 @@ public interface IPeerAuthorizer
 /// </summary>
 public sealed class ClientPeerAuthorizer : IPeerAuthorizer
 {
-    // 策略 A：host 与本应用同目录(MSIX 下同包)。定位规则与安装脚本/发布布局共用同一 locator。
+    // 策略 A：host 与本应用同目录(便携版布局;MSIX 不携带 host,浏览器集成为便携版专属)。
+    // 定位规则与安装脚本/发布布局共用同一 locator。
     private static readonly string ExpectedHostPath = BrowserNativeHostLocator.ResolveCurrent();
 
     // Release Authenticode 验签尚未实现 → 暂 path-only(见 spec)。实现后按 #if !DEBUG 置真。

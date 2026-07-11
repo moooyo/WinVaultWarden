@@ -4,6 +4,9 @@ param(
     [string]$Browser = 'Both'
 )
 
+# Portable-only: this removes the per-user (HKCU) native-messaging registration and manifest
+# that install-native-host.ps1 writes for the portable build. The MSIX package never registers
+# a Host, so there is nothing MSIX-side to clean up. Missing entries are treated as success.
 $ErrorActionPreference = 'Stop'
 
 $hostName = 'com.winvaultwarden.browser'

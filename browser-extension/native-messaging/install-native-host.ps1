@@ -4,8 +4,12 @@ param(
     [string]$Browser = 'Both',
 
     # App root that holds BrowserNativeHost.exe. Defaults to the portable layout
-    # (this script ships in <AppRoot>\BrowserIntegration) and falls back to the
-    # installed WinVaultWarden MSIX package.
+    # (this script ships in <PortableRoot>\BrowserIntegration).
+    #
+    # PORTABLE-ONLY: browser integration is supported for the portable build only.
+    # The MSIX package deliberately does not carry, register, or claim the Host, so an
+    # MSIX install location (Program Files\WindowsApps, or a folder with an
+    # AppxManifest.xml) is rejected loudly instead of writing any registry/manifest.
     [string]$AppBaseDirectory
 )
 
@@ -19,20 +23,23 @@ if ([string]::IsNullOrWhiteSpace($AppBaseDirectory)) {
     if (Test-Path (Join-Path $portableRoot 'BrowserNativeHost.exe') -PathType Leaf) {
         $AppBaseDirectory = $portableRoot
     } else {
-        $package = Get-AppxPackage -Name 'WinVaultWarden' |
-            Sort-Object Version -Descending |
-            Select-Object -First 1
-        if (-not $package) {
-            throw 'WinVaultWarden portable root or MSIX installation was not found. Pass -AppBaseDirectory.'
-        }
-        $AppBaseDirectory = $package.InstallLocation
+        throw "未找到便携版 WinVaultWarden 根目录中的 BrowserNativeHost.exe (查找位置: $portableRoot)。请在便携版布局下运行,或用 -AppBaseDirectory 指定便携版根目录。"
     }
 }
 
 $appRoot = (Resolve-Path -LiteralPath $AppBaseDirectory).Path
+
+# Reject MSIX-packaged locations: browser integration is portable-only. WindowsApps is the
+# canonical MSIX install root; an AppxManifest.xml next to the Host is the same signal for
+# a sideloaded/staged package. Either way we must never register from a packaged location.
+if ($appRoot -match '(?i)\\Program Files\\WindowsApps\\' -or
+    (Test-Path -LiteralPath (Join-Path $appRoot 'AppxManifest.xml') -PathType Leaf)) {
+    throw "MSIX 不支持浏览器集成，请使用便携版 (portable) 安装。检测到的 MSIX 包目录: $appRoot"
+}
+
 $hostPath = Join-Path $appRoot 'BrowserNativeHost.exe'
 if (-not (Test-Path -LiteralPath $hostPath -PathType Leaf)) {
-    throw "BrowserNativeHost.exe is missing from App root: $appRoot"
+    throw "BrowserNativeHost.exe is missing from portable App root: $appRoot"
 }
 
 $targets = @{

@@ -92,6 +92,26 @@ public class BrowserExtensionTests
     }
 
     [Fact]
+    public void NativeMessagingInstallScript_IsPortableOnlyAndRefusesMsix()
+    {
+        var script = File.ReadAllText(FindRepoFile(
+            "browser-extension",
+            "native-messaging",
+            "install-native-host.ps1"));
+
+        // User decision: browser integration is portable-only. The installer must detect an MSIX
+        // package location (WindowsApps or an AppxManifest.xml alongside the Host) and refuse it
+        // loudly with a clear message, never touching the registry or writing a manifest.
+        Assert.Contains("WindowsApps", script);
+        Assert.Contains("MSIX 不支持浏览器集成，请使用便携版", script);
+        Assert.Contains("throw", script);
+
+        // No MSIX fallback: the installer must not discover or register an installed package.
+        Assert.DoesNotContain("Get-AppxPackage", script);
+        Assert.DoesNotContain("InstallLocation", script);
+    }
+
+    [Fact]
     public void NativeMessagingUninstallScript_RemovesBothBrowserManifestsIdempotently()
     {
         var script = File.ReadAllText(FindRepoFile(

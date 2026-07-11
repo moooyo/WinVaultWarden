@@ -33,13 +33,20 @@ public sealed class PublishLayoutTests
     }
 
     [Fact]
-    public void PackageManifest_DeclaresRootFullTrustHost()
+    public void PackageManifest_NeverShipsOrClaimsBrowserHost()
     {
+        // User decision: the browser native-messaging Host is portable-only. The MSIX package
+        // must not carry, register, or claim the Host in any way, so its manifest declares
+        // neither a fullTrustProcess nor an appExecutionAlias for it.
         var xml = XDocument.Load(FindRepoFile("src", "App", "Package.appxmanifest"));
-        var extension = xml.Descendants()
-            .Single(element => (string?)element.Attribute("Category") == "windows.fullTrustProcess");
 
-        Assert.Equal("BrowserNativeHost.exe", (string?)extension.Attribute("Executable"));
+        Assert.DoesNotContain(
+            xml.Descendants(),
+            element => (string?)element.Attribute("Category") == "windows.fullTrustProcess");
+        Assert.DoesNotContain(
+            xml.Descendants(),
+            element => (string?)element.Attribute("Category") == "windows.appExecutionAlias");
+        Assert.DoesNotContain("BrowserNativeHost", xml.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -48,6 +55,17 @@ public sealed class PublishLayoutTests
         var project = File.ReadAllText(FindRepoFile("src", "App", "App.csproj"));
 
         Assert.Contains("BrowserNativeHost.Publish.targets", project);
+    }
+
+    [Fact]
+    public void HostPublishLayout_ShipsHostOnlyInPortableBuilds()
+    {
+        // The Host and its BrowserIntegration payload may only enter unpackaged (portable)
+        // builds. Gating on WindowsPackageType == 'None' keeps them out of the MSIX payload.
+        var targets = File.ReadAllText(FindRepoFile("src", "App", "BrowserNativeHost.Publish.targets"));
+
+        Assert.Contains("'$(WindowsPackageType)' == 'None'", targets);
+        Assert.DoesNotContain("windows.fullTrustProcess", targets);
     }
 
     private static string FindRepoFile(params string[] parts)

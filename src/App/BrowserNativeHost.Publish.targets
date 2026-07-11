@@ -1,14 +1,20 @@
 <Project>
 
   <!--
-    Ships the browser native-messaging Host next to App.exe in every layout
-    (Debug/Release output, unpackaged publish, and MSIX payload). The Host is a
-    self-contained Native AOT single EXE published by App RID, so App and the Host
-    are one signed unit and BrowserNativeHostLocator always finds it at the root.
+    Ships the browser native-messaging Host next to App.exe in PORTABLE (unpackaged)
+    layouts only. Per user decision the MSIX package must NOT carry, register, or claim
+    the Host, so every Host/BrowserIntegration item and the AOT publish target are gated
+    on WindowsPackageType == 'None' (the signal the portable publish sets). The Host is a
+    self-contained Native AOT single EXE published by App RID, so App and the Host are one
+    signed unit and BrowserNativeHostLocator always finds it at the portable root.
   -->
 
   <PropertyGroup>
     <BrowserNativeHostProject>$(MSBuildThisFileDirectory)..\BrowserNativeHost\BrowserNativeHost.csproj</BrowserNativeHostProject>
+
+    <!-- Host ships only in unpackaged (portable) builds; MSIX/inner-loop builds skip it. -->
+    <ShipBrowserNativeHost Condition="'$(WindowsPackageType)' == 'None'">true</ShipBrowserNativeHost>
+    <ShipBrowserNativeHost Condition="'$(ShipBrowserNativeHost)' == ''">false</ShipBrowserNativeHost>
 
     <!-- Host RID follows the App RID; fall back to the App $(Platform), then x64. -->
     <BrowserNativeHostRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</BrowserNativeHostRid>
@@ -24,7 +30,7 @@
     <BrowserNativeHostStage>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', 'browser-native-host', '$(Configuration)', '$(BrowserNativeHostRid)'))</BrowserNativeHostStage>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(ShipBrowserNativeHost)' == 'true'">
     <Content Include="$(BrowserNativeHostStage)BrowserNativeHost.exe">
       <Link>BrowserNativeHost.exe</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -50,7 +56,7 @@
 
   <Target Name="PublishBrowserNativeHost"
           BeforeTargets="PrepareForBuild"
-          Condition="'$(DesignTimeBuild)' != 'true'">
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(ShipBrowserNativeHost)' == 'true'">
     <MSBuild Projects="$(BrowserNativeHostProject)"
              Targets="Publish"
              BuildInParallel="false"

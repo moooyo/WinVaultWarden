@@ -2,9 +2,8 @@
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
-  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="desktop rescap">
+  IgnorableNamespaces="rescap">
   <Identity Name="WinVaultWarden" Publisher="CN=WinVaultWarden" Version="1.0.0.0" />
   <Properties>
     <DisplayName>WinVaultWarden</DisplayName>
@@ -25,10 +24,8 @@
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
-      <Extensions>
-        <!-- 浏览器 Native Messaging Host 随包发布,声明为包内全信任子进程。 -->
-        <desktop:Extension Category="windows.fullTrustProcess" Executable="BrowserNativeHost.exe" />
-      </Extensions>
+      <!-- 用户决定:浏览器 Native Messaging Host 仅便携版携带。MSIX 不携带、不注册、
+           不声明 Host(无 fullTrustProcess / appExecutionAlias),浏览器集成请用便携版。 -->
     </Application>
   </Applications>
   <Capabilities>
