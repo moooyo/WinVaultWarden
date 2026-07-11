@@ -1,35 +1,175 @@
+// MAIN-world WebAuthn shim. It is injected declaratively into the page's own realm (manifest
+// `world: MAIN`), so it shares globals with the page and must treat everything it can observe as
+// public. It never trusts the page for security: it strips origin, cross-origin, frame and context
+// out of the wire request entirely and lets the browser (background service worker) rebuild the
+// trusted context from `port.sender`. Conditional/silent mediation and non-publicKey requests bypass the
+// bridge and hit the platform authenticator directly, so passive UI and password flows are never
+// intercepted. It talks to the ISOLATED relay over window.postMessage using a per-frame random
+// channel established by a bootstrap handshake; the channel only correlates messages and grants no
+// authority, since the real origin is reconstructed by the browser downstream.
 (function installWinVaultWardenWebAuthnBridge() {
-  const PAGE_SOURCE = "winvaultwarden-page";
-  const CONTENT_SOURCE = "winvaultwarden-content";
-  const FALLBACK_ERROR_CODES = new Set([
-    "native_host_unavailable",
-    "not_implemented",
-    "vault_locked",
-    "no_credential",
-  ]);
+  const MAIN_SOURCE = "winvaultwarden-main";
+  const ISOLATED_SOURCE = "winvaultwarden-isolated";
+  const coordinator = globalThis.WinVaultWardenRequestCoordinator;
+  const errorMap = globalThis.WinVaultWardenErrorMap;
   const credentials = navigator.credentials;
 
-  if (!credentials || credentials.__winVaultWardenPatched) {
+  if (!credentials || !coordinator || !errorMap || credentials.__winVaultWardenPatched) {
     return;
   }
 
   const nativeCreate = credentials.create?.bind(credentials);
   const nativeGet = credentials.get?.bind(credentials);
 
+  const bootstrapId = coordinator.randomRequestId();
+  let boundChannel = null;
+  const bindWaiters = [];
+  const pending = new Map();
+
+  function targetOrigin() {
+    const origin = window.location.origin;
+    return origin && origin !== "null" ? origin : "*";
+  }
+
+  function postToIsolated(message) {
+    window.postMessage({ source: MAIN_SOURCE, ...message }, targetOrigin());
+  }
+
+  function bindChannel(channelId) {
+    if (boundChannel) return;
+    boundChannel = channelId;
+    for (const waiter of bindWaiters.splice(0)) waiter();
+  }
+
+  function whenBound(callback) {
+    if (boundChannel) {
+      callback();
+    } else {
+      bindWaiters.push(callback);
+    }
+  }
+
+  window.addEventListener("message", (event) => {
+    const message = event.data;
+    if (event.source !== window || message?.source !== ISOLATED_SOURCE) {
+      return;
+    }
+
+    if (message.kind === "isolated.ready") {
+      if (message.bootstrapId === bootstrapId && typeof message.channelId === "string") {
+        // Bind the first channel that echoes our private bootstrap id.
+        bindChannel(message.channelId);
+      } else if (!boundChannel) {
+        // An isolated world announced itself before it saw our bootstrap; re-offer it.
+        postToIsolated({ kind: "main.ready", bootstrapId });
+      }
+      return;
+    }
+
+    if (!boundChannel || message.channelId !== boundChannel || typeof message.id !== "string") {
+      return;
+    }
+    if (message.kind === "response") {
+      const resolve = pending.get(message.id);
+      if (resolve) {
+        pending.delete(message.id);
+        resolve(message.response);
+      }
+    }
+  });
+
+  postToIsolated({ kind: "main.ready", bootstrapId });
+
+  function relay(request, signal) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const cleanup = () => {
+        pending.delete(request.id);
+        if (signal) signal.removeEventListener("abort", onAbort);
+      };
+      function onAbort() {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (boundChannel) {
+          postToIsolated({ kind: "cancel", channelId: boundChannel, id: request.id });
+        }
+        reject(errorMap.toException("operation_aborted"));
+      }
+
+      if (signal) {
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+
+      whenBound(() => {
+        if (settled) return;
+        pending.set(request.id, (response) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(response);
+        });
+        postToIsolated({ kind: "request", channelId: boundChannel, id: request.id, request });
+      });
+    });
+  }
+
+  async function interceptedCreate(options) {
+    if (!options?.publicKey) {
+      return nativeCreate(options);
+    }
+
+    const response = await relay(
+      {
+        v: 1,
+        id: coordinator.randomRequestId(),
+        type: "passkey.create",
+        deadlineUnixMs: coordinator.deadlineUnixMs(options.publicKey.timeout),
+        payload: mapCreateOptions(options),
+      },
+      options.signal,
+    );
+    if (errorMap.shouldFallback(response)) {
+      return nativeCreate(options);
+    }
+    return responseToCredential(response);
+  }
+
+  async function interceptedGet(options) {
+    if (!options?.publicKey) {
+      return nativeGet(options);
+    }
+    if (options.mediation === "conditional" || options.mediation === "silent") {
+      // Passive/silent flows must reach the platform authenticator directly: never surface bridge
+      // UI, never open a native port, never wake the App.
+      return nativeGet(options);
+    }
+
+    const response = await relay(
+      {
+        v: 1,
+        id: coordinator.randomRequestId(),
+        type: "passkey.get",
+        deadlineUnixMs: coordinator.deadlineUnixMs(options.publicKey.timeout),
+        payload: mapGetOptions(options),
+      },
+      options.signal,
+    );
+    if (errorMap.shouldFallback(response)) {
+      return nativeGet(options);
+    }
+    return responseToCredential(response);
+  }
+
   if (nativeCreate) {
     Object.defineProperty(credentials, "create", {
       configurable: true,
-      value: async function create(options) {
-      if (!options?.publicKey) {
-        return nativeCreate(options);
-      }
-
-      const response = await sendPasskeyRequest("passkey.create", options);
-      if (shouldFallback(response)) {
-        return nativeCreate(options);
-      }
-
-      return responseToCredential(response);
+      value: function create(options) {
+        return interceptedCreate(options);
       },
     });
   }
@@ -37,17 +177,8 @@
   if (nativeGet) {
     Object.defineProperty(credentials, "get", {
       configurable: true,
-      value: async function get(options) {
-      if (!options?.publicKey) {
-        return nativeGet(options);
-      }
-
-      const response = await sendPasskeyRequest("passkey.get", options);
-      if (shouldFallback(response)) {
-        return nativeGet(options);
-      }
-
-      return responseToCredential(response);
+      value: function get(options) {
+        return interceptedGet(options);
       },
     });
   }
@@ -57,56 +188,20 @@
     enumerable: false,
   });
 
-  function sendPasskeyRequest(type, options) {
-    const id = crypto.randomUUID();
-    const payload = type === "passkey.create" ? mapCreateOptions(options) : mapGetOptions(options);
-    const request = {
-      id,
-      type,
-      payload,
-    };
-
-    return new Promise((resolve) => {
-      const timeout = window.setTimeout(() => {
-        window.removeEventListener("message", onMessage);
-        resolve(errorResponse(id, "extension_bridge_timeout", "WinVaultWarden extension bridge timed out."));
-      }, 30000);
-
-      function onMessage(event) {
-        if (event.source !== window || event.data?.source !== CONTENT_SOURCE || event.data.id !== id) {
-          return;
-        }
-
-        window.clearTimeout(timeout);
-        window.removeEventListener("message", onMessage);
-        resolve(event.data.response ?? errorResponse(id, "empty_response", "WinVaultWarden returned an empty response."));
-      }
-
-      window.addEventListener("message", onMessage);
-      window.postMessage({ source: PAGE_SOURCE, request }, window.location.origin);
-    });
-  }
-
-  function shouldFallback(response) {
-    return !response?.ok && FALLBACK_ERROR_CODES.has(response?.error?.code);
-  }
-
   function responseToCredential(response) {
     if (!response?.ok) {
-      throw new DOMException(response?.error?.message ?? "WinVaultWarden passkey request failed.", "NotAllowedError");
+      // Code-only: the shim never reads response.error.message, so backend text cannot reach the page.
+      throw errorMap.toException(response?.error?.code);
     }
-
     if (!response.payload) {
-      throw new DOMException("WinVaultWarden passkey response did not include a credential.", "UnknownError");
+      throw errorMap.toException("internal_error");
     }
-
     return decodeCredential(response.payload);
   }
 
   function mapCreateOptions(options) {
     const keyOptions = options.publicKey;
     return {
-      origin: window.location.origin,
       rpId: keyOptions.rp?.id ?? null,
       attestation: keyOptions.attestation ?? null,
       authenticatorSelection: keyOptions.authenticatorSelection
@@ -149,8 +244,6 @@
   function mapGetOptions(options) {
     const keyOptions = options.publicKey;
     return {
-      origin: window.location.origin,
-      crossOrigin: window.top !== window.self,
       rpId: keyOptions.rpId ?? null,
       challenge: bufferToBase64Url(keyOptions.challenge),
       allowCredentials:
@@ -271,14 +364,5 @@
     }
 
     return bytes;
-  }
-
-  function errorResponse(id, code, message) {
-    return {
-      id,
-      ok: false,
-      type: "error",
-      error: { code, message },
-    };
   }
 })();

@@ -6,62 +6,120 @@ namespace BrowserNativeHost.Tests;
 public class BrowserExtensionTests
 {
     [Fact]
-    public void Manifest_InjectsWebAuthnBridgeAndAllowsNativeMessaging()
+    public void Manifests_DeclareMainAndIsolatedWorldsWithoutDynamicInjection()
     {
-        using var document = JsonDocument.Parse(File.ReadAllText(FindRepoFile("browser-extension", "manifest.json")));
-        var root = document.RootElement;
+        // Both Chrome and Edge inject the same two declarative content scripts: the shim into the
+        // page's MAIN world, the relay into the extension's ISOLATED world. There is no
+        // web_accessible_resource (the old dynamic <script> injection surface) and no popup/options.
+        foreach (var file in new[] { "manifest.json", "manifest.edge.json" })
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(FindRepoFile("browser-extension", file)));
+            var root = document.RootElement;
 
-        Assert.Equal(3, root.GetProperty("manifest_version").GetInt32());
-        Assert.Contains(root.GetProperty("permissions").EnumerateArray(),
-            permission => permission.GetString() == "nativeMessaging");
+            Assert.Equal(3, root.GetProperty("manifest_version").GetInt32());
+            Assert.Contains(root.GetProperty("permissions").EnumerateArray(),
+                permission => permission.GetString() == "nativeMessaging");
 
-        var contentScript = Assert.Single(root.GetProperty("content_scripts").EnumerateArray());
-        Assert.Equal("document_start", contentScript.GetProperty("run_at").GetString());
-        Assert.True(contentScript.GetProperty("all_frames").GetBoolean());
-        Assert.Contains(contentScript.GetProperty("js").EnumerateArray(),
-            script => script.GetString() == "src/content-webauthn.js");
+            var scripts = root.GetProperty("content_scripts").EnumerateArray().ToArray();
+            Assert.Equal(2, scripts.Length);
 
-        var resource = Assert.Single(root.GetProperty("web_accessible_resources").EnumerateArray());
-        Assert.Contains(resource.GetProperty("resources").EnumerateArray(),
-            script => script.GetString() == "src/page-webauthn.js");
+            var main = scripts[0];
+            var isolated = scripts[1];
+            Assert.Equal("MAIN", main.GetProperty("world").GetString());
+            Assert.Equal("ISOLATED", isolated.GetProperty("world").GetString());
 
-        // The passkey bridge is intentionally headless: no toolbar/action surface, no options
-        // page, and it never touches stored passwords. Lock those out so scope creep is a red test.
-        Assert.False(root.TryGetProperty("action", out _));
-        Assert.False(root.TryGetProperty("options_page", out _));
-        Assert.False(root.TryGetProperty("options_ui", out _));
-        Assert.DoesNotContain("password", root.GetRawText(), StringComparison.OrdinalIgnoreCase);
+            foreach (var script in scripts)
+            {
+                Assert.Equal("document_start", script.GetProperty("run_at").GetString());
+                Assert.True(script.GetProperty("all_frames").GetBoolean());
+            }
+
+            Assert.Equal(
+                new[] { "src/error-map.js", "src/request-coordinator.js", "src/page-webauthn.js" },
+                main.GetProperty("js").EnumerateArray().Select(script => script.GetString()).ToArray());
+            Assert.Equal(
+                new[] { "src/request-coordinator.js", "src/content-webauthn.js" },
+                isolated.GetProperty("js").EnumerateArray().Select(script => script.GetString()).ToArray());
+
+            // The passkey bridge is intentionally headless: no dynamic injection surface, no toolbar
+            // action, no options page, and it never touches stored passwords. Lock those out so any
+            // scope creep is a red test.
+            Assert.False(root.TryGetProperty("web_accessible_resources", out _));
+            Assert.False(root.TryGetProperty("action", out _));
+            Assert.False(root.TryGetProperty("options_page", out _));
+            Assert.False(root.TryGetProperty("options_ui", out _));
+            Assert.DoesNotContain("password", root.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     [Fact]
-    public void PageScript_InterceptsCreateGetAndFallsBackWhenHostIsUnavailable()
+    public void PageScript_RunsInMainWorldAndFallsBackOnlyForClientNotHandled()
     {
         var script = File.ReadAllText(FindRepoFile("browser-extension", "src", "page-webauthn.js"));
 
-        Assert.Contains("credentials.create", script);
-        Assert.Contains("credentials.get", script);
         Assert.Contains("\"passkey.create\"", script);
         Assert.Contains("\"passkey.get\"", script);
-        Assert.Contains("native_host_unavailable", script);
-        Assert.Contains("not_implemented", script);
-        Assert.Contains("vault_locked", script);
-        Assert.Contains("no_credential", script);
+        // Passive/silent get reaches the platform authenticator directly, never the bridge.
+        Assert.Contains("conditional", script);
+        Assert.Contains("silent", script);
         Assert.Contains("nativeCreate(options)", script);
         Assert.Contains("nativeGet(options)", script);
+        // Fallback is driven solely by the shared, code-only error map (client_not_handled), and the
+        // v1 request envelope never carries a page-dictated origin/crossOrigin.
+        Assert.Contains("WinVaultWardenErrorMap", script);
+        Assert.Contains("shouldFallback", script);
+        Assert.Contains("WinVaultWardenRequestCoordinator", script);
+        Assert.Contains("v: 1", script);
+        Assert.DoesNotContain("payload.origin", script);
+        Assert.DoesNotContain("crossOrigin", script);
     }
 
     [Fact]
-    public void ContentScript_RelaysOnlyPageBridgeMessagesToNativeHost()
+    public void ContentScript_UsesPersistentPortAndStripsPageContext()
     {
         var script = File.ReadAllText(FindRepoFile("browser-extension", "src", "content-webauthn.js"));
 
-        Assert.Contains("winvaultwarden-page", script);
-        Assert.Contains("winvaultwarden-content", script);
-        Assert.Contains("winvaultwarden-native", script);
-        Assert.Contains("chrome.runtime.sendMessage", script);
-        Assert.Contains("window.postMessage", script);
-        // Content script pins the real frame origin (isolated world) over the page-reported one.
-        Assert.Contains("request.payload.origin = event.origin", script);
+        Assert.Contains("winvaultwarden-main", script);
+        Assert.Contains("winvaultwarden-isolated", script);
+        Assert.Contains("chrome.runtime.connect", script);
+        Assert.Contains("winvaultwarden-passkey-frame-v1", script);
+        // The isolated world computes the real Permissions Policy verdict and strips any page context.
+        Assert.Contains("publicKeyCredentialsGetAllowed", script);
+        Assert.Contains("permissionsPolicy", script);
+        Assert.Contains("delete request.payload.origin", script);
+        Assert.Contains("delete request.context", script);
+        // No dynamic <script> injection, no one-shot messaging, no web-accessible host URL lookups.
+        Assert.DoesNotContain("createElement", script);
+        Assert.DoesNotContain("getURL", script);
+        Assert.DoesNotContain("sendMessage", script);
+        Assert.DoesNotContain("sendNativeMessage", script);
+    }
+
+    [Fact]
+    public void Background_UsesPersistentNativePortAndBrowserAuthenticatedContext()
+    {
+        var background = File.ReadAllText(FindRepoFile("browser-extension", "src", "background.js"));
+
+        // Trust is assigned from the browser sender, never the page; one persistent native port.
+        Assert.Contains("onConnect", background);
+        Assert.Contains("winvaultwarden-passkey-frame-v1", background);
+        Assert.Contains("buildTrustedContext", background);
+        Assert.Contains("port.sender", background);
+        Assert.DoesNotContain("sendNativeMessage", background);
+
+        var nativePort = File.ReadAllText(FindRepoFile("browser-extension", "src", "native-port.js"));
+        Assert.Contains("connectNative", nativePort);
+        Assert.Contains("com.winvaultwarden.browser", nativePort);
+        // Lazy singleton: ping/pong readiness, then the two disconnect outcomes.
+        Assert.Contains("\"ping\"", nativePort);
+        Assert.Contains("client_not_handled", nativePort);
+        Assert.Contains("operation_aborted", nativePort);
+
+        var trusted = File.ReadAllText(FindRepoFile("browser-extension", "src", "trusted-context.js"));
+        Assert.Contains("security_sender", trusted);
+        Assert.Contains("frameOrigin", trusted);
+        Assert.Contains("topOrigin", trusted);
+        Assert.Contains("publicKeyCredentialsGetAllowed", trusted);
     }
 
     [Fact]

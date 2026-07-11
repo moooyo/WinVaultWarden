@@ -18,20 +18,25 @@
         "<all_urls>"
       ],
       "js": [
+        "src/error-map.js",
+        "src/request-coordinator.js",
+        "src/page-webauthn.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/request-coordinator.js",
         "src/content-webauthn.js"
       ],
       "run_at": "document_start",
-      "all_frames": true
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "src/page-webauthn.js"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
+      "all_frames": true,
+      "world": "ISOLATED"
     }
   ]
 }
