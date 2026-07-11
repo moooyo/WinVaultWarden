@@ -56,6 +56,31 @@ public class CrashLoggerTests
     }
 
     [Fact]
+    public void FormatRedacted_OmitsStackTraceAndSensitiveMessageContent()
+    {
+        // 已 throw 的异常带真实栈;脱敏格式绝不能泄漏 Message(可能夹带令牌/主密码/敏感路径)或栈帧。
+        Exception captured;
+        try
+        {
+            throw new InvalidOperationException(
+                "token=SECRET-abc123; path=C:\\Users\\alice\\vault.key");
+        }
+        catch (Exception ex)
+        {
+            captured = ex;
+        }
+
+        var entry = CrashLogger.FormatRedacted("UI", captured, FixedNow);
+
+        Assert.Contains("System.InvalidOperationException", entry);
+        Assert.DoesNotContain("SECRET-abc123", entry);
+        Assert.DoesNotContain("vault.key", entry);
+        Assert.DoesNotContain("alice", entry);
+        // 栈帧行以 " at " 前缀出现;脱敏格式里不得含任何栈帧。
+        Assert.DoesNotContain(" at ", entry);
+    }
+
+    [Fact]
     public void Write_CreatesLogsDirAndAppends()
     {
         var baseDir = NewTempDir();

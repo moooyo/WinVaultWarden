@@ -6,6 +6,11 @@
     xmlns:converters="using:App.Converters"
     xmlns:vm="using:App.ViewModels">
 
+    <Page.KeyboardAccelerators>
+        <KeyboardAccelerator Key="Enter"
+                             Invoked="OnSubmitAccelerator" />
+    </Page.KeyboardAccelerators>
+
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
     </Page.Resources>
@@ -56,9 +61,14 @@
                          Severity="Error"
                          Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" />
 
-                <!-- 表单主体 -->
-                <StackPanel Margin="0,18,0,0"
-                            Spacing="14">
+                <!-- 表单主体:整体随 CanEditForm 禁用(注册进行中禁用全部输入与"返回登录")。
+                     WinUI 的 IsEnabled 属于 Control,StackPanel(Panel)无此属性,故用 ContentControl 承载。 -->
+                <ContentControl x:Name="RegisterInputPanel"
+                                Margin="0,18,0,0"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                IsEnabled="{x:Bind ViewModel.CanEditForm, Mode=OneWay}">
+                    <StackPanel Spacing="14">
 
                     <!-- 服务器选择 -->
                     <ComboBox x:Name="ServerOptionBox"
@@ -148,7 +158,8 @@
                                      HorizontalAlignment="Center"
                                      Click="OnBackToLoginClick" />
 
-                </StackPanel>
+                    </StackPanel>
+                </ContentControl>
             </StackPanel>
         </ScrollViewer>
     </Grid>

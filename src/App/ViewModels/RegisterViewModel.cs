@@ -4,6 +4,15 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace App.ViewModels;
 
+public enum RegisterFocusTarget
+{
+    ServerUrl,
+    Email,
+    Name,
+    MasterPassword,
+    ConfirmPassword,
+}
+
 public partial class RegisterViewModel : ObservableObject, ISensitiveState
 {
     private const string BitwardenUsUrl = "https://vault.bitwarden.com";
@@ -37,6 +46,13 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
+    // 页面据 FocusRequestId 单调递增触发一次编程式焦点。
+    [ObservableProperty]
+    public partial RegisterFocusTarget FocusTarget { get; set; }
+
+    [ObservableProperty]
+    public partial long FocusRequestId { get; set; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasOperationError))]
     public partial string OperationError { get; set; } = string.Empty;
@@ -55,6 +71,9 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
     // ── 计算属性 ──────────────────────────────────────────────────────────
 
     public bool HasOperationError => !string.IsNullOrEmpty(OperationError);
+
+    // 注册进行中禁用整个表单(含返回登录):由 OnIsBusyChanged 通知刷新。
+    public bool CanEditForm => !IsBusy;
 
     public bool ShowCustomServerUrl => SelectedServerOptionIndex == 2;
 
@@ -91,6 +110,9 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
         if (IsBusy)
             return;
 
+        if (!ValidateInput())
+            return;
+
         IsBusy = true;
         OperationError = string.Empty;
 
@@ -105,22 +127,69 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
             RegisteredEmail = email;
             Registered = true;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // 用户取消，不设错误
+            // 用户取消,不设错误
+            OperationError = string.Empty;
         }
         catch (RegistrationException ex)
         {
             OperationError = ex.Message;
-        }
-        catch
-        {
-            OperationError = "注册失败，请稍后重试";
+            RequestFocus(RegisterFocusTarget.Email);
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    // 调用服务前完成字段校验,并把焦点请求给第一个无效字段(文案沿用现有中文)。
+    private bool ValidateInput()
+    {
+        var serverUrl = ResolveServerUrl();
+        if (!Uri.TryCreate(serverUrl, UriKind.Absolute, out var uri)
+            || uri.Scheme is not ("http" or "https"))
+        {
+            OperationError = "请输入有效的服务器地址";
+            RequestFocus(RegisterFocusTarget.ServerUrl);
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(Email) || !Email.Contains('@'))
+        {
+            OperationError = "请输入有效的邮箱地址";
+            RequestFocus(RegisterFocusTarget.Email);
+            return false;
+        }
+
+        if (string.IsNullOrEmpty(MasterPassword))
+        {
+            OperationError = "密码不能为空";
+            RequestFocus(RegisterFocusTarget.MasterPassword);
+            return false;
+        }
+
+        if (MasterPassword != ConfirmPassword)
+        {
+            OperationError = "两次输入的密码不一致";
+            RequestFocus(RegisterFocusTarget.ConfirmPassword);
+            return false;
+        }
+
+        if (Name is not null && Name.Trim().Length > 50)
+        {
+            OperationError = "昵称不能超过 50 个字符";
+            RequestFocus(RegisterFocusTarget.Name);
+            return false;
+        }
+
+        return true;
+    }
+
+    private void RequestFocus(RegisterFocusTarget target)
+    {
+        FocusTarget = target;
+        checked { FocusRequestId++; }
     }
 
     // ── 服务器 URL 解析 ───────────────────────────────────────────────────
@@ -147,4 +216,6 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
     }
 
     partial void OnServerUrlChanged(string value) => OnPropertyChanged(nameof(ShowCustomServerUrl));
+
+    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanEditForm));
 }

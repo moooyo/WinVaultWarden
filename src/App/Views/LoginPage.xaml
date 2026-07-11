@@ -6,6 +6,11 @@
     xmlns:vm="using:App.ViewModels"
     xmlns:converters="using:App.Converters">
 
+    <Page.KeyboardAccelerators>
+        <KeyboardAccelerator Key="Enter"
+                             Invoked="OnSubmitAccelerator" />
+    </Page.KeyboardAccelerators>
+
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
     </Page.Resources>

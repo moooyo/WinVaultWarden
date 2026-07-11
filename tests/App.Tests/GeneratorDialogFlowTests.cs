@@ -53,6 +53,13 @@ public class GeneratorDialogFlowTests
         Assert.Contains("UnhandledException +=", src);
         Assert.Contains("TaskScheduler.UnobservedTaskException +=", src);
         Assert.Contains("CrashLogger", src);
-        Assert.Contains("e.Handled = true", src);
+        Assert.Contains("FailClosedSynchronously", src);
+        Assert.Contains("e.Handled = false", src);
+        Assert.DoesNotContain("e.Handled = true;", src);
+        var logIndex = src.IndexOf("FormatRedacted", StringComparison.Ordinal);
+        var clearIndex = src.IndexOf("FailClosedSynchronously", StringComparison.Ordinal);
+        var terminateIndex = src.IndexOf("e.Handled = false", StringComparison.Ordinal);
+        Assert.True(logIndex >= 0 && logIndex < clearIndex);
+        Assert.True(clearIndex < terminateIndex);
     }
 }

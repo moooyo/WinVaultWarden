@@ -23,9 +23,10 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        // 全局兜底:此前 UI 层遍布的 async void 处理器一旦抛出未捕获异常(如 ContentDialog
-        // 重入 COMException、附件文件 I/O),会直接终止整个进程且无任何日志。这里记录后标记
-        // 已处理,把一次杂散的 UI 异常降级为"记一条日志继续运行"而非硬崩溃。
+        // 全局兜底:UI 层遍布的 async void 处理器一旦抛出未捕获异常(如 ContentDialog 重入 COMException、
+        // 附件文件 I/O),会直接终止整个进程且无任何日志。这里先记一条脱敏诊断,再按白名单区分:
+        // 显式可恢复/取消 → 标记已处理继续运行;未知异常 → 同步 fail-closed 清空敏感状态后保持未处理,
+        // 交由系统终止进程,绝不带着已损坏的状态继续跑(见 OnUnhandledException)。
         UnhandledException += OnUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
@@ -52,14 +53,35 @@ public partial class App : Application
 
     private static void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
-        CrashLogger.Write(AppDataDir, CrashLogger.Format("UI", e.Exception, DateTimeOffset.UtcNow));
-        // 标记已处理:密码管理器里这类异常绝大多数是可恢复的 UI/IO 抖动,继续运行优于整进程崩溃。
-        e.Handled = true;
+        // 只记脱敏诊断(类型链 + HResult),绝不落 Message/Inner/栈——它们可能夹带主密码/令牌/敏感路径。
+        CrashLogger.Write(AppDataDir, CrashLogger.FormatRedacted("UI", e.Exception, DateTimeOffset.UtcNow));
+
+        var canContinue = UiExceptionPolicy.CanContinue(e.Exception);
+        if (canContinue)
+        {
+            // 显式可恢复/取消:安全地把此次杂散 UI 异常降级为"记一条日志继续运行"。
+            e.Handled = canContinue;
+            return;
+        }
+
+        // 未知异常:先同步 fail-closed(阻断敏感操作、失效会话、清空敏感状态/剪贴板/瞬态窗口),
+        // 再保持未处理,让系统按原异常终止进程——绝不吞掉未知异常带着损坏状态继续。
+        // 兜底清理本身绝不能再抛/盖住原始异常:Services 理论上此刻已构造,仍防御性判空并吞掉任何清理异常
+        // (FailClosedSynchronously 内部已对每步 Safe 包裹,这里的 try 只防 bootstrap 极早期/Provider 异常)。
+        try
+        {
+            Services?.GetService<IAppLifecycleCoordinator>()?.FailClosedSynchronously();
+        }
+        catch
+        {
+            // 清理失败不得中断兜底,也不得盖住原始未知异常。
+        }
+        e.Handled = false;
     }
 
     private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
-        CrashLogger.Write(AppDataDir, CrashLogger.Format("Task", e.Exception, DateTimeOffset.UtcNow));
+        CrashLogger.Write(AppDataDir, CrashLogger.FormatRedacted("Task", e.Exception, DateTimeOffset.UtcNow));
         e.SetObserved();
     }
 }

@@ -3,6 +3,7 @@ using Core.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using System.ComponentModel;
 
 namespace App.Views;
@@ -44,6 +45,8 @@ public sealed partial class LoginPage : Page
         // 保存的会话在构造函数里已 PrepareUnlock(早于下面的 PropertyChanged 订阅),
         // 若 Hello 可用性探测在此之前就已就绪(理论上极快的场景),Loaded 时补一次检查。
         TryAutoPromptHello();
+        // 构造期 PrepareUnlock/PrepareAccount 的焦点请求早于页面订阅,会被漏掉;加载完成后按当前阶段补发一次。
+        ViewModel.RequestStageFocus();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -65,6 +68,33 @@ public sealed partial class LoginPage : Page
 
         if (e.PropertyName is nameof(LoginViewModel.Stage) or nameof(LoginViewModel.ShowHelloUnlock))
             TryAutoPromptHello();
+
+        if (e.PropertyName == nameof(LoginViewModel.FocusRequestId))
+            DispatcherQueue.TryEnqueue(ApplyFocusRequest);
+    }
+
+    // 把 VM 的抽象焦点目标翻译为当前阶段可见的具体控件;解锁阶段主密码目标对应 UnlockPasswordBox。
+    private void ApplyFocusRequest()
+    {
+        Control target = ViewModel.FocusTarget switch
+        {
+            LoginFocusTarget.ServerUrl => ServerUrlTextBox,
+            LoginFocusTarget.Email => EmailTextBox,
+            LoginFocusTarget.TwoFactorCode => TwoFactorCodeTextBox,
+            LoginFocusTarget.Pin => PinBox,
+            _ when ViewModel.IsUnlockStage => UnlockPasswordBox,
+            _ => MasterPasswordBox,
+        };
+        _ = target.Focus(FocusState.Programmatic);
+    }
+
+    // 回车提交;忙碌时不重入(CanUsePrimaryAction 在 IsBusy 时为 false)。
+    private void OnSubmitAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (!ViewModel.CanUsePrimaryAction)
+            return;
+        args.Handled = true;
+        _ = ViewModel.LoginCommand.ExecuteAsync(null);
     }
 
     // 解锁阶段(主密码/PIN)首次出现且 Hello 已启用并可用时,自动发起一次 Hello 手势。

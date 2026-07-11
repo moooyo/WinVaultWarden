@@ -310,6 +310,42 @@ public class RegisterViewModelTests
         await firstTask;
     }
 
+    // -----------------------------------------------------------------------
+    // 未知异常（非 RegistrationException）不得被吞：继续向外抛出，IsBusy 复位
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task UnknownRegistrationException_IsNotSwallowed()
+    {
+        var vm = ValidVm(new ThrowingRegisterUi(
+            new InvalidOperationException("programmer fault")));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => vm.RegisterAsync());
+        Assert.False(vm.IsBusy);
+    }
+
+    private static RegisterViewModel ValidVm(IRegisterUiService service) =>
+        new(service)
+        {
+            Email = "user@example.com",
+            MasterPassword = "Password1!",
+            ConfirmPassword = "Password1!",
+        };
+
+    private sealed class ThrowingRegisterUi(Exception exception)
+        : IRegisterUiService
+    {
+        public Task RegisterAsync(
+            string serverUrl,
+            string email,
+            string? name,
+            string password,
+            string confirm,
+            string? hint,
+            CancellationToken ct = default) =>
+            Task.FromException(exception);
+    }
+
     private sealed class HangingRegisterService : IRegisterService
     {
         private readonly Task _hang;

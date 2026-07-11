@@ -343,6 +343,49 @@ public class LoginViewModelAuthTests
         Assert.True(vm2.IsBusy);
     }
 
+    [Fact]
+    public async Task ExpectedNetworkException_ShowsStableStatus()
+    {
+        var vm = new LoginViewModel(new ThrowingAuth(
+            new HttpRequestException("internal endpoint detail")));
+        vm.PrepareUnlock("https://vault.example", "me@example.com");
+        vm.MasterPassword = "master";
+
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.Equal("无法连接服务器，请检查网络后重试。", vm.Status);
+        Assert.DoesNotContain("internal endpoint detail", vm.Status);
+    }
+
+    [Fact]
+    public async Task UnknownException_IsNotSwallowed()
+    {
+        var vm = new LoginViewModel(new ThrowingAuth(
+            new InvalidOperationException("programmer fault")));
+        vm.PrepareUnlock("https://vault.example", "me@example.com");
+        vm.MasterPassword = "master";
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => vm.LoginCommand.ExecuteAsync(null));
+
+        Assert.Equal("programmer fault", exception.Message);
+        Assert.False(vm.IsBusy);
+    }
+
+    private sealed class ThrowingAuth(Exception exception) : IAuthService
+    {
+        private Task<AuthResult> Throw() =>
+            Task.FromException<AuthResult>(exception);
+        public Task<AuthResult> LoginAsync(string serverUrl, string email, string masterPassword, CancellationToken ct = default) => Throw();
+        public Task<AuthResult> SubmitTwoFactorAsync(string code, int provider, CancellationToken ct = default, bool rememberDevice = true) => Throw();
+        public Task<bool> ResendTwoFactorEmailAsync(CancellationToken ct = default) => Task.FromException<bool>(exception);
+        public Task<AuthResult> UnlockAsync(string masterPassword, CancellationToken ct = default) => Throw();
+        public Task<AuthResult> UnlockWithPinAsync(string pin, CancellationToken ct = default) => Throw();
+        public Task<AuthResult> UnlockWithHelloAsync(byte[] signature, CancellationToken ct = default) => Throw();
+        public Task LockAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task LogoutAsync(CancellationToken ct = default) => Task.CompletedTask;
+    }
+
     private sealed class RecordingLifecycle : IAppLifecycleCoordinator
     {
         public bool IsTransitioning => false;

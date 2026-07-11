@@ -15,6 +15,15 @@ public enum LoginStage
     PinUnlock,
 }
 
+public enum LoginFocusTarget
+{
+    ServerUrl,
+    Email,
+    MasterPassword,
+    TwoFactorCode,
+    Pin,
+}
+
 public partial class LoginViewModel : ObservableObject, ISensitiveState
 {
     private const string BitwardenUsUrl = "https://vault.bitwarden.com";
@@ -66,6 +75,13 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     [ObservableProperty]
     public partial LoginStage Stage { get; set; } = LoginStage.Account;
+
+    // 页面据 FocusRequestId 单调递增触发一次编程式焦点(而非直接绑定 FocusTarget,避免同值不触发)。
+    [ObservableProperty]
+    public partial LoginFocusTarget FocusTarget { get; set; }
+
+    [ObservableProperty]
+    public partial long FocusRequestId { get; set; }
 
     public LoginViewModel(IAuthService auth)
         : this(auth, null)
@@ -233,7 +249,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     }
 
     [RelayCommand]
-    private async Task LoginAsync()
+    private async Task LoginAsync(CancellationToken ct)
     {
         if (IsBusy)
             return;
@@ -251,14 +267,28 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         {
             IsBusy = true;
             var result = IsPinUnlockStage
-                ? await _auth.UnlockWithPinAsync(Pin)
+                ? await _auth.UnlockWithPinAsync(Pin, ct)
                 : IsUnlockStage
-                    ? await _auth.UnlockAsync(MasterPassword)
+                    ? await _auth.UnlockAsync(MasterPassword, ct)
                     : IsTwoFactorStage
-                        ? await _auth.SubmitTwoFactorAsync(TwoFactorCode.Trim(), ResolveSelectedTwoFactorProvider(), rememberDevice: RememberDevice)
-                        : await _auth.LoginAsync(ResolveServerUrl(), Email.Trim(), MasterPassword);
+                        ? await _auth.SubmitTwoFactorAsync(TwoFactorCode.Trim(), ResolveSelectedTwoFactorProvider(), ct, rememberDevice: RememberDevice)
+                        : await _auth.LoginAsync(ResolveServerUrl(), Email.Trim(), MasterPassword, ct);
 
             HandleResult(result);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            Status = string.Empty;
+        }
+        catch (HttpRequestException)
+        {
+            Status = "无法连接服务器，请检查网络后重试。";
+            RequestFocus(CurrentSecretFocusTarget());
+        }
+        catch (TaskCanceledException)
+        {
+            Status = "连接服务器超时，请稍后重试。";
+            RequestFocus(CurrentSecretFocusTarget());
         }
         finally
         {
@@ -267,7 +297,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     }
 
     [RelayCommand]
-    private async Task UnlockWithHelloAsync()
+    private async Task UnlockWithHelloAsync(CancellationToken ct)
     {
         if (IsBusy)
             return;
@@ -283,15 +313,29 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         {
             IsBusy = true;
 
-            var signature = await _hello.GetProtectorAsync(challenge);
+            var signature = await _hello.GetProtectorAsync(challenge, ct);
             if (signature is null)
             {
                 Status = "Windows Hello 未完成。";
                 return;
             }
 
-            var result = await _auth.UnlockWithHelloAsync(signature);
+            var result = await _auth.UnlockWithHelloAsync(signature, ct);
             HandleResult(result); // 复用现有解锁结果处理(导航/提示),与 LoginAsync 一致
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            Status = string.Empty;
+        }
+        catch (HttpRequestException)
+        {
+            Status = "无法连接服务器，请检查网络后重试。";
+            RequestFocus(CurrentSecretFocusTarget());
+        }
+        catch (TaskCanceledException)
+        {
+            Status = "连接服务器超时，请稍后重试。";
+            RequestFocus(CurrentSecretFocusTarget());
         }
         finally
         {
@@ -374,12 +418,14 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         if (!IsValidServerUrl(serverUrl))
         {
             Status = "请输入有效的服务器地址。";
+            RequestFocus(LoginFocusTarget.ServerUrl);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(Email))
         {
             Status = "请输入邮箱地址。";
+            RequestFocus(LoginFocusTarget.Email);
             return;
         }
 
@@ -397,23 +443,57 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         if ((IsPasswordStage || IsUnlockStage) && string.IsNullOrWhiteSpace(MasterPassword))
         {
             Status = "请输入主密码。";
+            RequestFocus(LoginFocusTarget.MasterPassword);
             return false;
         }
 
         if (IsPinUnlockStage && string.IsNullOrWhiteSpace(Pin))
         {
             Status = "请输入 PIN。";
+            RequestFocus(LoginFocusTarget.Pin);
             return false;
         }
 
         if (IsTwoFactorStage && string.IsNullOrWhiteSpace(TwoFactorCode))
         {
             Status = "请输入两步验证码。";
+            RequestFocus(LoginFocusTarget.TwoFactorCode);
             return false;
         }
 
         return true;
     }
+
+    // 页面在 Loaded 时调用:构造期 PrepareUnlock/PrepareAccount 的焦点请求早于页面订阅 PropertyChanged,
+    // 会被漏掉,故加载完成后按当前阶段补发一次。
+    public void RequestStageFocus() => RequestFocus(CurrentStageFocusTarget());
+
+    private void RequestFocus(LoginFocusTarget target)
+    {
+        FocusTarget = target;
+        checked { FocusRequestId++; }
+    }
+
+    private LoginFocusTarget CurrentStageFocusTarget() => Stage switch
+    {
+        // 自托管且 URL 尚不合法时先聚焦地址框,否则默认从邮箱开始。
+        LoginStage.Account => SelectedServerOptionIndex == 2 && !IsValidServerUrl(ServerUrl.Trim())
+            ? LoginFocusTarget.ServerUrl
+            : LoginFocusTarget.Email,
+        LoginStage.Password => LoginFocusTarget.MasterPassword,
+        LoginStage.Unlock => LoginFocusTarget.MasterPassword,
+        LoginStage.TwoFactor => LoginFocusTarget.TwoFactorCode,
+        LoginStage.PinUnlock => LoginFocusTarget.Pin,
+        _ => LoginFocusTarget.Email,
+    };
+
+    // 网络/超时失败后把焦点还给当前阶段的机密输入,方便用户直接重试。
+    private LoginFocusTarget CurrentSecretFocusTarget() => Stage switch
+    {
+        LoginStage.TwoFactor => LoginFocusTarget.TwoFactorCode,
+        LoginStage.PinUnlock => LoginFocusTarget.Pin,
+        _ => LoginFocusTarget.MasterPassword,
+    };
 
     private void HandleResult(AuthResult result)
     {
@@ -538,6 +618,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     partial void OnStageChanged(LoginStage value)
     {
         NotifyStageProperties();
+        RequestFocus(CurrentStageFocusTarget());
         if (value is LoginStage.Unlock or LoginStage.PinUnlock)
             _ = RefreshWindowsHelloAvailabilityAsync();
     }

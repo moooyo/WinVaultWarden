@@ -40,6 +40,7 @@
     <Compile Include="..\..\src\App\Services\DemoVaultSessionService.cs" Link="Services\DemoVaultSessionService.cs" />
     <Compile Include="..\..\src\App\Services\CipherDraftMapper.cs" Link="Services\CipherDraftMapper.cs" />
     <Compile Include="..\..\src\App\Services\CrashLogger.cs" Link="Services\CrashLogger.cs" />
+    <Compile Include="..\..\src\App\Services\UiExceptionPolicy.cs" Link="Services\UiExceptionPolicy.cs" />
     <Compile Include="..\..\src\App\Services\AccountPrefill.cs" Link="Services\AccountPrefill.cs" />
     <Compile Include="..\..\src\App\Services\PeerAuthorization.cs" Link="Services\PeerAuthorization.cs" />
     <Compile Include="..\..\src\App\ViewModels\LoginViewModel.cs" Link="ViewModels\LoginViewModel.cs" />
