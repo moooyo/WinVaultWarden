@@ -1,48 +1,88 @@
+using System.IO.Pipes;
 using App.Services;
+using Core.BrowserIntegration;
 using Xunit;
 
 namespace App.Tests;
 
-// M1 纯判定逻辑(镜像路径匹配 + 可选签名)单测。运行时取 PID/镜像路径须 app-run 验证。
+// App 端管道 peer 鉴别（Task 3）：ClientPeerAuthorizer 作为管道 server，鉴别连接过来的 client（native host）。
+// 运行时取 SID/路径/包/签名由 IProcessIdentityReader 承担，这里注入 fake reader 单测策略接线与 PID 来源。
 public class PeerAuthorizationTests
 {
+    private const string Sid = "S-1-5-21-100-200-300-1001";
+    private const string App = @"C:\Program Files\WinVaultWarden\App.exe";
     private const string Host = @"C:\Program Files\WinVaultWarden\BrowserNativeHost.exe";
 
     [Fact]
-    public void MatchingPath_NoSignatureRequired_Authorized() =>
-        Assert.True(PeerAuthorization.IsAuthorized(Host, Host, signatureValid: false, requireSignature: false));
+    public async Task AuthorizeClient_UsesClientProcessId_AndAllowsMatchingHost()
+    {
+        const uint clientPid = 2468;
+        var reader = new FakeReader(
+            local: Identity(1000, App),
+            peers: new() { [clientPid] = Identity(clientPid, Host) },
+            clientPid: clientPid);
+        var authorizer = new ClientPeerAuthorizer(reader);
+
+        await using var pipe = NewServerPipe();
+        var identity = await authorizer.AuthorizeClientAsync(pipe, Host, CancellationToken.None);
+
+        Assert.Equal(clientPid, identity.ProcessId);
+        Assert.True(reader.ClientProcessIdRequested);
+    }
 
     [Fact]
-    public void DifferentPath_Rejected() =>
-        Assert.False(PeerAuthorization.IsAuthorized(
-            @"C:\Temp\evil.exe", Host, signatureValid: true, requireSignature: false));
+    public async Task AuthorizeClient_RejectsForeignSid()
+    {
+        const uint clientPid = 2468;
+        var reader = new FakeReader(
+            local: Identity(1000, App),
+            peers: new() { [clientPid] = Identity(clientPid, Host) with { UserSid = "S-1-5-21-evil" } },
+            clientPid: clientPid);
+        var authorizer = new ClientPeerAuthorizer(reader);
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    public void NullOrEmptyImagePath_Rejected(string? image) =>
-        Assert.False(PeerAuthorization.IsAuthorized(image, Host, signatureValid: true, requireSignature: false));
-
-    [Fact]
-    public void EmptyExpectedPath_Rejected() =>
-        Assert.False(PeerAuthorization.IsAuthorized(Host, "", signatureValid: true, requireSignature: false));
-
-    [Fact]
-    public void CaseInsensitivePathMatch_Authorized() =>
-        Assert.True(PeerAuthorization.IsAuthorized(
-            Host.ToUpperInvariant(), Host.ToLowerInvariant(), signatureValid: false, requireSignature: false));
+        await using var pipe = NewServerPipe();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(async () =>
+            await authorizer.AuthorizeClientAsync(pipe, Host, CancellationToken.None));
+    }
 
     [Fact]
-    public void NonNormalizedButEquivalentPath_Authorized() =>
-        Assert.True(PeerAuthorization.IsAuthorized(
-            @"C:\Program Files\WinVaultWarden\sub\..\BrowserNativeHost.exe", Host,
-            signatureValid: false, requireSignature: false));
+    public async Task AuthorizeClient_RejectsUnexpectedExecutablePath()
+    {
+        const uint clientPid = 2468;
+        var reader = new FakeReader(
+            local: Identity(1000, App),
+            peers: new() { [clientPid] = Identity(clientPid, @"C:\Temp\Evil.exe") },
+            clientPid: clientPid);
+        var authorizer = new ClientPeerAuthorizer(reader);
 
-    [Fact]
-    public void SignatureRequired_ButInvalid_Rejected() =>
-        Assert.False(PeerAuthorization.IsAuthorized(Host, Host, signatureValid: false, requireSignature: true));
+        await using var pipe = NewServerPipe();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(async () =>
+            await authorizer.AuthorizeClientAsync(pipe, Host, CancellationToken.None));
+    }
 
-    [Fact]
-    public void SignatureRequired_AndValid_PathMatches_Authorized() =>
-        Assert.True(PeerAuthorization.IsAuthorized(Host, Host, signatureValid: true, requireSignature: true));
+    private static NamedPipeServerStream NewServerPipe() =>
+        new(Guid.NewGuid().ToString("N"), PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+
+    private static PeerIdentity Identity(uint pid, string path) =>
+        new(pid, Sid, path, "WinVaultWarden_abc", false, null);
+
+    private sealed class FakeReader(
+        PeerIdentity local,
+        Dictionary<uint, PeerIdentity> peers,
+        uint clientPid) : IProcessIdentityReader
+    {
+        public bool ClientProcessIdRequested { get; private set; }
+
+        public PeerIdentity ReadCurrentProcess() => local;
+
+        public PeerIdentity ReadProcess(uint processId) => peers[processId];
+
+        public uint GetServerProcessId(NamedPipeClientStream pipe) => throw new NotSupportedException();
+
+        public uint GetClientProcessId(NamedPipeServerStream pipe)
+        {
+            ClientProcessIdRequested = true;
+            return clientPid;
+        }
+    }
 }

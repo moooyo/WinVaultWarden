@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using Core.BrowserIntegration;
 using Core.Passkeys;
 
 namespace App.Services;
@@ -8,12 +9,14 @@ namespace App.Services;
 public sealed class PasskeyBridgeServer : IAsyncDisposable
 {
     private readonly BrowserPasskeyRequestHandler _handler;
-    private readonly IPeerAuthorizer _peerAuthorizer;
+    private readonly IPipePeerAuthorizer _peerAuthorizer;
     private readonly object _gate = new();
     private CancellationTokenSource? _shutdown;
     private Task? _listenTask;
+    // Per-session challenge: minted on Start(), cleared on StopAsync(); every restart rotates it.
+    private string? _sessionNonce;
 
-    public PasskeyBridgeServer(BrowserPasskeyRequestHandler handler, IPeerAuthorizer peerAuthorizer)
+    public PasskeyBridgeServer(BrowserPasskeyRequestHandler handler, IPipePeerAuthorizer peerAuthorizer)
     {
         _handler = handler;
         _peerAuthorizer = peerAuthorizer;
@@ -24,16 +27,18 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
         get { lock (_gate) return _listenTask is not null; }
     }
 
-    // 幂等启动。可重启:每次运行用独立 CTS,以便 StopAsync 后能再次 Start(浏览器集成开关运行时切换,S5)。
+    // 幂等启动。可重启:每次运行用独立 CTS + 新 nonce,以便 StopAsync 后能再次 Start(浏览器集成开关运行时切换,S5)。
     public void Start()
     {
         lock (_gate)
         {
             if (_listenTask is not null)
                 return;
+            _sessionNonce = PasskeyBridgeHandshake.CreateServerNonce();
             _shutdown = new CancellationTokenSource();
             var token = _shutdown.Token;
-            _listenTask = Task.Run(() => ListenAsync(token));
+            var nonce = _sessionNonce;
+            _listenTask = Task.Run(() => ListenAsync(nonce, token));
         }
     }
 
@@ -61,9 +66,14 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
         {
         }
         cts.Dispose();
+        // 连接取消排空后再清 nonce:任何仍在途的 handshake 已随 CTS 结束,重启必生成新值。
+        lock (_gate)
+        {
+            _sessionNonce = null;
+        }
     }
 
-    private async Task ListenAsync(CancellationToken ct)
+    private async Task ListenAsync(string sessionNonce, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
@@ -72,15 +82,8 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
             try
             {
                 await pipe.WaitForConnectionAsync(ct);
-
-                // Peer 鉴别(M1):连接进程须是期望的 BrowserNativeHost;否则记录并断开,不处理请求。
-                if (!_peerAuthorizer.IsAuthorized(pipe))
-                {
-                    await pipe.DisposeAsync();
-                    continue;
-                }
-
-                _ = Task.Run(() => HandleConnectionAsync(pipe, ct), CancellationToken.None);
+                // 先双向鉴别再交换 nonce/PID,全部在 HandleConnectionAsync 内完成(身份先于任何 hello 字节)。
+                _ = Task.Run(() => HandleConnectionAsync(pipe, sessionNonce, ct), CancellationToken.None);
             }
             catch (OperationCanceledException)
             {
@@ -123,41 +126,65 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
             pipeSecurity: security);
     }
 
-    private async Task HandleConnectionAsync(NamedPipeServerStream pipe, CancellationToken ct)
+    private async Task HandleConnectionAsync(NamedPipeServerStream pipe, string sessionNonce, CancellationToken ct)
     {
         // 本方法为 fire-and-forget(ListenAsync 里 _ = Task.Run(...)),必须**永不外抛**,
         // 否则异常成为未观察的 Task 异常被静默(R12)。所有异常在此就地处理。
         await using (pipe)
         {
+            PasskeyBridgeSession? session = null;
             BrowserPasskeyRequest? request = null;
 
             try
             {
-                request = await BrowserPasskeyMessageProtocol.ReadAsync(pipe, PasskeyJsonContext.Default.BrowserPasskeyRequest, ct);
+                // 身份先验证再 hello:CompleteServerAsync 内先 await 授权,再写 server.hello、读 client.hello。
+                session = await PasskeyBridgeHandshake.CompleteServerAsync(
+                    pipe,
+                    sessionNonce,
+                    (uint)Environment.ProcessId,
+                    innerCt => _peerAuthorizer.AuthorizeClientAsync(
+                        pipe, BrowserNativeHostLocator.ResolveCurrent(), innerCt),
+                    ct);
+
+                request = await BrowserPasskeyMessageProtocol.ReadAsync(
+                    pipe, PasskeyJsonContext.Default.BrowserPasskeyRequest, ct);
                 if (request is null)
+                    return;
+                // 后续消息绑定 nonce:错/重放(含重启后旧 nonce)直接丢弃,不处理请求。
+                if (!PasskeyBridgeHandshake.NonceMatches(request.Nonce, session.Nonce))
                     return;
 
                 var response = await _handler.HandleAsync(request, ct);
-                await BrowserPasskeyMessageProtocol.WriteAsync(pipe, response, PasskeyJsonContext.Default.BrowserPasskeyResponse, ct);
+                await BrowserPasskeyMessageProtocol.WriteAsync(
+                    pipe,
+                    response with { Nonce = session.Nonce },
+                    PasskeyJsonContext.Default.BrowserPasskeyResponse,
+                    ct);
             }
             catch (OperationCanceledException)
             {
                 // 关机/取消:正常路径,忽略。
             }
+            catch (UnauthorizedAccessException)
+            {
+                // 身份/握手/nonce 被拒:静默断开,不回任何内容(fail-closed)。
+            }
             catch (Exception ex)
             {
-                // 尽力回一个错误响应(浏览器请求中途断开时 WriteAsync 可能再抛 IOException)——
-                // 整个方法不得外抛,故内层再包一层 catch 吞掉写回失败。
+                // 握手已完成后处理请求失败:尽力回一个绑定 nonce 的错误响应(写回再抛 IOException 时吞掉)——
+                // 整个方法不得外抛,故内层再包一层 catch。握手前的失败没有 session,不回内容。
                 try
                 {
-                    if (request is not null && pipe.IsConnected)
+                    if (session is not null && request is not null && pipe.IsConnected)
                     {
                         var response = new BrowserPasskeyResponse(
                             request.Id,
                             "error",
                             false,
-                            Error: new BrowserPasskeyError("bridge_error", ex.Message));
-                        await BrowserPasskeyMessageProtocol.WriteAsync(pipe, response, PasskeyJsonContext.Default.BrowserPasskeyResponse, CancellationToken.None);
+                            Error: new BrowserPasskeyError("bridge_error", ex.Message),
+                            Nonce: session.Nonce);
+                        await BrowserPasskeyMessageProtocol.WriteAsync(
+                            pipe, response, PasskeyJsonContext.Default.BrowserPasskeyResponse, CancellationToken.None);
                     }
                 }
                 catch

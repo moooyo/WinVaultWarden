@@ -9,6 +9,7 @@ namespace Core.Passkeys;
 [JsonSerializable(typeof(BrowserPasskeyRequest))]
 [JsonSerializable(typeof(BrowserPasskeyCancel))]
 [JsonSerializable(typeof(BrowserPasskeyResponse))]
+[JsonSerializable(typeof(PasskeyBridgeHello))]
 [JsonSerializable(typeof(BrowserRequestContext))]
 [JsonSerializable(typeof(PasskeyCreatePayload))]
 [JsonSerializable(typeof(PasskeyGetPayload))]

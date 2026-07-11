@@ -17,20 +17,26 @@ public sealed record BrowserPasskeyRequest(
     JsonElement? Payload = null,
     [property: JsonPropertyName("v")] int Version = 1,
     long? DeadlineUnixMs = null,
-    BrowserRequestContext? Context = null);
+    BrowserRequestContext? Context = null,
+    // Task 3: per-session pipe nonce. Stamped by the native host after the handshake and validated
+    // by the App; omitted from the wire when null so the browser-facing envelope is unchanged.
+    string? Nonce = null);
 
 // v1 cancellation envelope: targets the in-flight request id to abort.
 public sealed record BrowserPasskeyCancel(
     string? Id,
     [property: JsonPropertyName("v")] int Version = 1,
-    string Type = "cancel");
+    string Type = "cancel",
+    string? Nonce = null);
 
 public sealed record BrowserPasskeyResponse(
     string? Id,
     string Type,
     bool Ok,
     JsonElement? Payload = null,
-    BrowserPasskeyError? Error = null)
+    BrowserPasskeyError? Error = null,
+    // Task 3: per-session pipe nonce echoed by the App; omitted from the wire when null.
+    string? Nonce = null)
 {
     // v1 envelope discriminator; serialised first as "v":1.
     [JsonPropertyName("v")]

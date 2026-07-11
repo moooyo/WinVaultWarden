@@ -1,5 +1,6 @@
 using Api;
 using Core.Abstractions;
+using Core.BrowserIntegration;
 using Core.Passkeys;
 using Core.Services;
 using Crypto;
@@ -79,7 +80,10 @@ public static class ServiceConfiguration
             TrackSensitive(sp, ActivatorUtilities.CreateInstance<EmergencyAccessViewModel>(sp)));
         services.AddSingleton<IPasskeyApprovalService, PasskeyApprovalDialogService>();
         services.AddSingleton<BrowserPasskeyRequestHandler>();
-        services.AddSingleton<IPeerAuthorizer, ClientPeerAuthorizer>(); // M1：管道 peer 鉴别
+        // Task 3：管道 peer 双向鉴别。生产环境只注册真实 authorizer + Windows 身份读取器,
+        // 无任何 fake / 降级开关(fake 仅存在于测试程序集)。
+        services.AddSingleton<IPipePeerAuthorizer>(_ =>
+            new ClientPeerAuthorizer(new WindowsAppProcessIdentityReader()));
         services.AddSingleton<PasskeyBridgeServer>();
         services.AddSingleton<IVaultUiService, VaultUiService>();
         services.AddSingleton<ISendUiService>(sp => new SendUiService(
