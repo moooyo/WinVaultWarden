@@ -171,11 +171,12 @@
                     <ToggleSwitch IsEnabled="False" IsOn="{x:Bind ViewModel.StartOnLogin, Mode=TwoWay}" />
                 </tk:SettingsCard>
 
-                <tk:SettingsCard Header="允许浏览器集成" Description="允许浏览器扩展连接桌面应用">
+                <tk:SettingsCard Header="允许浏览器集成" Description="仅便携版支持">
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE774;" />
                     </tk:SettingsCard.HeaderIcon>
-                    <ToggleSwitch IsOn="{x:Bind ViewModel.AllowBrowserIntegration, Mode=TwoWay}" />
+                    <ToggleSwitch IsEnabled="{x:Bind ViewModel.BrowserIntegrationSupported, Mode=OneTime}"
+                                  IsOn="{x:Bind ViewModel.AllowBrowserIntegration, Mode=TwoWay}" />
                 </tk:SettingsCard>
 
                 <tk:SettingsCard Header="使用硬件加速" Description="仅在遇到图形问题时关闭（即将推出）">

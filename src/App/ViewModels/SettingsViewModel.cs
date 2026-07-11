@@ -20,6 +20,13 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IHelloUnlockService? _helloUnlock;
     private readonly IAppLifecycleCoordinator? _lifecycle;
 
+    // 是否支持浏览器集成：仅便携版(unpackaged)为 true；MSIX 打包时 DI 传 false。
+    // 默认 true 使无参构造器（设计时 / 无注入测试）保持便携版语义。
+    private bool _browserIntegrationSupported = true;
+
+    /// <summary>当前运行环境是否支持浏览器集成（仅便携版为 true；MSIX packaged 为 false）。</summary>
+    public bool BrowserIntegrationSupported => _browserIntegrationSupported;
+
     [ObservableProperty]
     public partial int SelectedSessionTimeoutIndex { get; set; } = AppPreferences.Current.SessionTimeoutIndex;
 
@@ -120,6 +127,13 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnAllowBrowserIntegrationChanged(bool value)
     {
+        if (!_browserIntegrationSupported)
+        {
+            // Fail-closed：MSIX packaged 时绝不持久化 true、绝不触发 start 事件。
+            // 若外部代码强制设为 true，立即回滚为 false（toggle 无法在 UI 上开启，此为防御层）。
+            if (value) AllowBrowserIntegration = false;
+            return;
+        }
         AppPreferences.Current.AllowBrowserIntegration = value;
         AppPreferences.Save();
         AllowBrowserIntegrationSettingChanged?.Invoke(value);
@@ -142,6 +156,12 @@ public partial class SettingsViewModel : ObservableObject
     // 无参构造器——供 XAML 设计时和 App.Tests 无注入场景使用
     public SettingsViewModel()
     {
+    }
+
+    // 供 App.Tests 直接测试浏览器集成门控行为，无需其他协作者
+    public SettingsViewModel(bool browserIntegrationSupported)
+    {
+        ApplyBrowserIntegrationGate(browserIntegrationSupported);
     }
 
     public SettingsViewModel(IAccountUiService accountUi, IAppLifecycleCoordinator? lifecycle = null)
@@ -167,7 +187,8 @@ public partial class SettingsViewModel : ObservableObject
         IPinService? pin = null,
         IWindowsHelloAuthenticator? hello = null,
         IHelloUnlockService? helloUnlock = null,
-        IAppLifecycleCoordinator? lifecycle = null)
+        IAppLifecycleCoordinator? lifecycle = null,
+        bool browserIntegrationSupported = true)
     {
         _accountUi = accountUi;
         _twoFactorUi = twoFactorUi;
@@ -175,6 +196,20 @@ public partial class SettingsViewModel : ObservableObject
         _hello = hello;
         _helloUnlock = helloUnlock;
         _lifecycle = lifecycle;
+        ApplyBrowserIntegrationGate(browserIntegrationSupported);
+    }
+
+    // 统一入口：设置 _browserIntegrationSupported 并 fail-closed 修正已有偏好。
+    private void ApplyBrowserIntegrationGate(bool supported)
+    {
+        _browserIntegrationSupported = supported;
+        if (!supported && AllowBrowserIntegration)
+        {
+            // 若 MSIX 启动时偏好已存 true，立即归 false 并持久化修正（fail-closed）。
+            AppPreferences.Current.AllowBrowserIntegration = false;
+            AppPreferences.Save();
+            AllowBrowserIntegration = false; // 触发 handler(false) → !supported → return early，不再发事件
+        }
     }
 
     public string AccountEmail => _accountUi?.GetAccount().Email ?? string.Empty;

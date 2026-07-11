@@ -30,6 +30,27 @@ public static class AboutInfo
         }
     }
 
+    /// <summary>
+    /// 应用是否以 MSIX 打包身份运行。
+    /// 访问 Package.Current 失败即视为 unpackaged（便携版）。
+    /// 与 AppVersion 采用相同的 try/catch 宽松兜底：任何失败都视为未打包，绝不因判包状态崩溃。
+    /// </summary>
+    public static bool IsPackaged
+    {
+        get
+        {
+            try
+            {
+                _ = Windows.ApplicationModel.Package.Current;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
     public static string WindowsVersion => $"Windows {Environment.OSVersion.Version}";
 
     public static string DotNetVersion => RuntimeInformation.FrameworkDescription;

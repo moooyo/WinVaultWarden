@@ -49,6 +49,6 @@
     <ProjectReference Include="..\Api\Api.csproj" />
     <ProjectReference Include="..\Vault\Vault.csproj" />
   </ItemGroup>
-  <!-- 把浏览器 Native Messaging Host(AOT 单文件)随 App 一起进 output/publish/MSIX 根目录。 -->
+  <!-- 把浏览器 Native Messaging Host(AOT 单文件)随 App 一起进便携版(portable)输出/发布目录；MSIX 不携带。 -->
   <Import Project="BrowserNativeHost.Publish.targets" />
 </Project>

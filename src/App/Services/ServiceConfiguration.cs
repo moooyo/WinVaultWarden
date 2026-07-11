@@ -131,7 +131,8 @@ public static class ServiceConfiguration
                 sp.GetRequiredService<IPinService>(),
                 sp.GetRequiredService<IWindowsHelloAuthenticator>(),
                 sp.GetRequiredService<IHelloUnlockService>(),
-                sp.GetRequiredService<IAppLifecycleCoordinator>()));
+                sp.GetRequiredService<IAppLifecycleCoordinator>(),
+                browserIntegrationSupported: !AboutInfo.IsPackaged));
         services.AddTransient<DevicesViewModel>(sp =>
             new DevicesViewModel(
                 sp.GetRequiredService<IDeviceUiService>(),

@@ -33,9 +33,9 @@ public partial class App : Application
         MainWindow = new MainWindow();
         ThemeManager.Apply(AppPreferences.Current.ThemeIndex);
 
-        // 浏览器集成(passkey 桥接)受设置门控(S5):仅当"允许浏览器集成"开启时才启动桥接命名管道服务器。
-        // 默认关闭——UI 显示"关"即真的不监听。开关运行时切换即时启停(桥接可重启)。
-        if (AppPreferences.Current.AllowBrowserIntegration)
+        // 浏览器集成(passkey 桥接)受设置门控(S5)：仅便携版(unpackaged)且"允许浏览器集成"开启时才启动桥接服务器。
+        // MSIX packaged 时 Host 不随包携带，fail-closed：无论偏好值如何，绝不启动 bridge。
+        if (AppPreferences.Current.AllowBrowserIntegration && !AboutInfo.IsPackaged)
             Services.GetRequiredService<PasskeyBridgeServer>().Start();
         ViewModels.SettingsViewModel.AllowBrowserIntegrationSettingChanged += OnBrowserIntegrationChanged;
 
@@ -45,7 +45,8 @@ public partial class App : Application
     private static void OnBrowserIntegrationChanged(bool enabled)
     {
         var bridge = Services.GetRequiredService<PasskeyBridgeServer>();
-        if (enabled)
+        // 防御层：SettingsViewModel 在 packaged 时已拦截 true 不发事件，此处 IsPackaged 再做兜底。
+        if (enabled && !AboutInfo.IsPackaged)
             bridge.Start();
         else
             _ = bridge.StopAsync();
