@@ -42,7 +42,7 @@ public sealed class BrowserPasskeyRequestHandler
         // 尚未由 App 接管:vault 未解锁 → client_not_handled,交平台 authenticator 兜底,绝不把内部
         // 锁定状态暴露给页面。此检查在捕获 lease 之前完成。
         if (_vault.Snapshot.State != VaultState.Unlocked)
-            return Error(request.Id, PasskeyErrorCodes.ClientNotHandled, "The vault is locked.");
+            return Error(request.Id, PasskeyErrorCodes.ClientNotHandled);
 
         // 入口只捕获一次 lease,并把它的取消令牌与外部 ct 链接:此后所有候选读取/审批/签名/保存
         // 都以这唯一 lease 校验,任何跨 await 期间的 Lock/切换账户都会使 lease 失效并稳定失败。
@@ -54,7 +54,7 @@ public sealed class BrowserPasskeyRequestHandler
         catch (InvalidOperationException)
         {
             // 捕获 lease 的瞬间刚好无活跃会话(与上面的解锁检查间发生竞态):仍属"未接管"。
-            return Error(request.Id, PasskeyErrorCodes.ClientNotHandled, "No active vault session.");
+            return Error(request.Id, PasskeyErrorCodes.ClientNotHandled);
         }
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
@@ -75,10 +75,7 @@ public sealed class BrowserPasskeyRequestHandler
                     request.Context,
                     (PasskeyCreatePayload)parsed.Payload,
                     linked.Token),
-                _ => Error(
-                    request.Id,
-                    "unsupported_passkey_type",
-                    "Unsupported passkey request type."),
+                _ => Error(request.Id, "unsupported_passkey_type"),
             };
         }
         catch (OperationCanceledException)
@@ -87,13 +84,13 @@ public sealed class BrowserPasskeyRequestHandler
             // navigation/native·pipe 断线/deadline —— 一律映射为 operation_aborted(code-only)。
             // deadline 自身的 deadline_exceeded 由原生宿主在其触发点保留;若此响应对应的请求已被取消,
             // 上层(PasskeyBridgeServer/native session)会丢弃它,不会有迟到帧到达页面。
-            return Error(request.Id, PasskeyErrorCodes.OperationAborted, "The passkey operation was aborted.");
+            return Error(request.Id, PasskeyErrorCodes.OperationAborted);
         }
         catch (Exception)
         {
             // 其余未知异常:code-only internal_error。绝不外泄任何异常文本(Message/栈/路径/令牌)。
             // Core 层无日志设施,故此处不落诊断;App 边界(PasskeyBridgeServer)按需记脱敏诊断。
-            return Error(request.Id, PasskeyErrorCodes.InternalError, "The passkey request failed.");
+            return Error(request.Id, PasskeyErrorCodes.InternalError);
         }
     }
 
@@ -107,12 +104,12 @@ public sealed class BrowserPasskeyRequestHandler
         // Task 5: origin/RP/cross-origin come only from the trusted sender context, never the page
         // payload. A missing context means an unauthenticated sender bypassed the native host.
         if (context is null)
-            return Error(requestId, PasskeyErrorCodes.SecuritySender, "A trusted request context is required.");
+            return Error(requestId, PasskeyErrorCodes.SecuritySender);
 
         // Task 1: derive the canonical RP and normalised origins from the trusted context.
         var decision = _policy.Evaluate(BrowserPasskeyOperation.Create, context, payload.Rp?.Id ?? payload.RpId);
         if (decision.Context is not { } validated)
-            return Error(requestId, decision.ErrorCode!, "The passkey request failed origin validation.");
+            return Error(requestId, decision.ErrorCode!);
         var rpId = validated.CanonicalRpId;
 
         var algorithms = (payload.PubKeyCredParams ?? []).Select(p => p.Alg).ToArray();
@@ -120,7 +117,7 @@ public sealed class BrowserPasskeyRequestHandler
         // 完全不支持所请求的算法(客户端仅支持 ES256 / -7)→ 未接管,交平台 authenticator 兜底,
         // 且不消耗仪式槽/限流预算。这是"初始映射"的一部分,和 locked / 无候选一样折叠为 client_not_handled。
         if (!algorithms.Contains(-7))
-            return Error(requestId, PasskeyErrorCodes.ClientNotHandled, "No supported credential algorithm was requested.");
+            return Error(requestId, PasskeyErrorCodes.ClientNotHandled);
 
         // lease-bound 快照:只读取本次请求 lease 对应会话的条目。
         var ciphers = _vault.GetCiphers(lease);
@@ -128,7 +125,7 @@ public sealed class BrowserPasskeyRequestHandler
         // excludeCredentials:若本库已有该 rpId 的凭据且其 CredentialId 在排除列表 → InvalidStateError。
         var excluded = (payload.ExcludeCredentials ?? []).Select(c => c.Id).Where(x => !string.IsNullOrWhiteSpace(x)).ToHashSet(StringComparer.Ordinal);
         if (excluded.Count > 0 && ExistingCredentialsForRp(ciphers, rpId).Any(c => excluded.Contains(c.CredentialId!)))
-            return Error(requestId, "credential_excluded", "A passkey already exists for this site.");
+            return Error(requestId, "credential_excluded");
 
         var existingLogins = ciphers
             .Where(c => !c.IsDeleted && c.Type == CipherType.Login)
@@ -140,7 +137,7 @@ public sealed class BrowserPasskeyRequestHandler
             new PasskeyRequestKey(context.TabId, context.FrameId, rpId),
             out var gateError);
         if (gate is null)
-            return Error(requestId, gateError!, "A passkey request is already in progress.");
+            return Error(requestId, gateError!);
 
         var userVerificationRequirement =
             GetUserVerificationRequirementForCreate(payload.AuthenticatorSelection);
@@ -162,14 +159,13 @@ public sealed class BrowserPasskeyRequestHandler
             && !approval.CreateNew
             && !existingLogins.Any(login => login.CipherId == approval.CipherId))
         {
-            return Error(requestId, PasskeyErrorCodes.InternalError, "The approved item was not offered.");
+            return Error(requestId, PasskeyErrorCodes.InternalError);
         }
 
         if (ValidateApproval(
                 requestId,
                 userVerificationRequirement,
-                approval.Evidence,
-                "The passkey creation was cancelled.") is { } approvalError)
+                approval.Evidence) is { } approvalError)
         {
             return approvalError;
         }
@@ -193,7 +189,7 @@ public sealed class BrowserPasskeyRequestHandler
                 ? BuildNewLoginCipher(payload.Rp?.Name ?? rpId, result.Credential)
                 : AttachToExisting(ciphers, approval.CipherId!, result.Credential);
             if (cipher is null)
-                return Error(requestId, "cipher_not_found", "The selected item was not found.");
+                return Error(requestId, "cipher_not_found");
 
             await _write.SaveCipherAsync(cipher, lease, ct);
             _vault.ThrowIfExpired(lease);
@@ -203,7 +199,7 @@ public sealed class BrowserPasskeyRequestHandler
         }
         catch (Exception ex) when (ex is FormatException or InvalidOperationException or OverflowException or CryptographicException)
         {
-            return Error(requestId, "credential_unusable", ex.Message);
+            return Error(requestId, "credential_unusable");
         }
     }
 
@@ -216,12 +212,12 @@ public sealed class BrowserPasskeyRequestHandler
     {
         // Task 5: origin/RP/cross-origin come only from the trusted sender context, never the page.
         if (context is null)
-            return Error(requestId, PasskeyErrorCodes.SecuritySender, "A trusted request context is required.");
+            return Error(requestId, PasskeyErrorCodes.SecuritySender);
 
         // Task 1: canonical RP + normalised origins + verified cross-origin from the trusted context.
         var decision = _policy.Evaluate(BrowserPasskeyOperation.Get, context, payload.RpId);
         if (decision.Context is not { } validated)
-            return Error(requestId, decision.ErrorCode!, "The passkey request failed origin validation.");
+            return Error(requestId, decision.ErrorCode!);
 
         var allowedCredentialIds = (payload.AllowCredentials ?? [])
             .Select(credential => credential.Id)
@@ -236,14 +232,14 @@ public sealed class BrowserPasskeyRequestHandler
         // No candidate before any prompt → let the platform authenticator try (fallback), and do
         // not consume a ceremony slot / rate-limit budget for a request we can't service.
         if (candidates.Count == 0)
-            return Error(requestId, PasskeyErrorCodes.ClientNotHandled, "No matching passkey was found for this site.");
+            return Error(requestId, PasskeyErrorCodes.ClientNotHandled);
 
         // Task 4: reserve the single ceremony slot for this (tab, frame, canonical RP).
         using var gate = _requestGate.TryEnter(
             new PasskeyRequestKey(context.TabId, context.FrameId, validated.CanonicalRpId),
             out var gateError);
         if (gate is null)
-            return Error(requestId, gateError!, "A passkey request is already in progress.");
+            return Error(requestId, gateError!);
 
         var userVerificationRequirement =
             ParseUserVerificationRequirement(payload.UserVerification);
@@ -263,13 +259,12 @@ public sealed class BrowserPasskeyRequestHandler
             candidate.Cipher.Id == approval.CipherId
             && candidate.Credential.CredentialId == approval.CredentialId);
         if (approval.Evidence.Approved && selected is null)
-            return Error(requestId, PasskeyErrorCodes.InternalError, "The approved credential was not offered.");
+            return Error(requestId, PasskeyErrorCodes.InternalError);
 
         if (ValidateApproval(
                 requestId,
                 userVerificationRequirement,
-                approval.Evidence,
-                "The passkey request was cancelled.") is { } approvalError)
+                approval.Evidence) is { } approvalError)
         {
             return approvalError;
         }
@@ -302,7 +297,7 @@ public sealed class BrowserPasskeyRequestHandler
         }
         catch (Exception ex) when (ex is FormatException or InvalidOperationException or OverflowException or CryptographicException)
         {
-            return Error(requestId, "credential_unusable", ex.Message);
+            return Error(requestId, "credential_unusable");
         }
     }
 
@@ -429,27 +424,20 @@ public sealed class BrowserPasskeyRequestHandler
     private static BrowserPasskeyResponse? ValidateApproval(
         string? requestId,
         PasskeyUserVerificationRequirement requirement,
-        PasskeyApprovalEvidence evidence,
-        string cancellationMessage)
+        PasskeyApprovalEvidence evidence)
     {
         if (!evidence.Approved)
-            return Error(requestId, "user_cancelled", cancellationMessage);
+            return Error(requestId, "user_cancelled");
 
         if (evidence.UserVerified && !evidence.UserPresent)
         {
-            return Error(
-                requestId,
-                "user_verification_failed",
-                "User verification evidence requires user presence.");
+            return Error(requestId, "user_verification_failed");
         }
 
         if (requirement == PasskeyUserVerificationRequirement.Required
             && !evidence.UserVerified)
         {
-            return Error(
-                requestId,
-                "user_verification_failed",
-                "User verification is required for this passkey request.");
+            return Error(requestId, "user_verification_failed");
         }
 
         return null;
@@ -460,11 +448,12 @@ public sealed class BrowserPasskeyRequestHandler
         extensions is { } element && element.ValueKind == JsonValueKind.Object && element.TryGetProperty("credProps", out _);
 
     private static BrowserPasskeyResponse Error(string? id, BrowserPasskeyError error) =>
-        Error(id, error.Code, error.Message);
+        Error(id, error.Code);
 
-    // Task 7: 每个 browser-facing 失败都是 code-only。message 参数仅在调用点内联记录意图,
-    // 绝不上线序列化 —— 任何内部文本(Message/栈/路径/令牌)都不得到达页面或本地日志。
-    private static BrowserPasskeyResponse Error(string? id, string code, string message) =>
+    // Task 7: 每个 browser-facing 失败都是 code-only。此 helper **没有** message 参数 ——
+    // 不是"调用点内联记录意图后丢弃",而是这个参数根本不存在,future 无法误把
+    // ex.Message/栈/路径/令牌 回填进来(防未来回填泄漏,browser-task-7 remediation)。
+    private static BrowserPasskeyResponse Error(string? id, string code) =>
         new(id, "error", false, Error: new BrowserPasskeyError(code, Message: null!));
 
     private sealed record PasskeyCredentialCandidate(Cipher Cipher, CipherFido2Credential Credential);

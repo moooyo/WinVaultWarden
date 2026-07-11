@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.IO.Pipes;
+using System.Text;
 using System.Text.Json;
 using App.Services;
 using Core.BrowserIntegration;
@@ -83,6 +84,115 @@ public class PasskeyBridgeServerMalformedFrameTests
         }
     }
 
+    // Browser-task-7 remediation (review L5): drives a REAL handler exception through the real
+    // App-side pipe (HandleRequestAsync's catch-all in PasskeyBridgeServer), not just a structural
+    // argument. ThrowOnceVaultService throws a sentinel-laden InvalidOperationException from
+    // Snapshot (uncaught anywhere inside BrowserPasskeyRequestHandler.HandleAsync, since only
+    // CaptureLease's InvalidOperationException is caught there) on the FIRST call only, so the pipe
+    // response for that request must be strictly {"code":"internal_error"} — no message/sentinel/
+    // path/token/stack anywhere in the wire bytes — and the SAME connection must still serve a second,
+    // ordinary request afterwards (proving the read loop wasn't torn down), and Start/StopAsync must
+    // remain usable (a fresh connection round-trips after a restart).
+    [Fact]
+    public async Task HandlerThrows_PipeResponseIsCodeOnlyInternalError_ConnectionAndStopStayUsable()
+    {
+        const string sentinel = @"SENTINEL_INTERNAL C:\Users\alice\vault token=secret stack=BrowserPasskeyRequestHandler";
+        var handler = new BrowserPasskeyRequestHandler(
+            new ThrowOnceVaultService(sentinel), new UnusedVaultWriteService(), new UnusedApprovalService());
+        var server = new PasskeyBridgeServer(handler, new AllowAllPeerAuthorizer());
+        server.Start();
+        try
+        {
+            await using (var connection = await ConnectAsync())
+            {
+                const string firstId = "0000000000000000000000000000009a";
+                await BrowserPasskeyMessageProtocol.WriteAsync(
+                    connection.Pipe,
+                    new BrowserPasskeyRequest(firstId, "passkey.get", GetPayload(), Nonce: connection.Nonce),
+                    PasskeyJsonContext.Default.BrowserPasskeyRequest,
+                    CancellationToken.None);
+
+                var firstFrame = await ReadRawFrameAsync(connection.Pipe);
+                var firstText = Encoding.UTF8.GetString(firstFrame);
+                foreach (var forbidden in new[] { "SENTINEL_INTERNAL", @"C:\Users", "token=secret", "stack=" })
+                    Assert.DoesNotContain(forbidden, firstText, StringComparison.Ordinal);
+                Assert.DoesNotContain("message", firstText, StringComparison.OrdinalIgnoreCase);
+
+                var firstResponse = JsonSerializer.Deserialize(
+                    firstFrame, PasskeyJsonContext.Default.BrowserPasskeyResponse);
+                Assert.NotNull(firstResponse);
+                Assert.Equal(firstId, firstResponse!.Id);
+                Assert.False(firstResponse.Ok);
+                Assert.Equal(PasskeyErrorCodes.InternalError, firstResponse.Error?.Code);
+                Assert.Null(firstResponse.Error?.Message);
+
+                // Same connection, second request: the sentinel throw must not have torn down the
+                // read loop or the connection. ThrowOnceVaultService now reports "locked" normally.
+                const string secondId = "0000000000000000000000000000009b";
+                await BrowserPasskeyMessageProtocol.WriteAsync(
+                    connection.Pipe,
+                    new BrowserPasskeyRequest(secondId, "passkey.get", GetPayload(), Nonce: connection.Nonce),
+                    PasskeyJsonContext.Default.BrowserPasskeyRequest,
+                    CancellationToken.None);
+
+                var secondResponse = await BrowserPasskeyMessageProtocol.ReadAsync(
+                    connection.Pipe, PasskeyJsonContext.Default.BrowserPasskeyResponse, CancellationToken.None);
+                Assert.NotNull(secondResponse);
+                Assert.Equal(secondId, secondResponse!.Id);
+                Assert.False(secondResponse.Ok);
+                Assert.Equal("client_not_handled", secondResponse.Error?.Code);
+            }
+        }
+        finally
+        {
+            await server.StopAsync();
+        }
+
+        // Start/Stop remain usable after a sentinel failure: a full restart still round-trips.
+        server.Start();
+        try
+        {
+            await using var restarted = await ConnectAsync();
+            const string thirdId = "0000000000000000000000000000009c";
+            await BrowserPasskeyMessageProtocol.WriteAsync(
+                restarted.Pipe,
+                new BrowserPasskeyRequest(thirdId, "passkey.get", GetPayload(), Nonce: restarted.Nonce),
+                PasskeyJsonContext.Default.BrowserPasskeyRequest,
+                CancellationToken.None);
+
+            var thirdResponse = await BrowserPasskeyMessageProtocol.ReadAsync(
+                restarted.Pipe, PasskeyJsonContext.Default.BrowserPasskeyResponse, CancellationToken.None);
+            Assert.NotNull(thirdResponse);
+            Assert.Equal(thirdId, thirdResponse!.Id);
+        }
+        finally
+        {
+            await server.StopAsync();
+        }
+    }
+
+    private static async Task<byte[]> ReadRawFrameAsync(Stream pipe)
+    {
+        var lengthBytes = new byte[4];
+        await ReadExactAsync(pipe, lengthBytes);
+        var length = (int)BinaryPrimitives.ReadUInt32LittleEndian(lengthBytes);
+        var payload = new byte[length];
+        await ReadExactAsync(pipe, payload);
+        return payload;
+    }
+
+    private static async Task ReadExactAsync(Stream pipe, byte[] buffer)
+    {
+        var total = 0;
+        while (total < buffer.Length)
+        {
+            var read = await pipe.ReadAsync(buffer.AsMemory(total, buffer.Length - total));
+            if (read == 0)
+                throw new EndOfStreamException("Pipe closed before the expected frame arrived.");
+            total += read;
+        }
+    }
+
     private static async Task<ConnectedClient> ConnectAsync()
     {
         var pipe = new NamedPipeClientStream(
@@ -140,8 +250,8 @@ public class PasskeyBridgeServerMalformedFrameTests
             ValueTask.FromResult(Identity);
     }
 
-    // Minimal vault service reporting "locked": HandleAsync's first step is CaptureLease(), which it
-    // throws InvalidOperationException from, so no other member is ever reached by this test.
+    // Minimal vault service reporting "locked": Snapshot.State is not Unlocked, so HandleAsync's
+    // first check (before it would ever reach CaptureLease) returns client_not_handled up front.
     private sealed class LockedVaultService : IVaultService
     {
         // A logged-out/locked session: State is not Unlocked, so the handler returns client_not_handled
@@ -152,6 +262,38 @@ public class PasskeyBridgeServerMalformedFrameTests
         public IReadOnlyList<Folder> GetFolders() => throw new NotSupportedException();
         public IReadOnlyList<DeviceInfo> GetDevices() => throw new NotSupportedException();
         public VaultSessionLease CaptureLease() => throw new InvalidOperationException("Vault is locked.");
+        public bool IsCurrent(VaultSessionLease lease) => throw new NotSupportedException();
+        public void ThrowIfExpired(VaultSessionLease lease) => throw new NotSupportedException();
+        public IReadOnlyList<Cipher> GetCiphers(VaultSessionLease lease) => throw new NotSupportedException();
+    }
+
+    // Throws the given (sentinel-laden) InvalidOperationException from Snapshot on the FIRST access
+    // only — HandleAsync's `_vault.Snapshot.State != VaultState.Unlocked` check is not wrapped by any
+    // try/catch, so this reaches PasskeyBridgeServer.HandleRequestAsync's catch-all uncaught. Every
+    // access after the first behaves like an ordinary locked/logged-out session (client_not_handled),
+    // proving the sentinel throw did not wedge the connection or the service.
+    private sealed class ThrowOnceVaultService(string sentinelMessage) : IVaultService
+    {
+        private readonly VaultSession _session = new();
+        private bool _thrown;
+
+        public IVaultSnapshot Snapshot
+        {
+            get
+            {
+                if (!_thrown)
+                {
+                    _thrown = true;
+                    throw new InvalidOperationException(sentinelMessage);
+                }
+                return _session;
+            }
+        }
+
+        public IReadOnlyList<Cipher> GetCiphers() => throw new NotSupportedException();
+        public IReadOnlyList<Folder> GetFolders() => throw new NotSupportedException();
+        public IReadOnlyList<DeviceInfo> GetDevices() => throw new NotSupportedException();
+        public VaultSessionLease CaptureLease() => throw new NotSupportedException();
         public bool IsCurrent(VaultSessionLease lease) => throw new NotSupportedException();
         public void ThrowIfExpired(VaultSessionLease lease) => throw new NotSupportedException();
         public IReadOnlyList<Cipher> GetCiphers(VaultSessionLease lease) => throw new NotSupportedException();

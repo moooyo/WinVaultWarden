@@ -32,6 +32,17 @@ public static class NativeMessagingHost
             await error.WriteLineAsync("Native messaging transport terminated.");
             return 1;
         }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // Any other unexpected top-level failure (not a known transport fault, not OOM): the same
+            // fixed, code-only stderr note. Never exception.Message/stack/path/token — this is the
+            // last line of defence before the runtime's own unhandled-exception printer, which would
+            // otherwise dump the full exception (Task 7 sanitization). OutOfMemoryException is
+            // deliberately NOT matched here: a genuine out-of-memory condition must still crash the
+            // process rather than be silently absorbed and reported as exit code 1.
+            await error.WriteLineAsync("Native messaging host encountered an unexpected error.");
+            return 1;
+        }
         finally
         {
             if (ownedBridge is not null)
@@ -93,12 +104,22 @@ public static class NativeMessagingHost
                 response.Payload,
                 ToNativeError(response.Error));
         }
-        catch (Exception ex) when (ex is IOException or TimeoutException or InvalidDataException or UnauthorizedAccessException)
+        catch (AppBridgeConnectFailedException)
         {
+            // Never reached a connected App for this request: client_not_handled, the sole fallback
+            // trigger (see NativeMessagingSession for the persistent-session equivalent).
             return Error(
                 request,
-                "native_host_unavailable",
-                "WinVaultWarden is not running or its passkey bridge is unavailable.");
+                PasskeyErrorCodes.ClientNotHandled,
+                "WinVaultWarden is not available to handle this request.");
+        }
+        catch (Exception ex) when (ex is IOException or TimeoutException or InvalidDataException or UnauthorizedAccessException)
+        {
+            // A connection that WAS established is now lost mid-request: abort, never fall back.
+            return Error(
+                request,
+                PasskeyErrorCodes.OperationAborted,
+                "The App passkey bridge connection was lost.");
         }
     }
 

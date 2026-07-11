@@ -61,6 +61,46 @@ public class ErrorSanitizationTests
         AssertNoSentinel(error.ToString());
     }
 
+    // Browser-task-7 remediation (review L2): the read-loop catch list only covers the known transport
+    // exception types (EndOfStreamException/IOException/InvalidDataException/JsonException). Any OTHER
+    // top-level exception (other than OutOfMemoryException) must still produce a fixed, code-only
+    // stderr note — never fall through to the runtime's default unhandled-exception printer, which
+    // would dump the full exception (message/stack/type chain) to stderr.
+    [Fact]
+    public async Task UnexpectedNonTransportException_StillWritesStableStderrNote_WithoutLeakingSentinel()
+    {
+        var error = new StringWriter();
+        var exit = await NativeMessagingHost.RunAsync(
+            new ThrowingInput(new InvalidOperationException(Sentinel)),
+            Stream.Null,
+            error,
+            CancellationToken.None,
+            new ThrowingBridge(new InvalidOperationException(Sentinel)));
+
+        Assert.Equal(1, exit);
+        var stderr = error.ToString();
+        AssertNoSentinel(stderr);
+        Assert.False(string.IsNullOrWhiteSpace(stderr));
+    }
+
+    // OutOfMemoryException must never be silently absorbed by the sanitizing catch-all: a genuine
+    // out-of-memory condition should still crash the process rather than exit(1) as if it were an
+    // ordinary, recoverable transport failure.
+    [Fact]
+    public async Task OutOfMemoryException_IsNotCaught_PropagatesFromRunAsync()
+    {
+        var error = new StringWriter();
+
+        await Assert.ThrowsAsync<OutOfMemoryException>(() => NativeMessagingHost.RunAsync(
+            new ThrowingInput(new OutOfMemoryException()),
+            Stream.Null,
+            error,
+            CancellationToken.None,
+            new ThrowingBridge(new InvalidOperationException(Sentinel))));
+
+        Assert.Equal(string.Empty, error.ToString());
+    }
+
     private static void AssertNoSentinel(string text)
     {
         foreach (var token in Forbidden)

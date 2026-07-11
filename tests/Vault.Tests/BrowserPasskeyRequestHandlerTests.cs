@@ -124,6 +124,70 @@ public class BrowserPasskeyRequestHandlerTests
         Assert.Equal("GitHub", Assert.Single(approval.Request!.Candidates).CipherName);
     }
 
+    // Browser-task-7 remediation (review L3): credential_unusable must never forward ex.Message onto
+    // the wire. This forces a REAL FormatException deep in WebAuthnCrypto.SignAssertion (malformed
+    // stored private key, sentinel-flavoured to look like something worth leaking) and asserts the
+    // response is strictly code-only: no Message property, no serialized "message" field, and none of
+    // the sentinel/path/token markers anywhere in the response JSON.
+    [Fact]
+    public async Task HandleAsync_GetAssertion_MalformedStoredKey_ReturnsCodeOnlyCredentialUnusable()
+    {
+        const string sentinel = @"SENTINEL_INTERNAL C:\Users\alice\vault token=secret stack=WebAuthnCrypto";
+        var credentialId = WebAuthnCrypto.EncodeBase64Url([9, 9, 9, 9]);
+        var credential = new CipherFido2Credential(
+            credentialId,
+            "public-key",
+            "ECDSA",
+            "P-256",
+            KeyValue: sentinel, // not valid base64url: forces FormatException during signing
+            "github.com",
+            WebAuthnCrypto.EncodeBase64Url([5, 6, 7, 8]),
+            "octo@example.com",
+            5,
+            "GitHub",
+            "Octo",
+            true,
+            DateTimeOffset.Parse("2026-06-24T00:00:00Z"));
+        var cipher = new Cipher
+        {
+            Id = "cipher-1",
+            Type = CipherType.Login,
+            Name = "GitHub",
+            Login = new CipherLogin("octo@example.com", null, null, [])
+            {
+                Fido2Credentials = [credential],
+            },
+        };
+        var approval = new CapturingApprovalService(approve: true);
+        var handler = new BrowserPasskeyRequestHandler(
+            new FakeVaultService(VaultState.Unlocked, [cipher]),
+            new FakeVaultWriteService(),
+            approval);
+
+        using var payload = JsonDocument.Parse($$"""
+        {
+          "origin": "https://github.com",
+          "rpId": "github.com",
+          "challenge": "AQIDBA",
+          "allowCredentials": [{ "id": "{{credentialId}}", "type": "public-key", "transports": ["internal"] }],
+          "userVerification": "preferred",
+          "timeout": 60000
+        }
+        """);
+
+        var response = await handler.HandleAsync(
+            new BrowserPasskeyRequest("req-cu", "passkey.get", payload.RootElement, Context: Ctx()),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(response.Ok);
+        Assert.Equal("credential_unusable", response.Error?.Code);
+        Assert.Null(response.Error?.Message);
+        var json = JsonSerializer.Serialize(response, PasskeyJsonContext.Default.BrowserPasskeyResponse);
+        Assert.DoesNotContain("message", json, StringComparison.OrdinalIgnoreCase);
+        foreach (var forbidden in new[] { "SENTINEL_INTERNAL", @"C:\Users", "token=secret", "stack=" })
+            Assert.DoesNotContain(forbidden, json, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task HandleAsync_GetAssertion_WhenVaultLocked_ReturnsClientNotHandled()
     {

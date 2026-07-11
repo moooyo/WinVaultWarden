@@ -9,6 +9,21 @@ namespace BrowserNativeHost;
 // unit-testable over an in-memory duplex.
 public sealed record AppBridgeConnection(Stream Stream, string Nonce, IAsyncDisposable Resource);
 
+// Browser-task-7 remediation: raised only when this request's own attempt to (re)establish the App
+// pipe connection failed — i.e. the request was never handed off to a connected App at all. This is
+// deliberately a distinct type from any failure surfaced once a connection existed (read-loop
+// disconnect/nonce mismatch, still plain IOException/UnauthorizedAccessException from FailAllPending):
+// NativeMessagingSession maps THIS type alone to client_not_handled (the sole fallback trigger, e.g.
+// the App is simply not running/listening yet), while an established-then-lost connection must map to
+// operation_aborted and never fall back.
+public sealed class AppBridgeConnectFailedException : Exception
+{
+    public AppBridgeConnectFailedException(Exception inner)
+        : base("Failed to establish the App passkey bridge connection.", inner)
+    {
+    }
+}
+
 /// <summary>
 /// One Host lifetime keeps a single App pipe connection and multiplexes every concurrent request id
 /// over it. A background read loop routes each response to its pending id, so responses may arrive out
@@ -113,7 +128,26 @@ public sealed class AppBridgeSession : IAppPasskeyBridgeClient
                 _connection = null;
             }
 
-            var transport = await _connect(ct).ConfigureAwait(false);
+            AppBridgeConnection transport;
+            try
+            {
+                transport = await _connect(ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // The caller walked away (external ct or disposal), not a "the App isn't there"
+                // outcome: propagate as-is so it maps to a cancel, not client_not_handled.
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // This request never reached a connected App: e.g. no listener yet (connect timeout),
+                // handshake/peer-authorization failure, or any other connect-time fault. Wrap so the
+                // native-messaging layer can tell this apart from an established connection that was
+                // later lost mid-ceremony.
+                throw new AppBridgeConnectFailedException(ex);
+            }
+
             var connection = new Connection(transport);
             connection.ReadLoop = ReadLoopAsync(connection);
             Volatile.Write(ref _connection, connection);

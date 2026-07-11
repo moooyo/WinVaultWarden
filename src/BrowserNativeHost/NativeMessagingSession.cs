@@ -238,14 +238,33 @@ public sealed class NativeMessagingSession : IAsyncDisposable
                         .ConfigureAwait(false);
                 return;
             }
-            catch (Exception ex) when (
-                ex is IOException or TimeoutException or InvalidDataException or UnauthorizedAccessException)
+            catch (AppBridgeConnectFailedException) when (!sessionToken.IsCancellationRequested)
             {
+                // This request's own attempt to reach a connected App never succeeded — no listener
+                // yet (typical NamedPipe connect timeout while the vault is locked and the bridge
+                // isn't running), a failed handshake, or any other connect-time fault. The request was
+                // never handed off to App: client_not_handled is the sole, correct fallback trigger so
+                // the extension retries the platform authenticator.
                 if (active.TryClaimResponded())
                     await WriteResponseAsync(Error(
                         request.Id,
-                        "native_host_unavailable",
-                        "WinVaultWarden is not running or its passkey bridge is unavailable."))
+                        PasskeyErrorCodes.ClientNotHandled,
+                        "WinVaultWarden is not available to handle this request."))
+                        .ConfigureAwait(false);
+                return;
+            }
+            catch (Exception ex) when (
+                (ex is IOException or TimeoutException or InvalidDataException or UnauthorizedAccessException)
+                && !sessionToken.IsCancellationRequested)
+            {
+                // Unlike AppBridgeConnectFailedException above, this is a connection that WAS
+                // established for a prior request and is now lost (EOF/IOException) or failed
+                // integrity (nonce mismatch) while THIS request was in flight: the App may already be
+                // mid-ceremony, so this must abort (never fall back) rather than retry the platform
+                // authenticator behind the App's back.
+                if (active.TryClaimResponded())
+                    await WriteResponseAsync(Error(
+                        request.Id, PasskeyErrorCodes.OperationAborted, "The App passkey bridge connection was lost."))
                         .ConfigureAwait(false);
                 return;
             }
@@ -367,9 +386,13 @@ public sealed class NativeMessagingSession : IAsyncDisposable
         catch (OperationCanceledException)
         {
         }
-        catch (Exception ex) when (
-            ex is EndOfStreamException or IOException or InvalidDataException or JsonException)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            // Browser-task-7 remediation: RunAsync's own await of this same task already saw (and
+            // sanitized) whatever RunCoreAsync faulted with — a known transport failure or any other
+            // unexpected exception the read loop didn't already convert to a per-message response.
+            // Re-awaiting the identical faulted task here (from StopAsync/DisposeAsync) must not
+            // re-surface it a second time or fault disposal; OOM is deliberately not swallowed.
         }
     }
 

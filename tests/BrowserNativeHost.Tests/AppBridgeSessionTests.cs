@@ -97,6 +97,45 @@ public class AppBridgeSessionTests
         await Assert.ThrowsAsync<IOException>(() => task);
     }
 
+    // Browser-task-7 remediation (review L1): a failure raised by the connect FACTORY itself — this
+    // request never reached a connected App at all (no listener yet, handshake failure, etc.) — must
+    // be told apart from Disconnect_FailsPendingWithIoException above, where the connection WAS
+    // established and only lost later. EnsureConnectedAsync wraps the former as
+    // AppBridgeConnectFailedException so NativeMessagingSession can map only this case to
+    // client_not_handled (the sole fallback trigger) while the latter stays a plain IOException and
+    // maps to operation_aborted (never falls back).
+    [Fact]
+    public async Task ConnectFactoryFailure_WrapsAsAppBridgeConnectFailedException()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var ct = cts.Token;
+        var inner = new TimeoutException("Timed out connecting to the WinVaultWarden passkey bridge.");
+        await using var session = new AppBridgeSession(_ => throw inner);
+
+        var wrapped = await Assert.ThrowsAsync<AppBridgeConnectFailedException>(
+            () => session.SendAsync(Request("00000000000000000000000000000f0"), ct));
+        Assert.Same(inner, wrapped.InnerException);
+    }
+
+    [Fact]
+    public async Task ConnectFactoryCancellation_PropagatesAsOperationCanceled_NotWrapped()
+    {
+        // A caller walking away during connect (external ct/disposal) is a cancel, not "the App isn't
+        // there": it must not be wrapped as AppBridgeConnectFailedException (which would incorrectly
+        // become a fallback-triggering client_not_handled).
+        using var cts = new CancellationTokenSource();
+        await using var session = new AppBridgeSession(async innerCt =>
+        {
+            cts.Cancel();
+            innerCt.ThrowIfCancellationRequested();
+            await Task.Delay(Timeout.Infinite, innerCt);
+            throw new InvalidOperationException("unreachable");
+        });
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => session.SendAsync(Request("00000000000000000000000000000f1"), cts.Token));
+    }
+
     [Fact]
     public async Task Request_CarriesSessionNonce()
     {
