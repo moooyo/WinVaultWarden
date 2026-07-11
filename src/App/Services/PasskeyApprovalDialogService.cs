@@ -1,3 +1,4 @@
+using App.Controls;
 using Core.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -31,8 +32,8 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
 
         try
         {
-            // 按 rpId(而非完整 origin)键控冷却:轮换同一 rpId 的子域 origin 无法绕过节流。
-            if (!_throttle.TryBegin(request.RpId))
+            // 按 canonical rpId(而非完整 origin)键控冷却:轮换同一 rpId 的子域 origin 无法绕过节流。
+            if (!_throttle.TryBegin(request.Source.RpId))
                 return RejectedUse();
 
             var window = global::App.App.MainWindow;
@@ -77,8 +78,8 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         }
     }
 
-    // 使用路径:先对 request.CipherId 过条目级门禁(reprompt 条目会先弹主密码,非 reprompt 立即通过),
-    // 授权失败则拒绝且不产出任何 Present/Verified evidence;通过后再依 UV 要求收集 evidence。
+    // 使用路径:先让用户在候选中显式选账号(多候选默认不选、主/次按钮禁用),再对所选 CipherId 过条目级
+    // 门禁(reprompt 条目先弹主密码,非 reprompt 立即通过),最后按 UV 要求收集真实 evidence。
     private async Task<PasskeyUseApprovalResult> ConfirmUseCoreAsync(
         MainWindow window,
         PasskeyApprovalRequest request,
@@ -87,93 +88,99 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         if (window.Content is not FrameworkElement root || root.XamlRoot is null)
             return RejectedUse();
 
+        window.Activate();
+
+        // 'get' 请求没有 RP 自报名称;来源/RP 身份完全取自 Task 1 校验过的 Source。
+        var presentation = PasskeyApprovalPresentation.Build(
+            request.Source,
+            reportedRpName: null,
+            request.Candidates);
+        var view = new PasskeyApprovalView(presentation);
+
+        var uv = request.UserVerificationRequirement;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = root.XamlRoot,
+            Title = $"使用通行密钥登录 {presentation.RpIdUnicode}？",
+            PrimaryButtonText = "使用 passkey",
+            CloseButtonText = "取消",
+            // 默认按钮为“取消”:回车不再批准安全敏感操作,须显式点击“使用 passkey”。
+            DefaultButton = ContentDialogButton.Close,
+            Content = view,
+        };
+        // preferred:额外提供“验证并批准”次按钮,仅该分支才执行真实 UV 并置 UV=true。
+        if (uv == PasskeyUserVerificationRequirement.Preferred)
+            dialog.SecondaryButtonText = "验证并批准";
+
+        // 多候选:显式选择前禁用主/次按钮,回车/默认高亮都不会误批准某个账号。
+        if (request.Candidates.Count > 1 && view.SelectedCredential is null)
+        {
+            dialog.IsPrimaryButtonEnabled = false;
+            dialog.IsSecondaryButtonEnabled = false;
+        }
+
+        view.SelectionChanged += (_, _) =>
+        {
+            var hasSelection = view.SelectedCredential is not null;
+            dialog.IsPrimaryButtonEnabled = hasSelection;
+            dialog.IsSecondaryButtonEnabled = hasSelection;
+        };
+
+        var result = await global::App.Views.DialogHelper.ShowTrackedAsync(dialog, ct: ct);
+        if (result != ContentDialogResult.Primary && result != ContentDialogResult.Secondary)
+            return RejectedUse();
+
+        var selected = view.SelectedCredential;
+        if (selected is null)
+            return RejectedUse();
+
         CipherAccessPolicy policy;
         try
         {
-            policy = _vault.GetAccessPolicy(request.CipherId);
+            policy = _vault.GetAccessPolicy(selected.CipherId);
         }
         catch
         {
             return RejectedUse();
         }
 
-        var itemAuthorization = await _itemReprompt.AuthorizeAsync(
+        // 记录门禁前授权态:仅当本条目要求 reprompt 且此前未授权时,本次授权才代表“刚刚验证了主密码”。
+        var wasAuthorized = _itemReprompt.IsAuthorized(policy);
+        var authorization = await _itemReprompt.AuthorizeAsync(
             policy,
             SensitiveItemAction.UsePasskey,
             c => PromptMasterPasswordAsync(root, c),
             ct);
-        if (!itemAuthorization.IsSuccess)
+        if (!authorization.IsSuccess)
+            return RejectedUse();
+        var repromptVerifiedNow = policy.RequiresReprompt && !wasAuthorized;
+
+        // 真实 UV 矩阵:reprompt 刚验证即满足 UV(UV⇒UP);required 未满足时必须真实验证;
+        // preferred 仅“验证并批准”次按钮才补验;discouraged 不主动验证(但复用本次 reprompt 结果)。
+        var userVerified = repromptVerifiedNow;
+        if (uv == PasskeyUserVerificationRequirement.Required && !userVerified)
         {
-            return new PasskeyUseApprovalResult(
-                Evidence: new PasskeyApprovalEvidence(
-                    Approved: false,
-                    UserPresent: false,
-                    UserVerified: false),
-                CipherId: request.CipherId,
-                CredentialId: request.CredentialId);
-        }
-
-        window.Activate();
-
-        var uv = request.UserVerificationRequirement;
-        var dialog = new ContentDialog
-        {
-            XamlRoot = root.XamlRoot,
-            Title = $"使用此 passkey 登录 {request.RpId}？",
-            PrimaryButtonText = "使用 passkey",
-            CloseButtonText = "取消",
-            // 默认按钮为“取消”:回车不再批准安全敏感操作,须显式点击“使用 passkey”。
-            DefaultButton = ContentDialogButton.Close,
-            Content = CreateDialogContent(request),
-        };
-        // preferred:额外提供“验证并批准”次按钮,仅该分支才执行真实 UV 并置 UV=true。
-        if (uv == PasskeyUserVerificationRequirement.Preferred)
-            dialog.SecondaryButtonText = "验证并批准";
-
-        var result = await global::App.Views.DialogHelper.ShowTrackedAsync(dialog, ct: ct);
-
-        if (result == ContentDialogResult.Primary)
-        {
-            if (uv == PasskeyUserVerificationRequirement.Required)
-            {
-                // required:确认后必须执行真实 UV;未通过则不产出任何 approval。
-                var verified = await _userVerification.VerifyAsync(
-                    c => PromptMasterPasswordAsync(root, c), ct);
-                return new PasskeyUseApprovalResult(
-                    Evidence: new PasskeyApprovalEvidence(
-                        Approved: verified,
-                        UserPresent: verified,
-                        UserVerified: verified),
-                    CipherId: request.CipherId,
-                    CredentialId: request.CredentialId);
-            }
-
-            // 普通确认(discouraged / preferred 主按钮):仅 UP,不置 UV。
-            return new PasskeyUseApprovalResult(
-                Evidence: new PasskeyApprovalEvidence(
-                    Approved: true,
-                    UserPresent: true,
-                    UserVerified: false),
-                CipherId: request.CipherId,
-                CredentialId: request.CredentialId);
-        }
-
-        if (result == ContentDialogResult.Secondary
-            && uv == PasskeyUserVerificationRequirement.Preferred)
-        {
-            // preferred 次按钮:只有本次实际验证成功才置 UV=true,否则退回 UP-only(preferred 接受仅 UP)。
-            var verified = await _userVerification.VerifyAsync(
+            userVerified = await _userVerification.VerifyAsync(
                 c => PromptMasterPasswordAsync(root, c), ct);
-            return new PasskeyUseApprovalResult(
-                Evidence: new PasskeyApprovalEvidence(
-                    Approved: true,
-                    UserPresent: true,
-                    UserVerified: verified),
-                CipherId: request.CipherId,
-                CredentialId: request.CredentialId);
+        }
+        else if (uv == PasskeyUserVerificationRequirement.Preferred
+            && result == ContentDialogResult.Secondary)
+        {
+            userVerified = await _userVerification.VerifyAsync(
+                c => PromptMasterPasswordAsync(root, c), ct);
         }
 
-        return RejectedUse();
+        // required 未能取得真实 UV → 不产出任何 approval。
+        if (uv == PasskeyUserVerificationRequirement.Required && !userVerified)
+            return RejectedUse();
+
+        return new PasskeyUseApprovalResult(
+            new PasskeyApprovalEvidence(
+                Approved: true,
+                UserPresent: true,
+                UserVerified: userVerified),
+            selected.CipherId,
+            selected.CredentialId);
     }
 
     private async Task<PasskeyCreateApprovalResult> ConfirmCreateCoreAsync(
@@ -186,7 +193,8 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
 
         window.Activate();
 
-        var displayName = string.IsNullOrWhiteSpace(request.RpName) ? request.RpId : request.RpName;
+        var frameOrigin = PasskeyOriginDisplay.Parse(request.Source.FrameOrigin);
+        var displayName = string.IsNullOrWhiteSpace(request.RpName) ? request.Source.UnicodeRpId : request.RpName;
 
         var existingCombo = new ComboBox
         {
@@ -226,7 +234,21 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
             Text = "浏览器正在请求为此网站创建一个新的 passkey。",
             TextWrapping = TextWrapping.Wrap,
         });
-        panel.Children.Add(CreateDetailLine("网站", displayName));
+        // 主显 Task 1 校验过的 RP 与帧来源(A-label + Unicode 双行);品牌名仅作次要提示。
+        panel.Children.Add(CreateDetailLine("RP ID", request.Source.UnicodeRpId, request.Source.RpId));
+        panel.Children.Add(CreateDetailLine("来源", frameOrigin.Unicode, frameOrigin.Ascii));
+        if (request.Source.IsCrossOrigin)
+        {
+            panel.Children.Add(new InfoBar
+            {
+                IsOpen = true,
+                IsClosable = false,
+                Severity = InfoBarSeverity.Warning,
+                Message = "此请求来自跨来源 iframe，已验证 Permissions Policy。",
+            });
+        }
+        if (!string.IsNullOrWhiteSpace(request.RpName))
+            panel.Children.Add(CreateDetailLine("网站自报名称", request.RpName));
         panel.Children.Add(CreateDetailLine("账户", DisplayAccount(request)));
         panel.Children.Add(newRadio);
         panel.Children.Add(attachRadio);
@@ -374,39 +396,7 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         }
     }
 
-    private static UIElement CreateDialogContent(PasskeyApprovalRequest request)
-    {
-        var panel = new StackPanel
-        {
-            Spacing = 12,
-            MaxWidth = 420,
-        };
-
-        panel.Children.Add(new TextBlock
-        {
-            Text = "浏览器正在请求使用保险库中的 passkey。",
-            TextWrapping = TextWrapping.Wrap,
-        });
-        panel.Children.Add(CreateDetailLine("项目", request.CipherName));
-        panel.Children.Add(CreateDetailLine("账户", DisplayAccount(request)));
-        var origin = PasskeyOriginDisplay.Parse(request.Origin);
-        // “未验证”:origin 仅为请求方自报(经内容脚本钉真实帧 origin),客户端未对其做 RP 验证。
-        panel.Children.Add(CreateDetailLine("来源（请求方，未验证）", origin.Display));
-
-        if (!origin.IsSecure)
-        {
-            panel.Children.Add(new TextBlock
-            {
-                Text = "⚠ 此来源不是安全的 HTTPS 连接。",
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = Application.Current.Resources["SystemFillColorCautionBrush"] as Microsoft.UI.Xaml.Media.Brush,
-            });
-        }
-
-        return panel;
-    }
-
-    private static UIElement CreateDetailLine(string label, string value)
+    private static UIElement CreateDetailLine(string label, string value, string? secondary = null)
     {
         var panel = new StackPanel
         {
@@ -425,12 +415,19 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
             TextWrapping = TextWrapping.Wrap,
             TextTrimming = TextTrimming.CharacterEllipsis,
         });
+        if (!string.IsNullOrWhiteSpace(secondary) && !string.Equals(secondary, value, StringComparison.Ordinal))
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = secondary,
+                TextWrapping = TextWrapping.Wrap,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Microsoft.UI.Xaml.Media.Brush,
+            });
+        }
 
         return panel;
     }
-
-    private static string DisplayAccount(PasskeyApprovalRequest request) =>
-        FirstNonEmpty(request.UserDisplayName, request.UserName) ?? "未命名账户";
 
     private static string DisplayAccount(PasskeyCreateApprovalRequest request) =>
         FirstNonEmpty(request.UserDisplayName, request.UserName) ?? "未命名账户";

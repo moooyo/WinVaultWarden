@@ -79,6 +79,10 @@ public static class ServiceConfiguration
         services.AddTransient<EmergencyAccessViewModel>(sp =>
             TrackSensitive(sp, ActivatorUtilities.CreateInstance<EmergencyAccessViewModel>(sp)));
         services.AddSingleton<IPasskeyApprovalService, PasskeyApprovalDialogService>();
+        // Task 1 origin/RP policy + Task 4 ceremony gate for the passkey handler. The gate MUST be a
+        // singleton so its per-(tab,frame,RP) in-flight/rate-limit state is process-wide.
+        services.AddSingleton(WebAuthnRequestPolicy.CreateDefault());
+        services.AddSingleton(_ => new PasskeyRequestGate(TimeProvider.System));
         services.AddSingleton<BrowserPasskeyRequestHandler>();
         // Task 3：管道 peer 双向鉴别。生产环境只注册真实 authorizer + Windows 身份读取器,
         // 无任何 fake / 降级开关(fake 仅存在于测试程序集)。

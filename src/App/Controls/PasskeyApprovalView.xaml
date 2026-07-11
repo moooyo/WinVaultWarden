@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="App.Controls.PasskeyApprovalView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:services="using:Core.Services">
+    <ScrollViewer MaxHeight="520"
+                  VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="12" MaxWidth="480">
+            <TextBlock Text="WinVaultWarden 正在处理通行密钥请求。"
+                       TextWrapping="Wrap" />
+
+            <TextBlock Text="当前 frame 来源" Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock x:Name="FrameOriginUnicode"
+                       Text="{x:Bind Presentation.FrameOriginUnicode}"
+                       TextWrapping="Wrap" />
+            <TextBlock x:Name="FrameOriginAscii"
+                       Text="{x:Bind Presentation.FrameOriginAscii}"
+                       TextWrapping="Wrap"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+            <TextBlock Text="RP ID" Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock x:Name="RpId"
+                       Text="{x:Bind Presentation.RpIdUnicode}"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{x:Bind Presentation.RpIdAscii}"
+                       TextWrapping="Wrap"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+            <TextBlock Text="顶层来源" Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock x:Name="TopOrigin"
+                       Text="{x:Bind Presentation.TopOriginUnicode}"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{x:Bind Presentation.TopOriginAscii}"
+                       TextWrapping="Wrap"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+            <InfoBar x:Name="CrossOriginWarning"
+                     IsOpen="{x:Bind Presentation.IsCrossOrigin}"
+                     IsClosable="False"
+                     Severity="Warning"
+                     Message="此请求来自跨来源 iframe，已验证 Permissions Policy。" />
+
+            <TextBlock Text="{x:Bind Presentation.ReportedName}"
+                       TextWrapping="Wrap"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+            <ComboBox x:Name="CredentialPicker"
+                      Header="选择账号"
+                      ItemsSource="{x:Bind Presentation.Candidates}"
+                      SelectedItem="{x:Bind SelectedCredential, Mode=TwoWay}"
+                      SelectionChanged="OnSelectionChanged"
+                      MinWidth="280">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="services:PasskeyCredentialTarget">
+                        <TextBlock Text="{x:Bind DisplayName}" TextWrapping="Wrap" />
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

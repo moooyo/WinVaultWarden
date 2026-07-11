@@ -12,12 +12,24 @@ public sealed class BrowserPasskeyRequestHandler
     private readonly IVaultService _vault;
     private readonly IVaultWriteService _write;
     private readonly IPasskeyApprovalService _approval;
+    private readonly WebAuthnRequestPolicy _policy;
+    private readonly PasskeyRequestGate _requestGate;
 
-    public BrowserPasskeyRequestHandler(IVaultService vault, IVaultWriteService write, IPasskeyApprovalService approval)
+    public BrowserPasskeyRequestHandler(
+        IVaultService vault,
+        IVaultWriteService write,
+        IPasskeyApprovalService approval,
+        WebAuthnRequestPolicy? policy = null,
+        PasskeyRequestGate? requestGate = null)
     {
         _vault = vault;
         _write = write;
         _approval = approval;
+        // Task 1 origin/RP policy and Task 4 per-(tab,frame,RP) ceremony gate. Defaults preserve the
+        // long-standing 3-arg constructor (and callers/tests that use it); production injects shared
+        // singletons via DI so the gate's in-flight/rate-limit state is process-wide.
+        _policy = policy ?? WebAuthnRequestPolicy.CreateDefault();
+        _requestGate = requestGate ?? new PasskeyRequestGate(TimeProvider.System);
     }
 
     public async Task<BrowserPasskeyResponse> HandleAsync(
@@ -51,11 +63,13 @@ public sealed class BrowserPasskeyRequestHandler
                 "passkey.get" => await HandleGetAsync(
                     lease,
                     request.Id,
+                    request.Context,
                     (PasskeyGetPayload)parsed.Payload,
                     linked.Token),
                 "passkey.create" => await HandleCreateAsync(
                     lease,
                     request.Id,
+                    request.Context,
                     (PasskeyCreatePayload)parsed.Payload,
                     linked.Token),
                 _ => Error(
@@ -78,11 +92,20 @@ public sealed class BrowserPasskeyRequestHandler
     private async Task<BrowserPasskeyResponse> HandleCreateAsync(
         VaultSessionLease lease,
         string? requestId,
+        BrowserRequestContext? context,
         PasskeyCreatePayload payload,
         CancellationToken ct)
     {
-        if (!TryGetEffectiveRpId(payload.Origin, payload.Rp?.Id ?? payload.RpId, out var rpId, out var rpError))
-            return Error(requestId, rpError!);
+        // Task 5: origin/RP/cross-origin come only from the trusted sender context, never the page
+        // payload. A missing context means an unauthenticated sender bypassed the native host.
+        if (context is null)
+            return Error(requestId, PasskeyErrorCodes.SecuritySender, "A trusted request context is required.");
+
+        // Task 1: derive the canonical RP and normalised origins from the trusted context.
+        var decision = _policy.Evaluate(BrowserPasskeyOperation.Create, context, payload.Rp?.Id ?? payload.RpId);
+        if (decision.Context is not { } validated)
+            return Error(requestId, decision.ErrorCode!, "The passkey request failed origin validation.");
+        var rpId = validated.CanonicalRpId;
 
         var algorithms = (payload.PubKeyCredParams ?? []).Select(p => p.Alg).ToArray();
 
@@ -91,21 +114,27 @@ public sealed class BrowserPasskeyRequestHandler
 
         // excludeCredentials:若本库已有该 rpId 的凭据且其 CredentialId 在排除列表 → InvalidStateError。
         var excluded = (payload.ExcludeCredentials ?? []).Select(c => c.Id).Where(x => !string.IsNullOrWhiteSpace(x)).ToHashSet(StringComparer.Ordinal);
-        if (excluded.Count > 0 && ExistingCredentialsForRp(ciphers, rpId!).Any(c => excluded.Contains(c.CredentialId!)))
+        if (excluded.Count > 0 && ExistingCredentialsForRp(ciphers, rpId).Any(c => excluded.Contains(c.CredentialId!)))
             return Error(requestId, "credential_excluded", "A passkey already exists for this site.");
 
         var existingLogins = ciphers
             .Where(c => !c.IsDeleted && c.Type == CipherType.Login)
-            .Select(c => new PasskeyLoginTarget(c.Id, c.Name))
+            .Select(c => new PasskeyLoginTarget(c.Id, c.Name, c.Reprompt))
             .ToArray();
+
+        // Task 4: reserve the single ceremony slot for this (tab, frame, canonical RP) before prompting.
+        using var gate = _requestGate.TryEnter(
+            new PasskeyRequestKey(context.TabId, context.FrameId, rpId),
+            out var gateError);
+        if (gate is null)
+            return Error(requestId, gateError!, "A passkey request is already in progress.");
 
         var userVerificationRequirement =
             GetUserVerificationRequirementForCreate(payload.AuthenticatorSelection);
         var approval = await _approval.ConfirmCreateAsync(
             new PasskeyCreateApprovalRequest(
                 requestId ?? string.Empty,
-                payload.Origin,
-                rpId!,
+                ToApprovalSource(validated),
                 payload.Rp?.Name,
                 payload.User?.Name,
                 payload.User?.DisplayName,
@@ -113,6 +142,15 @@ public sealed class BrowserPasskeyRequestHandler
                 userVerificationRequirement),
             ct);
         _vault.ThrowIfExpired(lease);
+
+        // An attach target must be one of the offered existing logins; a forged/absent CipherId
+        // is rejected before any credential is minted or saved.
+        if (approval.Evidence.Approved
+            && !approval.CreateNew
+            && !existingLogins.Any(login => login.CipherId == approval.CipherId))
+        {
+            return Error(requestId, PasskeyErrorCodes.InternalError, "The approved item was not offered.");
+        }
 
         if (ValidateApproval(
                 requestId,
@@ -126,7 +164,7 @@ public sealed class BrowserPasskeyRequestHandler
         try
         {
             var result = WebAuthnRegistrationService.CreateAttestation(new WebAuthnMakeCredentialRequest(
-                payload.Origin,
+                validated.FrameOrigin.Value,
                 payload.Challenge,
                 rpId,
                 payload.Rp?.Name,
@@ -139,7 +177,7 @@ public sealed class BrowserPasskeyRequestHandler
             _vault.ThrowIfExpired(lease);
 
             var cipher = approval.CreateNew
-                ? BuildNewLoginCipher(payload.Rp?.Name ?? rpId!, result.Credential)
+                ? BuildNewLoginCipher(payload.Rp?.Name ?? rpId, result.Credential)
                 : AttachToExisting(ciphers, approval.CipherId!, result.Credential);
             if (cipher is null)
                 return Error(requestId, "cipher_not_found", "The selected item was not found.");
@@ -159,36 +197,60 @@ public sealed class BrowserPasskeyRequestHandler
     private async Task<BrowserPasskeyResponse> HandleGetAsync(
         VaultSessionLease lease,
         string? requestId,
+        BrowserRequestContext? context,
         PasskeyGetPayload payload,
         CancellationToken ct)
     {
-        if (!TryGetEffectiveRpId(payload.Origin, payload.RpId, out var rpId, out var rpError))
-            return Error(requestId, rpError!);
+        // Task 5: origin/RP/cross-origin come only from the trusted sender context, never the page.
+        if (context is null)
+            return Error(requestId, PasskeyErrorCodes.SecuritySender, "A trusted request context is required.");
 
-        var ciphers = _vault.GetCiphers(lease);
+        // Task 1: canonical RP + normalised origins + verified cross-origin from the trusted context.
+        var decision = _policy.Evaluate(BrowserPasskeyOperation.Get, context, payload.RpId);
+        if (decision.Context is not { } validated)
+            return Error(requestId, decision.ErrorCode!, "The passkey request failed origin validation.");
+
         var allowedCredentialIds = (payload.AllowCredentials ?? [])
             .Select(credential => credential.Id)
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .ToArray();
-        var credential = FindCredential(ciphers, rpId!, allowedCredentialIds);
-        if (credential is null)
-            return Error(requestId, "no_credential", "No matching passkey was found for this site.");
+        var allowed = allowedCredentialIds.Length == 0
+            ? null
+            : allowedCredentialIds.ToHashSet(StringComparer.Ordinal);
+
+        // Every matching discoverable credential is offered to the user; no FirstOrDefault default.
+        var candidates = FindCredentials(lease, validated.CanonicalRpId, allowed);
+        // No candidate before any prompt → let the platform authenticator try (fallback), and do
+        // not consume a ceremony slot / rate-limit budget for a request we can't service.
+        if (candidates.Count == 0)
+            return Error(requestId, PasskeyErrorCodes.ClientNotHandled, "No matching passkey was found for this site.");
+
+        // Task 4: reserve the single ceremony slot for this (tab, frame, canonical RP).
+        using var gate = _requestGate.TryEnter(
+            new PasskeyRequestKey(context.TabId, context.FrameId, validated.CanonicalRpId),
+            out var gateError);
+        if (gate is null)
+            return Error(requestId, gateError!, "A passkey request is already in progress.");
 
         var userVerificationRequirement =
             ParseUserVerificationRequirement(payload.UserVerification);
         var approval = await _approval.ConfirmUseAsync(
             new PasskeyApprovalRequest(
                 requestId ?? string.Empty,
-                payload.Origin,
-                rpId!,
-                credential.Cipher.Id,
-                credential.Credential.CredentialId!,
-                credential.Cipher.Name,
-                credential.Credential.UserName,
-                credential.Credential.UserDisplayName,
+                ToApprovalSource(validated),
+                [.. candidates.Select(ToApprovalTarget)],
                 userVerificationRequirement),
             ct);
         _vault.ThrowIfExpired(lease);
+
+        // The approved (cipher, credential) pair must be exactly one of the offered candidates:
+        // an approval that names an id we never presented is treated as a forged/mismatched
+        // selection and rejected before signing.
+        var selected = candidates.SingleOrDefault(candidate =>
+            candidate.Cipher.Id == approval.CipherId
+            && candidate.Credential.CredentialId == approval.CredentialId);
+        if (approval.Evidence.Approved && selected is null)
+            return Error(requestId, PasskeyErrorCodes.InternalError, "The approved credential was not offered.");
 
         if (ValidateApproval(
                 requestId,
@@ -202,14 +264,14 @@ public sealed class BrowserPasskeyRequestHandler
         try
         {
             var assertion = WebAuthnAssertionService.CreateAssertion(
-                credential.Credential,
+                selected!.Credential,
                 new WebAuthnGetAssertionRequest(
-                    payload.Origin,
+                    validated.FrameOrigin.Value,
                     payload.Challenge,
-                    rpId,
+                    validated.CanonicalRpId,
                     allowedCredentialIds,
                     ApprovalEvidence: approval.Evidence,
-                    CrossOrigin: payload.CrossOrigin));
+                    CrossOrigin: validated.IsCrossOrigin));
             _vault.ThrowIfExpired(lease);
 
             return new BrowserPasskeyResponse(
@@ -231,23 +293,43 @@ public sealed class BrowserPasskeyRequestHandler
         }
     }
 
-    private static PasskeyCredentialCandidate? FindCredential(
-        IReadOnlyList<Cipher> ciphers,
+    // 返回本次 lease-bound 快照中匹配该 canonical rpId(及 allowCredentials,若有)的全部 discoverable
+    // 凭据,按名称/账户稳定排序,供 App 明确列出多账号。rpId 用 Ordinal 精确匹配 canonical A-label。
+    private IReadOnlyList<PasskeyCredentialCandidate> FindCredentials(
+        VaultSessionLease lease,
         string rpId,
-        IReadOnlyList<string> allowedCredentialIds)
+        IReadOnlySet<string>? allowed)
     {
-        var allowed = allowedCredentialIds.Count == 0
-            ? null
-            : allowedCredentialIds.ToHashSet(StringComparer.Ordinal);
-
-        return ciphers
+        return _vault.GetCiphers(lease)
             .Where(cipher => !cipher.IsDeleted && cipher.Type == CipherType.Login && cipher.Login?.HasFido2Credentials == true)
-            .SelectMany(cipher => cipher.Login!.Fido2Credentials.Select(credential => new PasskeyCredentialCandidate(cipher, credential)))
-            .FirstOrDefault(candidate =>
-                string.Equals(candidate.Credential.RpId, rpId, StringComparison.OrdinalIgnoreCase)
-                && !string.IsNullOrWhiteSpace(candidate.Credential.CredentialId)
-                && (allowed is null || allowed.Contains(candidate.Credential.CredentialId!)));
+            .SelectMany(cipher => cipher.Login!.Fido2Credentials.Select(
+                credential => new PasskeyCredentialCandidate(cipher, credential)))
+            .Where(candidate =>
+                string.Equals(candidate.Credential.RpId, rpId, StringComparison.Ordinal)
+                && candidate.Credential.CredentialId is { Length: > 0 } id
+                && (allowed is null || allowed.Contains(id)))
+            .OrderBy(candidate => candidate.Cipher.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(candidate => candidate.Credential.UserName, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(candidate => candidate.Credential.CredentialId, StringComparer.Ordinal)
+            .ToArray();
     }
+
+    private static PasskeyApprovalSource ToApprovalSource(ValidatedBrowserRequestContext context) =>
+        new(
+            context.FrameOrigin.Value,
+            context.TopOrigin.Value,
+            context.CanonicalRpId,
+            context.UnicodeRpId,
+            context.IsCrossOrigin);
+
+    private static PasskeyCredentialTarget ToApprovalTarget(PasskeyCredentialCandidate candidate) =>
+        new(
+            candidate.Cipher.Id,
+            candidate.Credential.CredentialId!,
+            candidate.Cipher.Name,
+            candidate.Credential.UserName,
+            candidate.Credential.UserDisplayName,
+            candidate.Cipher.Reprompt);
 
     // 返回给定 lease-bound 快照中属于该 rpId 的全部 Fido2 凭据(用于 excludeCredentials 排重判断)。
     private static IEnumerable<CipherFido2Credential> ExistingCredentialsForRp(
@@ -363,33 +445,6 @@ public sealed class BrowserPasskeyRequestHandler
     // extensions.credProps 存在即代表浏览器请求了 credProps 扩展结果。
     private static bool HasCredProps(JsonElement? extensions) =>
         extensions is { } element && element.ValueKind == JsonValueKind.Object && element.TryGetProperty("credProps", out _);
-
-    private static bool TryGetEffectiveRpId(
-        string origin,
-        string? requestedRpId,
-        out string? rpId,
-        out BrowserPasskeyError? error)
-    {
-        rpId = null;
-        error = null;
-
-        if (!Uri.TryCreate(origin, UriKind.Absolute, out var originUri) || string.IsNullOrWhiteSpace(originUri.Host))
-        {
-            error = new BrowserPasskeyError("invalid_request", "Passkey request origin must be an absolute origin.");
-            return false;
-        }
-
-        rpId = string.IsNullOrWhiteSpace(requestedRpId) ? originUri.Host : requestedRpId;
-        if (!string.Equals(originUri.Host, rpId, StringComparison.OrdinalIgnoreCase)
-            && !originUri.Host.EndsWith($".{rpId}", StringComparison.OrdinalIgnoreCase))
-        {
-            error = new BrowserPasskeyError("invalid_request", "The requested rpId is not valid for the origin.");
-            rpId = null;
-            return false;
-        }
-
-        return true;
-    }
 
     private static BrowserPasskeyResponse Error(string? id, BrowserPasskeyError error) =>
         Error(id, error.Code, error.Message);

@@ -24,7 +24,7 @@ public class BrowserPasskeyRequestHandlerTests
         using var payload = GetPayload();
 
         var running = handler.HandleAsync(
-            new BrowserPasskeyRequest("get-1", "passkey.get", payload.RootElement),
+            new BrowserPasskeyRequest("get-1", "passkey.get", payload.RootElement, Context: Ctx()),
             CancellationToken.None);
         await approval.UseEntered.Task;
         session.Lock();
@@ -55,7 +55,7 @@ public class BrowserPasskeyRequestHandlerTests
         using var payload = CreatePayload();
 
         var running = handler.HandleAsync(
-            new BrowserPasskeyRequest("create-1", "passkey.create", payload.RootElement),
+            new BrowserPasskeyRequest("create-1", "passkey.create", payload.RootElement, Context: Ctx()),
             CancellationToken.None);
         await approval.CreateEntered.Task;
         session.Lock();
@@ -109,7 +109,7 @@ public class BrowserPasskeyRequestHandlerTests
         """);
 
         var response = await handler.HandleAsync(
-            new BrowserPasskeyRequest("req-1", "passkey.get", payload.RootElement),
+            new BrowserPasskeyRequest("req-1", "passkey.get", payload.RootElement, Context: Ctx()),
             TestContext.Current.CancellationToken);
 
         Assert.True(response.Ok);
@@ -120,8 +120,8 @@ public class BrowserPasskeyRequestHandlerTests
         Assert.False(string.IsNullOrWhiteSpace(assertion.AuthenticatorData));
         Assert.False(string.IsNullOrWhiteSpace(assertion.ClientDataJson));
         Assert.False(string.IsNullOrWhiteSpace(assertion.Signature));
-        Assert.Equal("github.com", approval.Request?.RpId);
-        Assert.Equal("GitHub", approval.Request?.CipherName);
+        Assert.Equal("github.com", approval.Request?.Source.RpId);
+        Assert.Equal("GitHub", Assert.Single(approval.Request!.Candidates).CipherName);
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public class BrowserPasskeyRequestHandlerTests
             """);
 
         var response = await handler.HandleAsync(
-            new BrowserPasskeyRequest("req-2", "passkey.get", payload.RootElement),
+            new BrowserPasskeyRequest("req-2", "passkey.get", payload.RootElement, Context: Ctx()),
             TestContext.Current.CancellationToken);
 
         Assert.False(response.Ok);
@@ -183,7 +183,7 @@ public class BrowserPasskeyRequestHandlerTests
             """);
 
         var response = await handler.HandleAsync(
-            new BrowserPasskeyRequest("req-3", "passkey.get", payload.RootElement),
+            new BrowserPasskeyRequest("req-3", "passkey.get", payload.RootElement, Context: Ctx()),
             TestContext.Current.CancellationToken);
 
         Assert.False(response.Ok);
@@ -210,11 +210,11 @@ public class BrowserPasskeyRequestHandlerTests
             """);
 
         var response = await handler.HandleAsync(
-            new BrowserPasskeyRequest("req-nc", "passkey.get", payload.RootElement),
+            new BrowserPasskeyRequest("req-nc", "passkey.get", payload.RootElement, Context: Ctx()),
             TestContext.Current.CancellationToken);
 
         Assert.False(response.Ok);
-        Assert.Equal("no_credential", response.Error?.Code);
+        Assert.Equal(PasskeyErrorCodes.ClientNotHandled, response.Error?.Code);
         // The approval prompt must NOT have run for a missing credential.
         Assert.Null(approval.Request);
     }
@@ -250,7 +250,7 @@ public class BrowserPasskeyRequestHandlerTests
             """);
 
         var response = await handler.HandleAsync(
-            new BrowserPasskeyRequest("req-decl", "passkey.get", payload.RootElement),
+            new BrowserPasskeyRequest("req-decl", "passkey.get", payload.RootElement, Context: Ctx()),
             TestContext.Current.CancellationToken);
 
         Assert.False(response.Ok);
@@ -291,6 +291,143 @@ public class BrowserPasskeyRequestHandlerTests
             Enum.GetValues<PasskeyUserVerificationRequirement>());
     }
 
+    [Fact]
+    public void ApprovalResultRecords_KeepEvidenceAndSelectionShape()
+    {
+        // Guard: this task only extends the approval *request* inputs. The final evidence/result
+        // record shapes the first three layers depend on must stay byte-for-byte identical.
+        Assert.Equal(
+            new[] { "Evidence", "CreateNew", "CipherId" },
+            typeof(PasskeyCreateApprovalResult).GetProperties().Select(p => p.Name));
+        Assert.Equal(
+            new[] { "Evidence", "CipherId", "CredentialId" },
+            typeof(PasskeyUseApprovalResult).GetProperties().Select(p => p.Name));
+    }
+
+    [Fact]
+    public async Task DiscoverableGet_MultipleCandidates_UsesExplicitSecondSelection()
+    {
+        var first = CandidateCipher("cipher-a", "credential-a", "alice@example.com");
+        var second = CandidateCipher("cipher-b", "credential-b", "bob@example.com");
+        var approval = new CapturingApprovalService
+        {
+            UseResult = new PasskeyUseApprovalResult(
+                new PasskeyApprovalEvidence(true, true, false),
+                "cipher-b",
+                "credential-b"),
+        };
+        var handler = CreateHandler([first, second], approval);
+
+        var response = await handler.HandleAsync(
+            RequestFor("passkey.get", allowCredentials: []),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(response.Ok);
+        Assert.Equal(2, approval.Request!.Candidates.Count);
+        var payload = response.Payload!.Value.Deserialize(
+            PasskeyJsonContext.Default.PasskeyGetAssertionPayload)!;
+        Assert.Equal("credential-b", payload.CredentialId);
+        var flags = WebAuthnCrypto.DecodeBase64Url(payload.AuthenticatorData)[32];
+        Assert.Equal(0x01, flags & 0x01);
+        Assert.Equal(0x00, flags & 0x04);
+    }
+
+    [Fact]
+    public async Task Get_ForgedApprovalSelection_IsRejectedBeforeSigning()
+    {
+        var approval = new CapturingApprovalService
+        {
+            UseResult = new PasskeyUseApprovalResult(
+                new PasskeyApprovalEvidence(true, true, true),
+                "not-a-candidate",
+                "not-a-credential"),
+        };
+        var handler = CreateHandler([CandidateCipher("cipher-a", "credential-a", "alice")], approval);
+
+        var response = await handler.HandleAsync(
+            RequestFor("passkey.get", allowCredentials: []),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(response.Ok);
+        Assert.Equal(PasskeyErrorCodes.InternalError, response.Error!.Code);
+    }
+
+    [Fact]
+    public async Task DiscoverableGet_SingleCandidate_SignsSelectedCredential()
+    {
+        var approval = new CapturingApprovalService
+        {
+            UseResult = new PasskeyUseApprovalResult(
+                new PasskeyApprovalEvidence(true, true, false),
+                "cipher-a",
+                "credential-a"),
+        };
+        var handler = CreateHandler([CandidateCipher("cipher-a", "credential-a", "alice")], approval);
+
+        var response = await handler.HandleAsync(
+            RequestFor("passkey.get", allowCredentials: []),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(response.Ok);
+        Assert.Single(approval.Request!.Candidates);
+        var payload = response.Payload!.Value.Deserialize(
+            PasskeyJsonContext.Default.PasskeyGetAssertionPayload)!;
+        Assert.Equal("credential-a", payload.CredentialId);
+    }
+
+    [Fact]
+    public async Task DiscoverableGet_RepromptCipher_PassesRequiresRepromptTarget()
+    {
+        var approval = new CapturingApprovalService
+        {
+            UseResult = new PasskeyUseApprovalResult(
+                new PasskeyApprovalEvidence(true, true, true),
+                "cipher-a",
+                "credential-a"),
+        };
+        var handler = CreateHandler(
+            [CandidateCipher("cipher-a", "credential-a", "alice", reprompt: true)],
+            approval);
+
+        var response = await handler.HandleAsync(
+            RequestFor("passkey.get", allowCredentials: []),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(response.Ok);
+        Assert.True(Assert.Single(approval.Request!.Candidates).RequiresReprompt);
+    }
+
+    [Fact]
+    public async Task HandleCreate_ForgedAttachSelection_IsRejected()
+    {
+        var existing = new Cipher
+        {
+            Id = "c-9",
+            Type = CipherType.Login,
+            Name = "GitHub",
+            Login = new CipherLogin("u", null, null, []),
+        };
+        var approval = new CapturingApprovalService
+        {
+            CreateResult = new PasskeyCreateApprovalResult(
+                new PasskeyApprovalEvidence(true, true, true),
+                CreateNew: false,
+                CipherId: "not-a-candidate"),
+        };
+        var handler = new BrowserPasskeyRequestHandler(
+            new FakeVaultService(VaultState.Unlocked, [existing]),
+            new FakeVaultWriteService(),
+            approval);
+        using var doc = CreatePayload();
+
+        var response = await handler.HandleAsync(
+            new BrowserPasskeyRequest("create-forge", "passkey.create", doc.RootElement, Context: Ctx()),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(response.Ok);
+        Assert.Equal(PasskeyErrorCodes.InternalError, response.Error!.Code);
+    }
+
     private static JsonDocument CreatePayload(
         string origin = "https://github.com",
         string rpId = "github.com",
@@ -327,7 +464,7 @@ public class BrowserPasskeyRequestHandlerTests
         var handler = new BrowserPasskeyRequestHandler(new FakeVaultService(VaultState.Unlocked, []), write, approval);
 
         using var doc = CreatePayload();
-        var response = await handler.HandleAsync(new BrowserPasskeyRequest("req-1", "passkey.create", doc.RootElement), TestContext.Current.CancellationToken);
+        var response = await handler.HandleAsync(new BrowserPasskeyRequest("req-1", "passkey.create", doc.RootElement, Context: Ctx()), TestContext.Current.CancellationToken);
 
         Assert.True(response.Ok);
         Assert.Equal("passkey.create", response.Type);
@@ -355,7 +492,7 @@ public class BrowserPasskeyRequestHandlerTests
         var handler = new BrowserPasskeyRequestHandler(new FakeVaultService(VaultState.Unlocked, [existing]), write, approval);
 
         using var doc = CreatePayload();
-        await handler.HandleAsync(new BrowserPasskeyRequest("req-1", "passkey.create", doc.RootElement), TestContext.Current.CancellationToken);
+        await handler.HandleAsync(new BrowserPasskeyRequest("req-1", "passkey.create", doc.RootElement, Context: Ctx()), TestContext.Current.CancellationToken);
 
         Assert.Equal("c-9", write.Saved!.Id);
         Assert.Single(write.Saved.Login!.Fido2Credentials);
@@ -366,7 +503,7 @@ public class BrowserPasskeyRequestHandlerTests
     {
         var handler = new BrowserPasskeyRequestHandler(new FakeVaultService(VaultState.Locked, []), new FakeVaultWriteService(), new CapturingApprovalService(approve: true));
         using var doc = CreatePayload();
-        var response = await handler.HandleAsync(new BrowserPasskeyRequest("r", "passkey.create", doc.RootElement), TestContext.Current.CancellationToken);
+        var response = await handler.HandleAsync(new BrowserPasskeyRequest("r", "passkey.create", doc.RootElement, Context: Ctx()), TestContext.Current.CancellationToken);
         Assert.False(response.Ok);
     }
 
@@ -386,7 +523,7 @@ public class BrowserPasskeyRequestHandlerTests
             write,
             approval);
         using var doc = CreatePayload();
-        var response = await handler.HandleAsync(new BrowserPasskeyRequest("r", "passkey.create", doc.RootElement), TestContext.Current.CancellationToken);
+        var response = await handler.HandleAsync(new BrowserPasskeyRequest("r", "passkey.create", doc.RootElement, Context: Ctx()), TestContext.Current.CancellationToken);
         Assert.False(response.Ok);
         Assert.Null(write.Saved);
     }
@@ -400,7 +537,7 @@ public class BrowserPasskeyRequestHandlerTests
         var write = new FakeVaultWriteService();
         var handler = new BrowserPasskeyRequestHandler(new FakeVaultService(VaultState.Unlocked, [existing]), write, new CapturingApprovalService(approve: true));
         using var doc = CreatePayload(exclude: """{ "id": "ZXhpc3Q", "type": "public-key", "transports": ["internal"] }""");
-        var response = await handler.HandleAsync(new BrowserPasskeyRequest("r", "passkey.create", doc.RootElement), TestContext.Current.CancellationToken);
+        var response = await handler.HandleAsync(new BrowserPasskeyRequest("r", "passkey.create", doc.RootElement, Context: Ctx()), TestContext.Current.CancellationToken);
         Assert.False(response.Ok);
         Assert.Null(write.Saved);
     }
@@ -434,7 +571,7 @@ public class BrowserPasskeyRequestHandlerTests
         using var payload = CreateGetPayload(credentialId, wireRequirement);
 
         var response = await handler.HandleAsync(
-            new BrowserPasskeyRequest("matrix-get", "passkey.get", payload.RootElement),
+            new BrowserPasskeyRequest("matrix-get", "passkey.get", payload.RootElement, Context: Ctx()),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(expectedOk, response.Ok);
@@ -480,7 +617,7 @@ public class BrowserPasskeyRequestHandlerTests
         using var payload = CreatePayload(userVerification: wireRequirement);
 
         var response = await handler.HandleAsync(
-            new BrowserPasskeyRequest("matrix-create", "passkey.create", payload.RootElement),
+            new BrowserPasskeyRequest("matrix-create", "passkey.create", payload.RootElement, Context: Ctx()),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(expectedOk, response.Ok);
@@ -547,9 +684,101 @@ public class BrowserPasskeyRequestHandlerTests
         true,
         DateTimeOffset.Parse("2026-06-24T00:00:00Z"));
 
+    // Trusted browser context supplied by the native host. The Task 1 policy derives origin/RP
+    // from this, never from the page-reported payload. Defaults describe a top-level github.com frame.
+    private static BrowserRequestContext Ctx(
+        string frameOrigin = "https://github.com",
+        string? topOrigin = null,
+        int tabId = 1,
+        int frameId = 0,
+        bool publicKeyCredentialsGetAllowed = true) =>
+        new(
+            frameOrigin,
+            topOrigin ?? frameOrigin,
+            tabId,
+            frameId,
+            "document-1",
+            publicKeyCredentialsGetAllowed);
+
+    private static BrowserPasskeyRequestHandler CreateHandler(
+        Cipher[] ciphers,
+        IPasskeyApprovalService approval) =>
+        new(
+            new FakeVaultService(VaultState.Unlocked, ciphers),
+            new FakeVaultWriteService(),
+            approval);
+
+    private static BrowserPasskeyRequest RequestFor(
+        string type,
+        IReadOnlyList<string>? allowCredentials = null,
+        string origin = "https://github.com",
+        string rpId = "github.com",
+        string userVerification = "preferred")
+    {
+        var allow = string.Join(
+            ",",
+            (allowCredentials ?? []).Select(id =>
+                $$"""{ "id": "{{id}}", "type": "public-key", "transports": ["internal"] }"""));
+        using var doc = JsonDocument.Parse($$"""
+        {
+          "origin": "{{origin}}",
+          "rpId": "{{rpId}}",
+          "challenge": "AQIDBA",
+          "allowCredentials": [{{allow}}],
+          "userVerification": "{{userVerification}}",
+          "timeout": 60000
+        }
+        """);
+        return new BrowserPasskeyRequest(
+            Guid.NewGuid().ToString("N"),
+            type,
+            doc.RootElement.Clone(),
+            Context: Ctx(origin));
+    }
+
+    private static Cipher CandidateCipher(
+        string cipherId,
+        string credentialId,
+        string userName,
+        bool reprompt = false)
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var credential = new CipherFido2Credential(
+            credentialId,
+            "public-key",
+            "ECDSA",
+            "P-256",
+            WebAuthnCrypto.EncodeBase64Url(key.ExportPkcs8PrivateKey()),
+            "github.com",
+            WebAuthnCrypto.EncodeBase64Url([5, 6, 7, 8]),
+            userName,
+            0,
+            "GitHub",
+            userName,
+            true,
+            DateTimeOffset.Parse("2026-06-24T00:00:00Z"));
+        return new Cipher
+        {
+            Id = cipherId,
+            Type = CipherType.Login,
+            Name = "GitHub",
+            Reprompt = reprompt,
+            Login = new CipherLogin(userName, null, null, [])
+            {
+                Fido2Credentials = [credential],
+            },
+        };
+    }
+
     private sealed class CapturingApprovalService : IPasskeyApprovalService
     {
         private readonly PasskeyApprovalEvidence _evidence;
+
+        public CapturingApprovalService()
+        {
+            _evidence = new PasskeyApprovalEvidence(false, false, false);
+            CreateResult = new PasskeyCreateApprovalResult(_evidence, CreateNew: false, CipherId: null);
+        }
 
         public CapturingApprovalService(
             bool approve,
@@ -562,6 +791,10 @@ public class BrowserPasskeyRequestHandlerTests
             CreateResult = new PasskeyCreateApprovalResult(_evidence, true, null);
         }
 
+        // When set, ConfirmUseAsync returns this verbatim so a test can drive an explicit (or a
+        // forged) selection; otherwise it approves the first offered candidate by default.
+        public PasskeyUseApprovalResult? UseResult { get; set; }
+
         public PasskeyApprovalRequest? Request { get; private set; }
 
         public PasskeyCreateApprovalRequest? CreateRequest { get; private set; }
@@ -573,10 +806,13 @@ public class BrowserPasskeyRequestHandlerTests
             CancellationToken ct = default)
         {
             Request = request;
+            if (UseResult is { } explicitResult)
+                return Task.FromResult(explicitResult);
+            var target = request.Candidates.Count > 0 ? request.Candidates[0] : null;
             return Task.FromResult(new PasskeyUseApprovalResult(
                 _evidence,
-                _evidence.Approved ? request.CipherId : null,
-                _evidence.Approved ? request.CredentialId : null));
+                _evidence.Approved ? target?.CipherId : null,
+                _evidence.Approved ? target?.CredentialId : null));
         }
 
         public Task<PasskeyCreateApprovalResult> ConfirmCreateAsync(
