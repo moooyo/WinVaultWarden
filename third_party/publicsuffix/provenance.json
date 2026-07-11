@@ -1,0 +1,7 @@
+{
+  "upstream": "https://github.com/publicsuffix/list",
+  "commit": "b9a86cf0cd115f1e60b5815533f3fcfd2f9e8f4b",
+  "file": "public_suffix_list.dat",
+  "sha256": "71f10962519e15d087b1ccffffdbca3422838a4ff50a62a3852c23e896253e1f",
+  "license": "MPL-2.0"
+}

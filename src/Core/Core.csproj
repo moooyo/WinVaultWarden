@@ -11,4 +11,8 @@
   <ItemGroup>
     <PackageReference Include="System.Formats.Cbor" Version="10.0.0" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\third_party\publicsuffix\public_suffix_list.dat"
+                      LogicalName="Core.Passkeys.public_suffix_list.dat" />
+  </ItemGroup>
 </Project>

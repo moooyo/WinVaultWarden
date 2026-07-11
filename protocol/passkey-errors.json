@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "errors": [
+    { "code": "client_not_handled", "domException": null, "fallback": true },
+    { "code": "user_cancelled", "domException": "NotAllowedError", "fallback": false },
+    { "code": "user_verification_failed", "domException": "NotAllowedError", "fallback": false },
+    { "code": "deadline_exceeded", "domException": "NotAllowedError", "fallback": false },
+    { "code": "rate_limited", "domException": "NotAllowedError", "fallback": false },
+    { "code": "request_in_progress", "domException": "NotAllowedError", "fallback": false },
+    { "code": "credential_unusable", "domException": "NotAllowedError", "fallback": false },
+    { "code": "internal_error", "domException": "NotAllowedError", "fallback": false },
+    { "code": "credential_excluded", "domException": "InvalidStateError", "fallback": false },
+    { "code": "unsupported_operation", "domException": "NotSupportedError", "fallback": false },
+    { "code": "unsupported_algorithm", "domException": "NotSupportedError", "fallback": false },
+    { "code": "security_insecure_origin", "domException": "SecurityError", "fallback": false },
+    { "code": "security_invalid_rp", "domException": "SecurityError", "fallback": false },
+    { "code": "security_public_suffix", "domException": "SecurityError", "fallback": false },
+    { "code": "security_idn", "domException": "SecurityError", "fallback": false },
+    { "code": "security_frame", "domException": "SecurityError", "fallback": false },
+    { "code": "security_permissions_policy", "domException": "SecurityError", "fallback": false },
+    { "code": "security_sender", "domException": "SecurityError", "fallback": false },
+    { "code": "operation_aborted", "domException": "AbortError", "fallback": false }
+  ]
+}

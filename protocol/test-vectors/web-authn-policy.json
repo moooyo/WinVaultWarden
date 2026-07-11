@@ -1,0 +1,159 @@
+{
+  "version": 1,
+  "description": "Reference decision vectors for WebAuthnRequestPolicy. Inputs come only from the trusted browser-supplied context; errorCode values are stable, code-only outcomes. The Public Suffix List is pinned (see publicSuffixList).",
+  "publicSuffixList": {
+    "upstream": "https://github.com/publicsuffix/list",
+    "commit": "b9a86cf0cd115f1e60b5815533f3fcfd2f9e8f4b",
+    "sha256": "71f10962519e15d087b1ccffffdbca3422838a4ff50a62a3852c23e896253e1f"
+  },
+  "defaults": { "tabId": 42, "documentId": "document-1" },
+  "cases": [
+    {
+      "name": "get_allows_https_registrable_subdomain",
+      "operation": "get",
+      "context": { "frameOrigin": "https://login.example.com", "topOrigin": "https://login.example.com", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "example.com",
+      "expected": { "allowed": true, "canonicalRpId": "example.com", "unicodeRpId": "example.com", "isCrossOrigin": false }
+    },
+    {
+      "name": "get_allows_http_localhost_loopback",
+      "operation": "get",
+      "context": { "frameOrigin": "http://localhost:8787", "topOrigin": "http://localhost:8787", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "localhost",
+      "expected": { "allowed": true, "canonicalRpId": "localhost", "unicodeRpId": "localhost", "isCrossOrigin": false }
+    },
+    {
+      "name": "get_allows_http_ipv4_loopback",
+      "operation": "get",
+      "context": { "frameOrigin": "http://127.0.0.1:8787", "topOrigin": "http://127.0.0.1:8787", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "127.0.0.1",
+      "expected": { "allowed": true, "canonicalRpId": "127.0.0.1", "unicodeRpId": "127.0.0.1", "isCrossOrigin": false }
+    },
+    {
+      "name": "get_allows_http_ipv6_loopback",
+      "operation": "get",
+      "context": { "frameOrigin": "http://[::1]:8787", "topOrigin": "http://[::1]:8787", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "::1",
+      "expected": { "allowed": true, "canonicalRpId": "::1", "unicodeRpId": "::1", "isCrossOrigin": false }
+    },
+    {
+      "name": "get_returns_unicode_and_punycode_forms",
+      "operation": "get",
+      "context": { "frameOrigin": "https://xn--mnchen-3ya.de", "topOrigin": "https://xn--mnchen-3ya.de", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "xn--mnchen-3ya.de",
+      "expected": { "allowed": true, "canonicalRpId": "xn--mnchen-3ya.de", "unicodeRpId": "münchen.de", "isCrossOrigin": false }
+    },
+    {
+      "name": "get_honors_psl_exception_rule",
+      "operation": "get",
+      "context": { "frameOrigin": "https://www.ck", "topOrigin": "https://www.ck", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "www.ck",
+      "expected": { "allowed": true, "canonicalRpId": "www.ck", "unicodeRpId": "www.ck", "isCrossOrigin": false }
+    },
+    {
+      "name": "cross_origin_get_allowed_with_permissions_policy",
+      "operation": "get",
+      "context": { "frameOrigin": "https://login.example.com", "topOrigin": "https://example.com", "frameId": 7, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "example.com",
+      "expected": { "allowed": true, "canonicalRpId": "example.com", "unicodeRpId": "example.com", "isCrossOrigin": true }
+    },
+    {
+      "name": "get_rejects_plain_http_origin",
+      "operation": "get",
+      "context": { "frameOrigin": "http://example.com", "topOrigin": "http://example.com", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "example.com",
+      "expected": { "allowed": false, "errorCode": "security_insecure_origin" }
+    },
+    {
+      "name": "get_rejects_localhost_lookalike_host",
+      "operation": "get",
+      "context": { "frameOrigin": "http://localhost.evil.test", "topOrigin": "http://localhost.evil.test", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "evil.test",
+      "expected": { "allowed": false, "errorCode": "security_insecure_origin" }
+    },
+    {
+      "name": "get_rejects_non_loopback_ipv4_over_http",
+      "operation": "get",
+      "context": { "frameOrigin": "http://127.0.0.2", "topOrigin": "http://127.0.0.2", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "127.0.0.2",
+      "expected": { "allowed": false, "errorCode": "security_insecure_origin" }
+    },
+    {
+      "name": "get_rejects_file_origin",
+      "operation": "get",
+      "context": { "frameOrigin": "file:///C:/site/index.html", "topOrigin": "file:///C:/site/index.html", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "site",
+      "expected": { "allowed": false, "errorCode": "security_insecure_origin" }
+    },
+    {
+      "name": "get_rejects_tld_public_suffix",
+      "operation": "get",
+      "context": { "frameOrigin": "https://example.com", "topOrigin": "https://example.com", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "com",
+      "expected": { "allowed": false, "errorCode": "security_public_suffix" }
+    },
+    {
+      "name": "get_rejects_multi_label_public_suffix",
+      "operation": "get",
+      "context": { "frameOrigin": "https://login.example.co.uk", "topOrigin": "https://login.example.co.uk", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "co.uk",
+      "expected": { "allowed": false, "errorCode": "security_public_suffix" }
+    },
+    {
+      "name": "get_rejects_wildcard_public_suffix",
+      "operation": "get",
+      "context": { "frameOrigin": "https://a.foo.ck", "topOrigin": "https://a.foo.ck", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "foo.ck",
+      "expected": { "allowed": false, "errorCode": "security_public_suffix" }
+    },
+    {
+      "name": "get_rejects_foreign_rp_not_registrable_suffix",
+      "operation": "get",
+      "context": { "frameOrigin": "https://login.example.com", "topOrigin": "https://login.example.com", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "ample.com",
+      "expected": { "allowed": false, "errorCode": "security_invalid_rp" }
+    },
+    {
+      "name": "get_rejects_non_canonical_ip_rp",
+      "operation": "get",
+      "context": { "frameOrigin": "https://127.0.0.1", "topOrigin": "https://127.0.0.1", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "0.0.1",
+      "expected": { "allowed": false, "errorCode": "security_idn" }
+    },
+    {
+      "name": "get_rejects_uppercase_punycode_rp",
+      "operation": "get",
+      "context": { "frameOrigin": "https://xn--mnchen-3ya.de", "topOrigin": "https://xn--mnchen-3ya.de", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "xn--MNCHEN-3ya.de",
+      "expected": { "allowed": false, "errorCode": "security_idn" }
+    },
+    {
+      "name": "get_rejects_malformed_punycode_rp",
+      "operation": "get",
+      "context": { "frameOrigin": "https://xn--mnchen-3ya.de", "topOrigin": "https://xn--mnchen-3ya.de", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "xn--invalid-.de",
+      "expected": { "allowed": false, "errorCode": "security_idn" }
+    },
+    {
+      "name": "get_rejects_trailing_dot_rp",
+      "operation": "get",
+      "context": { "frameOrigin": "https://example.com", "topOrigin": "https://example.com", "frameId": 0, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "example.com.",
+      "expected": { "allowed": false, "errorCode": "security_idn" }
+    },
+    {
+      "name": "create_rejects_iframe_or_cross_origin",
+      "operation": "create",
+      "context": { "frameOrigin": "https://login.example.com", "topOrigin": "https://example.com", "frameId": 7, "publicKeyCredentialsGetAllowed": true },
+      "requestedRpId": "example.com",
+      "expected": { "allowed": false, "errorCode": "security_frame" }
+    },
+    {
+      "name": "cross_origin_get_denied_without_permissions_policy",
+      "operation": "get",
+      "context": { "frameOrigin": "https://login.example.com", "topOrigin": "https://example.com", "frameId": 7, "publicKeyCredentialsGetAllowed": false },
+      "requestedRpId": "example.com",
+      "expected": { "allowed": false, "errorCode": "security_permissions_policy" }
+    }
+  ]
+}

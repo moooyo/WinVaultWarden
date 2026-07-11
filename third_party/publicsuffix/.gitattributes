@@ -1,0 +1,5 @@
+# Pinned upstream Public Suffix List artifacts: preserve exact bytes across platforms so
+# the SHA-256 recorded in provenance.json (and verified by update-public-suffix-list.ps1)
+# stays valid. Never apply EOL normalization.
+public_suffix_list.dat -text
+LICENSE -text

@@ -7,7 +7,9 @@ namespace Core.Passkeys;
     PropertyNameCaseInsensitive = true,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(BrowserPasskeyRequest))]
+[JsonSerializable(typeof(BrowserPasskeyCancel))]
 [JsonSerializable(typeof(BrowserPasskeyResponse))]
+[JsonSerializable(typeof(BrowserRequestContext))]
 [JsonSerializable(typeof(PasskeyCreatePayload))]
 [JsonSerializable(typeof(PasskeyGetPayload))]
 [JsonSerializable(typeof(PasskeyGetAssertionPayload))]

@@ -14,16 +14,41 @@ public static class BrowserPasskeyBridge
 public sealed record BrowserPasskeyRequest(
     string? Id,
     string? Type,
-    JsonElement? Payload = null);
+    JsonElement? Payload = null,
+    [property: JsonPropertyName("v")] int Version = 1,
+    long? DeadlineUnixMs = null,
+    BrowserRequestContext? Context = null);
+
+// v1 cancellation envelope: targets the in-flight request id to abort.
+public sealed record BrowserPasskeyCancel(
+    string? Id,
+    [property: JsonPropertyName("v")] int Version = 1,
+    string Type = "cancel");
 
 public sealed record BrowserPasskeyResponse(
     string? Id,
     string Type,
     bool Ok,
     JsonElement? Payload = null,
-    BrowserPasskeyError? Error = null);
+    BrowserPasskeyError? Error = null)
+{
+    // v1 envelope discriminator; serialised first as "v":1.
+    [JsonPropertyName("v")]
+    [JsonPropertyOrder(-100)]
+    public int Version { get; init; } = 1;
 
-public sealed record BrowserPasskeyError(string Code, string Message);
+    // Code-only failure envelope: no human-readable message crosses the wire.
+    public static BrowserPasskeyResponse Failure(string id, string code) =>
+        new(id, "error", false, Error: new BrowserPasskeyError(code, Message: null!));
+}
+
+// The error carries a stable code; Message stays non-null so the existing internal bridge /
+// native-host call sites remain unchanged and warning-free, but it is omitted from the wire
+// when null. v1 policy denials are created via Failure() with a null message and therefore
+// serialise strictly code-only.
+public sealed record BrowserPasskeyError(
+    string Code,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string Message);
 
 public sealed record PasskeyCreatePayload(
     string Origin,
