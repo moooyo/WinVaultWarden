@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Passkey create</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: Canvas;
+      color: CanvasText;
+    }
+
+    main {
+      display: grid;
+      gap: 18px;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 32px 20px;
+    }
+
+    button {
+      font: inherit;
+      width: fit-content;
+      padding: 8px 14px;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Passkey create</h1>
+    <p>
+      Serve this page from a secure origin (https, or localhost/127.0.0.1/[::1] over http) and
+      click the button below to run a discoverable <code>navigator.credentials.create()</code>
+      ceremony against the WinVaultWarden bridge.
+    </p>
+    <button id="create" type="button">创建 Passkey</button>
+    <pre id="result"></pre>
+  </main>
+  <script>
+    const result = document.getElementById("result");
+    document.getElementById("create").addEventListener("click", async () => {
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+      const userId = crypto.getRandomValues(new Uint8Array(16));
+      try {
+        const credential = await navigator.credentials.create({
+          publicKey: {
+            challenge,
+            rp: { id: location.hostname, name: "WinVaultWarden 测试站点" },
+            user: { id: userId, name: "browser-test", displayName: "Browser Test" },
+            pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+            authenticatorSelection: {
+              residentKey: "required",
+              userVerification: "preferred"
+            },
+            attestation: "none",
+            timeout: 60000
+          }
+        });
+        result.textContent = JSON.stringify(credential.toJSON(), null, 2);
+      } catch (error) {
+        result.textContent = `${error.name}: ${error.message}`;
+      }
+    });
+  </script>
+</body>
+</html>

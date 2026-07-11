@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Passkey iframe policy</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: Canvas;
+      color: CanvasText;
+    }
+
+    main {
+      display: grid;
+      gap: 18px;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 20px;
+    }
+
+    iframe {
+      width: 100%;
+      height: 220px;
+      border: 1px solid CanvasText;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>跨来源 iframe Permissions Policy</h1>
+    <p>
+      两个 iframe 都指向 <code>http://127.0.0.1:8788/iframe-child.html</code>，与本页
+      <code>http://localhost:8787</code> 是不同的 origin。只有声明了
+      <code>allow="public-key-credentials-get"</code> 的 iframe 才应该能够进入 App 完成
+      <code>navigator.credentials.get()</code>；未声明的 iframe 必须收到 <code>SecurityError</code>。
+    </p>
+
+    <h2>允许</h2>
+    <iframe
+      src="http://127.0.0.1:8788/iframe-child.html"
+      allow="public-key-credentials-get"></iframe>
+
+    <h2>拒绝</h2>
+    <iframe src="http://127.0.0.1:8788/iframe-child.html"></iframe>
+  </main>
+</body>
+</html>

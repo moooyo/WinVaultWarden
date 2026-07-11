@@ -95,11 +95,23 @@
     </div>
 
     <label>
+      mediation
+      <select id="mediation">
+        <option value="">required (default, shows the picker)</option>
+        <option value="conditional">conditional (autofill, native only)</option>
+        <option value="silent">silent (passive, native only)</option>
+      </select>
+    </label>
+
+    <label>
       allowCredentials credential id (optional base64url)
       <input id="credentialId" autocomplete="off" placeholder="leave blank for discoverable credential">
     </label>
 
-    <button id="requestButton" type="button">Request passkey</button>
+    <div class="row">
+      <button id="requestButton" type="button">Request passkey</button>
+      <button id="abortButton" type="button">Abort</button>
+    </div>
 
     <label>
       Result
@@ -108,17 +120,34 @@
   </main>
 
   <script>
+    // Stable, generic messages keyed only by DOMException.name. The page never displays
+    // error.message or any extension/native raw response text, so nothing beyond a fixed
+    // per-name string can reach this test page's output.
+    const STABLE_MESSAGES = {
+      NotAllowedError: "request denied or not completed",
+      SecurityError: "origin/RP failed a security check",
+      AbortError: "request was aborted",
+      InvalidStateError: "credential already excluded",
+      NotSupportedError: "operation not supported",
+    };
+
     const rpIdInput = document.getElementById("rpId");
     const credentialIdInput = document.getElementById("credentialId");
     const userVerificationInput = document.getElementById("userVerification");
+    const mediationInput = document.getElementById("mediation");
     const result = document.getElementById("result");
     const requestButton = document.getElementById("requestButton");
+    const abortButton = document.getElementById("abortButton");
+
+    let controller = null;
 
     rpIdInput.value = location.hostname || "localhost";
     requestButton.addEventListener("click", requestPasskey);
+    abortButton.addEventListener("click", () => controller?.abort());
 
     async function requestPasskey() {
       result.value = "Waiting for WebAuthn response...";
+      controller = new AbortController();
 
       try {
         const challenge = new Uint8Array(32);
@@ -132,7 +161,8 @@
             }]
           : [];
 
-        const credential = await navigator.credentials.get({
+        const options = {
+          signal: controller.signal,
           publicKey: {
             challenge,
             rpId: rpIdInput.value.trim() || undefined,
@@ -140,11 +170,17 @@
             timeout: 60000,
             userVerification: userVerificationInput.value,
           },
-        });
+        };
+        if (mediationInput.value) {
+          options.mediation = mediationInput.value;
+        }
+
+        const credential = await navigator.credentials.get(options);
 
         result.value = JSON.stringify(credential.toJSON(), null, 2);
       } catch (error) {
-        result.value = `${error.name || "Error"}: ${error.message || error}`;
+        const name = error.name || "Error";
+        result.value = `${name}: ${STABLE_MESSAGES[name] || "request failed"}`;
       }
     }
 

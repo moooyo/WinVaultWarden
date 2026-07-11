@@ -197,6 +197,33 @@ public class BrowserExtensionTests
         Assert.Contains("credential.toJSON()", page);
     }
 
+    [Theory]
+    [InlineData("passkey-get.html", "navigator.credentials.get")]
+    [InlineData("passkey-create.html", "navigator.credentials.create")]
+    [InlineData("iframe-top.html", "public-key-credentials-get")]
+    [InlineData("iframe-child.html", "navigator.credentials.get")]
+    [InlineData("abort-deadline.html", "AbortController")]
+    public void BrowserTestPage_CoversNamedScenario(string file, string marker)
+    {
+        var page = File.ReadAllText(
+            FindRepoFile("browser-extension", "test-pages", file));
+        Assert.Contains(marker, page);
+        Assert.DoesNotContain("type=\"password\"", page, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AcceptanceDocument_ListsBothBrowsersAndAllManualOnlyChecks()
+    {
+        var document = File.ReadAllText(
+            FindRepoFile("docs", "browser-integration-acceptance.md"));
+        Assert.Contains("Chrome", document);
+        Assert.Contains("Edge", document);
+        Assert.Contains("Authenticode", document);
+        Assert.Contains("service worker suspend/resume", document);
+        Assert.Contains("Windows Hello", document);
+        Assert.Contains("用户拒绝及安全错误不得原生回退", document);
+    }
+
     private static string FindRepoFile(params string[] parts)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

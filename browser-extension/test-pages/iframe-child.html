@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Passkey iframe child</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: Canvas;
+      color: CanvasText;
+    }
+
+    main {
+      display: grid;
+      gap: 10px;
+      padding: 16px;
+    }
+
+    button {
+      font: inherit;
+      width: fit-content;
+      padding: 6px 12px;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p>子 iframe（origin 固定为本文档自身，rpId 固定为 127.0.0.1，不从 query/hash 读取）。</p>
+    <button id="request" type="button">Get passkey</button>
+    <pre id="result"></pre>
+  </main>
+  <script>
+    // Fixed rpId: this page never accepts an origin or RP id from location.search/location.hash,
+    // so an embedding page cannot use this test page to probe an arbitrary relying party.
+    const RP_ID = "127.0.0.1";
+    const result = document.getElementById("result");
+
+    document.getElementById("request").addEventListener("click", async () => {
+      result.textContent = "Waiting for WebAuthn response...";
+      try {
+        const credential = await navigator.credentials.get({
+          publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            rpId: RP_ID,
+            allowCredentials: [],
+            userVerification: "preferred",
+            timeout: 60000
+          }
+        });
+        result.textContent = JSON.stringify(credential.toJSON(), null, 2);
+      } catch (error) {
+        result.textContent = `${error.name}: ${error.message}`;
+      }
+    });
+  </script>
+</body>
+</html>
