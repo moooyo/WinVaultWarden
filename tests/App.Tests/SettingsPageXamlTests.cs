@@ -317,10 +317,10 @@ public class SettingsPageXamlTests
     }
 
     [Fact]
-    public void OnTwoFactorCardClick_CallsListProvidersAsync()
+    public void OnTwoFactorCardClick_CallsLoadProvidersAsync()
     {
         var src = LoadCodeBehind();
-        Assert.Contains("ListProvidersAsync", src, StringComparison.Ordinal);
+        Assert.Contains("LoadProvidersAsync", src, StringComparison.Ordinal);
     }
 
     [Fact]

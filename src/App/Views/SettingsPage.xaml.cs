@@ -383,61 +383,131 @@ public sealed partial class SettingsPage : Page
 
     private async void OnTwoFactorCardClick(object sender, RoutedEventArgs e)
     {
-        // 列出已配置的提供者，展示操作菜单
-        ViewModel.OperationError = string.Empty;
-        var providers = await ViewModel.ListProvidersAsync();
-
-        bool totpEnabled  = providers.Any(p => p.Type == 0 && p.Enabled);
-        bool emailEnabled = providers.Any(p => p.Type == 1 && p.Enabled);
-
-        // 构建操作列表文本
-        var totpStatus  = totpEnabled  ? "已启用" : "未启用";
-        var emailStatus = emailEnabled ? "已启用" : "未启用";
-
-        var panel = new StackPanel { Spacing = 12, MinWidth = 360 };
-
-        var infoText = new TextBlock
+        try
         {
-            Text = $"TOTP 验证器：{totpStatus}　 电子邮件验证码：{emailStatus}",
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = Application.Current.Resources.TryGetValue("TextFillColorSecondaryBrush", out var brush)
-                ? (Microsoft.UI.Xaml.Media.Brush)brush : null,
-        };
-        panel.Children.Add(infoText);
+            // ── Loading 面板 ─────────────────────────────────────────────────
+            var loadingPanel = new StackPanel
+            {
+                Name = "TwoFactorLoadingPanel",
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Children =
+                {
+                    new ProgressRing { IsActive = true, Width = 24, Height = 24 },
+                    new TextBlock { Text = "正在加载双重验证设置…", VerticalAlignment = VerticalAlignment.Center },
+                },
+            };
+            AutomationProperties.SetAutomationId(loadingPanel, "TwoFactorLoadingPanel");
 
-        var enableTotpButton = new Button { Content = "启用 TOTP 验证器", HorizontalAlignment = HorizontalAlignment.Stretch };
-        AutomationProperties.SetAutomationId(enableTotpButton, "TwoFactorEnableTotpButton");
+            // ── Error 面板 ───────────────────────────────────────────────────
+            var errorBar = new InfoBar
+            {
+                Severity = InfoBarSeverity.Error,
+                IsOpen = true,
+                IsClosable = false,
+            };
+            var retryButton = new Button { Content = "重试" };
+            AutomationProperties.SetAutomationId(retryButton, "TwoFactorRetryButton");
+            var errorPanel = new StackPanel
+            {
+                Visibility = Visibility.Collapsed,
+                Spacing = 8,
+                Children = { errorBar, retryButton },
+            };
+            AutomationProperties.SetAutomationId(errorPanel, "TwoFactorErrorPanel");
 
-        var enableEmailButton = new Button { Content = "启用邮箱验证码", HorizontalAlignment = HorizontalAlignment.Stretch };
-        AutomationProperties.SetAutomationId(enableEmailButton, "TwoFactorEnableEmailButton");
+            // ── Content 面板（含操作按钮）────────────────────────────────────
+            var infoText = new TextBlock { TextWrapping = TextWrapping.Wrap };
+            var enableTotpButton = new Button { Content = "启用 TOTP 验证器", HorizontalAlignment = HorizontalAlignment.Stretch };
+            AutomationProperties.SetAutomationId(enableTotpButton, "TwoFactorEnableTotpButton");
+            var enableEmailButton = new Button { Content = "启用邮箱验证码", HorizontalAlignment = HorizontalAlignment.Stretch };
+            AutomationProperties.SetAutomationId(enableEmailButton, "TwoFactorEnableEmailButton");
+            var disableButton = new Button { Content = "禁用已启用的验证", HorizontalAlignment = HorizontalAlignment.Stretch };
+            AutomationProperties.SetAutomationId(disableButton, "TwoFactorDisableButton");
+            var contentPanel = new StackPanel
+            {
+                Spacing = 12,
+                Visibility = Visibility.Collapsed,
+                Children = { infoText, enableTotpButton, enableEmailButton, disableButton },
+            };
+            AutomationProperties.SetAutomationId(contentPanel, "TwoFactorContentPanel");
 
-        var disableButton = new Button { Content = "禁用已启用的验证", HorizontalAlignment = HorizontalAlignment.Stretch };
-        AutomationProperties.SetAutomationId(disableButton, "TwoFactorDisableButton");
+            var rootPanel = new StackPanel { Spacing = 4, MinWidth = 360 };
+            rootPanel.Children.Add(loadingPanel);
+            rootPanel.Children.Add(errorPanel);
+            rootPanel.Children.Add(contentPanel);
 
-        panel.Children.Add(enableTotpButton);
-        panel.Children.Add(enableEmailButton);
-        panel.Children.Add(disableButton);
+            var menuDialog = new ContentDialog
+            {
+                Title = "双重验证",
+                Content = rootPanel,
+                CloseButtonText = "关闭",
+                XamlRoot = XamlRoot,
+            };
 
-        var menuDialog = new ContentDialog
+            using var loadCts = new CancellationTokenSource();
+            using var trackedLoad = global::App.App.Services
+                .GetRequiredService<ITransientOperationRegistry>()
+                .Register(loadCts.Cancel, menuDialog.Hide, () => { });
+
+            IReadOnlyList<Core.Models.TwoFactorProvider>? loadedProviders = null;
+
+            async Task LoadAsync()
+            {
+                loadingPanel.Visibility = Visibility.Visible;
+                errorPanel.Visibility = Visibility.Collapsed;
+                contentPanel.Visibility = Visibility.Collapsed;
+
+                var result = await ViewModel.LoadProvidersAsync(loadCts.Token);
+                loadingPanel.Visibility = Visibility.Collapsed;
+                if (!result.IsSuccess || result.Value is null)
+                {
+                    if (result.Status == UiOperationStatus.Failed)
+                    {
+                        errorBar.Message = result.Error ?? "无法加载双重验证设置";
+                        errorPanel.Visibility = Visibility.Visible;
+                    }
+                    return;
+                }
+
+                loadedProviders = result.Value;
+                var providers = result.Value;
+                var totpEnabled = providers.Any(provider => provider.Type == 0 && provider.Enabled);
+                var emailEnabled = providers.Any(provider => provider.Type == 1 && provider.Enabled);
+                infoText.Text = providers.Count == 0
+                    ? "尚未配置任何双重验证方式。"
+                    : $"TOTP 验证器：{(totpEnabled ? "已启用" : "未启用")}　电子邮件验证码：{(emailEnabled ? "已启用" : "未启用")}";
+                contentPanel.Visibility = Visibility.Visible;
+            }
+
+            retryButton.Click += async (_, _) => await LoadAsync();
+
+            string? action = null;
+            enableTotpButton.Click  += (_, _) => { action = "totp";    menuDialog.Hide(); };
+            enableEmailButton.Click += (_, _) => { action = "email";   menuDialog.Hide(); };
+            disableButton.Click     += (_, _) => { action = "disable"; menuDialog.Hide(); };
+
+            menuDialog.Opened += async (_, _) => await LoadAsync();
+
+            await DialogHelper.ShowTrackedAsync(menuDialog);
+
+            switch (action)
+            {
+                case "totp":    await ShowEnableTotpDialogAsync(); break;
+                case "email":   await ShowEnableEmailDialogAsync(); break;
+                case "disable":
+                    if (loadedProviders is not null)
+                        await ShowDisableTwoFactorDialogAsync(loadedProviders);
+                    break;
+            }
+        }
+        catch (OperationCanceledException)
         {
-            Title = "双重验证",
-            Content = panel,
-            CloseButtonText = "关闭",
-            XamlRoot = XamlRoot,
-        };
-
-        string? action = null;
-        enableTotpButton.Click  += (_, _) => { action = "totp";    menuDialog.Hide(); };
-        enableEmailButton.Click += (_, _) => { action = "email";   menuDialog.Hide(); };
-        disableButton.Click     += (_, _) => { action = "disable"; menuDialog.Hide(); };
-
-        await DialogHelper.ShowTrackedAsync(menuDialog);
-
-        switch (action)
+            // 生命周期取消，正常退出
+        }
+        catch (Exception)
         {
-            case "totp":    await ShowEnableTotpDialogAsync(); break;
-            case "email":   await ShowEnableEmailDialogAsync(); break;
-            case "disable": await ShowDisableTwoFactorDialogAsync(providers); break;
+            // async void 边界保护，异常不逃逸
         }
     }
 

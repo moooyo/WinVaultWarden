@@ -4,6 +4,7 @@ using Core.Models;
 using Core.Services;
 using Core.Session;
 using Xunit;
+// DataPageState, UiOperationStatus are in App.Services namespace
 
 namespace App.Tests;
 
@@ -36,11 +37,16 @@ public class SettingsViewModelTwoFactorTests
         public (string pw, string email, string token)? LastEnableEmail { get; private set; }
         public (string pw, int type)? LastDisable { get; private set; }
 
+        public IReadOnlyList<TwoFactorProvider> Providers { get; set; } =
+        [
+            new TwoFactorProvider(0, true),
+            new TwoFactorProvider(1, false),
+        ];
+
         public Task<IReadOnlyList<TwoFactorProvider>> ListProvidersAsync(CancellationToken ct = default)
         {
             if (ThrowOnList) throw new TwoFactorOperationException("list failed");
-            return Task.FromResult<IReadOnlyList<TwoFactorProvider>>(
-                [new TwoFactorProvider(0, true), new TwoFactorProvider(1, false)]);
+            return Task.FromResult(Providers);
         }
 
         public Task<(string secret, string otpauth)> BeginTotpSetupAsync(string pw, CancellationToken ct = default)
@@ -114,35 +120,69 @@ public class SettingsViewModelTwoFactorTests
     }
 
     // -----------------------------------------------------------------------
-    // ListProvidersAsync: 成功返回提供者列表，清空 OperationError
+    // LoadProvidersAsync: 成功空列表 → Succeeded，非 Failed
     // -----------------------------------------------------------------------
     [Fact]
-    public async Task ListProviders_Success_ReturnsListAndClearsError()
+    public async Task LoadProviders_SuccessEmpty_IsSucceededNotFailed()
     {
-        var (vm, _) = Build2Fa();
-        vm.OperationError = "stale";
+        var service = new FakeTwoFactorService { Providers = [] };
+        var vm = new SettingsViewModel(
+            twoFactorUi: new TwoFactorUiService(service));
 
-        var result = await vm.ListProvidersAsync();
+        var result = await vm.LoadProvidersAsync();
 
-        Assert.Equal(string.Empty, vm.OperationError);
-        Assert.False(vm.IsBusy);
-        Assert.Equal(2, result.Count);
-        Assert.True(result[0].Enabled);
+        Assert.Equal(UiOperationStatus.Succeeded, result.Status);
+        Assert.NotNull(result.Value);
+        Assert.Empty(result.Value);
+        Assert.Equal(DataPageState.Empty, vm.TwoFactorState);
     }
 
     // -----------------------------------------------------------------------
-    // ListProvidersAsync: 服务抛出时写 OperationError，返回空列表
+    // LoadProvidersAsync: 服务失败 → Failed, Value=null，非 Succeeded+empty
     // -----------------------------------------------------------------------
     [Fact]
-    public async Task ListProviders_ServiceThrows_SetsOperationError()
+    public async Task LoadProviders_ServiceFailure_IsFailedNotEmptySuccess()
     {
         var (vm, _) = Build2Fa(throwOnList: true);
 
-        var result = await vm.ListProvidersAsync();
+        var result = await vm.LoadProvidersAsync();
 
-        Assert.NotEqual(string.Empty, vm.OperationError);
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Null(result.Value);
+        Assert.Equal(DataPageState.Error, vm.TwoFactorState);
+    }
+
+    // -----------------------------------------------------------------------
+    // LoadProvidersAsync: IsBusy → Busy，非空集合成功
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task LoadProviders_WhenSettingsBusy_ReturnsBusy()
+    {
+        var (vm, _) = Build2Fa();
+        vm.IsBusy = true;
+
+        var result = await vm.LoadProvidersAsync();
+
+        Assert.Equal(UiOperationStatus.Busy, result.Status);
+        Assert.Null(result.Value);
+    }
+
+    // -----------------------------------------------------------------------
+    // LoadProvidersAsync: 成功有内容 → Succeeded + Content state
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task LoadProviders_SuccessWithItems_IsSucceededContent()
+    {
+        var (vm, _) = Build2Fa();
+
+        var result = await vm.LoadProvidersAsync();
+
+        Assert.Equal(UiOperationStatus.Succeeded, result.Status);
+        Assert.NotNull(result.Value);
+        Assert.Equal(2, result.Value.Count);
+        Assert.Equal(DataPageState.Content, vm.TwoFactorState);
+        Assert.Equal(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
-        Assert.Empty(result);
     }
 
     // -----------------------------------------------------------------------
@@ -323,10 +363,11 @@ public class SettingsViewModelTwoFactorTests
     {
         var vm = new SettingsViewModel();
 
-        var result = await vm.ListProvidersAsync();
+        var result = await vm.LoadProvidersAsync();
 
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
         Assert.NotEqual(string.Empty, vm.OperationError);
-        Assert.Empty(result);
+        Assert.Null(result.Value);
     }
 
     [Fact]

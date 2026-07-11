@@ -341,35 +341,46 @@ public partial class SettingsViewModel : ObservableObject
 
     // ── 两步验证操作 ──────────────────────────────────────────────────────────
 
-    public async Task<IReadOnlyList<TwoFactorProvider>> ListProvidersAsync(CancellationToken ct = default)
+    [ObservableProperty]
+    public partial DataPageState TwoFactorState { get; set; } = DataPageState.Loading;
+
+    public async Task<UiOperationResult<IReadOnlyList<TwoFactorProvider>>> LoadProvidersAsync(CancellationToken ct = default)
     {
         if (_twoFactorUi is null)
         {
             OperationError = "两步验证服务不可用";
-            return [];
+            TwoFactorState = DataPageState.Error;
+            return UiOperationResult<IReadOnlyList<TwoFactorProvider>>.Failure(OperationError);
         }
         if (IsBusy)
-            return [];
+            return UiOperationResult<IReadOnlyList<TwoFactorProvider>>.Busy();
 
         IsBusy = true;
+        TwoFactorState = DataPageState.Loading;
         OperationError = string.Empty;
         try
         {
-            return await _twoFactorUi.ListProvidersAsync(ct);
+            var providers = await _twoFactorUi.ListProvidersAsync(ct);
+            TwoFactorState = providers.Count == 0
+                ? DataPageState.Empty
+                : DataPageState.Content;
+            return UiOperationResult<IReadOnlyList<TwoFactorProvider>>.Success(providers);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            return [];
+            return UiOperationResult<IReadOnlyList<TwoFactorProvider>>.Cancelled();
         }
         catch (TwoFactorOperationException ex)
         {
             OperationError = ex.Message;
-            return [];
+            TwoFactorState = DataPageState.Error;
+            return UiOperationResult<IReadOnlyList<TwoFactorProvider>>.Failure(ex.Message);
         }
         catch
         {
             OperationError = "操作失败，请稍后重试";
-            return [];
+            TwoFactorState = DataPageState.Error;
+            return UiOperationResult<IReadOnlyList<TwoFactorProvider>>.Failure(OperationError);
         }
         finally
         {
