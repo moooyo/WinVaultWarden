@@ -25,9 +25,11 @@ public static class NativeMessagingHost
             await session.RunAsync(ct);
             return 0;
         }
-        catch (Exception ex) when (ex is EndOfStreamException or IOException or InvalidDataException or JsonException)
+        catch (Exception exception) when (
+            exception is EndOfStreamException or IOException or InvalidDataException or JsonException)
         {
-            await error.WriteLineAsync($"Native messaging host failed: {ex.Message}");
+            // Stable transport note only: never the exception message/path (Task 7 sanitization).
+            await error.WriteLineAsync("Native messaging transport terminated.");
             return 1;
         }
         finally
@@ -100,9 +102,10 @@ public static class NativeMessagingHost
         }
     }
 
+    // Code-only wire (Task 7): the message argument documents intent at the call site only.
     private static NativeResponse Error(NativeRequest request, string code, string message) =>
-        new(request.Id, "error", false, Error: new NativeError(code, message));
+        new(request.Id, "error", false, Error: new NativeError(code));
 
     private static NativeError? ToNativeError(BrowserPasskeyError? error) =>
-        error is null ? null : new NativeError(error.Code, error.Message);
+        error is null ? null : new NativeError(error.Code);
 }

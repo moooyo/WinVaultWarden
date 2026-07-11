@@ -1,6 +1,8 @@
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using App.Services;
+using Core.Services;
+using Core.Session;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace App;
@@ -33,10 +35,9 @@ public partial class App : Application
         MainWindow = new MainWindow();
         ThemeManager.Apply(AppPreferences.Current.ThemeIndex);
 
-        // 浏览器集成(passkey 桥接)受设置门控(S5)：仅便携版(unpackaged)且"允许浏览器集成"开启时才启动桥接服务器。
-        // MSIX packaged 时 Host 不随包携带，fail-closed：无论偏好值如何，绝不启动 bridge。
-        if (AppPreferences.Current.AllowBrowserIntegration && !AboutInfo.IsPackaged)
-            Services.GetRequiredService<PasskeyBridgeServer>().Start();
+        // 浏览器集成(passkey 桥接)不再在启动时仅凭偏好启动:锁定的登录页绝不监听。bridge 只在 vault
+        // 解锁就绪后由 MainWindow.ShowVault 按设置启动,并随生命周期(Lock/Logout/Exit)停止。此处只订阅
+        // 设置的运行时变更。MSIX packaged 时 Host 不随包携带,变更处理器再以 IsPackaged 兜底 fail-closed。
         ViewModels.SettingsViewModel.AllowBrowserIntegrationSettingChanged += OnBrowserIntegrationChanged;
 
         MainWindow.Activate();
@@ -44,12 +45,35 @@ public partial class App : Application
 
     private static void OnBrowserIntegrationChanged(bool enabled)
     {
+        // packaged 时 Host 不随包携带,防御层强制关闭(SettingsViewModel 已拦截 true 不发事件,此处兜底)。
+        // 用 fault-only continuation 观察任务,绝不留下未观察异常。
+        _ = ApplyBrowserIntegrationSettingAsync(enabled && !AboutInfo.IsPackaged)
+            .ContinueWith(
+                task => CrashLogger.Write(
+                    AppDataDir,
+                    CrashLogger.FormatRedacted("BrowserBridge", task.Exception!, DateTimeOffset.UtcNow)),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted,
+                TaskScheduler.Default);
+    }
+
+    // 运行时切换浏览器集成设置:仅当 vault 已解锁时才启动 bridge,否则停止。锁定登录页不监听,重新解锁
+    // 由 ShowVault 恢复。任何失败在此脱敏记录并吞掉,绝不上抛(调用方再以 fault-only continuation 兜底)。
+    private static async Task ApplyBrowserIntegrationSettingAsync(bool enabled)
+    {
         var bridge = Services.GetRequiredService<PasskeyBridgeServer>();
-        // 防御层：SettingsViewModel 在 packaged 时已拦截 true 不发事件，此处 IsPackaged 再做兜底。
-        if (enabled && !AboutInfo.IsPackaged)
-            bridge.Start();
-        else
-            _ = bridge.StopAsync();
+        var vault = Services.GetRequiredService<IVaultService>();
+        try
+        {
+            if (enabled && vault.Snapshot.State == VaultState.Unlocked)
+                bridge.Start();
+            else
+                await bridge.StopAsync();
+        }
+        catch (Exception exception)
+        {
+            CrashLogger.WriteRedacted("BrowserBridge", exception);
+        }
     }
 
     private static void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)

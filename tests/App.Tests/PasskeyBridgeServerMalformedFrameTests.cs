@@ -7,6 +7,7 @@ using Core.Models;
 using Core.Passkeys;
 using Core.Services;
 using Core.Session;
+using Vault;
 using Xunit;
 
 namespace App.Tests;
@@ -72,7 +73,7 @@ public class PasskeyBridgeServerMalformedFrameTests
             Assert.NotNull(response);
             Assert.Equal(requestId, response!.Id);
             Assert.False(response.Ok);
-            Assert.Equal("vault_locked", response.Error?.Code);
+            Assert.Equal("client_not_handled", response.Error?.Code);
         }
         finally
         {
@@ -143,7 +144,10 @@ public class PasskeyBridgeServerMalformedFrameTests
     // throws InvalidOperationException from, so no other member is ever reached by this test.
     private sealed class LockedVaultService : IVaultService
     {
-        public IVaultSnapshot Snapshot => throw new NotSupportedException();
+        // A logged-out/locked session: State is not Unlocked, so the handler returns client_not_handled
+        // up front (before it would ever reach CaptureLease).
+        private readonly VaultSession _session = new();
+        public IVaultSnapshot Snapshot => _session;
         public IReadOnlyList<Cipher> GetCiphers() => throw new NotSupportedException();
         public IReadOnlyList<Folder> GetFolders() => throw new NotSupportedException();
         public IReadOnlyList<DeviceInfo> GetDevices() => throw new NotSupportedException();

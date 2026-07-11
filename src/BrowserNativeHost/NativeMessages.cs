@@ -22,6 +22,9 @@ public sealed record NativeResponse(
     JsonElement? Payload = null,
     NativeError? Error = null);
 
-public sealed record NativeError(string Code, string Message);
+// Task 7: code-only wire error. Message stays on the record (nullable, default null) so the wire
+// characterization test and any direct constructors compile, but production never populates it and
+// the CamelCase context omits it (WhenWritingNull) — no internal text may reach the browser/page.
+public sealed record NativeError(string Code, string? Message = null);
 
 public sealed record HostInfo(string Name, string Version);

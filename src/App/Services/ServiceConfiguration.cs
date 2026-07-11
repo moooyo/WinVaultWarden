@@ -235,8 +235,9 @@ public static class ServiceConfiguration
                 AllowSensitiveOperations: () =>
                     global::App.App.MainWindow?.SetSensitiveUiEnabled(true),
                 InvalidateSession: () => session.Lock(),
-                StopBackgroundAsync: () =>
+                StopBackgroundAsync: () => Task.WhenAll(
                     sp.GetRequiredService<NotificationsHost>().StopAsync(),
+                    sp.GetRequiredService<PasskeyBridgeServer>().StopAsync()),
                 CloseTransientsAsync: transients.CancelAndCloseAllAsync,
                 CloseTransientsSynchronously: transients.CancelAndCloseAllSynchronously,
                 ClearClipboardAsync: () => clipboard.ClearSecretsAsync(CancellationToken.None),

@@ -39,6 +39,11 @@ public sealed class BrowserPasskeyRequestHandler
         if (!PasskeyRequestParser.TryParse(request, out var parsed, out var parseError))
             return Error(request.Id, parseError!);
 
+        // 尚未由 App 接管:vault 未解锁 → client_not_handled,交平台 authenticator 兜底,绝不把内部
+        // 锁定状态暴露给页面。此检查在捕获 lease 之前完成。
+        if (_vault.Snapshot.State != VaultState.Unlocked)
+            return Error(request.Id, PasskeyErrorCodes.ClientNotHandled, "The vault is locked.");
+
         // 入口只捕获一次 lease,并把它的取消令牌与外部 ct 链接:此后所有候选读取/审批/签名/保存
         // 都以这唯一 lease 校验,任何跨 await 期间的 Lock/切换账户都会使 lease 失效并稳定失败。
         VaultSessionLease lease;
@@ -48,10 +53,8 @@ public sealed class BrowserPasskeyRequestHandler
         }
         catch (InvalidOperationException)
         {
-            return Error(
-                request.Id,
-                "vault_locked",
-                "Unlock WinVaultWarden before using passkeys.");
+            // 捕获 lease 的瞬间刚好无活跃会话(与上面的解锁检查间发生竞态):仍属"未接管"。
+            return Error(request.Id, PasskeyErrorCodes.ClientNotHandled, "No active vault session.");
         }
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
@@ -78,14 +81,19 @@ public sealed class BrowserPasskeyRequestHandler
                     "Unsupported passkey request type."),
             };
         }
-        catch (OperationCanceledException) when (
-            lease.CancellationToken.IsCancellationRequested
-            && !ct.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            return Error(
-                request.Id,
-                "vault_locked",
-                "The vault session expired before the passkey operation completed.");
+            // 已开始处理后的任何取消 —— Lock/Logout/切换账户使 lease 失效,或外部 Abort/pagehide/
+            // navigation/native·pipe 断线/deadline —— 一律映射为 operation_aborted(code-only)。
+            // deadline 自身的 deadline_exceeded 由原生宿主在其触发点保留;若此响应对应的请求已被取消,
+            // 上层(PasskeyBridgeServer/native session)会丢弃它,不会有迟到帧到达页面。
+            return Error(request.Id, PasskeyErrorCodes.OperationAborted, "The passkey operation was aborted.");
+        }
+        catch (Exception)
+        {
+            // 其余未知异常:code-only internal_error。绝不外泄任何异常文本(Message/栈/路径/令牌)。
+            // Core 层无日志设施,故此处不落诊断;App 边界(PasskeyBridgeServer)按需记脱敏诊断。
+            return Error(request.Id, PasskeyErrorCodes.InternalError, "The passkey request failed.");
         }
     }
 
@@ -108,6 +116,11 @@ public sealed class BrowserPasskeyRequestHandler
         var rpId = validated.CanonicalRpId;
 
         var algorithms = (payload.PubKeyCredParams ?? []).Select(p => p.Alg).ToArray();
+
+        // 完全不支持所请求的算法(客户端仅支持 ES256 / -7)→ 未接管,交平台 authenticator 兜底,
+        // 且不消耗仪式槽/限流预算。这是"初始映射"的一部分,和 locked / 无候选一样折叠为 client_not_handled。
+        if (!algorithms.Contains(-7))
+            return Error(requestId, PasskeyErrorCodes.ClientNotHandled, "No supported credential algorithm was requested.");
 
         // lease-bound 快照:只读取本次请求 lease 对应会话的条目。
         var ciphers = _vault.GetCiphers(lease);
@@ -449,8 +462,10 @@ public sealed class BrowserPasskeyRequestHandler
     private static BrowserPasskeyResponse Error(string? id, BrowserPasskeyError error) =>
         Error(id, error.Code, error.Message);
 
+    // Task 7: 每个 browser-facing 失败都是 code-only。message 参数仅在调用点内联记录意图,
+    // 绝不上线序列化 —— 任何内部文本(Message/栈/路径/令牌)都不得到达页面或本地日志。
     private static BrowserPasskeyResponse Error(string? id, string code, string message) =>
-        new(id, "error", false, Error: new BrowserPasskeyError(code, message));
+        new(id, "error", false, Error: new BrowserPasskeyError(code, Message: null!));
 
     private sealed record PasskeyCredentialCandidate(Cipher Cipher, CipherFido2Credential Credential);
 }

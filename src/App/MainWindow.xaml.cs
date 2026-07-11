@@ -267,6 +267,11 @@ public sealed partial class MainWindow : Window
         // 保险库已就绪，启动 WebSocket 推送（最佳努力）。
         _ = global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StartAsync();
 
+        // 会话就绪后按设置启动 passkey 桥接(便携版 only)。锁定/登出会经生命周期协调器
+        // (StopBackgroundAsync)停止它,重新登录时再由此恢复——锁定登录页绝不监听。
+        if (AppPreferences.Current.AllowBrowserIntegration && !AboutInfo.IsPackaged)
+            global::App.App.Services.GetRequiredService<Services.PasskeyBridgeServer>().Start();
+
         _timeout.Start();
         _idleTimer?.Start();
     }

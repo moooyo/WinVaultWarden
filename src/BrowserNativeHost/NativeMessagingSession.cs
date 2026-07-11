@@ -100,8 +100,12 @@ public sealed class NativeMessagingSession : IAsyncDisposable
         }
         finally
         {
-            // Disconnect / stop: cancel every in-flight request so its worker observes cancellation,
-            // then wait for all of them to drain before the loop returns.
+            // Disconnect (input EOF) / stop: mark the session cancelled FIRST so no worker emits a
+            // late deadline/response frame after the peer is gone (a bare input EOF does not cancel
+            // the session token on its own), then cancel every in-flight request and drain its worker.
+            try { _sessionCts.Cancel(); }
+            catch (ObjectDisposedException) { }
+
             foreach (var active in _active.Values)
                 active.CancelRequest();
 
@@ -245,6 +249,18 @@ public sealed class NativeMessagingSession : IAsyncDisposable
                         .ConfigureAwait(false);
                 return;
             }
+            catch (Exception) when (!sessionToken.IsCancellationRequested)
+            {
+                // Any other App-bridge failure that is NOT a transport/disconnect or a session stop:
+                // a stable, code-only internal_error. No exception text/stack/path/token reaches the
+                // browser frame (Task 7 sanitization). Under a stop the exception falls through to the
+                // outer best-effort catch so no late frame is emitted.
+                if (active.TryClaimResponded())
+                    await WriteResponseAsync(Error(
+                        request.Id, PasskeyErrorCodes.InternalError, "The passkey request failed."))
+                        .ConfigureAwait(false);
+                return;
+            }
 
             // Only the first terminal outcome writes: a concurrent cancel suppresses the response.
             if (active.TryClaimResponded())
@@ -371,10 +387,12 @@ public sealed class NativeMessagingSession : IAsyncDisposable
         new(response.Id ?? requestId, response.Type, response.Ok, response.Payload, ToNativeError(response.Error));
 
     private static NativeError? ToNativeError(BrowserPasskeyError? error) =>
-        error is null ? null : new NativeError(error.Code, error.Message);
+        error is null ? null : new NativeError(error.Code);
 
+    // Code-only wire: the message argument documents intent at the call site but never crosses the
+    // wire (Task 7) — no exception text/stack/path may reach the browser.
     private static NativeResponse Error(string? id, string code, string message) =>
-        new(id, "error", false, Error: new NativeError(code, message));
+        new(id, "error", false, Error: new NativeError(code));
 
     // Wire-contract request id: exactly 32 lowercase hex characters (16 bytes).
     private static bool IsValidRequestId(string? id)

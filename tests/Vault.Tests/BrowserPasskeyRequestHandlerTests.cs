@@ -39,7 +39,7 @@ public class BrowserPasskeyRequestHandlerTests
         var response = await running;
 
         Assert.False(response.Ok);
-        Assert.Equal("vault_locked", response.Error?.Code);
+        Assert.Equal(PasskeyErrorCodes.OperationAborted, response.Error?.Code);
         Assert.False(session.IsCurrent(lease));
         Assert.Null(write.Saved);
     }
@@ -70,7 +70,7 @@ public class BrowserPasskeyRequestHandlerTests
         var response = await running;
 
         Assert.False(response.Ok);
-        Assert.Equal("vault_locked", response.Error?.Code);
+        Assert.Equal(PasskeyErrorCodes.OperationAborted, response.Error?.Code);
         Assert.Null(write.Saved);
     }
 
@@ -125,7 +125,7 @@ public class BrowserPasskeyRequestHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_GetAssertion_WhenVaultLocked_ReturnsVaultLocked()
+    public async Task HandleAsync_GetAssertion_WhenVaultLocked_ReturnsClientNotHandled()
     {
         var approval = new CapturingApprovalService(approve: true);
         var handler = new BrowserPasskeyRequestHandler(
@@ -148,7 +148,9 @@ public class BrowserPasskeyRequestHandlerTests
             TestContext.Current.CancellationToken);
 
         Assert.False(response.Ok);
-        Assert.Equal("vault_locked", response.Error?.Code);
+        // Initial locked vault is "not yet handled by the App": fall back to the platform
+        // authenticator instead of surfacing an internal locked state to the page.
+        Assert.Equal(PasskeyErrorCodes.ClientNotHandled, response.Error?.Code);
         Assert.Null(approval.Request);
     }
 
@@ -499,12 +501,13 @@ public class BrowserPasskeyRequestHandlerTests
     }
 
     [Fact]
-    public async Task HandleCreate_WhenLocked_ReturnsVaultLocked()
+    public async Task HandleCreate_WhenLocked_ReturnsClientNotHandled()
     {
         var handler = new BrowserPasskeyRequestHandler(new FakeVaultService(VaultState.Locked, []), new FakeVaultWriteService(), new CapturingApprovalService(approve: true));
         using var doc = CreatePayload();
         var response = await handler.HandleAsync(new BrowserPasskeyRequest("r", "passkey.create", doc.RootElement, Context: Ctx()), TestContext.Current.CancellationToken);
         Assert.False(response.Ok);
+        Assert.Equal(PasskeyErrorCodes.ClientNotHandled, response.Error?.Code);
     }
 
     [Fact]
