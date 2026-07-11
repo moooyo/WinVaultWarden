@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Core.Passkeys;
 
 namespace BrowserNativeHost;
 
@@ -9,4 +10,5 @@ namespace BrowserNativeHost;
 [JsonSerializable(typeof(NativeRequest))]
 [JsonSerializable(typeof(NativeResponse))]
 [JsonSerializable(typeof(HostInfo))]
+[JsonSerializable(typeof(BrowserRequestContext))]
 public partial class NativeMessageJsonContext : JsonSerializerContext;

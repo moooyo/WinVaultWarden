@@ -195,5 +195,9 @@ public class NativeMessageProtocolTests
             Request = request;
             return Task.FromResult(Response);
         }
+
+        public Task CancelAsync(string requestId, CancellationToken ct = default) => Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

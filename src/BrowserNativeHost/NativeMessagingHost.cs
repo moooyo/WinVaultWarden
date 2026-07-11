@@ -15,26 +15,25 @@ public static class NativeMessagingHost
         CancellationToken ct = default,
         IAppPasskeyBridgeClient? appBridge = null)
     {
-        appBridge ??= new NamedPipeAppPasskeyBridgeClient();
-
+        // Own the default bridge so its persistent App connection is disposed when the host exits;
+        // a caller-supplied bridge stays owned by the caller.
+        var ownedBridge = appBridge is null ? new NamedPipeAppPasskeyBridgeClient() : null;
+        var bridge = appBridge ?? ownedBridge!;
+        await using var session = new NativeMessagingSession(input, output, bridge, TimeProvider.System);
         try
         {
-            while (!ct.IsCancellationRequested)
-            {
-                var request = await NativeMessageProtocol.ReadAsync(input, NativeMessageJsonContext.Default.NativeRequest, ct);
-                if (request is null)
-                    return 0;
-
-                var response = await HandleAsync(request, appBridge, ct);
-                await NativeMessageProtocol.WriteAsync(output, response, NativeMessageJsonContext.Default.NativeResponse, ct);
-            }
-
+            await session.RunAsync(ct);
             return 0;
         }
         catch (Exception ex) when (ex is EndOfStreamException or IOException or InvalidDataException or JsonException)
         {
             await error.WriteLineAsync($"Native messaging host failed: {ex.Message}");
             return 1;
+        }
+        finally
+        {
+            if (ownedBridge is not null)
+                await ownedBridge.DisposeAsync();
         }
     }
 
@@ -73,7 +72,12 @@ public static class NativeMessagingHost
         IAppPasskeyBridgeClient appBridge,
         CancellationToken ct)
     {
-        var bridgeRequest = new BrowserPasskeyRequest(request.Id, request.Type, request.Payload);
+        var bridgeRequest = new BrowserPasskeyRequest(
+            request.Id,
+            request.Type,
+            request.Payload,
+            DeadlineUnixMs: request.DeadlineUnixMs,
+            Context: request.Context);
         if (!PasskeyRequestParser.TryParse(bridgeRequest, out _, out var error))
             return new NativeResponse(request.Id, "error", false, Error: ToNativeError(error));
 

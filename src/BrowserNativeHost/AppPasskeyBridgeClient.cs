@@ -4,11 +4,22 @@ using Core.Passkeys;
 
 namespace BrowserNativeHost;
 
-public interface IAppPasskeyBridgeClient
+public interface IAppPasskeyBridgeClient : IAsyncDisposable
 {
     Task<BrowserPasskeyResponse> SendAsync(BrowserPasskeyRequest request, CancellationToken ct = default);
+
+    // Best-effort upstream cancellation for an in-flight request id. Safe to call for an unknown id.
+    Task CancelAsync(string requestId, CancellationToken ct = default);
 }
 
+/// <summary>
+/// Production bridge client: one Host lifetime keeps a single authenticated App pipe connection and
+/// multiplexes every request id over it via <see cref="AppBridgeSession"/>. The connect factory owns
+/// the Task 3 mutual handshake — verify the App server from the pipe kernel object, never a
+/// self-reported PID, and exchange nonces before any passkey byte — and hands the post-handshake pipe
+/// and session nonce to the multiplexer, which stamps the nonce on every request/cancel and checks it
+/// on every response.
+/// </summary>
 public sealed class NamedPipeAppPasskeyBridgeClient : IAppPasskeyBridgeClient
 {
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(2);
@@ -18,6 +29,7 @@ public sealed class NamedPipeAppPasskeyBridgeClient : IAppPasskeyBridgeClient
         Path.Combine(AppContext.BaseDirectory, "App.exe");
 
     private readonly IPipePeerAuthorizer _peerAuthorizer;
+    private readonly AppBridgeSession _session;
 
     public NamedPipeAppPasskeyBridgeClient()
         : this(new AppServerPeerAuthorizer())
@@ -27,51 +39,49 @@ public sealed class NamedPipeAppPasskeyBridgeClient : IAppPasskeyBridgeClient
     public NamedPipeAppPasskeyBridgeClient(IPipePeerAuthorizer peerAuthorizer)
     {
         _peerAuthorizer = peerAuthorizer;
+        _session = new AppBridgeSession(ConnectAsync);
     }
 
-    public async Task<BrowserPasskeyResponse> SendAsync(BrowserPasskeyRequest request, CancellationToken ct = default)
+    public Task<BrowserPasskeyResponse> SendAsync(BrowserPasskeyRequest request, CancellationToken ct = default) =>
+        _session.SendAsync(request, ct);
+
+    public Task CancelAsync(string requestId, CancellationToken ct = default) =>
+        _session.CancelAsync(requestId, ct);
+
+    public ValueTask DisposeAsync() => _session.DisposeAsync();
+
+    private async Task<AppBridgeConnection> ConnectAsync(CancellationToken ct)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(ConnectTimeout);
 
-        await using var pipe = new NamedPipeClientStream(
+        var pipe = new NamedPipeClientStream(
             ".",
             BrowserPasskeyBridge.PipeName,
             PipeDirection.InOut,
             PipeOptions.Asynchronous);
 
-        PasskeyBridgeSession session;
         try
         {
             await pipe.ConnectAsync(timeout.Token);
             // Verify the server identity from the pipe kernel object, then exchange nonces — never
             // trust a self-reported PID, and never send anything before identity is established.
-            session = await PasskeyBridgeHandshake.CompleteClientAsync(
+            var session = await PasskeyBridgeHandshake.CompleteClientAsync(
                 pipe,
                 (uint)Environment.ProcessId,
                 innerCt => _peerAuthorizer.AuthorizeServerAsync(pipe, AppExecutablePath, innerCt),
                 timeout.Token);
+            return new AppBridgeConnection(pipe, session.Nonce, pipe);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
+            await pipe.DisposeAsync();
             throw new TimeoutException("Timed out connecting to the WinVaultWarden passkey bridge.");
         }
-
-        var bound = request with { Nonce = session.Nonce };
-        await BrowserPasskeyMessageProtocol.WriteAsync(pipe, bound, PasskeyJsonContext.Default.BrowserPasskeyRequest, ct);
-        var response = await BrowserPasskeyMessageProtocol.ReadAsync(pipe, PasskeyJsonContext.Default.BrowserPasskeyResponse, ct);
-        if (response is null)
+        catch
         {
-            return new BrowserPasskeyResponse(
-                request.Id,
-                "error",
-                false,
-                Error: new BrowserPasskeyError("empty_response", "WinVaultWarden returned an empty passkey response."));
+            await pipe.DisposeAsync();
+            throw;
         }
-
-        if (!PasskeyBridgeHandshake.NonceMatches(response.Nonce, session.Nonce))
-            throw new UnauthorizedAccessException("Passkey bridge response nonce mismatch.");
-
-        return response;
     }
 }
