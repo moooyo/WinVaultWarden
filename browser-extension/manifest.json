@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
   "name": "WinVaultWarden Browser Integration",
-  "description": "Browser bridge for WinVaultWarden passkey and autofill integration.",
+  "description": "WinVaultWarden passkey bridge for the browser.",
   "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvnAuySBWbDKgbTA+hM2+sWtr3eyiPpv0KqfZueseoQfXOIVkBPi2jgjC8pfaf9n4a6DiW5yaUl1rpZUwM4USsCpsdvWdgQozDc1KBixs+d5k3hy+aMGPTPYThZpVc1WJv4RSdDtxOTJWkpYuHxZCLt9ArJVNFS1IWsSiVGVlGoKVVcNEvhGEm3FivbV6UwziMsazLx4WdNY0jpqSSF4vb48ZLV8f95z5bOTfQZTucXrMU7jbBOWSgzVXUOqoE1uKum1RhZEeSxwjKtUi+KgDD42N9HIp6slNi2X2pxGoKu9RW/ua9PYEX/wYWYaw/nMhHHNoTGakkKEXvzxEtM0x/QIDAQAB",
   "minimum_chrome_version": "116",
   "permissions": [
     "nativeMessaging"

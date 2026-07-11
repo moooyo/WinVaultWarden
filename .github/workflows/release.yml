@@ -172,11 +172,6 @@ jobs:
             "artifacts\out\$env:PACKAGE_NAME-${{ steps.ver.outputs.version }}.cer",
             $c.Export('Cert'))
 
-      - name: Remove decoded pfx
-        if: always()
-        shell: pwsh
-        run: Remove-Item "$PWD\cert.pfx" -Force -ErrorAction SilentlyContinue
-
       - name: Publish unpackaged self-contained (portable, AOT)
         shell: pwsh
         run: |
@@ -195,6 +190,52 @@ jobs:
             -p:PublishDir="$pub\" `
             -nologo -m
           if ($LASTEXITCODE -ne 0) { throw "unpackaged publish failed ($LASTEXITCODE)" }
+
+      - name: Sign portable executables (App + native Host)
+        shell: pwsh
+        env:
+          SIGNING_PFX_PASSWORD: ${{ secrets.SIGNING_PFX_PASSWORD }}
+        run: |
+          $portable = "$PWD\artifacts\portable\${{ matrix.arch }}"
+          $kits = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+          $signtool = Get-ChildItem $kits -Recurse -Filter signtool.exe |
+            Where-Object FullName -Match '\\x64\\' |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $signtool) { throw "signtool.exe not found under $kits" }
+          # App.exe and BrowserNativeHost.exe ship together and are signed with the same cert
+          # so the pipe peer authorizer can trust the Host as one unit with the App.
+          foreach ($exe in @('App.exe', 'BrowserNativeHost.exe')) {
+            $path = Join-Path $portable $exe
+            if (-not (Test-Path $path)) { throw "portable payload missing $exe" }
+            & $signtool.FullName sign /fd SHA256 /f "$PWD\cert.pfx" `
+              /p $env:SIGNING_PFX_PASSWORD $path
+            if ($LASTEXITCODE -ne 0) { throw "sign failed: $exe" }
+            & $signtool.FullName verify /pa $path
+            if ($LASTEXITCODE -ne 0) { throw "signature verify failed: $exe" }
+          }
+
+      - name: Remove decoded pfx
+        if: always()
+        shell: pwsh
+        run: Remove-Item "$PWD\cert.pfx" -Force -ErrorAction SilentlyContinue
+
+      - name: Verify browser native host package layout
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File scripts\verify-browser-native-host-package.ps1 `
+            -Configuration Release -RuntimeIdentifier win-${{ matrix.arch }}
+          if ($LASTEXITCODE -ne 0) { throw "browser native host package verification failed" }
+
+      - name: Build browser extensions (x64 leg only)
+        if: matrix.arch == 'x64'
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File browser-extension\build-extension.ps1 `
+            -OutputDirectory "$PWD\artifacts\browser-extension"
+          New-Item -ItemType Directory -Force artifacts\out | Out-Null
+          Copy-Item artifacts\browser-extension\winvaultwarden-chrome.zip artifacts\out -Force
+          Copy-Item artifacts\browser-extension\winvaultwarden-edge.zip artifacts\out -Force
 
       - name: Zip portable build
         shell: pwsh

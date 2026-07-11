@@ -1,0 +1,62 @@
+<Project>
+
+  <!--
+    Ships the browser native-messaging Host next to App.exe in every layout
+    (Debug/Release output, unpackaged publish, and MSIX payload). The Host is a
+    self-contained Native AOT single EXE published by App RID, so App and the Host
+    are one signed unit and BrowserNativeHostLocator always finds it at the root.
+  -->
+
+  <PropertyGroup>
+    <BrowserNativeHostProject>$(MSBuildThisFileDirectory)..\BrowserNativeHost\BrowserNativeHost.csproj</BrowserNativeHostProject>
+
+    <!-- Host RID follows the App RID; fall back to the App $(Platform), then x64. -->
+    <BrowserNativeHostRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</BrowserNativeHostRid>
+    <BrowserNativeHostRid Condition="'$(BrowserNativeHostRid)' == '' and '$(Platform)' == 'arm64'">win-arm64</BrowserNativeHostRid>
+    <BrowserNativeHostRid Condition="'$(BrowserNativeHostRid)' == ''">win-x64</BrowserNativeHostRid>
+
+    <!-- Host MSBuild platform is derived from the resolved RID (never AnyCPU). -->
+    <BrowserNativeHostPlatform Condition="'$(BrowserNativeHostRid)' == 'win-arm64'">arm64</BrowserNativeHostPlatform>
+    <BrowserNativeHostPlatform Condition="'$(BrowserNativeHostPlatform)' == ''">x64</BrowserNativeHostPlatform>
+
+    <!-- Absolute stage dir: it is passed as PublishDir to the Host project (resolved against the
+         Host dir) and also consumed here as Content/Error, so a relative path would diverge. -->
+    <BrowserNativeHostStage>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', 'browser-native-host', '$(Configuration)', '$(BrowserNativeHostRid)'))</BrowserNativeHostStage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="$(BrowserNativeHostStage)BrowserNativeHost.exe">
+      <Link>BrowserNativeHost.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="$(MSBuildThisFileDirectory)..\..\browser-extension\native-messaging\install-native-host.ps1"
+             Link="BrowserIntegration\install-native-host.ps1"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(MSBuildThisFileDirectory)..\..\browser-extension\native-messaging\uninstall-native-host.ps1"
+             Link="BrowserIntegration\uninstall-native-host.ps1"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(MSBuildThisFileDirectory)..\..\browser-extension\native-messaging\com.winvaultwarden.browser.*.json.template"
+             Link="BrowserIntegration\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(MSBuildThisFileDirectory)..\..\browser-extension\extension-identities.json"
+             Link="BrowserIntegration\extension-identities.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="PublishBrowserNativeHost"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <MSBuild Projects="$(BrowserNativeHostProject)"
+             Targets="Publish"
+             BuildInParallel="false"
+             Properties="Configuration=$(Configuration);Platform=$(BrowserNativeHostPlatform);RuntimeIdentifier=$(BrowserNativeHostRid);SelfContained=true;PublishAot=true;PublishDir=$(BrowserNativeHostStage)" />
+    <Error Condition="!Exists('$(BrowserNativeHostStage)BrowserNativeHost.exe')"
+           Text="BrowserNativeHost publish did not produce $(BrowserNativeHostStage)BrowserNativeHost.exe." />
+  </Target>
+
+</Project>

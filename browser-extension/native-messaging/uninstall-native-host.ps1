@@ -1,48 +1,42 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [ValidateSet('Chrome', 'Edge', 'Both')]
-    [string]$Browser = 'Both',
-
-    [switch]$RemoveManifest,
-
-    [string]$ManifestPath
+    [string]$Browser = 'Both'
 )
 
 $ErrorActionPreference = 'Stop'
 
 $hostName = 'com.winvaultwarden.browser'
 
-$registryTargets = switch ($Browser) {
-    'Chrome' { @('HKCU\Software\Google\Chrome\NativeMessagingHosts') }
-    'Edge' { @('HKCU\Software\Microsoft\Edge\NativeMessagingHosts') }
-    'Both' {
-        @(
-            'HKCU\Software\Google\Chrome\NativeMessagingHosts',
-            'HKCU\Software\Microsoft\Edge\NativeMessagingHosts'
-        )
+$targets = @{
+    Chrome = @{
+        Registry = 'HKCU\Software\Google\Chrome\NativeMessagingHosts'
+        Directory = 'chrome'
+    }
+    Edge = @{
+        Registry = 'HKCU\Software\Microsoft\Edge\NativeMessagingHosts'
+        Directory = 'edge'
     }
 }
+$selected = if ($Browser -eq 'Both') { @('Chrome', 'Edge') } else { @($Browser) }
 
-foreach ($registryRoot in $registryTargets) {
-    $registryPath = "$registryRoot\$hostName"
+foreach ($name in $selected) {
+    $target = $targets[$name]
+    $registryPath = "$($target.Registry)\$hostName"
 
-    if ($PSCmdlet.ShouldProcess($registryPath, 'Unregister native host')) {
+    if ($PSCmdlet.ShouldProcess($registryPath, "Unregister $name native host")) {
+        # /f makes missing keys idempotent: reg.exe returns 1 (not found) which we treat as success.
         & reg.exe delete $registryPath /f 2>$null | Out-Null
         if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1) {
-            throw "Failed to unregister native messaging host at $registryPath."
+            throw "Failed to unregister $name native messaging host at $registryPath."
         }
     }
-}
 
-if ($RemoveManifest) {
-    if ([string]::IsNullOrWhiteSpace($ManifestPath)) {
-        $ManifestPath = Join-Path $env:LOCALAPPDATA "WinVaultWarden\BrowserNativeHost\$hostName.json"
-    }
-
-    if ((Test-Path -LiteralPath $ManifestPath -PathType Leaf) `
-        -and $PSCmdlet.ShouldProcess($ManifestPath, 'Remove native host manifest')) {
-        Remove-Item -LiteralPath $ManifestPath -Force
+    $manifestPath = Join-Path $env:LOCALAPPDATA "WinVaultWarden\BrowserNativeHost\$($target.Directory)\$hostName.json"
+    if ((Test-Path -LiteralPath $manifestPath -PathType Leaf) `
+        -and $PSCmdlet.ShouldProcess($manifestPath, "Remove $name native host manifest")) {
+        Remove-Item -LiteralPath $manifestPath -Force
     }
 }
 
-Write-Host "Unregistered $hostName"
+Write-Host "Unregistered $hostName ($Browser)"

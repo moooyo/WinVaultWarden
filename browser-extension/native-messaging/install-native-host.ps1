@@ -1,111 +1,83 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [Parameter(Mandatory = $true)]
-    [ValidatePattern('^[a-p]{32}$')]
-    [string]$ExtensionId,
-
     [ValidateSet('Chrome', 'Edge', 'Both')]
     [string]$Browser = 'Both',
 
-    [string]$HostPath,
-
-    [ValidateSet('win-x64', 'win-arm64')]
-    [string]$RuntimeIdentifier = 'win-x64',
-
-    [ValidateSet('Debug', 'Release')]
-    [string]$Configuration = 'Release',
-
-    [switch]$SkipPublish,
-
-    [switch]$SelfContained,
-
-    [string]$ManifestOutputPath
+    # App root that holds BrowserNativeHost.exe. Defaults to the portable layout
+    # (this script ships in <AppRoot>\BrowserIntegration) and falls back to the
+    # installed WinVaultWarden MSIX package.
+    [string]$AppBaseDirectory
 )
 
 $ErrorActionPreference = 'Stop'
 
 $hostName = 'com.winvaultwarden.browser'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$repoRoot = (Resolve-Path -LiteralPath (Join-Path $scriptRoot '..\..')).Path
-$platform = if ($RuntimeIdentifier -eq 'win-arm64') { 'arm64' } else { 'x64' }
 
-if ([string]::IsNullOrWhiteSpace($HostPath)) {
-    $publishDir = Join-Path $repoRoot "artifacts\native-host\$RuntimeIdentifier"
-
-    if (-not $SkipPublish) {
-        $projectPath = Join-Path $repoRoot 'src\BrowserNativeHost\BrowserNativeHost.csproj'
-        $selfContainedValue = if ($SelfContained) { 'true' } else { 'false' }
-
-        & dotnet publish $projectPath `
-            -c $Configuration `
-            -r $RuntimeIdentifier `
-            --self-contained:$selfContainedValue `
-            -p:Platform=$platform `
-            -o $publishDir
-
-        if ($LASTEXITCODE -ne 0) {
-            throw "dotnet publish failed with exit code $LASTEXITCODE."
+if ([string]::IsNullOrWhiteSpace($AppBaseDirectory)) {
+    $portableRoot = Split-Path -Parent $scriptRoot
+    if (Test-Path (Join-Path $portableRoot 'BrowserNativeHost.exe') -PathType Leaf) {
+        $AppBaseDirectory = $portableRoot
+    } else {
+        $package = Get-AppxPackage -Name 'WinVaultWarden' |
+            Sort-Object Version -Descending |
+            Select-Object -First 1
+        if (-not $package) {
+            throw 'WinVaultWarden portable root or MSIX installation was not found. Pass -AppBaseDirectory.'
         }
-    }
-
-    $HostPath = Join-Path $publishDir 'BrowserNativeHost.exe'
-}
-
-if (-not (Test-Path -LiteralPath $HostPath -PathType Leaf)) {
-    throw "Native host executable was not found: $HostPath"
-}
-
-$resolvedHostPath = (Resolve-Path -LiteralPath $HostPath).Path
-
-if ([string]::IsNullOrWhiteSpace($ManifestOutputPath)) {
-    $ManifestOutputPath = Join-Path $env:LOCALAPPDATA "WinVaultWarden\BrowserNativeHost\$hostName.json"
-}
-
-$manifestDirectory = Split-Path -Parent $ManifestOutputPath
-
-$manifest = [ordered]@{
-    name = $hostName
-    description = 'WinVaultWarden browser integration native host'
-    path = $resolvedHostPath
-    type = 'stdio'
-    allowed_origins = @("chrome-extension://$ExtensionId/")
-}
-
-$manifestJson = $manifest | ConvertTo-Json -Depth 4
-
-if ($PSCmdlet.ShouldProcess($ManifestOutputPath, 'Write native host manifest')) {
-    New-Item -ItemType Directory -Path $manifestDirectory -Force | Out-Null
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($ManifestOutputPath, $manifestJson, $utf8NoBom)
-}
-
-$registryTargets = switch ($Browser) {
-    'Chrome' { @('HKCU\Software\Google\Chrome\NativeMessagingHosts') }
-    'Edge' { @('HKCU\Software\Microsoft\Edge\NativeMessagingHosts') }
-    'Both' {
-        @(
-            'HKCU\Software\Google\Chrome\NativeMessagingHosts',
-            'HKCU\Software\Microsoft\Edge\NativeMessagingHosts'
-        )
+        $AppBaseDirectory = $package.InstallLocation
     }
 }
 
-foreach ($registryRoot in $registryTargets) {
-    $registryPath = "$registryRoot\$hostName"
+$appRoot = (Resolve-Path -LiteralPath $AppBaseDirectory).Path
+$hostPath = Join-Path $appRoot 'BrowserNativeHost.exe'
+if (-not (Test-Path -LiteralPath $hostPath -PathType Leaf)) {
+    throw "BrowserNativeHost.exe is missing from App root: $appRoot"
+}
 
-    if ($PSCmdlet.ShouldProcess($registryPath, "Register native host manifest $ManifestOutputPath")) {
-        & reg.exe add $registryPath /ve /t REG_SZ /d $ManifestOutputPath /f | Out-Null
+$targets = @{
+    Chrome = @{
+        Registry = 'HKCU\Software\Google\Chrome\NativeMessagingHosts'
+        Template = 'com.winvaultwarden.browser.chrome.json.template'
+        Directory = 'chrome'
+    }
+    Edge = @{
+        Registry = 'HKCU\Software\Microsoft\Edge\NativeMessagingHosts'
+        Template = 'com.winvaultwarden.browser.edge.json.template'
+        Directory = 'edge'
+    }
+}
+$selected = if ($Browser -eq 'Both') { @('Chrome', 'Edge') } else { @($Browser) }
+
+foreach ($name in $selected) {
+    $target = $targets[$name]
+
+    $templatePath = Join-Path $scriptRoot $target.Template
+    if (-not (Test-Path -LiteralPath $templatePath -PathType Leaf)) {
+        throw "Native host template is missing: $templatePath"
+    }
+
+    $template = Get-Content -LiteralPath $templatePath -Raw
+    $manifestJson = $template.Replace(
+        '%WINVAULTWARDEN_NATIVE_HOST_PATH%',
+        ($hostPath.Replace('\', '\\')))
+    if ($manifestJson -match '%[A-Z_]+%') {
+        throw "Unresolved token in $($target.Template)."
+    }
+
+    $manifestRoot = Join-Path $env:LOCALAPPDATA "WinVaultWarden\BrowserNativeHost\$($target.Directory)"
+    $manifestPath = Join-Path $manifestRoot "$hostName.json"
+    $registryPath = "$($target.Registry)\$hostName"
+
+    if ($PSCmdlet.ShouldProcess($manifestPath, "Register $name native host")) {
+        New-Item -ItemType Directory -Path $manifestRoot -Force | Out-Null
+        [IO.File]::WriteAllText($manifestPath, $manifestJson, [Text.UTF8Encoding]::new($false))
+        & reg.exe add $registryPath /ve /t REG_SZ /d $manifestPath /f | Out-Null
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to register native messaging host at $registryPath."
+            throw "Failed to register $name native host at $registryPath."
         }
+        Write-Host "Registered $name native host -> $manifestPath"
     }
 }
 
-if ($WhatIfPreference) {
-    Write-Host "Validated registration for $hostName"
-} else {
-    Write-Host "Registered $hostName"
-}
-
-Write-Host "Manifest: $ManifestOutputPath"
-Write-Host "Host: $resolvedHostPath"
+Write-Host "Host: $hostPath"

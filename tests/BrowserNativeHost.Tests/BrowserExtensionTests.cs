@@ -24,6 +24,13 @@ public class BrowserExtensionTests
         var resource = Assert.Single(root.GetProperty("web_accessible_resources").EnumerateArray());
         Assert.Contains(resource.GetProperty("resources").EnumerateArray(),
             script => script.GetString() == "src/page-webauthn.js");
+
+        // The passkey bridge is intentionally headless: no toolbar/action surface, no options
+        // page, and it never touches stored passwords. Lock those out so scope creep is a red test.
+        Assert.False(root.TryGetProperty("action", out _));
+        Assert.False(root.TryGetProperty("options_page", out _));
+        Assert.False(root.TryGetProperty("options_ui", out _));
+        Assert.DoesNotContain("password", root.GetRawText(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -58,19 +65,46 @@ public class BrowserExtensionTests
     }
 
     [Fact]
-    public void NativeMessagingInstallScript_PublishesManifestAndRegistersChromeEdge()
+    public void NativeMessagingInstallScript_RegistersChromeEdgeFromAppRootWithoutBuilding()
     {
         var script = File.ReadAllText(FindRepoFile(
             "browser-extension",
             "native-messaging",
             "install-native-host.ps1"));
 
-        Assert.Contains("BrowserNativeHost.csproj", script);
-        Assert.Contains("ConvertTo-Json", script);
-        Assert.Contains("chrome-extension://$ExtensionId/", script);
+        // Registers both browsers from their own pinned templates.
         Assert.Contains(@"HKCU\Software\Google\Chrome\NativeMessagingHosts", script);
         Assert.Contains(@"HKCU\Software\Microsoft\Edge\NativeMessagingHosts", script);
         Assert.Contains("reg.exe add", script);
+        Assert.Contains("com.winvaultwarden.browser.chrome.json.template", script);
+        Assert.Contains("com.winvaultwarden.browser.edge.json.template", script);
+
+        // Points at the shipped Host next to App.exe and fills the manifest path token.
+        Assert.Contains("BrowserNativeHost.exe", script);
+        Assert.Contains("%WINVAULTWARDEN_NATIVE_HOST_PATH%", script);
+
+        // The installer no longer builds or copies artifacts, and no longer takes an extension id:
+        // identities are fixed by the shipped templates.
+        Assert.DoesNotContain("dotnet publish", script);
+        Assert.DoesNotContain("BrowserNativeHost.csproj", script);
+        Assert.DoesNotContain("$ExtensionId", script);
+        Assert.DoesNotContain("artifacts", script);
+    }
+
+    [Fact]
+    public void NativeMessagingUninstallScript_RemovesBothBrowserManifestsIdempotently()
+    {
+        var script = File.ReadAllText(FindRepoFile(
+            "browser-extension",
+            "native-messaging",
+            "uninstall-native-host.ps1"));
+
+        Assert.Contains(@"HKCU\Software\Google\Chrome\NativeMessagingHosts", script);
+        Assert.Contains(@"HKCU\Software\Microsoft\Edge\NativeMessagingHosts", script);
+        Assert.Contains("reg.exe delete", script);
+        // Cleans each browser's own manifest directory rather than a single shared file.
+        Assert.Contains("chrome", script);
+        Assert.Contains("edge", script);
     }
 
     [Fact]

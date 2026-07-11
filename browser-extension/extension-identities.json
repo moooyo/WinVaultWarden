@@ -1,0 +1,10 @@
+{
+  "chrome": {
+    "id": "ehakaifefnodlknfnekcnljhljcaoclb",
+    "publicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvnAuySBWbDKgbTA+hM2+sWtr3eyiPpv0KqfZueseoQfXOIVkBPi2jgjC8pfaf9n4a6DiW5yaUl1rpZUwM4USsCpsdvWdgQozDc1KBixs+d5k3hy+aMGPTPYThZpVc1WJv4RSdDtxOTJWkpYuHxZCLt9ArJVNFS1IWsSiVGVlGoKVVcNEvhGEm3FivbV6UwziMsazLx4WdNY0jpqSSF4vb48ZLV8f95z5bOTfQZTucXrMU7jbBOWSgzVXUOqoE1uKum1RhZEeSxwjKtUi+KgDD42N9HIp6slNi2X2pxGoKu9RW/ua9PYEX/wYWYaw/nMhHHNoTGakkKEXvzxEtM0x/QIDAQAB"
+  },
+  "edge": {
+    "id": "icobpiocjfkfebioicnpmccolpofhpik",
+    "publicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwR0ymz+kFAyDVdvYb4wSvMza8cQWC/ITUR9c9jzL+5RbQMxfMrIlRMxeViqi9eRFQdNX8yPldXpP8+SxUWXYDoaTp2BKL0IoDQCpkAOb/lVXOK7BrrznNncSSxWip9tB7J3S8N7lXyGBLgWKDWTVsufqOsyFiig7MuKlBhbl0+xQaW/D2yeq8wlO6W/Mt5/IAbaexvQuYoVYKo+tSmOF15HndLjAh6sBUoi5Woe6DsxBilSK0DWt024b0iQF1zP3ELLoz3IqgWWxl4JrdNTp05EgT4DUJc7f7FqSPBLxwCvPwneBrimpwKNPAHDgHdO09HcDPhU7mC9FEjPCBsgn3QIDAQAB"
+  }
+}
