@@ -129,6 +129,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <Grid ColumnSpacing="8">
@@ -142,6 +143,7 @@
                                 AutomationProperties.Name="搜索保险库"
                                 AutomationProperties.AutomationId="VaultSearchBox" />
                 <Button Grid.Column="1" Command="{x:Bind ViewModel.SyncCommand}"
+                        IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
                         AutomationProperties.Name="同步保险库"
                         AutomationProperties.AutomationId="VaultSyncButton">
                     <StackPanel Orientation="Horizontal" Spacing="6">
@@ -150,9 +152,26 @@
                     </StackPanel>
                 </Button>
             </Grid>
-            <CommandBar Grid.Row="1" DefaultLabelPosition="Right" HorizontalAlignment="Left"
+
+            <!-- 页面级 busy live region:任意 Vault 操作(同步/保存/删除/文件夹/批量/附件)在途时统一显示。 -->
+            <StackPanel x:Name="VaultBusyPanel"
+                        Grid.Row="1"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <ProgressRing x:Name="VaultBusyRing"
+                              Width="20"
+                              Height="20"
+                              IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
+                <TextBlock Text="{x:Bind ViewModel.BusyMessage, Mode=OneWay}"
+                           VerticalAlignment="Center"
+                           AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+
+            <CommandBar Grid.Row="2" DefaultLabelPosition="Right" HorizontalAlignment="Left"
                         Background="Transparent">
-                <AppBarButton x:Name="AddCipherButton" Icon="Add" Label="新增">
+                <AppBarButton x:Name="AddCipherButton" Icon="Add" Label="新增"
+                              IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}">
                     <AppBarButton.Flyout>
                         <MenuFlyout>
                             <MenuFlyoutItem Text="登录" Click="OnAddLoginClick">
@@ -203,25 +222,25 @@
                               Click="OnSelectAllClick"
                               IsEnabled="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay}" />
                 <AppBarButton x:Name="MoveSelectedButton" Icon="MoveToFolder" Label="移动"
-                              IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.HasSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}">
                     <AppBarButton.Flyout>
                         <MenuFlyout x:Name="MoveFolderFlyout" Opening="OnMoveSelectedFlyoutOpening" />
                     </AppBarButton.Flyout>
                 </AppBarButton>
                 <AppBarButton Icon="Delete" Label="移到回收站"
                               Command="{x:Bind ViewModel.SoftDeleteSelectedCommand}"
-                              IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.HasSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                               Visibility="{x:Bind ViewModel.IsTrashFilterSelected, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}" />
                 <AppBarButton Icon="Undo" Label="恢复"
                               Command="{x:Bind ViewModel.RestoreSelectedCommand}"
-                              IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.HasSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                               Visibility="{x:Bind ViewModel.IsTrashFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                 <AppBarButton x:Name="PermanentDeleteButton" Icon="Delete" Label="永久删除"
                               Click="OnPermanentDeleteSelectedClick"
-                              IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.HasSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                               Visibility="{x:Bind ViewModel.IsTrashFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
             </CommandBar>
-            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="12" Margin="0,4,0,0"
+            <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="12" Margin="0,4,0,0"
                         Visibility="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                 <TextBlock VerticalAlignment="Center"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -229,15 +248,16 @@
                 <TextBlock VerticalAlignment="Center" Text="项已选" />
                 <Button Content="完成" Command="{x:Bind ViewModel.ToggleSelectionModeCommand}" />
             </StackPanel>
-            <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8"
+            <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="8"
                         Visibility="{x:Bind ViewModel.IsFolderFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <Button x:Name="RenameFolderButton" Content="重命名文件夹" Click="OnRenameFolderClick" />
-                <Button x:Name="DeleteFolderButton" Content="删除文件夹" Click="OnDeleteFolderClick" />
-                <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="20" Height="20" />
+                <Button x:Name="RenameFolderButton" Content="重命名文件夹" Click="OnRenameFolderClick"
+                        IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}" />
+                <Button x:Name="DeleteFolderButton" Content="删除文件夹" Click="OnDeleteFolderClick"
+                        IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}" />
             </StackPanel>
 
             <!-- 筛选栏:分面 ToggleButton + 排序 + 保存视图 + 保存/清除 -->
-            <StackPanel Grid.Row="2" Spacing="8" Margin="0,4,0,0">
+            <StackPanel Grid.Row="3" Spacing="8" Margin="0,4,0,0">
                 <InfoBar x:Name="VaultOfflineInfoBar"
                          Severity="Warning"
                          IsOpen="{x:Bind ViewModel.DataStale, Mode=OneWay}"
@@ -349,13 +369,14 @@
                     <TextBlock Text="{x:Bind ViewModel.TrashHeader, Mode=OneWay}" VerticalAlignment="Center"
                                Style="{StaticResource SectionHeaderTextBlockStyle}" />
                     <Button Grid.Column="1" Content="清空回收站" Click="OnEmptyRecycleBinClick"
+                            IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
                             Visibility="{x:Bind ViewModel.CanEmptyRecycleBin, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                             AutomationProperties.Name="清空回收站"
                             AutomationProperties.AutomationId="VaultEmptyRecycleBinButton" />
                 </Grid>
             </StackPanel>
 
-            <ListView Grid.Row="5"
+            <ListView Grid.Row="6"
                       x:Name="CipherList"
                       ItemsSource="{x:Bind ViewModel.FilteredItems, Mode=OneWay}"
                       SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
@@ -449,7 +470,7 @@
             </ListView>
 
             <InfoBar x:Name="VaultErrorInfoBar"
-                     Grid.Row="5"
+                     Grid.Row="6"
                      VerticalAlignment="Top"
                      IsClosable="True"
                      Severity="Error"
@@ -457,7 +478,7 @@
                      Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" />
 
             <StackPanel x:Name="VaultEmptyPanel"
-                        Grid.Row="5"
+                        Grid.Row="6"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Center"
                         Spacing="{StaticResource SpacingMedium}"
@@ -475,7 +496,7 @@
             </StackPanel>
 
             <StackPanel x:Name="VaultNoResultsPanel"
-                        Grid.Row="5"
+                        Grid.Row="6"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Center"
                         Spacing="{StaticResource SpacingMedium}"
@@ -492,7 +513,7 @@
                            HorizontalAlignment="Center" />
             </StackPanel>
 
-            <TextBlock Grid.Row="5" Text="回收站为空" Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+            <TextBlock Grid.Row="6" Text="回收站为空" Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                        Margin="0,8" HorizontalAlignment="Center"
                        Visibility="{x:Bind ViewModel.IsTrashEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
         </Grid>
@@ -537,6 +558,7 @@
                                 Content="保存"
                                 VerticalAlignment="Bottom"
                                 Style="{StaticResource AccentButtonStyle}"
+                                IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
                                 Click="OnSaveCipherEditorClick" />
                     </Grid>
 
@@ -798,18 +820,12 @@
                     <StackPanel Spacing="6">
                         <TextBlock Text="{x:Bind ViewModel.Detail.AttachmentHeader, Mode=OneWay}"
                                    Style="{StaticResource SectionHeaderTextBlockStyle}" />
-                        <StackPanel Orientation="Horizontal" Spacing="8"
-                                    Visibility="{x:Bind ViewModel.AttachmentBusyText, Mode=OneWay, Converter={StaticResource EmptyToCollapsed}}">
-                            <ProgressRing IsActive="{x:Bind ViewModel.IsAttachmentBusy, Mode=OneWay}" Width="16" Height="16" />
-                            <TextBlock Text="{x:Bind ViewModel.AttachmentBusyText, Mode=OneWay}" VerticalAlignment="Center"
-                                       Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
-                        </StackPanel>
                         <TextBlock Text="暂无附件"
                                    Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                                    Visibility="{x:Bind ViewModel.Detail.HasAttachments, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}" />
                         <ItemsControl x:Name="AttachmentsItems"
                                       ItemsSource="{x:Bind ViewModel.Detail.Attachments, Mode=OneWay}"
-                                      IsEnabled="{x:Bind ViewModel.IsNotAttachmentBusy, Mode=OneWay}"
+                                      IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
                                       Visibility="{x:Bind ViewModel.Detail.HasAttachments, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="models:AttachmentItem">
@@ -855,7 +871,7 @@
                         <Button x:Name="AddAttachmentButton"
                                 Content="添加附件"
                                 HorizontalAlignment="Left"
-                                IsEnabled="{x:Bind ViewModel.IsNotAttachmentBusy, Mode=OneWay}"
+                                IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
                                 Click="OnAddAttachmentClick" />
                     </StackPanel>
                     <!-- 自定义字段 -->
@@ -890,7 +906,9 @@
                                 <FontIcon Glyph="&#xE70F;" FontSize="14" /><TextBlock Text="编辑" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="DeleteCipherButton" Grid.Column="1" HorizontalAlignment="Stretch" Click="OnDeleteCipherClick">
+                        <Button x:Name="DeleteCipherButton" Grid.Column="1" HorizontalAlignment="Stretch"
+                                IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
+                                Click="OnDeleteCipherClick">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                                 <TextBlock Text="删除" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
@@ -904,12 +922,16 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <Button x:Name="RestoreCipherButton" HorizontalAlignment="Stretch" Click="OnRestoreCipherClick">
+                        <Button x:Name="RestoreCipherButton" HorizontalAlignment="Stretch"
+                                IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
+                                Click="OnRestoreCipherClick">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE7A7;" FontSize="14" /><TextBlock Text="恢复" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="PermanentDeleteCipherButton" Grid.Column="1" HorizontalAlignment="Stretch" Click="OnPermanentDeleteCipherClick">
+                        <Button x:Name="PermanentDeleteCipherButton" Grid.Column="1" HorizontalAlignment="Stretch"
+                                IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
+                                Click="OnPermanentDeleteCipherClick">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                                 <TextBlock Text="永久删除" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />

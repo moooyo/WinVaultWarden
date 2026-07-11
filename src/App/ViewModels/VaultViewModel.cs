@@ -6,6 +6,20 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace App.ViewModels;
 
+// 页面级 Vault 写入/同步/附件操作的唯一门禁分类:同一时刻只有一种操作可持有 _operationGate,
+// 其余冲突操作一律返回 Busy(见 RunOperationAsync)。BusyMessage 依此渲染页面级 live region 文案。
+public enum VaultOperationKind
+{
+    Sync,
+    SaveCipher,
+    DeleteCipher,
+    Folder,
+    Batch,
+    AttachmentUpload,
+    AttachmentDownload,
+    AttachmentDelete,
+}
+
 public partial class VaultViewModel : ObservableObject, ISensitiveState
 {
     private readonly IVaultUiService _service;
@@ -16,6 +30,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     private string? _editingId;
     private bool _suppressApply;
     private readonly HashSet<string> _selectedIds = new(StringComparer.Ordinal);
+    private readonly AsyncOperationGate _operationGate = new();
+    private CancellationTokenSource? _operationCts;
 
     public ObservableCollection<SavedSearchView> SavedViews { get; } = new();
 
@@ -116,8 +132,27 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     [ObservableProperty]
     public partial string EditorError { get; set; } = string.Empty;
 
+    // 页面级唯一 Vault 操作状态:非 null 表示当前有写入/同步/附件操作占用 _operationGate。
     [ObservableProperty]
-    public partial bool IsBusy { get; set; }
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
+    [NotifyPropertyChangedFor(nameof(BusyMessage))]
+    [NotifyPropertyChangedFor(nameof(CanStartVaultOperation))]
+    public partial VaultOperationKind? CurrentOperation { get; set; }
+
+    public bool IsBusy => CurrentOperation is not null;
+    public bool CanStartVaultOperation => CurrentOperation is null;
+    public string BusyMessage => CurrentOperation switch
+    {
+        VaultOperationKind.Sync => "正在同步保险库…",
+        VaultOperationKind.SaveCipher => "正在保存条目…",
+        VaultOperationKind.DeleteCipher => "正在更新回收站…",
+        VaultOperationKind.Folder => "正在更新文件夹…",
+        VaultOperationKind.Batch => "正在处理所选条目…",
+        VaultOperationKind.AttachmentUpload => "正在上传附件…",
+        VaultOperationKind.AttachmentDownload => "正在下载附件…",
+        VaultOperationKind.AttachmentDelete => "正在删除附件…",
+        _ => string.Empty,
+    };
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasOperationError))]
@@ -138,14 +173,6 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     // 当前快照来自离线缓存(未联网同步) → 提示用户数据可能已过期。
     [ObservableProperty]
     public partial bool DataStale { get; set; }
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsAttachmentBusy))]
-    [NotifyPropertyChangedFor(nameof(IsNotAttachmentBusy))]
-    public partial string AttachmentBusyText { get; set; } = string.Empty;
-
-    public bool IsAttachmentBusy => !string.IsNullOrEmpty(AttachmentBusyText);
-    public bool IsNotAttachmentBusy => !IsAttachmentBusy;
 
     public bool HasDetailSelected => Detail is not null;
     public bool NoSelection => Detail is null;
@@ -492,96 +519,166 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(EditorDraft));
     }
 
-    public async Task<bool> SaveDraftAsync()
+    // 唯一 Vault 操作 runner:_operationGate 原子去重(第二个并发调用立即返回 Busy,不触发 action);
+    // 取消经 _operationCts 与调用方 ct 联动;已知业务异常映射为安全文案,未知异常不捕获(交由 Task 12)。
+    private async Task<UiOperationResult<T>> RunOperationAsync<T>(
+        VaultOperationKind kind,
+        Func<CancellationToken, Task<T>> action,
+        CancellationToken ct = default)
     {
-        if (EditorDraft is null || IsBusy)
-            return false;
+        if (!_operationGate.TryEnter(out var operation))
+            return UiOperationResult<T>.Busy();
 
-        var draft = EditorDraft;
-        var errors = draft.Validate();
+        using (operation)
+        {
+            _operationCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            CurrentOperation = kind;
+            OperationError = string.Empty;
+            try
+            {
+                return UiOperationResult<T>.Success(await action(_operationCts.Token));
+            }
+            catch (OperationCanceledException) when (_operationCts.IsCancellationRequested)
+            {
+                return UiOperationResult<T>.Cancelled();
+            }
+            catch (Exception ex) when (ex is
+                Core.Services.VaultRefreshException
+                or Core.Services.AttachmentTooLargeException
+                or Api.VaultWriteException
+                or HttpRequestException)
+            {
+                OperationError = SafeOperationMessage(ex);
+                return UiOperationResult<T>.Failure(OperationError);
+            }
+            finally
+            {
+                _operationCts.Dispose();
+                _operationCts = null;
+                CurrentOperation = null;
+            }
+        }
+    }
+
+    private static string SafeOperationMessage(Exception ex) => ex switch
+    {
+        Core.Services.VaultRefreshException => "更改已保存，但本地密码库刷新失败，请手动同步。",
+        Core.Services.AttachmentTooLargeException => ex.Message,
+        Api.VaultWriteException => "服务器拒绝了此更改，请检查输入后重试。",
+        HttpRequestException => "网络请求失败，请检查连接后重试。",
+        _ => "操作失败。",
+    };
+
+    /// <summary>取消当前正在进行的 Vault 操作(若有)。用于生命周期清理与用户主动取消,不影响后续新操作进入门禁。</summary>
+    public void CancelCurrentOperation() => _operationCts?.Cancel();
+
+    public async Task<UiOperationResult<string>> SaveDraftAsync(CancellationToken ct = default)
+    {
+        if (EditorDraft is null)
+            return UiOperationResult<string>.Failure("没有可保存的草稿");
+        var errors = EditorDraft.Validate();
         if (errors.Count > 0)
         {
             EditorError = string.Join(Environment.NewLine, errors);
-            return false;
+            return UiOperationResult<string>.Failure(EditorError);
         }
 
-        IsBusy = true;
-        OperationError = string.Empty;
-        try
-        {
-            var savedId = await _service.SaveCipherAsync(draft, _editingId);
-            ReloadItems();
-            ReloadFilters();
-            SelectById(savedId);
-            IsEditing = false;
-            EditorDraft = null;
-            EditorError = string.Empty;
-            _editingId = null;
-            OnPropertyChanged(nameof(EditorTitle));
-            return true;
-        }
-        catch (Exception ex)
-        {
-            OperationError = ex.Message;
-            return false;
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        var draft = EditorDraft;
+        var editingId = _editingId;
+        return await RunOperationAsync(
+            VaultOperationKind.SaveCipher,
+            async token =>
+            {
+                var savedId = await _service.SaveCipherAsync(draft, editingId, token);
+                ReloadItems();
+                ReloadFilters();
+                SelectById(savedId);
+                CancelEdit();
+                return savedId;
+            },
+            ct);
     }
 
-    public Task<bool> SoftDeleteAsync(string id) =>
-        RunWriteAsync(() => _service.DeleteCipherAsync(id, permanent: false), selectId: null);
+    private async Task<UiOperationResult> RunWriteAndReloadAsync(
+        VaultOperationKind kind,
+        Func<CancellationToken, Task> operation,
+        string? selectId,
+        CancellationToken ct)
+    {
+        var result = await RunOperationAsync(
+            kind,
+            async token =>
+            {
+                await operation(token);
+                ReloadItems();
+                ReloadFilters();
+                SelectById(selectId);
+                return true;
+            },
+            ct);
+        return new UiOperationResult(result.Status, result.Error);
+    }
 
-    public Task<bool> PermanentDeleteAsync(string id) =>
-        RunWriteAsync(() => _service.DeleteCipherAsync(id, permanent: true), selectId: null);
+    public Task<UiOperationResult> SoftDeleteAsync(string id, CancellationToken ct = default) =>
+        RunWriteAndReloadAsync(
+            VaultOperationKind.DeleteCipher,
+            token => _service.DeleteCipherAsync(id, permanent: false, token),
+            selectId: null,
+            ct);
 
-    public Task<bool> RestoreAsync(string id) =>
-        RunWriteAsync(() => _service.RestoreCipherAsync(id), selectId: id);
+    public Task<UiOperationResult> PermanentDeleteAsync(string id, CancellationToken ct = default) =>
+        RunWriteAndReloadAsync(
+            VaultOperationKind.DeleteCipher,
+            token => _service.DeleteCipherAsync(id, permanent: true, token),
+            selectId: null,
+            ct);
 
-    public async Task<bool> SaveFolderAsync(string? folderId, string name)
+    public Task<UiOperationResult> RestoreAsync(string id, CancellationToken ct = default) =>
+        RunWriteAndReloadAsync(
+            VaultOperationKind.DeleteCipher,
+            token => _service.RestoreCipherAsync(id, token),
+            selectId: id,
+            ct);
+
+    public async Task<UiOperationResult> SaveFolderAsync(string? folderId, string name, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(name))
-            return false;
-        var ok = await RunWriteAsync(() => _service.SaveFolderAsync(folderId, name.Trim()), selectId: SelectedItem?.Id);
-        if (ok)
+            return UiOperationResult.Failure("文件夹名称不能为空。");
+        var result = await RunWriteAndReloadAsync(
+            VaultOperationKind.Folder,
+            token => _service.SaveFolderAsync(folderId, name.Trim(), token),
+            SelectedItem?.Id,
+            ct);
+        if (result.IsSuccess)
             FoldersChanged?.Invoke(this, EventArgs.Empty);
-        return ok;
+        return result;
     }
 
-    public async Task<bool> DeleteFolderAsync(string folderId)
+    public async Task<UiOperationResult> DeleteFolderAsync(string folderId, CancellationToken ct = default)
     {
-        var ok = await RunWriteAsync(() => _service.DeleteFolderAsync(folderId), selectId: SelectedItem?.Id);
-        if (ok)
+        var result = await RunWriteAndReloadAsync(
+            VaultOperationKind.Folder,
+            token => _service.DeleteFolderAsync(folderId, token),
+            SelectedItem?.Id,
+            ct);
+        if (result.IsSuccess)
             FoldersChanged?.Invoke(this, EventArgs.Empty);
-        return ok;
+        return result;
     }
 
-    private async Task<bool> RunWriteAsync(Func<Task> operation, string? selectId)
+    // 批量操作共用 helper:从 _selectedIds 取快照;空选择直接失败,不占用门禁、不触发服务调用。
+    private Task<UiOperationResult> RunBatchAsync(
+        Func<IReadOnlyCollection<string>, CancellationToken, Task> operation,
+        CancellationToken ct = default)
     {
-        if (IsBusy)
-            return false;
-
-        IsBusy = true;
-        OperationError = string.Empty;
-        try
-        {
-            await operation();
-            ReloadItems();
-            ReloadFilters();
-            SelectById(selectId);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            OperationError = ex.Message;
-            return false;
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        var ids = _selectedIds.ToArray();
+        if (ids.Length == 0)
+            return Task.FromResult(UiOperationResult.Failure("没有选择任何条目。"));
+        return RunWriteAndReloadAsync(
+            VaultOperationKind.Batch,
+            token => operation(ids, token),
+            selectId: null,
+            ct);
     }
 
     private void ReloadItems()
@@ -620,11 +717,25 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         SelectedItem = item;
     }
 
-    [RelayCommand]
-    private async Task Sync()
+    public async Task<UiOperationResult> SyncAsync(CancellationToken ct = default)
     {
-        await RunWriteAsync(() => _service.SyncAsync(), selectId: SelectedItem?.Id);
+        var selectedId = SelectedItem?.Id;
+        var result = await RunOperationAsync(
+            VaultOperationKind.Sync,
+            async token =>
+            {
+                await _service.SyncAsync(token);
+                ReloadItems();
+                ReloadFilters();
+                SelectById(selectedId);
+                return true;
+            },
+            ct);
+        return new UiOperationResult(result.Status, result.Error);
     }
+
+    [RelayCommand]
+    private Task Sync() => SyncAsync();
 
     /// <summary>
     /// 从服务快照刷新列表（不发起网络请求），供 WebSocket 推送后 UI 增量刷新使用。
@@ -671,9 +782,11 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     }
 
     // 锁屏/登出时清空内存中的明文足迹:选中项、详情、编辑草稿、搜索与全部条目/过滤集合。
+    // 先取消当前 Vault 操作(尽快退出,不等待网络往返),lease 失效仍是最终提交保护。
     // 幂等:重复调用安全(集合已空、属性已置默认值)。
     public void ClearSensitive()
     {
+        CancelCurrentOperation();
         SelectedItem = null;
         Detail = null;
         EditorDraft = null;
@@ -682,7 +795,6 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         SearchText = string.Empty;
         OperationError = string.Empty;
         EditorError = string.Empty;
-        AttachmentBusyText = string.Empty;
         ClearSelection();
         Items.Clear();
         FilteredItems.Clear();
@@ -717,11 +829,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     [RelayCommand]
     private async Task MoveSelectedToFolder(string? folderId)
     {
-        if (_selectedIds.Count == 0)
-            return;
-        var ids = _selectedIds.ToArray();
-        var ok = await RunWriteAsync(() => _service.MoveCiphersAsync(ids, folderId), selectId: null);
-        if (ok)
+        var result = await RunBatchAsync((ids, ct) => _service.MoveCiphersAsync(ids, folderId, ct));
+        if (result.IsSuccess)
             IsSelectionMode = false; // OnIsSelectionModeChanged clears selection
     }
 
@@ -730,22 +839,16 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     [RelayCommand]
     private async Task SoftDeleteSelected()
     {
-        if (_selectedIds.Count == 0)
-            return;
-        var ids = _selectedIds.ToArray();
-        var ok = await RunWriteAsync(() => _service.DeleteCiphersAsync(ids, permanent: false), selectId: null);
-        if (ok)
+        var result = await RunBatchAsync((ids, ct) => _service.DeleteCiphersAsync(ids, permanent: false, ct));
+        if (result.IsSuccess)
             IsSelectionMode = false;
     }
 
     [RelayCommand]
     private async Task RestoreSelected()
     {
-        if (_selectedIds.Count == 0)
-            return;
-        var ids = _selectedIds.ToArray();
-        var ok = await RunWriteAsync(() => _service.RestoreCiphersAsync(ids), selectId: null);
-        if (ok)
+        var result = await RunBatchAsync((ids, ct) => _service.RestoreCiphersAsync(ids, ct));
+        if (result.IsSuccess)
             IsSelectionMode = false;
     }
 
@@ -753,22 +856,24 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     [RelayCommand]
     private async Task PermanentDeleteSelected()
     {
-        if (_selectedIds.Count == 0)
-            return;
-        var ids = _selectedIds.ToArray();
-        var ok = await RunWriteAsync(() => _service.DeleteCiphersAsync(ids, permanent: true), selectId: null);
-        if (ok)
+        var result = await RunBatchAsync((ids, ct) => _service.DeleteCiphersAsync(ids, permanent: true, ct));
+        if (result.IsSuccess)
             IsSelectionMode = false;
     }
 
-    // 注：清空确认在 XAML code-behind 先弹 ContentDialog，确认后才执行此命令。
+    // 注：清空确认在 XAML code-behind 先弹 ContentDialog，确认后才执行此命令。清空回收站不依赖
+    // 选择集(操作全部已删除条目),故不经 RunBatchAsync,直接复用 RunWriteAndReloadAsync。
     [RelayCommand]
-    private async Task EmptyRecycleBinAsync()
+    private Task<UiOperationResult> EmptyRecycleBinAsync()
     {
         var ids = Items.Where(i => i.IsDeleted).Select(i => i.Id).ToArray();
         if (ids.Length == 0)
-            return;
-        await RunWriteAsync(() => _service.DeleteCiphersAsync(ids, permanent: true), selectId: null);
+            return Task.FromResult(UiOperationResult.Failure("回收站为空。"));
+        return RunWriteAndReloadAsync(
+            VaultOperationKind.Batch,
+            token => _service.DeleteCiphersAsync(ids, permanent: true, token),
+            selectId: null,
+            CancellationToken.None);
     }
 
     [RelayCommand]
@@ -850,97 +955,71 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         return UiOperationResult<bool>.Success(true);
     }
 
-    public Task<bool> ToggleFavoriteAsync(string id) =>
-        RunWriteAsync(async () =>
-        {
-            var draft = _service.GetDraft(id);
-            draft.Favorite = !draft.Favorite;
-            await _service.SaveCipherAsync(draft, id);
-        }, selectId: id);
+    public Task<UiOperationResult> ToggleFavoriteAsync(string id, CancellationToken ct = default) =>
+        RunWriteAndReloadAsync(
+            VaultOperationKind.SaveCipher,
+            async token =>
+            {
+                var draft = _service.GetDraft(id);
+                draft.Favorite = !draft.Favorite;
+                await _service.SaveCipherAsync(draft, id, token);
+            },
+            selectId: id,
+            ct);
 
-    public async Task AddAttachmentAsync(string cipherId, byte[] fileBytes, string fileName, CancellationToken ct = default)
+    public async Task<UiOperationResult> AddAttachmentAsync(string cipherId, byte[] fileBytes, string fileName, CancellationToken ct = default)
     {
-        if (_attachments is null || IsBusy)
-            return;
+        if (_attachments is null)
+            return UiOperationResult.Failure("附件服务不可用");
 
-        IsBusy = true;
-        AttachmentBusyText = "上传中…";
-        OperationError = string.Empty;
-        try
-        {
-            var attachments = await _attachments.AddAttachmentAsync(cipherId, fileBytes, fileName, ct);
-            RefreshDetailAttachments(cipherId, attachments);
-        }
-        catch (Exception ex)
-        {
-            OperationError = ex.Message;
-        }
-        finally
-        {
-            AttachmentBusyText = string.Empty;
-            IsBusy = false;
-        }
+        var result = await RunOperationAsync(
+            VaultOperationKind.AttachmentUpload,
+            async token =>
+            {
+                var attachments = await _attachments.AddAttachmentAsync(cipherId, fileBytes, fileName, token);
+                RefreshDetailAttachments(cipherId, attachments);
+                return true;
+            },
+            ct);
+        return new UiOperationResult(result.Status, result.Error);
     }
 
-    // 下载附件前必须先过条目级门禁:被拒/取消时绝不调用附件服务。返回携带字节的 UiOperationResult。
+    // 下载附件前必须先过条目级门禁:被拒/取消时绝不调用附件服务、绝不占用操作门禁。
+    // 门禁原子去重交由 RunOperationAsync 的 TryEnter 完成,无需额外 IsBusy 预检查。
     public async Task<UiOperationResult<byte[]>> DownloadAttachmentAsync(
         string cipherId,
         string attachmentId,
         Func<CancellationToken, Task<string?>> prompt,
         CancellationToken ct = default)
     {
-        if (_attachments is null)
-            return UiOperationResult<byte[]>.Failure("附件服务不可用");
-        if (IsBusy)
-            return UiOperationResult<byte[]>.Busy();
-
         var authorization = await EnsureAuthorizedAsync(
             cipherId, SensitiveItemAction.DownloadAttachment, prompt, ct);
         if (!authorization.IsSuccess)
             return new UiOperationResult<byte[]>(authorization.Status, default, authorization.Error);
+        if (_attachments is null)
+            return UiOperationResult<byte[]>.Failure("附件服务不可用");
 
-        IsBusy = true;
-        AttachmentBusyText = "下载中…";
-        OperationError = string.Empty;
-        try
-        {
-            var bytes = await _attachments.DownloadAttachmentAsync(cipherId, attachmentId, ct);
-            return UiOperationResult<byte[]>.Success(bytes);
-        }
-        catch (Exception ex)
-        {
-            OperationError = ex.Message;
-            return UiOperationResult<byte[]>.Failure(ex.Message);
-        }
-        finally
-        {
-            AttachmentBusyText = string.Empty;
-            IsBusy = false;
-        }
+        return await RunOperationAsync(
+            VaultOperationKind.AttachmentDownload,
+            token => _attachments.DownloadAttachmentAsync(cipherId, attachmentId, token),
+            ct);
     }
 
-    public async Task DeleteAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default)
+    public async Task<UiOperationResult> DeleteAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default)
     {
-        if (_attachments is null || IsBusy)
-            return;
+        if (_attachments is null)
+            return UiOperationResult.Failure("附件服务不可用");
 
-        IsBusy = true;
-        AttachmentBusyText = "删除中…";
-        OperationError = string.Empty;
-        try
-        {
-            var attachments = await _attachments.DeleteAttachmentAsync(cipherId, attachmentId, ct);
-            RefreshDetailAttachments(cipherId, attachments);
-        }
-        catch (Exception ex)
-        {
-            OperationError = ex.Message;
-        }
-        finally
-        {
-            AttachmentBusyText = string.Empty;
-            IsBusy = false;
-        }
+        var result = await RunOperationAsync(
+            VaultOperationKind.AttachmentDelete,
+            async token =>
+            {
+                var attachments = await _attachments.DeleteAttachmentAsync(cipherId, attachmentId, token);
+                RefreshDetailAttachments(cipherId, attachments);
+                return true;
+            },
+            ct);
+        return new UiOperationResult(result.Status, result.Error);
     }
 
     // 当前选中详情就是被改动的条目时,用最新附件列表重投影 Detail。

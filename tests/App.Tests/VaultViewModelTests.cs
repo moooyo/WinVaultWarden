@@ -345,7 +345,7 @@ public class VaultViewModelTests
 
         var saved = await vm.SaveDraftAsync();
 
-        Assert.False(saved);
+        Assert.False(saved.IsSuccess);
         Assert.True(vm.IsEditing);
         Assert.Equal("项目名称为必填项。", vm.EditorError);
     }
@@ -362,7 +362,7 @@ public class VaultViewModelTests
 
         var saved = await vm.SaveDraftAsync();
 
-        Assert.True(saved);
+        Assert.True(saved.IsSuccess);
         Assert.False(vm.IsEditing);
         Assert.NotNull(vm.SelectedItem);
         Assert.Equal("GitHub", vm.SelectedItem!.Name);
@@ -382,7 +382,7 @@ public class VaultViewModelTests
 
         var saved = await vm.SaveDraftAsync();
 
-        Assert.False(saved);
+        Assert.False(saved.IsSuccess);
         Assert.True(vm.IsEditing);
         Assert.Contains("SSH 公钥为必填项。", vm.EditorError);
     }
@@ -402,7 +402,7 @@ public class VaultViewModelTests
 
         var saved = await vm.SaveDraftAsync();
 
-        Assert.True(saved);
+        Assert.True(saved.IsSuccess);
         var detail = Assert.IsType<CardDetail>(vm.Detail);
         Assert.Equal("Ming", detail.Cardholder);
         Assert.Equal("08/2030", detail.Expiry);
@@ -425,7 +425,7 @@ public class VaultViewModelTests
 
         var saved = await vm.SaveDraftAsync();
 
-        Assert.True(saved);
+        Assert.True(saved.IsSuccess);
         var detail = Assert.IsType<IdentityDetail>(vm.Detail);
         Assert.Equal("Ming Chen", detail.FullName);
         Assert.Equal("mingc", detail.Username);
@@ -445,7 +445,7 @@ public class VaultViewModelTests
 
         var saved = await vm.SaveDraftAsync();
 
-        Assert.True(saved);
+        Assert.True(saved.IsSuccess);
         var detail = Assert.IsType<NoteDetail>(vm.Detail);
         Assert.Equal("Recovery Note", detail.Name);
         Assert.Equal("keep offline", detail.Content);
@@ -464,7 +464,7 @@ public class VaultViewModelTests
 
         var saved = await vm.SaveDraftAsync();
 
-        Assert.True(saved);
+        Assert.True(saved.IsSuccess);
         var detail = Assert.IsType<SshDetail>(vm.Detail);
         Assert.Equal("ssh-ed25519 AAAA", detail.PublicKey);
         Assert.Equal("private-key", detail.PrivateKey);
@@ -501,7 +501,7 @@ public class VaultViewModelTests
 
         var saved = await vm.SaveDraftAsync();
 
-        Assert.True(saved);
+        Assert.True(saved.IsSuccess);
 
         // Reprompt 条目且无门禁授权 → vm.Detail 为脱敏投影:隐藏字段值被抹除,未解锁。
         var locked = Assert.IsType<LoginDetail>(vm.Detail);
@@ -552,7 +552,7 @@ public class VaultViewModelTests
 
         var saved = await vm.SaveDraftAsync();
 
-        Assert.True(saved);
+        Assert.True(saved.IsSuccess);
         Assert.Equal(FilterKind.AllItems, vm.SelectedFilter!.Kind);
         Assert.Equal("vault:allitems", vm.SelectedFilterTag);
         Assert.Contains(vm.FilteredItems, item => item.Name == "Filter Card");
@@ -569,7 +569,7 @@ public class VaultViewModelTests
 
         var saved = await vm.SaveDraftAsync();
 
-        Assert.True(saved);
+        Assert.True(saved.IsSuccess);
         Assert.Equal("", vm.SearchText);
         Assert.Equal("Search Hidden Card", vm.SelectedItem!.Name);
         Assert.Contains(vm.FilteredItems, item => item.Id == vm.SelectedItem.Id);
@@ -585,7 +585,7 @@ public class VaultViewModelTests
 
         var saved = await vm.SaveDraftAsync();
 
-        Assert.True(saved);
+        Assert.True(saved.IsSuccess);
         Assert.Equal("f1", vm.SelectedItem!.FolderId);
         var detail = Assert.IsType<LoginDetail>(vm.Detail);
         Assert.Equal("文件夹1", detail.FolderName);
@@ -622,7 +622,7 @@ public class VaultViewModelTests
         first.EditorDraft!.Name = "Persistent Login";
         first.EditorDraft.Login.Username = "persisted";
 
-        Assert.True(await first.SaveDraftAsync());
+        Assert.True((await first.SaveDraftAsync()).IsSuccess);
 
         var second = new VaultViewModel(service);
         var item = Assert.Single(second.Items, i => i.Name == "Persistent Login");
@@ -658,7 +658,7 @@ public class VaultViewModelTests
 
         var saved = await vm.SaveDraftAsync();
 
-        Assert.True(saved);
+        Assert.True(saved.IsSuccess);
         Assert.Equal(before, vm.Items.Count);
         Assert.Contains(vm.Items, i => i.Id == "1" && i.Name == "百度网盘改名");
         Assert.Equal("百度网盘改名", vm.SelectedItem!.Name);
@@ -672,7 +672,7 @@ public class VaultViewModelTests
 
         var ok = await vm.SoftDeleteAsync("1");
 
-        Assert.True(ok);
+        Assert.True(ok.IsSuccess);
         Assert.Null(vm.SelectedItem);
         Assert.True(vm.Items.First(i => i.Id == "1").IsDeleted);
         Assert.DoesNotContain(vm.FilteredItems, i => i.Id == "1"); // AllItems hides trash
@@ -685,7 +685,7 @@ public class VaultViewModelTests
 
         var ok = await vm.RestoreAsync("6");
 
-        Assert.True(ok);
+        Assert.True(ok.IsSuccess);
         Assert.False(vm.Items.First(i => i.Id == "6").IsDeleted);
     }
 
@@ -696,7 +696,7 @@ public class VaultViewModelTests
 
         var ok = await vm.PermanentDeleteAsync("6");
 
-        Assert.True(ok);
+        Assert.True(ok.IsSuccess);
         Assert.DoesNotContain(vm.Items, i => i.Id == "6");
     }
 
@@ -709,7 +709,7 @@ public class VaultViewModelTests
 
         var ok = await vm.SaveFolderAsync(null, "新建文件夹");
 
-        Assert.True(ok);
+        Assert.True(ok.IsSuccess);
         Assert.True(raised);
         Assert.Contains(vm.Filters, f => f.Kind == FilterKind.Folder && f.Label == "新建文件夹");
     }
@@ -723,13 +723,13 @@ public class VaultViewModelTests
 
         var ok = await vm.DeleteFolderAsync("f1");
 
-        Assert.True(ok);
+        Assert.True(ok.IsSuccess);
         Assert.True(raised);
         Assert.DoesNotContain(vm.Filters, f => f.Kind == FilterKind.Folder && f.FolderId == "f1");
     }
 
     [Fact]
-    public async Task SaveDraftAsync_WhenServiceThrows_SetsOperationErrorAndReturnsFalse()
+    public async Task SaveDraftAsync_WhenServiceThrows_SetsSafeOperationErrorAndReturnsFailure()
     {
         var vm = new VaultViewModel(new ThrowingVaultUiService());
         vm.BeginAdd(VaultItemKind.Login);
@@ -737,36 +737,53 @@ public class VaultViewModelTests
 
         var saved = await vm.SaveDraftAsync();
 
-        Assert.False(saved);
-        Assert.Equal("boom", vm.OperationError);
+        Assert.False(saved.IsSuccess);
+        Assert.Equal(UiOperationStatus.Failed, saved.Status);
+        Assert.Equal("网络请求失败，请检查连接后重试。", vm.OperationError);
         Assert.True(vm.IsEditing);       // stays in editor so user can retry
         Assert.False(vm.IsBusy);
     }
 
     [Fact]
-    public async Task SaveDraftAsync_WhenAlreadyBusy_ShortCircuitsBeforeCallingService()
+    public async Task SaveDraftAsync_WhileAnotherSaveInFlight_ReturnsBusyWithoutCallingServiceAgain()
     {
-        var vm = new VaultViewModel(new ThrowingVaultUiService());
+        var service = new ControlledSaveVaultUiService();
+        var vm = new VaultViewModel(service);
         vm.BeginAdd(VaultItemKind.Login);
-        vm.EditorDraft!.Name = "X";
-        vm.IsBusy = true; // 模拟已有写入在途(防快速双击重复创建)
+        vm.EditorDraft!.Name = "First";
+        var first = vm.SaveDraftAsync();
+        Assert.Equal(VaultOperationKind.SaveCipher, vm.CurrentOperation);
 
-        var result = await vm.SaveDraftAsync();
+        // 第一个保存仍在途:必须先重新进入编辑态才能再次触发 SaveDraftAsync(EditorDraft 在保存
+        // 成功前不会被清空,因为 RunOperationAsync 尚未完成 action)。
+        var second = await vm.SaveDraftAsync();
 
-        Assert.False(result);
-        Assert.Equal(string.Empty, vm.OperationError); // 服务未被调用(否则 ThrowingVaultUiService 会抛出并置错误)
+        Assert.Equal(UiOperationStatus.Busy, second.Status);
+        Assert.Equal(1, service.SaveCalls);
+        Assert.Equal(string.Empty, vm.OperationError); // Busy 不写 OperationError
+
+        service.CompleteSave("saved-id");
+        Assert.True((await first).IsSuccess);
+        Assert.True(vm.CanStartVaultOperation);
     }
 
     [Fact]
-    public async Task SoftDeleteAsync_WhenAlreadyBusy_ShortCircuitsBeforeCallingService()
+    public async Task SoftDeleteAsync_WhileSaveInFlight_ReturnsBusyWithoutCallingDeleteCipher()
     {
-        var vm = new VaultViewModel(new ThrowingVaultUiService());
-        vm.IsBusy = true;
+        var service = new ControlledSaveVaultUiService();
+        var vm = new VaultViewModel(service);
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.EditorDraft!.Name = "First";
+        var save = vm.SaveDraftAsync();
+        Assert.Equal(VaultOperationKind.SaveCipher, vm.CurrentOperation);
 
-        var result = await vm.SoftDeleteAsync("1");
+        var deleteResult = await vm.SoftDeleteAsync("1");
 
-        Assert.False(result);
-        Assert.Equal(string.Empty, vm.OperationError);
+        Assert.Equal(UiOperationStatus.Busy, deleteResult.Status);
+        Assert.Equal(0, service.DeleteCipherCalls);
+
+        service.CompleteSave("saved-id");
+        await save;
     }
 
     [Fact]
@@ -815,6 +832,304 @@ public class VaultViewModelTests
         vm.OperationError = string.Empty;
         Assert.False(vm.HasOperationError);
     }
+
+    // ── Task 11:统一 Vault 操作门禁(CurrentOperation/BusyMessage/CanStartVaultOperation) ──────
+
+    [Fact]
+    public async Task SyncInFlight_SaveReturnsBusyWithoutCallingSave()
+    {
+        var service = new ControlledVaultUiService();
+        var vm = new VaultViewModel(service);
+
+        var sync = vm.SyncAsync();
+        Assert.Equal(VaultOperationKind.Sync, vm.CurrentOperation);
+        Assert.Equal("正在同步保险库…", vm.BusyMessage);
+        Assert.False(vm.CanStartVaultOperation);
+
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.EditorDraft!.Name = "Blocked";
+        var save = await vm.SaveDraftAsync();
+
+        Assert.Equal(UiOperationStatus.Busy, save.Status);
+        Assert.Equal(0, service.SaveCalls);
+
+        service.CompleteSync();
+        Assert.True((await sync).IsSuccess);
+        Assert.True(vm.CanStartVaultOperation);
+    }
+
+    [Theory]
+    [InlineData("SoftDelete")]
+    [InlineData("PermanentDelete")]
+    [InlineData("Restore")]
+    [InlineData("SaveFolder")]
+    [InlineData("DeleteFolder")]
+    [InlineData("ToggleFavorite")]
+    public async Task SyncInFlight_ConflictingOperation_ReturnsBusyWithoutServiceSideEffect(string operation)
+    {
+        var service = new ControlledVaultUiService();
+        var vm = new VaultViewModel(service);
+        vm.SelectedItem = vm.Items.First(i => i.Id == "1");
+
+        var sync = vm.SyncAsync();
+        Assert.False(vm.CanStartVaultOperation);
+
+        var result = operation switch
+        {
+            "SoftDelete" => await vm.SoftDeleteAsync("1"),
+            "PermanentDelete" => await vm.PermanentDeleteAsync("1"),
+            "Restore" => await vm.RestoreAsync("6"),
+            "SaveFolder" => await vm.SaveFolderAsync(null, "新文件夹"),
+            "DeleteFolder" => await vm.DeleteFolderAsync("f1"),
+            "ToggleFavorite" => await vm.ToggleFavoriteAsync("1"),
+            _ => throw new InvalidOperationException(),
+        };
+
+        Assert.Equal(UiOperationStatus.Busy, result.Status);
+        Assert.Equal(0, service.SaveCalls);
+        Assert.Equal(0, service.DeleteCipherCalls);
+        Assert.Equal(0, service.RestoreCipherCalls);
+        Assert.Equal(0, service.SaveFolderCalls);
+        Assert.Equal(0, service.DeleteFolderCalls);
+
+        service.CompleteSync();
+        Assert.True((await sync).IsSuccess);
+        Assert.True(vm.CanStartVaultOperation);
+    }
+
+    // 批量/命令式操作(Move/SoftDeleteSelected/RestoreSelected/PermanentDeleteSelected/EmptyRecycleBin)
+    // 经 ICommand.ExecuteAsync 触发,无法直接取回 UiOperationResult(命令包装丢弃返回值);
+    // 改用可观察副作用断言:同步在途时批量服务从未被调用、IsSelectionMode 不因 Busy 被清空。
+    [Theory]
+    [InlineData("MoveSelected")]
+    [InlineData("SoftDeleteSelected")]
+    [InlineData("RestoreSelected")]
+    [InlineData("PermanentDeleteSelected")]
+    [InlineData("EmptyRecycleBin")]
+    public async Task SyncInFlight_BatchCommand_HasNoServiceSideEffect(string operation)
+    {
+        var service = new ControlledVaultUiService();
+        var vm = new VaultViewModel(service);
+        vm.ToggleSelectionModeCommand.Execute(null);
+        vm.ToggleSelection("1");
+
+        var sync = vm.SyncAsync();
+        Assert.False(vm.CanStartVaultOperation);
+
+        switch (operation)
+        {
+            case "MoveSelected":
+                await vm.MoveSelectedToFolderAsync("f1");
+                break;
+            case "SoftDeleteSelected":
+                await vm.SoftDeleteSelectedCommand.ExecuteAsync(null);
+                break;
+            case "RestoreSelected":
+                await vm.RestoreSelectedCommand.ExecuteAsync(null);
+                break;
+            case "PermanentDeleteSelected":
+                await vm.PermanentDeleteSelectedCommand.ExecuteAsync(null);
+                break;
+            case "EmptyRecycleBin":
+                await vm.EmptyRecycleBinCommand.ExecuteAsync(null);
+                break;
+        }
+
+        // Busy 期间批量写入服务从未被触达;选择模式未因(不存在的)成功回调被清空。
+        Assert.Equal(0, service.MoveCiphersCalls);
+        Assert.Equal(0, service.DeleteCiphersCalls);
+        Assert.Equal(0, service.RestoreCiphersCalls);
+        if (operation != "EmptyRecycleBin")
+            Assert.True(vm.IsSelectionMode);
+
+        service.CompleteSync();
+        Assert.True((await sync).IsSuccess);
+        Assert.True(vm.CanStartVaultOperation);
+    }
+
+    [Fact]
+    public async Task SaveCipherInFlight_SyncReturnsBusy_ProvingSharedGateNotPerKind()
+    {
+        var service = new ControlledSaveVaultUiService();
+        var vm = new VaultViewModel(service);
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.EditorDraft!.Name = "First";
+        var save = vm.SaveDraftAsync();
+        Assert.Equal(VaultOperationKind.SaveCipher, vm.CurrentOperation);
+
+        var sync = await vm.SyncAsync();
+
+        Assert.Equal(UiOperationStatus.Busy, sync.Status);
+
+        service.CompleteSave("saved-id");
+        await save;
+    }
+
+    [Fact]
+    public async Task CancelCurrentOperation_CancelsInFlightSync_AndReleasesGate()
+    {
+        var service = new ControlledVaultUiService();
+        var vm = new VaultViewModel(service);
+
+        var sync = vm.SyncAsync();
+        Assert.False(vm.CanStartVaultOperation);
+
+        vm.CancelCurrentOperation();
+        var result = await sync;
+
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
+        Assert.False(result.IsSuccess);
+        Assert.True(vm.CanStartVaultOperation);
+        Assert.Null(vm.CurrentOperation);
+        Assert.Equal(string.Empty, vm.OperationError); // 取消不是失败,不写错误文案
+    }
+
+    [Fact]
+    public async Task ClearSensitive_CancelsInFlightOperation_AndClearsCurrentOperation()
+    {
+        var service = new ControlledVaultUiService();
+        var vm = new VaultViewModel(service);
+
+        var sync = vm.SyncAsync();
+        Assert.False(vm.CanStartVaultOperation);
+
+        ((ISensitiveState)vm).ClearSensitive();
+        await sync;
+
+        Assert.True(vm.CanStartVaultOperation);
+        Assert.Null(vm.CurrentOperation);
+    }
+
+    [Theory]
+    [InlineData(VaultOperationKind.Sync, "正在同步保险库…")]
+    [InlineData(VaultOperationKind.SaveCipher, "正在保存条目…")]
+    [InlineData(VaultOperationKind.DeleteCipher, "正在更新回收站…")]
+    [InlineData(VaultOperationKind.Folder, "正在更新文件夹…")]
+    [InlineData(VaultOperationKind.Batch, "正在处理所选条目…")]
+    [InlineData(VaultOperationKind.AttachmentUpload, "正在上传附件…")]
+    [InlineData(VaultOperationKind.AttachmentDownload, "正在下载附件…")]
+    [InlineData(VaultOperationKind.AttachmentDelete, "正在删除附件…")]
+    public void BusyMessage_MatchesCurrentOperationKind(VaultOperationKind kind, string expected)
+    {
+        var vm = NewVm();
+        vm.CurrentOperation = kind;
+        Assert.Equal(expected, vm.BusyMessage);
+    }
+
+    [Fact]
+    public void BusyMessage_EmptyWhenNoCurrentOperation()
+    {
+        var vm = NewVm();
+        Assert.Null(vm.CurrentOperation);
+        Assert.Equal(string.Empty, vm.BusyMessage);
+        Assert.True(vm.CanStartVaultOperation);
+        Assert.False(vm.IsBusy);
+    }
+}
+
+// 门控 fake:SyncAsync 在被显式释放(CompleteSync)前保持挂起,用于验证同步在途时其余写入
+// 操作全部返回 Busy 且从未触达底层服务(计数保持 0)。
+public sealed class ControlledVaultUiService : IVaultUiService
+{
+    private readonly MockVaultUiService _inner = new();
+    private TaskCompletionSource _sync = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public int SaveCalls { get; private set; }
+    public int DeleteCipherCalls { get; private set; }
+    public int RestoreCipherCalls { get; private set; }
+    public int SaveFolderCalls { get; private set; }
+    public int DeleteFolderCalls { get; private set; }
+    public int MoveCiphersCalls { get; private set; }
+    public int DeleteCiphersCalls { get; private set; }
+    public int RestoreCiphersCalls { get; private set; }
+    public int SkippedCipherCount => _inner.SkippedCipherCount;
+    public bool DataStale => _inner.DataStale;
+
+    public IReadOnlyList<CipherListItem> GetItems() => _inner.GetItems();
+    public CipherAccessPolicy GetAccessPolicy(string id) => _inner.GetAccessPolicy(id);
+    public CipherDetail GetDetail(string id, bool includeSensitive) => _inner.GetDetail(id, includeSensitive);
+    public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
+    public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
+    public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default)
+    {
+        SaveCalls++;
+        return _inner.SaveCipherAsync(draft, editingId, ct);
+    }
+    public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default)
+    {
+        DeleteCipherCalls++;
+        return _inner.DeleteCipherAsync(id, permanent, ct);
+    }
+    public Task RestoreCipherAsync(string id, CancellationToken ct = default)
+    {
+        RestoreCipherCalls++;
+        return _inner.RestoreCipherAsync(id, ct);
+    }
+    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default)
+    {
+        SaveFolderCalls++;
+        return _inner.SaveFolderAsync(folderId, name, ct);
+    }
+    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default)
+    {
+        DeleteFolderCalls++;
+        return _inner.DeleteFolderAsync(folderId, ct);
+    }
+    public async Task SyncAsync(CancellationToken ct = default)
+    {
+        using var registration = ct.Register(() => _sync.TrySetCanceled(ct));
+        await _sync.Task;
+    }
+    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default)
+    {
+        MoveCiphersCalls++;
+        return _inner.MoveCiphersAsync(ids, folderId, ct);
+    }
+    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default)
+    {
+        DeleteCiphersCalls++;
+        return _inner.DeleteCiphersAsync(ids, permanent, ct);
+    }
+    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
+    {
+        RestoreCiphersCalls++;
+        return _inner.RestoreCiphersAsync(ids, ct);
+    }
+    public void CompleteSync() => _sync.TrySetResult();
+}
+
+// 门控 fake:SaveCipherAsync 在被显式释放(CompleteSave)前保持挂起,用于验证"保存进行中"
+// 时其余冲突操作(含反方向的 Sync)返回 Busy。
+public sealed class ControlledSaveVaultUiService : IVaultUiService
+{
+    private readonly MockVaultUiService _inner = new();
+    private readonly TaskCompletionSource<string> _save = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public int SaveCalls { get; private set; }
+    public int DeleteCipherCalls { get; private set; }
+    public int SkippedCipherCount => _inner.SkippedCipherCount;
+    public bool DataStale => _inner.DataStale;
+    public IReadOnlyList<CipherListItem> GetItems() => _inner.GetItems();
+    public CipherAccessPolicy GetAccessPolicy(string id) => _inner.GetAccessPolicy(id);
+    public CipherDetail GetDetail(string id, bool includeSensitive) => _inner.GetDetail(id, includeSensitive);
+    public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
+    public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
+    public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default)
+    {
+        SaveCalls++;
+        return _save.Task;
+    }
+    public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default)
+    {
+        DeleteCipherCalls++;
+        return _inner.DeleteCipherAsync(id, permanent, ct);
+    }
+    public Task RestoreCipherAsync(string id, CancellationToken ct = default) => _inner.RestoreCipherAsync(id, ct);
+    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => _inner.SaveFolderAsync(folderId, name, ct);
+    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => _inner.DeleteFolderAsync(folderId, ct);
+    public Task SyncAsync(CancellationToken ct = default) => _inner.SyncAsync(ct);
+    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => _inner.MoveCiphersAsync(ids, folderId, ct);
+    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default) => _inner.DeleteCiphersAsync(ids, permanent, ct);
+    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) => _inner.RestoreCiphersAsync(ids, ct);
+    public void CompleteSave(string id) => _save.TrySetResult(id);
 }
 
 public sealed class ThrowingVaultUiService : IVaultUiService
@@ -827,15 +1142,15 @@ public sealed class ThrowingVaultUiService : IVaultUiService
     public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
     public int SkippedCipherCount => 0;
     public bool DataStale => false;
-    public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => throw new InvalidOperationException("boom");
-    public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => throw new InvalidOperationException("boom");
-    public Task RestoreCipherAsync(string id, CancellationToken ct = default) => throw new InvalidOperationException("boom");
-    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => throw new InvalidOperationException("boom");
-    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => throw new InvalidOperationException("boom");
-    public Task SyncAsync(CancellationToken ct = default) => throw new InvalidOperationException("boom");
-    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => throw new InvalidOperationException("boom");
-    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default) => throw new InvalidOperationException("boom");
-    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) => throw new InvalidOperationException("boom");
+    public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => throw new HttpRequestException("boom");
+    public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => throw new HttpRequestException("boom");
+    public Task RestoreCipherAsync(string id, CancellationToken ct = default) => throw new HttpRequestException("boom");
+    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => throw new HttpRequestException("boom");
+    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => throw new HttpRequestException("boom");
+    public Task SyncAsync(CancellationToken ct = default) => throw new HttpRequestException("boom");
+    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => throw new HttpRequestException("boom");
+    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default) => throw new HttpRequestException("boom");
+    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) => throw new HttpRequestException("boom");
 }
 
 public sealed class EmptyVaultUiService : IVaultUiService

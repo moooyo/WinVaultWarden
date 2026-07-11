@@ -39,31 +39,21 @@ public class VaultPageAttachmentXamlTests
     }
 
     [Fact]
-    public void ProgressRow_BoundToIsAttachmentBusyAndBusyText_WithEmptyToCollapsed()
-    {
-        var xaml = LoadXamlText();
-        Assert.Contains("IsActive=\"{x:Bind ViewModel.IsAttachmentBusy, Mode=OneWay}\"", xaml);
-        Assert.Contains("Text=\"{x:Bind ViewModel.AttachmentBusyText, Mode=OneWay}\"", xaml);
-        Assert.Contains(
-            "Visibility=\"{x:Bind ViewModel.AttachmentBusyText, Mode=OneWay, Converter={StaticResource EmptyToCollapsed}}\"",
-            xaml);
-    }
-
-    [Fact]
-    public void DownloadDeleteAddButtons_DisabledWhileAttachmentBusy()
+    public void DownloadDeleteAddButtons_DisabledWhileVaultBusy()
     {
         var document = LoadXaml();
 
         // 下载/删除按钮位于 DataTemplate(x:DataType=AttachmentItem)内,x:Bind 无法从模板内部
         // 反向引用页面级 ViewModel(WinUI x:Bind 编译绑定作用域限制);因此禁用状态改在外层
         // AttachmentsItems ItemsControl 上绑定 IsEnabled —— Control.IsEnabled=false 会向下
-        // 级联到所有子控件(含模板内生成的按钮),等效于逐按钮禁用。
+        // 级联到所有子控件(含模板内生成的按钮),等效于逐按钮禁用。Task 11 起改绑定统一的
+        // ViewModel.CanStartVaultOperation(取代旧的并行 AttachmentBusyText/IsNotAttachmentBusy)。
         var itemsControl = document.Descendants(Xaml + "ItemsControl")
             .Single(e => e.Attribute(X + "Name")?.Value == "AttachmentsItems");
         var addButton = document.Descendants(Xaml + "Button")
             .Single(b => b.Attribute(X + "Name")?.Value == "AddAttachmentButton");
 
-        const string expected = "{x:Bind ViewModel.IsNotAttachmentBusy, Mode=OneWay}";
+        const string expected = "{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}";
         Assert.Equal(expected, itemsControl.Attribute("IsEnabled")?.Value);
         Assert.Equal(expected, addButton.Attribute("IsEnabled")?.Value);
 

@@ -38,6 +38,10 @@ public sealed partial class VaultPage : Page
     public static ListViewSelectionMode SelectionModeFromBool(bool isSelectionMode) =>
         isSelectionMode ? ListViewSelectionMode.Multiple : ListViewSelectionMode.Single;
 
+    // 批量操作按钮需同时满足"有选中项"与"当前无 Vault 操作占用门禁"才可点击。
+    public static bool CanBatchOperate(bool hasSelection, bool canStartVaultOperation) =>
+        hasSelection && canStartVaultOperation;
+
     private void OnSelectAllClick(object sender, RoutedEventArgs e)
     {
         // 与 SelectAllCommand(填 _selectedIds)并行:让 ListView 也视觉全选,保持勾选与计数一致。
@@ -198,7 +202,7 @@ public sealed partial class VaultPage : Page
 
     private async void OnSaveCipherEditorClick(object sender, RoutedEventArgs e)
     {
-        if (await ViewModel.SaveDraftAsync())
+        if ((await ViewModel.SaveDraftAsync()).IsSuccess)
             UpdateDetailTemplate();
     }
 

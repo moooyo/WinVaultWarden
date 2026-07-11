@@ -63,7 +63,7 @@ public class VaultViewModelAttachmentTests
         public Task<IReadOnlyList<AttachmentItem>> AddAttachmentAsync(string cipherId, byte[] fileBytes, string fileName, CancellationToken ct = default)
         {
             if (ThrowOnAdd)
-                throw new InvalidOperationException("upload failed");
+                throw new HttpRequestException("upload failed");
             LastCipherId = cipherId;
             LastFileBytes = fileBytes;
             LastFileName = fileName;
@@ -73,7 +73,7 @@ public class VaultViewModelAttachmentTests
         public Task<byte[]> DownloadAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default)
         {
             if (ThrowOnDownload)
-                throw new InvalidOperationException("download failed");
+                throw new HttpRequestException("download failed");
             LastCipherId = cipherId;
             LastAttachmentId = attachmentId;
             return Task.FromResult(DownloadResult);
@@ -82,7 +82,7 @@ public class VaultViewModelAttachmentTests
         public Task<IReadOnlyList<AttachmentItem>> DeleteAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default)
         {
             if (ThrowOnDelete)
-                throw new InvalidOperationException("delete failed");
+                throw new HttpRequestException("delete failed");
             LastCipherId = cipherId;
             LastAttachmentId = attachmentId;
             return Task.FromResult(DeleteResult);
@@ -130,14 +130,14 @@ public class VaultViewModelAttachmentTests
     }
 
     [Fact]
-    public async Task AddAttachmentAsync_WhenServiceThrows_SetsOperationErrorAndClearsBusy()
+    public async Task AddAttachmentAsync_WhenServiceThrows_SetsSafeOperationErrorAndClearsBusy()
     {
         var att = new FakeAttachmentUiService { ThrowOnAdd = true };
         var vm = Vm(new AttachmentVaultUiService(), att);
 
         await vm.AddAttachmentAsync("c1", new byte[] { 1 }, "f.pdf", CancellationToken.None);
 
-        Assert.Equal("upload failed", vm.OperationError);
+        Assert.Equal("网络请求失败，请检查连接后重试。", vm.OperationError);
         Assert.False(vm.IsBusy);
     }
 
@@ -157,7 +157,7 @@ public class VaultViewModelAttachmentTests
     }
 
     [Fact]
-    public async Task DownloadAttachmentAsync_WhenServiceThrows_ReturnsNullAndSetsError()
+    public async Task DownloadAttachmentAsync_WhenServiceThrows_ReturnsNullAndSetsSafeError()
     {
         var att = new FakeAttachmentUiService { ThrowOnDownload = true };
         var vm = Vm(new AttachmentVaultUiService(), att);
@@ -166,7 +166,7 @@ public class VaultViewModelAttachmentTests
 
         Assert.Equal(UiOperationStatus.Failed, result.Status);
         Assert.Null(result.Value);
-        Assert.Equal("download failed", vm.OperationError);
+        Assert.Equal("网络请求失败，请检查连接后重试。", vm.OperationError);
         Assert.False(vm.IsBusy);
     }
 
@@ -191,14 +191,14 @@ public class VaultViewModelAttachmentTests
     }
 
     [Fact]
-    public async Task DeleteAttachmentAsync_WhenServiceThrows_SetsOperationErrorAndClearsBusy()
+    public async Task DeleteAttachmentAsync_WhenServiceThrows_SetsSafeOperationErrorAndClearsBusy()
     {
         var att = new FakeAttachmentUiService { ThrowOnDelete = true };
         var vm = Vm(new AttachmentVaultUiService(), att);
 
         await vm.DeleteAttachmentAsync("c1", "a1", CancellationToken.None);
 
-        Assert.Equal("delete failed", vm.OperationError);
+        Assert.Equal("网络请求失败，请检查连接后重试。", vm.OperationError);
         Assert.False(vm.IsBusy);
     }
 
@@ -206,10 +206,12 @@ public class VaultViewModelAttachmentTests
     public async Task AttachmentMethods_NoAttachmentService_NoOpWithoutThrowing()
     {
         // 未注入附件服务(可选依赖为 null)时,方法应安全短路,不抛异常。
+        // 下载路径先过条目级门禁(EnsureAuthorizedAsync 需要真实存在的 cipher id),
+        // 故用 MockVaultUiService 中真实存在且 Reprompt=false 的 "1"(直接放行,不走 prompt)。
         var vm = new VaultViewModel(new MockVaultUiService());
 
         await vm.AddAttachmentAsync("c1", new byte[] { 1 }, "f.pdf", CancellationToken.None);
-        var result = await vm.DownloadAttachmentAsync("c1", "a1", NoPrompt, CancellationToken.None);
+        var result = await vm.DownloadAttachmentAsync("1", "a1", NoPrompt, CancellationToken.None);
         await vm.DeleteAttachmentAsync("c1", "a1", CancellationToken.None);
 
         Assert.Null(result.Value);
