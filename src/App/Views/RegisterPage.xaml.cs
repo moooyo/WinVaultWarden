@@ -57,12 +57,12 @@ public sealed partial class RegisterPage : Page
     }
 
     // 回车提交;忙碌时不重入(表单整体也已随 CanEditForm 禁用)。
-    private void OnSubmitAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    private async void OnSubmitAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         if (ViewModel.IsBusy)
             return;
         args.Handled = true;
-        _ = SubmitAsync();
+        await SubmitAsync();
     }
 
     private async void OnRegisterClick(object sender, RoutedEventArgs e) => await SubmitAsync();

@@ -89,12 +89,12 @@ public sealed partial class LoginPage : Page
     }
 
     // 回车提交;忙碌时不重入(CanUsePrimaryAction 在 IsBusy 时为 false)。
-    private void OnSubmitAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    private async void OnSubmitAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         if (!ViewModel.CanUsePrimaryAction)
             return;
         args.Handled = true;
-        _ = ViewModel.LoginCommand.ExecuteAsync(null);
+        await ViewModel.LoginCommand.ExecuteAsync(null);
     }
 
     // 解锁阶段(主密码/PIN)首次出现且 Hello 已启用并可用时,自动发起一次 Hello 手势。
