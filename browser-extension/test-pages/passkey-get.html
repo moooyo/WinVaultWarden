@@ -121,8 +121,8 @@
 
   <script>
     // Stable, generic messages keyed only by DOMException.name. The page never displays
-    // error.message or any extension/native raw response text, so nothing beyond a fixed
-    // per-name string can reach this test page's output.
+    // the raw exception text or any extension/native response text, so nothing beyond a
+    // fixed per-name string can reach this test page's output.
     const STABLE_MESSAGES = {
       NotAllowedError: "request denied or not completed",
       SecurityError: "origin/RP failed a security check",

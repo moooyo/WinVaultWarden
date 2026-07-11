@@ -51,6 +51,14 @@
   </main>
   <script>
     let controller;
+    const STABLE_MESSAGES = {
+      NotAllowedError: "request denied or not completed",
+      SecurityError: "origin/RP failed a security check",
+      AbortError: "request was aborted",
+      InvalidStateError: "credential already excluded",
+      NotSupportedError: "operation not supported",
+      TypeError: "invalid WebAuthn input",
+    };
     const result = document.getElementById("result");
     document.getElementById("start").addEventListener("click", async () => {
       controller = new AbortController();
@@ -67,7 +75,8 @@
         });
         result.textContent = "unexpected success";
       } catch (error) {
-        result.textContent = `${error.name}: ${error.message}`;
+        const name = error.name || "Error";
+        result.textContent = `${name}: ${STABLE_MESSAGES[name] || "request failed"}`;
       }
     });
     document.getElementById("abort").addEventListener("click", () => controller?.abort());

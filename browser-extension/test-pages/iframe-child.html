@@ -45,6 +45,14 @@
     // Fixed rpId: this page never accepts an origin or RP id from location.search/location.hash,
     // so an embedding page cannot use this test page to probe an arbitrary relying party.
     const RP_ID = "127.0.0.1";
+    const STABLE_MESSAGES = {
+      NotAllowedError: "request denied or not completed",
+      SecurityError: "origin/RP failed a security check",
+      AbortError: "request was aborted",
+      InvalidStateError: "credential already excluded",
+      NotSupportedError: "operation not supported",
+      TypeError: "invalid WebAuthn input",
+    };
     const result = document.getElementById("result");
 
     document.getElementById("request").addEventListener("click", async () => {
@@ -61,7 +69,8 @@
         });
         result.textContent = JSON.stringify(credential.toJSON(), null, 2);
       } catch (error) {
-        result.textContent = `${error.name}: ${error.message}`;
+        const name = error.name || "Error";
+        result.textContent = `${name}: ${STABLE_MESSAGES[name] || "request failed"}`;
       }
     });
   </script>

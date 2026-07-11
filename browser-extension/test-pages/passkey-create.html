@@ -48,6 +48,15 @@
     <pre id="result"></pre>
   </main>
   <script>
+    const STABLE_MESSAGES = {
+      NotAllowedError: "request denied or not completed",
+      SecurityError: "origin/RP failed a security check",
+      AbortError: "request was aborted",
+      InvalidStateError: "credential already excluded",
+      NotSupportedError: "operation not supported",
+      TypeError: "invalid WebAuthn input",
+    };
+
     const result = document.getElementById("result");
     document.getElementById("create").addEventListener("click", async () => {
       const challenge = crypto.getRandomValues(new Uint8Array(32));
@@ -69,7 +78,8 @@
         });
         result.textContent = JSON.stringify(credential.toJSON(), null, 2);
       } catch (error) {
-        result.textContent = `${error.name}: ${error.message}`;
+        const name = error.name || "Error";
+        result.textContent = `${name}: ${STABLE_MESSAGES[name] || "request failed"}`;
       }
     });
   </script>

@@ -291,10 +291,12 @@ the other does not (denied before the App is ever contacted).
 ## `conditional`/`silent` mediation, multi-credential selection, UP/UV, Reprompt
 
 - **`conditional`/`silent` mediation never reaches the bridge.** `page-webauthn.js`
-  checks `options.mediation` before doing anything else and calls straight through to
-  the native `navigator.credentials.get()` — the native port is never opened, the App
-  is never woken, and no WinVaultWarden UI can appear. This is what lets autofill/
-  passive UX keep working exactly as if the extension were not installed.
+  only applies this short-circuit on the `navigator.credentials.get()` path: after it
+  has confirmed `options.publicKey` is present, it checks `options.mediation` and
+  returns straight through to the native `navigator.credentials.get()` call. The native
+  port is never opened, the App is never woken, and no WinVaultWarden UI can appear.
+  `create()` has no mediation short-circuit. This is what lets autofill/passive UX keep
+  working exactly as if the extension were not installed.
 - **Multi-credential selection is always explicit.** When more than one stored passkey
   matches a `get()` request, `PasskeyApprovalPresentation.Build` sets
   `InitialSelection` to `null` — the WinUI approval dialog is built so nothing is
@@ -394,6 +396,7 @@ pair, or implements autofill of any kind — its only job is the WebAuthn
    before the App is ever contacted.
 
 None of the test pages contain a password field, read a query/hash-supplied origin or
-RP id, collect autofill data, or display anything beyond `error.name` and a fixed,
-generic message per name — see `docs/browser-integration-acceptance.md` for the full
-Chrome/Edge manual acceptance matrix these pages support.
+RP id, collect autofill data, or surface `error.message`; every test page only shows
+`error.name` plus a local fixed generic message — see
+`docs/browser-integration-acceptance.md` for the full Chrome/Edge manual acceptance
+matrix these pages support.

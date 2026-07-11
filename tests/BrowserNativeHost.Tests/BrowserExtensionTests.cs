@@ -216,12 +216,40 @@ public class BrowserExtensionTests
     {
         var document = File.ReadAllText(
             FindRepoFile("docs", "browser-integration-acceptance.md"));
-        Assert.Contains("Chrome", document);
-        Assert.Contains("Edge", document);
-        Assert.Contains("Authenticode", document);
-        Assert.Contains("service worker suspend/resume", document);
-        Assert.Contains("Windows Hello", document);
-        Assert.Contains("用户拒绝及安全错误不得原生回退", document);
+        Assert.Contains("仅适用于 portable 版", document);
+        Assert.Contains("MSIX 负验收", document);
+        Assert.Contains("无 Host", document);
+        Assert.Contains("设置禁用", document);
+        Assert.Contains("安装脚本 loud 拒绝", document);
+        Assert.DoesNotContain("portable/MSIX", document, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("MSIX 安装后，App↔Host", document);
+    }
+
+    [Theory]
+    [InlineData("passkey-get.html")]
+    [InlineData("passkey-create.html")]
+    [InlineData("iframe-child.html")]
+    [InlineData("abort-deadline.html")]
+    public void BrowserTestPage_DoesNotSurfaceErrorMessage(string file)
+    {
+        var page = File.ReadAllText(
+            FindRepoFile("browser-extension", "test-pages", file));
+
+        Assert.DoesNotContain("error.message", page, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("${error.message}", page, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(".message", page, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void PasskeysBrowserIntegration_DocumentsConditionalSilentAfterPublicKeyOnlyForGet()
+    {
+        var document = File.ReadAllText(
+            FindRepoFile("docs", "passkeys-browser-integration.md"));
+
+        Assert.Contains("navigator.credentials.get()", document);
+        Assert.Contains("has confirmed `options.publicKey` is present", document);
+        Assert.Contains("`create()` has no mediation short-circuit", document);
+        Assert.DoesNotContain("checks `options.mediation` before doing anything else", document);
     }
 
     private static string FindRepoFile(params string[] parts)
