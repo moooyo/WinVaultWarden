@@ -101,6 +101,9 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
 
     /// <summary>离线分析页面状态:Loading/Error/Empty/Content。</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowOfflineLoading))]
+    [NotifyPropertyChangedFor(nameof(ShowOfflineError))]
+    [NotifyPropertyChangedFor(nameof(ShowOfflineContent))]
     public partial DataPageState OfflineState { get; set; } = DataPageState.Loading;
 
     /// <summary>离线分析进度百分比(0-100)。</summary>
@@ -174,8 +177,10 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
                 : DataPageState.Content;
             return UiOperationResult<HealthReport>.Success(report);
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
+            if (requestId != Volatile.Read(ref _offlineRequestId))
+                return UiOperationResult<HealthReport>.Cancelled();
             return UiOperationResult<HealthReport>.Cancelled();
         }
         catch (VaultHealthUiException ex)

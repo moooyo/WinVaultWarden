@@ -91,6 +91,39 @@ public class SecurityReportViewModelTests
     }
 
     [Fact]
+    public async Task OfflineState_RaisesShowNotificationsAcrossContentAndErrorTransitions()
+    {
+        var service = new SequencedHealthUiService(
+            success: new HealthReport([], [new WeakFinding(
+                new HealthItemRef("c1", "One", null), 1)], []),
+            failureMessage: "本地安全报告分析失败");
+        var vm = new SecurityReportViewModel(service);
+        var notified = new List<string>();
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is not null)
+                notified.Add(e.PropertyName);
+        };
+
+        await vm.LoadOfflineAsync();
+
+        Assert.Equal(DataPageState.Content, vm.OfflineState);
+        Assert.Contains(nameof(SecurityReportViewModel.ShowOfflineLoading), notified);
+        Assert.Contains(nameof(SecurityReportViewModel.ShowOfflineError), notified);
+        Assert.Contains(nameof(SecurityReportViewModel.ShowOfflineContent), notified);
+
+        notified.Clear();
+
+        await vm.LoadOfflineAsync();
+
+        Assert.Equal(DataPageState.Error, vm.OfflineState);
+        Assert.Equal("本地安全报告分析失败", vm.OfflineError);
+        Assert.Contains(nameof(SecurityReportViewModel.ShowOfflineLoading), notified);
+        Assert.Contains(nameof(SecurityReportViewModel.ShowOfflineError), notified);
+        Assert.Contains(nameof(SecurityReportViewModel.ShowOfflineContent), notified);
+    }
+
+    [Fact]
     public async Task CancelOfflineAnalysis_DropsLateResult()
     {
         var service = new ControlledHealthUiService();
@@ -103,6 +136,17 @@ public class SecurityReportViewModelTests
 
         Assert.Equal(UiOperationStatus.Cancelled, result.Status);
         Assert.Empty(vm.WeakItems);
+    }
+
+    [Fact]
+    public async Task LoadOffline_ConsumesOperationCanceledException()
+    {
+        var vm = new SecurityReportViewModel(new CanceledHealthUiService());
+
+        var result = await vm.LoadOfflineAsync();
+
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
+        Assert.Equal(DataPageState.Loading, vm.OfflineState);
     }
 
     // ── RunExposedCheckCommand ─────────────────────────────────────────────────
@@ -305,6 +349,42 @@ public class SecurityReportViewModelTests
 
         public void Complete(int call, HealthReport report) =>
             _calls[call].SetResult(report);
+
+        public Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(
+            CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<ExposedFinding>>([]);
+    }
+
+    private sealed class SequencedHealthUiService(HealthReport success, string failureMessage)
+        : IVaultHealthUiService
+    {
+        private int _calls;
+
+        public Task<HealthReport> AnalyzeOfflineAsync(
+            IProgress<HealthAnalysisProgress>? progress = null,
+            CancellationToken ct = default)
+        {
+            if (Interlocked.Increment(ref _calls) == 1)
+            {
+                progress?.Report(new HealthAnalysisProgress(100, 100, "分析完成"));
+                return Task.FromResult(success);
+            }
+
+            return Task.FromException<HealthReport>(
+                new VaultHealthUiException(failureMessage, new InvalidOperationException(failureMessage)));
+        }
+
+        public Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(
+            CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<ExposedFinding>>([]);
+    }
+
+    private sealed class CanceledHealthUiService : IVaultHealthUiService
+    {
+        public Task<HealthReport> AnalyzeOfflineAsync(
+            IProgress<HealthAnalysisProgress>? progress = null,
+            CancellationToken ct = default) =>
+            Task.FromException<HealthReport>(new OperationCanceledException("lease cancelled"));
 
         public Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(
             CancellationToken ct = default) =>
