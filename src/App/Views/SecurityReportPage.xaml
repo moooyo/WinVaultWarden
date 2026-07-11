@@ -20,7 +20,43 @@
                   VerticalScrollBarVisibility="Auto">
         <!-- Grid wrapper works around SettingsExpander expand glitch under a MaxWidth StackPanel (microsoft-ui-xaml#3842) -->
         <Grid>
-        <StackPanel Spacing="4" MaxWidth="820" HorizontalAlignment="Stretch">
+
+        <!-- ── 离线分析:加载中 ─────────────────────────────────────────── -->
+        <StackPanel x:Name="OfflineLoadingPanel"
+                    Spacing="8"
+                    MaxWidth="820"
+                    HorizontalAlignment="Stretch"
+                    Visibility="{x:Bind ViewModel.ShowOfflineLoading, Mode=OneWay,
+                        Converter={StaticResource BoolToVis}}">
+            <ProgressRing IsActive="True"
+                          AutomationProperties.Name="正在分析安全报告" />
+            <ProgressBar Minimum="0"
+                         Maximum="100"
+                         Value="{x:Bind ViewModel.OfflineProgress, Mode=OneWay}" />
+        </StackPanel>
+
+        <!-- ── 离线分析:错误 + 重试 ────────────────────────────────────── -->
+        <StackPanel x:Name="OfflineErrorPanel"
+                    Spacing="8"
+                    MaxWidth="820"
+                    HorizontalAlignment="Stretch"
+                    Visibility="{x:Bind ViewModel.ShowOfflineError, Mode=OneWay,
+                        Converter={StaticResource BoolToVis}}">
+            <InfoBar Severity="Error"
+                     IsOpen="True"
+                     Message="{x:Bind ViewModel.OfflineError, Mode=OneWay}" />
+            <Button x:Name="SecurityReportRetryButton"
+                    Content="重试"
+                    Command="{x:Bind ViewModel.RetryOfflineCommand}"
+                    AutomationProperties.AutomationId="SecurityReportRetryButton" />
+        </StackPanel>
+
+        <StackPanel x:Name="OfflineContentPanel"
+                    Spacing="4"
+                    MaxWidth="820"
+                    HorizontalAlignment="Stretch"
+                    Visibility="{x:Bind ViewModel.ShowOfflineContent, Mode=OneWay,
+                        Converter={StaticResource BoolToVis}}">
 
             <!-- 页面标题 -->
             <TextBlock Text="安全报告"

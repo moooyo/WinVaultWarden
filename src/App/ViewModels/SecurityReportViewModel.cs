@@ -94,6 +94,27 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         (ReusedCount > 0 || UnsecuredCount > 0) ? SecuritySeverity.Caution :
         SecuritySeverity.Good;
 
+    // ── 离线分析状态机 ──────────────────────────────────────────────────────────
+
+    private CancellationTokenSource? _offlineCts;
+    private long _offlineRequestId;
+
+    /// <summary>离线分析页面状态:Loading/Error/Empty/Content。</summary>
+    [ObservableProperty]
+    public partial DataPageState OfflineState { get; set; } = DataPageState.Loading;
+
+    /// <summary>离线分析进度百分比(0-100)。</summary>
+    [ObservableProperty]
+    public partial int OfflineProgress { get; set; }
+
+    /// <summary>离线分析错误信息;非空时表示上次分析失败。</summary>
+    [ObservableProperty]
+    public partial string? OfflineError { get; set; }
+
+    public bool ShowOfflineLoading => OfflineState == DataPageState.Loading;
+    public bool ShowOfflineError => OfflineState == DataPageState.Error;
+    public bool ShowOfflineContent => OfflineState is DataPageState.Empty or DataPageState.Content;
+
     // ── 构造 ────────────────────────────────────────────────────────────────────
 
     public SecurityReportViewModel(IVaultHealthUiService service)
@@ -117,13 +138,59 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     // ── 离线分析 ────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// 加载离线健康报告，填充 ReusedGroups / WeakItems / UnsecuredItems。
-    /// 同步方法，可在页面 OnNavigatedTo 中直接调用。
+    /// 异步加载离线健康报告,填充 ReusedGroups / WeakItems / UnsecuredItems。
+    /// 在 <see cref="IVaultHealthUiService.AnalyzeOfflineAsync"/> 内部,CPU 密集分析
+    /// 已被送入后台线程,本方法不阻塞 UI。每次调用都会取消上一次未完成的请求(latest-wins),
+    /// 并用递增的 request-id 校验:迟到完成的旧请求绝不会覆盖更新的结果或已取消的状态。
     /// </summary>
-    public void LoadOffline()
+    public async Task<UiOperationResult<HealthReport>> LoadOfflineAsync(
+        CancellationToken ct = default)
     {
-        var report = _service.AnalyzeOffline();
+        CancelOfflineAnalysis();
+        var requestId = Interlocked.Increment(ref _offlineRequestId);
+        _offlineCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var token = _offlineCts.Token;
+        OfflineState = DataPageState.Loading;
+        OfflineProgress = 0;
+        OfflineError = null;
 
+        var progress = new Progress<HealthAnalysisProgress>(
+            value =>
+            {
+                if (requestId == Volatile.Read(ref _offlineRequestId))
+                    OfflineProgress = value.Completed;
+            });
+
+        try
+        {
+            var report = await _service.AnalyzeOfflineAsync(progress, token);
+            if (requestId != Volatile.Read(ref _offlineRequestId))
+                return UiOperationResult<HealthReport>.Cancelled();
+
+            ApplyOfflineReport(report);
+            OfflineProgress = 100;
+            OfflineState = report.Reused.Count + report.Weak.Count + report.Unsecured.Count == 0
+                ? DataPageState.Empty
+                : DataPageState.Content;
+            return UiOperationResult<HealthReport>.Success(report);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return UiOperationResult<HealthReport>.Cancelled();
+        }
+        catch (VaultHealthUiException ex)
+        {
+            if (requestId == Volatile.Read(ref _offlineRequestId))
+            {
+                OfflineError = ex.Message;
+                OfflineState = DataPageState.Error;
+            }
+            return UiOperationResult<HealthReport>.Failure(ex.Message);
+        }
+    }
+
+    private void ApplyOfflineReport(HealthReport report)
+    {
         ReusedGroups.Clear();
         foreach (var g in report.Reused)
             ReusedGroups.Add(g);
@@ -135,6 +202,22 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         UnsecuredItems.Clear();
         foreach (var u in report.Unsecured)
             UnsecuredItems.Add(u);
+    }
+
+    /// <summary>用户点击"重试"时重新发起离线分析。</summary>
+    [RelayCommand]
+    private Task RetryOfflineAsync() => LoadOfflineAsync();
+
+    /// <summary>
+    /// 取消进行中的离线分析(离开页面/再次触发加载/Lock 时调用)。
+    /// 先递增 request-id 再取消 token,确保任何仍在飞行中的回调都能立即识别为过期。
+    /// </summary>
+    public void CancelOfflineAnalysis()
+    {
+        Interlocked.Increment(ref _offlineRequestId);
+        _offlineCts?.Cancel();
+        _offlineCts?.Dispose();
+        _offlineCts = null;
     }
 
     // ── 泄露检查命令 ────────────────────────────────────────────────────────────
@@ -178,10 +261,12 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     // 锁屏/登出时清空安全报告的机密足迹:重复/弱/不安全/已泄露分组与错误。幂等。
     public void ClearSensitive()
     {
+        CancelOfflineAnalysis();
         ReusedGroups.Clear();
         WeakItems.Clear();
         UnsecuredItems.Clear();
         ExposedItems.Clear();
         ExposedError = null;
+        OfflineError = null;
     }
 }

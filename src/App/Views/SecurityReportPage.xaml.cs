@@ -16,10 +16,16 @@ public sealed partial class SecurityReportPage : Page
         InitializeComponent();
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
-        ViewModel.LoadOffline();
+        await ViewModel.LoadOfflineAsync();
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        ViewModel.CancelOfflineAnalysis();
+        base.OnNavigatedFrom(e);
     }
 
     /// <summary>格式化重复密码分组标题,如 "3 个条目共用同一密码"。</summary>

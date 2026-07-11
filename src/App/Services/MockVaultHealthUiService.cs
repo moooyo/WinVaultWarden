@@ -32,7 +32,13 @@ public sealed class MockVaultHealthUiService : IVaultHealthUiService
         new ExposedFinding(Item: _ref1, BreachCount: 5),
     ];
 
-    public HealthReport AnalyzeOffline() => _report;
+    public Task<HealthReport> AnalyzeOfflineAsync(
+        IProgress<HealthAnalysisProgress>? progress = null,
+        CancellationToken ct = default)
+    {
+        progress?.Report(new HealthAnalysisProgress(100, 100, "分析完成"));
+        return Task.FromResult(_report);
+    }
 
     public Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(CancellationToken ct = default) =>
         Task.FromResult(_exposed);

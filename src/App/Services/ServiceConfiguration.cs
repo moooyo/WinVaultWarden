@@ -146,7 +146,10 @@ public static class ServiceConfiguration
         services.AddSingleton<IPwnedPasswordsClient>(_ =>
             new PwnedPasswordsClient(new HttpClient()));
         services.AddSingleton<IVaultHealthService, Vault.VaultHealthService>();
-        services.AddTransient<IVaultHealthUiService, VaultHealthUiService>();
+        services.AddTransient<IVaultHealthUiService>(sp =>
+            new VaultHealthUiService(
+                sp.GetRequiredService<IVaultHealthService>(),
+                sp.GetRequiredService<VaultSession>()));
         services.AddSingleton<ISavedSearchStore, AppPreferencesSavedSearchStore>();
         services.AddTransient<SecurityReportViewModel>(sp =>
             TrackSensitive(sp, ActivatorUtilities.CreateInstance<SecurityReportViewModel>(sp)));
