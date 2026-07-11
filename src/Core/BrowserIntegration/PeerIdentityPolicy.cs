@@ -12,7 +12,8 @@ namespace Core.BrowserIntegration;
 ///   <item>its user SID equals the local process SID (same interactive user), and</item>
 ///   <item>its normalized executable path equals the portable locator's expected path, and</item>
 ///   <item>either both sides carry the same package family (MSIX), or both sides are portable
-///   with valid Authenticode signatures whose signer public keys hash-match.</item>
+///   with acceptable Authenticode signatures (fully valid, or self-signed with an untrusted root —
+///   see <see cref="AuthenticodeTrustDecision"/>) whose signer public keys hash-match.</item>
 /// </list>
 /// <para>A peer with a package where the local process has none (or vice versa) is rejected outright.</para>
 /// </summary>

@@ -103,3 +103,49 @@ python -m http.server 8787 -d browser-extension\test-pages
 
 The host currently answers `ping`, forwards `passkey.get` to the running
 WinVaultWarden app, and returns `not_implemented` for `passkey.create`.
+
+## Mutual authentication and portable signer-pinning
+
+Before any bridge traffic, the App (named-pipe server) and the native host
+(pipe client) mutually authenticate. Each side derives the peer PID from the
+pipe kernel object (never a self-reported hello), then reads the peer process'
+token SID, canonical image path, and MSIX package family, and requires:
+
+1. the peer runs as the **same interactive user** (same token SID), and
+2. the peer's normalized executable path equals the expected portable path, and
+3. **both packaged** with the same package family, **or both portable** with an
+   acceptable Authenticode signature whose **signer public-key SHA-256 matches**.
+
+For portable builds this is **signer-pinning**: `App.exe` and
+`BrowserNativeHost.exe` are signed by the same signer, and each side pins the
+other's signer `SubjectPublicKeyInfo` SHA-256 (compared in fixed time). A
+signature is "acceptable" only when `WinVerifyTrust` returns `S_OK` **or exactly**
+`CERT_E_UNTRUSTEDROOT` — i.e. the binary is signed and its digest is intact, but
+the chain terminates in a root this machine has not been told to trust. That is
+the whole point: **users do not install or trust the signing certificate**, and
+the certificate is **not shipped in the portable zip**. Unsigned
+(`TRUST_E_NOSIGNATURE`), tampered (`TRUST_E_BAD_DIGEST`), unknown-subject,
+expired, revoked, and every other status are rejected fail-closed. This does not
+widen to "any self-signed binary" or "anything with a certificate": the pinned
+signer SPKI must still match on both ends.
+
+The acceptability rule is the pure, unit-tested
+`Core.BrowserIntegration.AuthenticodeTrustDecision`; both readers share it so the
+App and host cannot drift. There is no debug/env/setting switch to bypass it.
+
+### Verifying signer-pinning on a real machine
+
+`dotnet test` cannot exercise the Win32 `WinVerifyTrust`/SPKI path against signed
+binaries. To confirm two portable binaries are pinned to the same signer, run on
+Windows against the extracted portable build:
+
+```powershell
+.\browser-extension\native-messaging\verify-signer-pinning.ps1 `
+  -AppPath 'D:\WinVaultWarden\App.exe' `
+  -HostPath 'D:\WinVaultWarden\BrowserNativeHost.exe'
+```
+
+It computes each binary's signer SPKI SHA-256 (the same value the readers pin),
+reports whether the digests are acceptable, and exits non-zero unless both are
+signed and their signer public keys match. It is a diagnostic aid, not a
+substitute for the app's in-process check.

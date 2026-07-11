@@ -17,6 +17,8 @@
 
 无需安装、无需信任任何证书,删除文件夹即"卸载"。首次运行 Windows SmartScreen 可能提示"未知发布者",点「更多信息 → 仍要运行」即可。自包含,无需预装 .NET 或 Windows App SDK 运行时。
 
+> **浏览器 passkey 桥接与签名者绑定**:便携版的 `App.exe` 与 `BrowserNativeHost.exe` 由**同一签名者**签名。App(命名管道服务端)与原生主机(客户端)在互相授权时,除同用户、同规范化路径外,还要求双方 Authenticode 签名**可解析**且**签名者公钥 SHA-256 完全一致**。系统接受签名链到受信根(`S_OK`)或仅"根未受信任"(`CERT_E_UNTRUSTEDROOT`)两种情形——因此**你不需要把签名证书装入任何信任存储**,证书也**不随 zip 分发**;绑定只做签名者一致性校验,不代表你信任该签名者。未签名或被篡改的二进制会被 fail-closed 拒绝。可用 `browser-extension\native-messaging\verify-signer-pinning.ps1` 在本机核对两者签名者是否匹配。
+
 ---
 
 ## 方式 B:MSIX 安装包

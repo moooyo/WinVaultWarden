@@ -86,7 +86,8 @@ internal sealed unsafe class WindowsProcessIdentityReader : IProcessIdentityRead
         var sid = ReadSid(processHandle);
         var path = ReadImagePath(processHandle);
         var packageFamily = ReadPackageFamilyName(processHandle);
-        // Portable peers must prove a valid Authenticode signature; packaged peers are judged by family.
+        // Portable peers must carry an acceptable Authenticode signature (valid or self-signed with an
+        // untrusted root — see AuthenticodeTrustDecision); packaged peers are judged by family instead.
         var authenticodeValid = packageFamily is null && VerifyAuthenticode(path);
         var signer = authenticodeValid ? GetSignerPublicKeySha256(path) : null;
         return new PeerIdentity(processId, sid, path, packageFamily, authenticodeValid, signer);
@@ -187,7 +188,9 @@ internal sealed unsafe class WindowsProcessIdentityReader : IProcessIdentityRead
 
             data.dwStateAction = NativeMethods.WTD_STATEACTION_CLOSE;
             NativeMethods.WinVerifyTrust(IntPtr.Zero, ref action, (IntPtr)(&data));
-            return result == 0;
+            // Accept S_OK or exactly CERT_E_UNTRUSTEDROOT (portable signer-pinning); reject unsigned,
+            // tampered, expired, revoked, unknown-subject and every other status fail-closed.
+            return AuthenticodeTrustDecision.IsAcceptable(result);
         }
         finally
         {
