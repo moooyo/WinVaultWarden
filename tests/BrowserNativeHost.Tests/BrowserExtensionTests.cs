@@ -200,7 +200,7 @@ public class BrowserExtensionTests
     [Theory]
     [InlineData("passkey-get.html", "navigator.credentials.get")]
     [InlineData("passkey-create.html", "navigator.credentials.create")]
-    [InlineData("iframe-top.html", "public-key-credentials-get")]
+    [InlineData("iframe-top.html", "publickey-credentials-get")]
     [InlineData("iframe-child.html", "navigator.credentials.get")]
     [InlineData("abort-deadline.html", "AbortController")]
     public void BrowserTestPage_CoversNamedScenario(string file, string marker)
@@ -209,6 +209,21 @@ public class BrowserExtensionTests
             FindRepoFile("browser-extension", "test-pages", file));
         Assert.Contains(marker, page);
         Assert.DoesNotContain("type=\"password\"", page, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // The WebAuthn Permissions Policy token is `publickey-credentials-get` (no hyphen between
+    // "public" and "key"). The misspelled `public-key-credentials-get` never matches a real browser
+    // verdict, silently denying delegated cross-origin sub-frames. Guard the isolated relay query and
+    // the cross-origin iframe fixture against ever regressing to the misspelled spelling.
+    [Theory]
+    [InlineData("browser-extension", "src", "content-webauthn.js")]
+    [InlineData("browser-extension", "test-pages", "iframe-top.html")]
+    public void PublickeyCredentialsGetToken_UsesCanonicalSpelling(params string[] parts)
+    {
+        var content = File.ReadAllText(FindRepoFile(parts));
+
+        Assert.Contains("publickey-credentials-get", content);
+        Assert.DoesNotContain("public-key-credentials-get", content);
     }
 
     [Fact]

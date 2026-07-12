@@ -50,6 +50,9 @@ public static class ServiceConfiguration
         services.AddSingleton<IVaultService, Vault.VaultService>();
         services.AddSingleton<SendCryptoService>();
         services.AddSingleton<ISendService, Vault.SendService>();
+        // 孤儿 Send 补偿删除的窄客户端(冻结 binding + 一次性认证客户端):见 Vault/SendCompensationClient.cs。
+        // 独立于 IVaultApiClientProvider,绝不暴露通用 stale-token 旁路。
+        services.AddSingleton<ISendCompensationClient, SendCompensationClient>();
         services.AddSingleton<ISendWriteService, Vault.SendWriteService>();
         services.AddSingleton<ISendAccessService, Vault.SendAccessService>();
         services.AddSingleton<IAttachmentService, Vault.AttachmentService>();

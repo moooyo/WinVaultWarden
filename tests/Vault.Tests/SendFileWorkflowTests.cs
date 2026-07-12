@@ -2,6 +2,7 @@ using Api;
 using Api.Dtos;
 using Core.Enums;
 using Core.Models;
+using Core.Session;
 using Crypto;
 using Vault;
 using Xunit;
@@ -17,7 +18,12 @@ namespace Vault.Tests;
 //   - 元数据更新只发 PUT，绝不开流/上传。
 public class SendFileWorkflowTests
 {
-    private sealed record FileFixture(SendWriteService Service, FakeSendApiClient Api, VaultSession Session);
+    private sealed record FileFixture(
+        SendWriteService Service,
+        FakeSendApiClient Api,
+        FakeSendCompensationClient Compensation,
+        VaultSession Session,
+        AccessTokenBinding ExpectedBinding);
 
     private static FileFixture NewFileFixture()
     {
@@ -31,6 +37,8 @@ public class SendFileWorkflowTests
             session.SetUnlockedKey(key);
             session.SetTokens("access-a", "refresh-a");
         });
+        // 操作开始、lease 仍 current 时应被 SendWriteService 冻结的 binding(补偿删除必须用它)。
+        var expectedBinding = session.GetAccessTokenBinding(lease)!;
         var api = new FakeSendApiClient
         {
             CreateFileV2Result = new SendFileUploadV2Response(
@@ -57,13 +65,17 @@ public class SendFileWorkflowTests
                     DateTimeOffset.UtcNow.AddDays(7),
                     "send")),
         };
+        var compensation = new FakeSendCompensationClient();
         return new FileFixture(
             new SendWriteService(
                 FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(api),
                 new SendCryptoService(new CryptoService()),
-                session),
+                session,
+                compensation),
             api,
-            session);
+            compensation,
+            session,
+            expectedBinding);
     }
 
     private static SendFileSource MemorySource(string fileName, byte[] bytes) => new(
@@ -161,7 +173,9 @@ public class SendFileWorkflowTests
         await Assert.ThrowsAsync<InvalidDataException>(() =>
             fixture.Service.CreateFileSendAsync(FileDraft(), source, CancellationToken.None));
 
-        Assert.Equal(["create-file-v2", "upload", "delete:new-send"], fixture.Api.Calls);
+        Assert.Equal(["create-file-v2", "upload"], fixture.Api.Calls);
+        // 补偿删除走独立补偿客户端(冻结 binding + 独立令牌),不再经普通 ISendApiClient 的无鉴权 delete。
+        Assert.Equal(["new-send"], fixture.Compensation.DeletedSendIds);
     }
 
     [Fact]
@@ -178,11 +192,11 @@ public class SendFileWorkflowTests
                 MemorySource("a.bin", [1, 2, 3]),
                 caller.Token));
 
-        Assert.Equal(
-            ["create-file-v2", "upload", "delete:new-send"],
-            fixture.Api.Calls);
-        Assert.False(fixture.Api.DeleteTokenWasCanceled);
-        Assert.Equal("new-send", fixture.Api.LastDeleteId);
+        Assert.Equal(["create-file-v2", "upload"], fixture.Api.Calls);
+        // 补偿删除用【捕获的冻结 binding】+【未取消的独立令牌】——即便调用方令牌已取消(BeforeUploadFailure)。
+        Assert.Equal(["new-send"], fixture.Compensation.DeletedSendIds);
+        Assert.False(fixture.Compensation.LastTokenWasCanceled);
+        Assert.Equal(fixture.ExpectedBinding, fixture.Compensation.LastBinding);
     }
 
     [Fact]
@@ -190,7 +204,7 @@ public class SendFileWorkflowTests
     {
         var fixture = NewFileFixture();
         fixture.Api.UploadThrows = new IOException("upload failed");
-        fixture.Api.DeleteThrows = new HttpRequestException("cleanup failed");
+        fixture.Compensation.ThrowFor["new-send"] = new HttpRequestException("cleanup failed");
 
         var ex = await Assert.ThrowsAsync<SendUploadCompensationException>(() =>
             fixture.Service.CreateFileSendAsync(
@@ -216,6 +230,8 @@ public class SendFileWorkflowTests
         Assert.Equal(
             ["create-file-v2", "upload", "delete:old-send"],
             fixture.Api.Calls);
+        // 删旧走普通 ISendApiClient(正常业务删除);替换成功不触发任何补偿。
+        Assert.Empty(fixture.Compensation.DeletedSendIds);
         Assert.True(result.ReplacedExisting);
     }
 
@@ -246,13 +262,12 @@ public class SendFileWorkflowTests
                 CancellationToken.None));
 
         Assert.Equal(
-            [
-                "create-file-v2",
-                "upload",
-                "delete:old-send",
-                "delete:new-send",
-            ],
+            ["create-file-v2", "upload", "delete:old-send"],
             fixture.Api.Calls);
+        // 删旧失败 → 用【冻结 binding + 独立令牌】回滚删新件(经补偿客户端,非普通 api)。
+        Assert.Equal(["new-send"], fixture.Compensation.DeletedSendIds);
+        Assert.False(fixture.Compensation.LastTokenWasCanceled);
+        Assert.Equal(fixture.ExpectedBinding, fixture.Compensation.LastBinding);
     }
 
     // 竞态 A(创建):上传成功后、方法返回前 lease 失效(vault 被 Lock)。post-upload 的 ThrowIfExpired
@@ -269,9 +284,11 @@ public class SendFileWorkflowTests
             fixture.Service.CreateFileSendAsync(
                 FileDraft(), MemorySource("a.bin", [1, 2, 3]), CancellationToken.None));
 
-        Assert.Equal(["create-file-v2", "upload", "delete:new-send"], fixture.Api.Calls);
-        Assert.False(fixture.Api.DeleteTokenWasCanceled);
-        Assert.Equal("new-send", fixture.Api.LastDeleteId);
+        Assert.Equal(["create-file-v2", "upload"], fixture.Api.Calls);
+        // post-upload lease 失效 → 用【冻结 binding + 未取消独立令牌】补偿删新件(经补偿客户端)。
+        Assert.Equal(["new-send"], fixture.Compensation.DeletedSendIds);
+        Assert.False(fixture.Compensation.LastTokenWasCanceled);
+        Assert.Equal(fixture.ExpectedBinding, fixture.Compensation.LastBinding);
     }
 
     // 竞态 B(替换):建+传新件成功,删旧成功后、返回前 lease 失效。远端 replacement 已提交(旧件已删),
@@ -288,7 +305,8 @@ public class SendFileWorkflowTests
                 "old-send", ExistingFileDraft(), MemorySource("new.bin", [4, 5, 6]), CancellationToken.None));
 
         Assert.Equal(["create-file-v2", "upload", "delete:old-send"], fixture.Api.Calls);
-        Assert.DoesNotContain("delete:new-send", fixture.Api.Calls);
+        // 删旧【成功】后 lease 失效:replacement 已提交,绝不回删新件。补偿客户端一无所记。
+        Assert.Empty(fixture.Compensation.DeletedSendIds);
     }
 
     // 竞态 C(替换,删旧前失效):替换的"建新件"阶段上传成功后 lease 立即失效。此时旧件尚未删,
@@ -303,15 +321,17 @@ public class SendFileWorkflowTests
             fixture.Service.ReplaceFileSendAsync(
                 "old-send", ExistingFileDraft(), MemorySource("new.bin", [7, 8, 9]), CancellationToken.None));
 
-        Assert.Equal(["create-file-v2", "upload", "delete:new-send"], fixture.Api.Calls);
+        Assert.Equal(["create-file-v2", "upload"], fixture.Api.Calls);
         Assert.DoesNotContain("delete:old-send", fixture.Api.Calls);
+        // 删旧【前】lease 已失效:回滚删新件(补偿客户端),绝不触碰旧件。
+        Assert.Equal(["new-send"], fixture.Compensation.DeletedSendIds);
     }
 
     // 竞态 D(替换,inner 完成与"删旧前"校验之间失效):建+传新件成功,inner CreateFileCore 的 post-upload
     // lease 校验【已通过并返回】,但在 outer "删旧前" ThrowIfExpired 执行【之前】vault 被 Lock。此刻旧件仍在、
-    // 新件已建;pre-delete 校验发现 lease 失效必须【回滚新件】(delete:new-send),且绝不触碰旧件——否则留下
-    // orphan new(新件孤儿 + 旧件仍在)。RED(修复前):pre-delete ThrowIfExpired 在 delete 的 try/catch【之外】,
-    // 抛 OCE 但不补偿 → Calls 缺 delete:new-send。
+    // 新件已建;pre-delete 校验发现 lease 失效必须【回滚新件】(经补偿客户端删 new-send),且绝不触碰旧件——
+    // 否则留下 orphan new(新件孤儿 + 旧件仍在)。补偿删除走独立补偿客户端(冻结 binding + 未取消独立令牌),
+    // 不再经普通 ISendApiClient 的无鉴权 delete —— 故断言落在 Compensation.DeletedSendIds 上。
     //
     // 用手动 SynchronizationContext + 可控 upload gate 制造确定性竞态:分两次 pump continuation,在 inner
     // continuation 跑完(post-upload 校验通过、CreateFileCore 返回)之后、outer pre-delete continuation 执行
@@ -361,11 +381,12 @@ public class SendFileWorkflowTests
 
         // 方法以 OperationCanceledException 收场(async 方法抛 OCE → Task 进入 Canceled 状态)。
         Assert.True(replaceTask.IsCanceled);
-        // 目标:pre-delete 校验失败必须回滚新件(delete:new-send,独立未取消令牌),且绝不触碰旧件。
-        Assert.Equal(["create-file-v2", "upload", "delete:new-send"], fixture.Api.Calls);
+        // 目标:pre-delete 校验失败必须回滚新件(经补偿客户端:冻结 binding + 独立未取消令牌),且绝不触碰旧件。
+        Assert.Equal(["create-file-v2", "upload"], fixture.Api.Calls);
         Assert.DoesNotContain("delete:old-send", fixture.Api.Calls);
-        Assert.False(fixture.Api.DeleteTokenWasCanceled);
-        Assert.Equal("new-send", fixture.Api.LastDeleteId);
+        Assert.Equal(["new-send"], fixture.Compensation.DeletedSendIds);
+        Assert.False(fixture.Compensation.LastTokenWasCanceled);
+        Assert.Equal(fixture.ExpectedBinding, fixture.Compensation.LastBinding);
     }
 
     // 单线程手动泵:Post 仅入队;RunOne 执行队首一个 continuation。测试驱动期间保持线程上下文为中性(null),

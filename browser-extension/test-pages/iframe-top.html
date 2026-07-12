@@ -37,14 +37,14 @@
     <p>
       两个 iframe 都指向 <code>http://127.0.0.1:8788/iframe-child.html</code>，与本页
       <code>http://localhost:8787</code> 是不同的 origin。只有声明了
-      <code>allow="public-key-credentials-get"</code> 的 iframe 才应该能够进入 App 完成
+      <code>allow="publickey-credentials-get"</code> 的 iframe 才应该能够进入 App 完成
       <code>navigator.credentials.get()</code>；未声明的 iframe 必须收到 <code>SecurityError</code>。
     </p>
 
     <h2>允许</h2>
     <iframe
       src="http://127.0.0.1:8788/iframe-child.html"
-      allow="public-key-credentials-get"></iframe>
+      allow="publickey-credentials-get"></iframe>
 
     <h2>拒绝</h2>
     <iframe src="http://127.0.0.1:8788/iframe-child.html"></iframe>

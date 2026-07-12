@@ -100,7 +100,14 @@ function createContentHarness({ isTop = true, policy = "allow", lastErrorMessage
   };
 
   const grants = policy === "allow" || policy === "featurePolicy";
-  const allowsFeature = (feature) => grants && feature === "public-key-credentials-get";
+  const queriedFeatures = [];
+  // The canonical WebAuthn Permissions Policy token is `publickey-credentials-get` (no hyphen
+  // between "public" and "key"). Only the canonical spelling is ever granted; the misspelled
+  // `public-key-credentials-get` must never yield a verdict.
+  const allowsFeature = (feature) => {
+    queriedFeatures.push(feature);
+    return grants && feature === "publickey-credentials-get";
+  };
   const policyObject = policy === "absent" ? undefined : { allowsFeature };
   const document = {
     permissionsPolicy: policy === "featurePolicy" ? undefined : policyObject,
@@ -138,6 +145,7 @@ function createContentHarness({ isTop = true, policy = "allow", lastErrorMessage
     connectCalls,
     portHandle,
     fromIsolated,
+    queriedFeatures,
     channelId: ready?.channelId,
     sendFromMain(message) {
       win.postMessage({ source: "winvaultwarden-main", ...message });
@@ -280,7 +288,7 @@ test("port disconnect completes active requests as operation_aborted without lea
   assert.doesNotMatch(JSON.stringify(aborted), /secret detail/u);
 });
 
-test("top-level frames always allow public-key-credentials-get", () => {
+test("top-level frames always allow publickey-credentials-get", () => {
   const harness = createContentHarness({ isTop: true, policy: "deny" });
   const id = randomHex(16);
   harness.sendFromMain({
@@ -313,4 +321,29 @@ test("sub-frames honour the Permissions Policy verdict", () => {
       `policy=${policy}`,
     );
   }
+});
+
+test("queries the canonical publickey-credentials-get token, never the misspelled public-key-credentials-get", () => {
+  const harness = createContentHarness({ isTop: false, policy: "allow" });
+  const id = randomHex(16);
+  harness.sendFromMain({
+    channelId: harness.channelId,
+    id,
+    kind: "request",
+    request: { v: 1, id, type: "passkey.get", payload: {} },
+  });
+
+  // The isolated relay must consult the real Permissions Policy with the W3C-canonical feature
+  // token. Querying the misspelled `public-key-credentials-get` always yields a false verdict on
+  // real browsers, silently denying delegated sub-frames.
+  assert.ok(
+    harness.queriedFeatures.includes("publickey-credentials-get"),
+    `queried features: ${JSON.stringify(harness.queriedFeatures)}`,
+  );
+  assert.ok(
+    !harness.queriedFeatures.includes("public-key-credentials-get"),
+    `must not query the misspelled token; queried: ${JSON.stringify(harness.queriedFeatures)}`,
+  );
+  // A delegated sub-frame using the canonical token is granted.
+  assert.equal(harness.portHandle.posted[0].publicKeyCredentialsGetAllowed, true);
 });

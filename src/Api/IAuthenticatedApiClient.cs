@@ -9,6 +9,7 @@ public interface IAuthenticatedApiClient :
     ITwoFactorApiClient,
     IAuthRequestApiClient,
     IEmergencyAccessApiClient,
-    IOriginBoundApiClient
+    IOriginBoundApiClient,
+    IDisposable
 {
 }

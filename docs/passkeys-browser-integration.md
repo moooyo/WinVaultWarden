@@ -285,7 +285,7 @@ pass before it reaches the vault, in this fixed order:
    `security_permissions_policy`.
 
 `test-pages/iframe-top.html` + `iframe-child.html` exercise rule 6 end-to-end: one
-iframe declares `allow="public-key-credentials-get"` (rule passes, App is reached),
+iframe declares `allow="publickey-credentials-get"` (rule passes, App is reached),
 the other does not (denied before the App is ever contacted).
 
 ## `conditional`/`silent` mediation, multi-credential selection, UP/UV, Reprompt
@@ -391,7 +391,7 @@ pair, or implements autofill of any kind — its only job is the WebAuthn
    ```
 
    Then open `http://localhost:8787/iframe-top.html` — the iframe pointed at
-   `http://127.0.0.1:8788/iframe-child.html` with `allow="public-key-credentials-get"`
+   `http://127.0.0.1:8788/iframe-child.html` with `allow="publickey-credentials-get"`
    can reach the App; the one without it is denied `security_permissions_policy`
    before the App is ever contacted.
 

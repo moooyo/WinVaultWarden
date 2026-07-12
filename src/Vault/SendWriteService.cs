@@ -24,12 +24,14 @@ public sealed class SendWriteService : ISendWriteService
     private readonly IVaultApiClientProvider _clients;
     private readonly SendCryptoService _crypto;
     private readonly VaultSession _session;
+    private readonly ISendCompensationClient _compensation;
 
-    public SendWriteService(IVaultApiClientProvider clients, SendCryptoService crypto, VaultSession session)
+    public SendWriteService(IVaultApiClientProvider clients, SendCryptoService crypto, VaultSession session, ISendCompensationClient compensation)
     {
         _clients = clients;
         _crypto = crypto;
         _session = session;
+        _compensation = compensation;
     }
 
     public async Task SaveTextSendAsync(SendDraftModel draft, CancellationToken ct = default)
@@ -82,13 +84,16 @@ public sealed class SendWriteService : ISendWriteService
         if (!_session.TryCopyUserKey(lease, out var copiedKey))
             throw new InvalidOperationException("Vault is locked.");
         using var userKey = copiedKey;
+        // 操作开始、lease 仍 current 时冻结 AccessTokenBinding,仅供【删除本次刚建的新 Send】的补偿路径。
+        // lease 无 access token 则在任何 API 前失败(补偿删除必须有可用令牌,否则孤儿记录无法清理)。
+        var binding = RequireAccessTokenBinding(lease);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var seed = _crypto.GenerateSeed();
         try
         {
             var api = _clients.GetAuthenticated<ISendApiClient>(lease);
             return await CreateFileCoreAsync(
-                lease, api, userKey!, draft, file, seed, replacedExisting: false, ct: linked.Token);
+                lease, api, binding, userKey!, draft, file, seed, replacedExisting: false, ct: linked.Token);
         }
         finally
         {
@@ -110,24 +115,26 @@ public sealed class SendWriteService : ISendWriteService
         if (!_session.TryCopyUserKey(lease, out var copiedKey))
             throw new InvalidOperationException("Vault is locked.");
         using var userKey = copiedKey;
+        // 操作开始、lease 仍 current 时冻结 AccessTokenBinding,仅供【回滚删除本次刚建的新 Send】的补偿路径。
+        var binding = RequireAccessTokenBinding(lease);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var seed = ResolveSeed(draft, userKey!);
         try
         {
             var api = _clients.GetAuthenticated<ISendApiClient>(lease);
             var created = await CreateFileCoreAsync(
-                lease, api, userKey!, draft.WithId(null), file, seed, replacedExisting: true, ct: linked.Token);
+                lease, api, binding, userKey!, draft.WithId(null), file, seed, replacedExisting: true, ct: linked.Token);
             try
             {
                 // 删旧【前】先校验 lease:若此刻已失效则不删旧件(旧件仍在服务端),但【必须回滚新件】——
                 // 否则留下 orphan new(新件孤儿 + 旧件仍在)。因此 pre-delete 校验与 DeleteSendAsync 同处一个
-                // 补偿 try:无论"删旧前校验失败"还是"DeleteSendAsync 抛出",都用独立令牌补偿删掉刚建的新件。
+                // 补偿 try:无论"删旧前校验失败"还是"DeleteSendAsync 抛出",都用独立补偿客户端删掉刚建的新件。
                 _session.ThrowIfExpired(lease);
                 await api.DeleteSendAsync(existingSendId, linked.Token);
             }
             catch (Exception deleteOldError)
             {
-                await DeleteOrThrowCompensationAsync(api, created.SendId, deleteOldError);
+                await DeleteOrThrowCompensationAsync(binding, created.SendId, deleteOldError);
                 throw;
             }
             // 删旧成功后的 lease 校验必须在 catch 之外:remote replacement 已提交(旧件已删),
@@ -146,6 +153,7 @@ public sealed class SendWriteService : ISendWriteService
     private async Task<SendFileWriteResult> CreateFileCoreAsync(
         VaultSessionLease lease,
         ISendApiClient api,
+        AccessTokenBinding binding,
         SymmetricCryptoKey userKey,
         SendDraftModel draft,
         SendFileSource file,
@@ -166,25 +174,28 @@ public sealed class SendWriteService : ISendWriteService
         {
             await api.UploadSendFileAsync(response.Url, encryptedName, upload, ct);
             // 上传成功后、返回前也必须在同一补偿 try 内校验 lease:若此刻 vault 被 Lock,
-            // 抛 OCE 前用独立令牌删掉刚建的孤儿记录,绝不把新 Send 遗留在服务端。
+            // 抛 OCE 前用冻结 binding 删掉刚建的孤儿记录,绝不把新 Send 遗留在服务端。
             _session.ThrowIfExpired(lease);
         }
         catch (Exception uploadError)
         {
-            await DeleteOrThrowCompensationAsync(api, response.SendResponse.Id, uploadError);
+            await DeleteOrThrowCompensationAsync(binding, response.SendResponse.Id, uploadError);
             throw;
         }
         return new SendFileWriteResult(response.SendResponse.Id, response.SendResponse.AccessId, replacedExisting);
     }
 
-    // 用【独立 15s 令牌】删除孤儿 Send:与调用方令牌解耦,即使调用方已取消也能完成清理。
-    // 清理成功 → 原始错误由调用方 rethrow;清理失败 → 抛可操作的 SendUploadCompensationException(不泄露密钥)。
-    private static async Task DeleteOrThrowCompensationAsync(ISendApiClient api, string sendId, Exception originalError)
+    // 删除孤儿 Send 的补偿:走【专用 ISendCompensationClient + 冻结 binding + 独立 15s 令牌】。
+    // 绝不复用 lease 绑定的 api —— 那个 client 在 lease 失效(vault Lock)后 token provider 返回 null,
+    // 补偿 DELETE 便无 Bearer,生产环境必被服务端 401 拒绝、留下孤儿记录。冻结 binding 在操作开始、lease 仍
+    // current 时捕获,故即便随后 vault 被 Lock 也带着有效令牌;独立令牌与调用方令牌解耦,即使调用方已取消也能
+    // 完成清理。清理成功 → 原始错误由调用方 rethrow;清理失败 → 抛可操作的 SendUploadCompensationException(不泄露密钥)。
+    private async Task DeleteOrThrowCompensationAsync(AccessTokenBinding binding, string sendId, Exception originalError)
     {
         using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         try
         {
-            await api.DeleteSendAsync(sendId, cleanup.Token);
+            await _compensation.DeleteAsync(binding, sendId, cleanup.Token);
         }
         catch (Exception cleanupError)
         {
@@ -284,6 +295,12 @@ public sealed class SendWriteService : ISendWriteService
 
     private SymmetricCryptoKey RequireUserKey() =>
         _session.UserKey ?? throw new InvalidOperationException("Vault is locked.");
+
+    // 冻结当前 lease 的 AccessTokenBinding(账户/来源/generation/令牌四元组),供文件写补偿删除专用。
+    // lease 无 access token 时在任何 API 前失败——没有可用令牌就无法在事后清理孤儿 Send。
+    private AccessTokenBinding RequireAccessTokenBinding(VaultSessionLease lease) =>
+        _session.GetAccessTokenBinding(lease)
+        ?? throw new InvalidOperationException("No access token is available for the current vault session.");
 
     // 内部可变构建器,构建完毕后隐式转换为不可变 SendRequest。
     private sealed class MutableSendRequest

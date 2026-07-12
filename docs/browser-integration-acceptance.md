@@ -66,7 +66,7 @@ portable 安装后，App↔Host 的双向 **Authenticode** signer SPKI 校验通
 用 `test-pages\passkey-get.html`、`passkey-create.html` 确认返回的凭据对象 `instanceof PublicKeyCredential`，
 `response instanceof AuthenticatorAssertionResponse`/`AuthenticatorAttestationResponse`，且
 `credential.toJSON()` 可用。再用 `test-pages\iframe-top.html` + `iframe-child.html`
-（`python -m http.server 8787/8788`）验证：声明 `allow="public-key-credentials-get"` 的跨域 iframe
+（`python -m http.server 8787/8788`）验证：声明 `allow="publickey-credentials-get"` 的跨域 iframe
 可进入 App 完成请求，未声明的 iframe 收到稳定 `SecurityError` 且不触发任何 App UI。
 
 - [ ] Chrome：版本 ____，App 版本 ____，架构 ____，结果 ____

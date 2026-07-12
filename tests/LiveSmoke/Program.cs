@@ -61,7 +61,8 @@ var writeService = new VaultWriteService(clients, encryptor, sync, session);
 
 var sendCrypto = new SendCryptoService(crypto);
 var sendService = new SendService(clients, sendCrypto, session);
-var sendWriteService = new SendWriteService(clients, sendCrypto, session);
+var sendCompensation = new SendCompensationClient(apiFactory);
+var sendWriteService = new SendWriteService(clients, sendCrypto, session, sendCompensation);
 var sendAccessService = new SendAccessService(clients, sendCrypto);
 
 var attachmentCrypto = new AttachmentCryptoService(crypto);

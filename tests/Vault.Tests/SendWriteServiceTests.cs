@@ -18,9 +18,10 @@ public class SendWriteServiceTests
         var session = new VaultSession();
         session.BeginAccountSession("test-account", "test@test.com", new ServerOrigin("https://vault.test"));
         session.SetUnlockedKey(userKey);
+        session.SetTokens("access-token", "refresh-token");
         var crypto = new SendCryptoService(new CryptoService());
         var api = new FakeSendApiClient();
-        return (new SendWriteService(FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(api), crypto, session), api, crypto, userKey);
+        return (new SendWriteService(FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(api), crypto, session, new FakeSendCompensationClient()), api, crypto, userKey);
     }
 
     private static SendDraftModel TextDraft(string? password = null, string? id = null, string? key = null) => new()
@@ -211,7 +212,7 @@ public class SendWriteServiceTests
     public async Task SaveTextSend_WhenLocked_Throws()
     {
         var crypto = new SendCryptoService(new CryptoService());
-        var service = new SendWriteService(FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(new FakeSendApiClient()), crypto, new VaultSession());
+        var service = new SendWriteService(FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(new FakeSendApiClient()), crypto, new VaultSession(), new FakeSendCompensationClient());
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.SaveTextSendAsync(TextDraft(), TestContext.Current.CancellationToken));

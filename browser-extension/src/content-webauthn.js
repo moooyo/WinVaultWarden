@@ -4,7 +4,7 @@
 // the trusted context. It keeps a single long-lived runtime port to the service worker for the life
 // of the frame (never a one-shot message, never a dynamically injected script element). It reads
 // the frame's Permissions Policy verdict directly from the real document so a sub-frame can only get
-// a passkey when the top document delegated `public-key-credentials-get`. Page-supplied
+// a passkey when the top document delegated `publickey-credentials-get`. Page-supplied
 // origin/crossOrigin/context are stripped before anything leaves the frame; disconnect reasons and
 // chrome.runtime.lastError never reach the page.
 (function installWinVaultWardenIsolatedRelay() {
@@ -36,7 +36,7 @@
       return true;
     }
     const policy = document.permissionsPolicy ?? document.featurePolicy;
-    return Boolean(policy?.allowsFeature?.("public-key-credentials-get"));
+    return Boolean(policy?.allowsFeature?.("publickey-credentials-get"));
   }
 
   window.addEventListener("message", (event) => {
