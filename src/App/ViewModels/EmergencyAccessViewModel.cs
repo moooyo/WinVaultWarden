@@ -108,7 +108,7 @@ public partial class EmergencyAccessViewModel : ObservableObject, ISensitiveStat
                 await ReloadAsync(ct);
                 return UiOperationResult.Success();
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
                 return UiOperationResult.Cancelled();
             }
@@ -295,7 +295,7 @@ public partial class EmergencyAccessViewModel : ObservableObject, ISensitiveStat
             {
                 return UiOperationResult<T>.Success(await action(ct));
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
                 return UiOperationResult<T>.Cancelled();
             }

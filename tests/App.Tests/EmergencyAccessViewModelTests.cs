@@ -496,6 +496,21 @@ public class EmergencyAccessViewModelTests
     }
 
     [Fact]
+    public async Task LoadAsync_ServiceThrowsOperationCanceledException_ReturnsCancelled_DoesNotThrow_LeavesCollectionsEmpty_AndClearsOperationError()
+    {
+        var vm = new EmergencyAccessViewModel(new LeaseCancelledEaUiService("lease cancelled"));
+
+        var result = await vm.LoadAsync();
+
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
+        Assert.False(vm.IsBusy);
+        Assert.Null(vm.OperationError);
+        Assert.Empty(vm.MyContacts);
+        Assert.Empty(vm.TrustedByOthers);
+        Assert.Empty(vm.RecoveredItems);
+    }
+
+    [Fact]
     public async Task InviteAsync_ServiceThrowsHttpRequestException_ReturnsFailed_DoesNotThrow_RedactsMessage()
     {
         var vm = new EmergencyAccessViewModel(new HttpFailingEaUiService("SENSITIVE-SERVER-DETAIL"));
@@ -510,6 +525,19 @@ public class EmergencyAccessViewModelTests
     }
 
     [Fact]
+    public async Task InviteAsync_ServiceThrowsOperationCanceledException_ReturnsCancelled_DoesNotThrow_ReleasesGate_AndKeepsRecoveredItemsEmpty()
+    {
+        var vm = new EmergencyAccessViewModel(new LeaseCancelledEaUiService("lease cancelled"));
+
+        var result = await vm.InviteAsync("carol@x.com", EmergencyAccessType.View, 7);
+
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
+        Assert.False(vm.IsBusy);
+        Assert.Null(vm.OperationError);
+        Assert.Empty(vm.RecoveredItems);
+    }
+
+    [Fact]
     public async Task ViewAsync_ServiceThrowsHttpRequestException_ReturnsFailed_DoesNotThrow_RedactsMessage_NoRecoveredItems()
     {
         var vm = new EmergencyAccessViewModel(new HttpFailingEaUiService("SENSITIVE-SERVER-DETAIL"));
@@ -521,6 +549,20 @@ public class EmergencyAccessViewModelTests
         Assert.False(vm.IsBusy);
         Assert.NotNull(vm.OperationError);
         Assert.DoesNotContain("SENSITIVE-SERVER-DETAIL", vm.OperationError);
+        Assert.Empty(vm.RecoveredItems);
+    }
+
+    [Fact]
+    public async Task ViewAsync_ServiceThrowsOperationCanceledException_ReturnsCancelled_DoesNotThrow_ReleasesGate_AndKeepsRecoveredItemsEmpty()
+    {
+        var vm = new EmergencyAccessViewModel(new LeaseCancelledEaUiService("lease cancelled"));
+        var item = new GrantedAccess("ga-1", null, "grantor@x.com", null, EmergencyAccessStatus.RecoveryApproved, EmergencyAccessType.View, 7);
+
+        var result = await vm.ViewAsync(item);
+
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
+        Assert.False(vm.IsBusy);
+        Assert.Null(vm.OperationError);
         Assert.Empty(vm.RecoveredItems);
     }
 
@@ -679,6 +721,35 @@ public class EmergencyAccessViewModelTests
             Task.FromException<RecoveredVault>(Write());
         public Task TakeoverAndResetPasswordAsync(string id, string grantorEmail, string newPassword, CancellationToken ct = default) =>
             Task.FromException(Write());
+    }
+
+    /// <summary>
+    /// 模拟 lease 被取消但调用方 token 未取消的情况:真实代码当前会漏掉这种 OCE。
+    /// </summary>
+    private sealed class LeaseCancelledEaUiService : IEmergencyAccessUiService
+    {
+        private readonly OperationCanceledException _exception;
+
+        public LeaseCancelledEaUiService(string message) => _exception = new OperationCanceledException(message);
+
+        public Task<IReadOnlyList<EmergencyContact>> GetTrustedAsync(CancellationToken ct = default) =>
+            Task.FromException<IReadOnlyList<EmergencyContact>>(_exception);
+        public Task<IReadOnlyList<GrantedAccess>> GetGrantedAsync(CancellationToken ct = default) =>
+            Task.FromException<IReadOnlyList<GrantedAccess>>(_exception);
+        public Task InviteAsync(string email, EmergencyAccessType type, int waitTimeDays, CancellationToken ct = default) =>
+            Task.FromException(_exception);
+        public Task ReinviteAsync(string id, CancellationToken ct = default) => Task.FromException(_exception);
+        public Task ConfirmAsync(string id, string granteeId, CancellationToken ct = default) => Task.FromException(_exception);
+        public Task UpdateAsync(string id, EmergencyAccessType type, int waitTimeDays, CancellationToken ct = default) => Task.FromException(_exception);
+        public Task RemoveAsync(string id, CancellationToken ct = default) => Task.FromException(_exception);
+        public Task ApproveAsync(string id, CancellationToken ct = default) => Task.FromException(_exception);
+        public Task RejectAsync(string id, CancellationToken ct = default) => Task.FromException(_exception);
+        public Task AcceptAsync(string id, string token, CancellationToken ct = default) => Task.FromException(_exception);
+        public Task InitiateAsync(string id, CancellationToken ct = default) => Task.FromException(_exception);
+        public Task<RecoveredVault> ViewAsync(string id, string grantorEmail, CancellationToken ct = default) =>
+            Task.FromException<RecoveredVault>(_exception);
+        public Task TakeoverAndResetPasswordAsync(string id, string grantorEmail, string newPassword, CancellationToken ct = default) =>
+            Task.FromException(_exception);
     }
 
     /// <summary>可编排 View 结果/异常的替身，用于 stale-result 与 this-invocation 断言。</summary>
