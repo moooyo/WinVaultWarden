@@ -227,14 +227,27 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
 
     // ── 泄露检查命令 ────────────────────────────────────────────────────────────
 
+    // 泄露检查(HIBP)的取消/代次状态机,与离线分析对称:
+    // 每次 RunExposedCheck 先取消上一次请求并领取递增的 request-id;结果提交前用 request-id 校验,
+    // 迟到完成的旧请求(即使 fake 忽略取消令牌)绝不会写回 ExposedItems/ExposedChecked/ExposedError。
+    private CancellationTokenSource? _exposedCts;
+    private long _exposedRequestId;
+
     /// <summary>
     /// 联网检查密码是否出现在已知数据泄露中（Have I Been Pwned）。
     /// 完成后填充 ExposedItems，并将 ExposedChecked 设为 true；
     /// 失败时将错误信息写入 ExposedError。
+    /// 入口先取消上一次请求并领取 request-id;每个结果提交前校验 request-id,
+    /// Lock/离页/再次触发导致的旧请求即便迟到返回也不会回写机密。
     /// </summary>
     [RelayCommand]
     private async Task RunExposedCheck(CancellationToken ct)
     {
+        CancelExposedCheck();
+        var requestId = Interlocked.Increment(ref _exposedRequestId);
+        _exposedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var token = _exposedCts.Token;
+
         IsCheckingExposed = true;
         ExposedError = null;
         ExposedChecked = false;
@@ -242,7 +255,9 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
 
         try
         {
-            var findings = await _service.CheckExposedAsync(ct);
+            var findings = await _service.CheckExposedAsync(token);
+            if (requestId != Volatile.Read(ref _exposedRequestId))
+                return;
 
             foreach (var f in findings)
                 ExposedItems.Add(f);
@@ -251,22 +266,38 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         }
         catch (OperationCanceledException)
         {
-            // 用户取消，静默处理
+            // 用户/生命周期取消，静默处理
         }
         catch (Exception ex)
         {
-            ExposedError = ex.Message;
+            if (requestId == Volatile.Read(ref _exposedRequestId))
+                ExposedError = ex.Message;
         }
         finally
         {
-            IsCheckingExposed = false;
+            if (requestId == Volatile.Read(ref _exposedRequestId))
+                IsCheckingExposed = false;
         }
+    }
+
+    /// <summary>
+    /// 取消进行中的泄露检查(离开页面/再次触发加载/Lock 时调用)。
+    /// 先递增 request-id 再取消 token,确保任何仍在飞行中的回调都能立即识别为过期而丢弃结果。
+    /// </summary>
+    public void CancelExposedCheck()
+    {
+        Interlocked.Increment(ref _exposedRequestId);
+        _exposedCts?.Cancel();
+        _exposedCts?.Dispose();
+        _exposedCts = null;
+        IsCheckingExposed = false;
     }
 
     // 锁屏/登出时清空安全报告的机密足迹:重复/弱/不安全/已泄露分组与错误。幂等。
     public void ClearSensitive()
     {
         CancelOfflineAnalysis();
+        CancelExposedCheck();
         ReusedGroups.Clear();
         WeakItems.Clear();
         UnsecuredItems.Clear();

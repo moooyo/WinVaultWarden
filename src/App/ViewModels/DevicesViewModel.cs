@@ -13,6 +13,11 @@ public partial class DevicesViewModel : ObservableObject
     private readonly VaultSession? _session;
     private readonly AsyncOperationGate _operations = new();
 
+    // 网络层真实失败为 VaultApiException/VaultWriteException(均 : HttpRequestException)。这些文案
+    // 固定脱敏、绝不回显 ex.Message(服务端错误可能夹带账户/资源标识)。
+    private const string NetworkLoadError = "无法加载设备登录请求，请检查网络后重试。";
+    private const string NetworkOperationError = "网络请求失败，请检查连接后重试。";
+
     public ObservableCollection<DeviceItem> Devices { get; } = new();
     public ObservableCollection<AuthRequestItem> PendingRequests { get; } = new();
 
@@ -90,6 +95,11 @@ public partial class DevicesViewModel : ObservableObject
                 RestoreRequestsState();
                 return UiOperationResult<IReadOnlyList<AuthRequestItem>>.Cancelled();
             }
+            catch (HttpRequestException)
+            {
+                SetLoadFailure(NetworkLoadError);
+                return UiOperationResult<IReadOnlyList<AuthRequestItem>>.Failure(NetworkLoadError);
+            }
             catch (AuthRequestOperationException ex)
             {
                 SetLoadFailure(ex.Message);
@@ -144,6 +154,10 @@ public partial class DevicesViewModel : ObservableObject
             {
                 return UiOperationResult.Cancelled();
             }
+            catch (HttpRequestException)
+            {
+                return FailOperation(NetworkOperationError);
+            }
             catch (AuthRequestOperationException ex)
             {
                 return FailOperation(ex.Message);
@@ -186,6 +200,10 @@ public partial class DevicesViewModel : ObservableObject
             catch (OperationCanceledException)
             {
                 return UiOperationResult.Cancelled();
+            }
+            catch (HttpRequestException)
+            {
+                return FailOperation(NetworkOperationError);
             }
             catch (AuthRequestOperationException ex)
             {

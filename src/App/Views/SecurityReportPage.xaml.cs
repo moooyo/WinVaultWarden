@@ -25,6 +25,7 @@ public sealed partial class SecurityReportPage : Page
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         ViewModel.CancelOfflineAnalysis();
+        ViewModel.CancelExposedCheck();
         base.OnNavigatedFrom(e);
     }
 

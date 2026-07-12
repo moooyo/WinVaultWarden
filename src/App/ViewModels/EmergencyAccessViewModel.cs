@@ -16,6 +16,11 @@ public partial class EmergencyAccessViewModel : ObservableObject, ISensitiveStat
     // 都不会并发重入——第二个调用立即拿到 Busy,而不是被静默丢弃或读到半途状态。
     private readonly AsyncOperationGate _operations = new();
 
+    // 网络层真实失败为 VaultApiException/VaultWriteException(均 : HttpRequestException)。文案固定脱敏,
+    // 绝不回显 ex.Message(服务端错误可能夹带被授权账户/资源标识)。
+    private const string NetworkLoadError = "无法加载紧急访问信息，请检查网络后重试。";
+    private const string NetworkOperationError = "网络请求失败，请检查连接后重试。";
+
     // ── 两个显示集合 ──────────────────────────────────────────────────────────
 
     /// <summary>授予方视角：我授权出去的紧急联系人。</summary>
@@ -106,6 +111,12 @@ public partial class EmergencyAccessViewModel : ObservableObject, ISensitiveStat
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 return UiOperationResult.Cancelled();
+            }
+            catch (HttpRequestException)
+            {
+                OperationError = NetworkLoadError;
+                PageState = DataPageState.Error;
+                return UiOperationResult.Failure(NetworkLoadError);
             }
             catch (EmergencyAccessOperationException ex)
             {
@@ -287,6 +298,11 @@ public partial class EmergencyAccessViewModel : ObservableObject, ISensitiveStat
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 return UiOperationResult<T>.Cancelled();
+            }
+            catch (HttpRequestException)
+            {
+                OperationError = NetworkOperationError;
+                return UiOperationResult<T>.Failure(NetworkOperationError);
             }
             catch (EmergencyAccessOperationException ex)
             {

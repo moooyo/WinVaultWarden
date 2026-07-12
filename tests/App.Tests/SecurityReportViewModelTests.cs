@@ -301,6 +301,70 @@ public class SecurityReportViewModelTests
         Assert.Equal(SecuritySeverity.Good, vm.OverallSeverity);
     }
 
+    // ── Finding B: 泄露检查(HIBP)缺代次守卫 → 锁定清理后迟到结果回写 ────────────────────
+    // RunExposedCheck 原本无 requestId/CTS,ClearSensitive/离页只取消离线分析。锁屏清空后,
+    // 一个仍在飞行中的 HIBP 结果会把 ExposedItems/ExposedChecked 重新写回。修复后:入口取消旧请求、
+    // 捕获 local 代次;每次提交前校验代次;ClearSensitive 与离页调用取消。fake 故意忽略取消令牌,
+    // 证明是"代次守卫"而非"服务响应取消"在丢弃迟到结果。
+
+    [Fact]
+    public async Task ClearSensitive_AfterExposedCheckStarts_DropsLateResult()
+    {
+        var service = new ControlledExposedHealthUiService();
+        var vm = new SecurityReportViewModel(service);
+
+        var check = vm.RunExposedCheckCommand.ExecuteAsync(null);
+        await service.Entered.Task;
+
+        vm.ClearSensitive();
+        service.Complete(0, [new ExposedFinding(new HealthItemRef("c1", "GitHub", null), 5)]);
+        await check;
+
+        Assert.Empty(vm.ExposedItems);
+        Assert.False(vm.ExposedChecked);
+        Assert.False(vm.HasExposed);
+    }
+
+    [Fact]
+    public async Task CancelExposedCheck_AfterStart_DropsLateResult()
+    {
+        var service = new ControlledExposedHealthUiService();
+        var vm = new SecurityReportViewModel(service);
+
+        var check = vm.RunExposedCheckCommand.ExecuteAsync(null);
+        await service.Entered.Task;
+
+        vm.CancelExposedCheck();
+        service.Complete(0, [new ExposedFinding(new HealthItemRef("c1", "GitHub", null), 5)]);
+        await check;
+
+        Assert.Empty(vm.ExposedItems);
+        Assert.False(vm.ExposedChecked);
+    }
+
+    // 守卫不能永久破坏功能:一次迟到结果被丢弃后,新的检查仍能正常填充。
+    [Fact]
+    public async Task RunExposedCheck_AfterStaleResultDropped_FreshCheckStillPopulates()
+    {
+        var service = new ControlledExposedHealthUiService();
+        var vm = new SecurityReportViewModel(service);
+
+        var stale = vm.RunExposedCheckCommand.ExecuteAsync(null);
+        await service.Entered.Task;
+        vm.CancelExposedCheck();
+        service.Complete(0, [new ExposedFinding(new HealthItemRef("stale", "Old", null), 1)]);
+        await stale;
+
+        var fresh = vm.RunExposedCheckCommand.ExecuteAsync(null);
+        await service.Entered.Task;
+        service.Complete(1, [new ExposedFinding(new HealthItemRef("fresh", "New", null), 9)]);
+        await fresh;
+
+        var finding = Assert.Single(vm.ExposedItems);
+        Assert.Equal("fresh", finding.Item.CipherId);
+        Assert.True(vm.ExposedChecked);
+    }
+
     // ── Fakes ──────────────────────────────────────────────────────────────────
 
     private sealed class StubHealthUiService : IVaultHealthUiService
@@ -405,5 +469,32 @@ public class SecurityReportViewModelTests
         public Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(
             CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<ExposedFinding>>([]);
+    }
+
+    // 阻塞 CheckExposedAsync 直到 Complete 被调用;故意忽略 ct(证明代次守卫,而非取消协作,
+    // 才是丢弃迟到结果的机制)。Entered 让测试等到服务确实进入 CheckExposedAsync 再触发清理/取消。
+    private sealed class ControlledExposedHealthUiService : IVaultHealthUiService
+    {
+        private readonly List<TaskCompletionSource<IReadOnlyList<ExposedFinding>>> _calls = [];
+
+        public TaskCompletionSource<bool> Entered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<HealthReport> AnalyzeOfflineAsync(
+            IProgress<HealthAnalysisProgress>? progress = null,
+            CancellationToken ct = default) =>
+            Task.FromResult(new HealthReport([], [], []));
+
+        public Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(CancellationToken ct = default)
+        {
+            var completion = new TaskCompletionSource<IReadOnlyList<ExposedFinding>>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            _calls.Add(completion);
+            Entered.TrySetResult(true);
+            return completion.Task;
+        }
+
+        public void Complete(int call, IReadOnlyList<ExposedFinding> findings) =>
+            _calls[call].SetResult(findings);
     }
 }

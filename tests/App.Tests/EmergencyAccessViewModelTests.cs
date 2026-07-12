@@ -1,3 +1,5 @@
+using System.Net;
+using Api;
 using App.Services;
 using App.ViewModels;
 using Core.Models;
@@ -471,6 +473,69 @@ public class EmergencyAccessViewModelTests
         Assert.Null(vm.OperationError);
     }
 
+    // ── Finding A: 真实 API 失败 = VaultApiException/VaultWriteException : HttpRequestException ──
+    // 这些不是 OCE 也不是 EmergencyAccessOperationException,当前 LoadAsync/RunAsync 覆盖不到,
+    // 会逃出 async void 页面处理器 → 全局 fail-closed 终止进程。修复后必须精确捕获、映射成固定
+    // 脱敏文案(不回显服务端 Message),并保留四态/gate 释放/敏感集合语义。
+
+    [Fact]
+    public async Task LoadAsync_ServiceThrowsHttpRequestException_ReturnsFailed_DoesNotThrow_RedactsMessage()
+    {
+        var vm = new EmergencyAccessViewModel(new HttpFailingEaUiService("SENSITIVE-SERVER-DETAIL"));
+
+        var result = await vm.LoadAsync();
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal(DataPageState.Error, vm.PageState);
+        Assert.False(vm.IsBusy);
+        Assert.NotNull(vm.OperationError);
+        Assert.False(string.IsNullOrEmpty(vm.OperationError));
+        Assert.DoesNotContain("SENSITIVE-SERVER-DETAIL", vm.OperationError);
+        Assert.Empty(vm.MyContacts);
+        Assert.Empty(vm.TrustedByOthers);
+    }
+
+    [Fact]
+    public async Task InviteAsync_ServiceThrowsHttpRequestException_ReturnsFailed_DoesNotThrow_RedactsMessage()
+    {
+        var vm = new EmergencyAccessViewModel(new HttpFailingEaUiService("SENSITIVE-SERVER-DETAIL"));
+
+        var result = await vm.InviteAsync("carol@x.com", EmergencyAccessType.View, 7);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.False(vm.IsBusy);
+        Assert.NotNull(vm.OperationError);
+        Assert.False(string.IsNullOrEmpty(vm.OperationError));
+        Assert.DoesNotContain("SENSITIVE-SERVER-DETAIL", vm.OperationError);
+    }
+
+    [Fact]
+    public async Task ViewAsync_ServiceThrowsHttpRequestException_ReturnsFailed_DoesNotThrow_RedactsMessage_NoRecoveredItems()
+    {
+        var vm = new EmergencyAccessViewModel(new HttpFailingEaUiService("SENSITIVE-SERVER-DETAIL"));
+        var item = new GrantedAccess("ga-1", null, "grantor@x.com", null, EmergencyAccessStatus.RecoveryApproved, EmergencyAccessType.View, 7);
+
+        var result = await vm.ViewAsync(item);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.False(vm.IsBusy);
+        Assert.NotNull(vm.OperationError);
+        Assert.DoesNotContain("SENSITIVE-SERVER-DETAIL", vm.OperationError);
+        Assert.Empty(vm.RecoveredItems);
+    }
+
+    // 网络失败后闸门必须已释放:紧接着的加载不能返回 Busy。
+    [Fact]
+    public async Task InviteAsync_ServiceThrowsHttpRequestException_ReleasesGate_ForNextOperation()
+    {
+        var vm = new EmergencyAccessViewModel(new HttpFailingEaUiService("srv"));
+
+        await vm.InviteAsync("carol@x.com", EmergencyAccessType.View, 7);
+        var second = await vm.LoadAsync();
+
+        Assert.NotEqual(UiOperationStatus.Busy, second.Status);
+    }
+
     // ── Private fakes ─────────────────────────────────────────────────────────
 
     /// <summary>可配置的 stub，支持预置 Trusted/Granted 列表。</summary>
@@ -582,6 +647,38 @@ public class EmergencyAccessViewModelTests
             Task.FromException<RecoveredVault>(new EmergencyAccessOperationException(_message));
         public Task TakeoverAndResetPasswordAsync(string id, string grantorEmail, string newPassword, CancellationToken ct = default) =>
             Task.FromException(new EmergencyAccessOperationException(_message));
+    }
+
+    /// <summary>
+    /// 模拟真实网络层:所有调用抛出 VaultApiException/VaultWriteException(均 : HttpRequestException),
+    /// 携带一段"敏感服务端明细"以验证修复后不回显 ex.Message。
+    /// </summary>
+    private sealed class HttpFailingEaUiService : IEmergencyAccessUiService
+    {
+        private readonly string _message;
+        public HttpFailingEaUiService(string message) => _message = message;
+
+        private VaultApiException Read() => new(HttpStatusCode.BadGateway, _message, _message);
+        private VaultWriteException Write() => new(_message);
+
+        public Task<IReadOnlyList<EmergencyContact>> GetTrustedAsync(CancellationToken ct = default) =>
+            Task.FromException<IReadOnlyList<EmergencyContact>>(Read());
+        public Task<IReadOnlyList<GrantedAccess>> GetGrantedAsync(CancellationToken ct = default) =>
+            Task.FromException<IReadOnlyList<GrantedAccess>>(Read());
+        public Task InviteAsync(string email, EmergencyAccessType type, int waitTimeDays, CancellationToken ct = default) =>
+            Task.FromException(Write());
+        public Task ReinviteAsync(string id, CancellationToken ct = default) => Task.FromException(Write());
+        public Task ConfirmAsync(string id, string granteeId, CancellationToken ct = default) => Task.FromException(Write());
+        public Task UpdateAsync(string id, EmergencyAccessType type, int waitTimeDays, CancellationToken ct = default) => Task.FromException(Write());
+        public Task RemoveAsync(string id, CancellationToken ct = default) => Task.FromException(Write());
+        public Task ApproveAsync(string id, CancellationToken ct = default) => Task.FromException(Write());
+        public Task RejectAsync(string id, CancellationToken ct = default) => Task.FromException(Write());
+        public Task AcceptAsync(string id, string token, CancellationToken ct = default) => Task.FromException(Write());
+        public Task InitiateAsync(string id, CancellationToken ct = default) => Task.FromException(Write());
+        public Task<RecoveredVault> ViewAsync(string id, string grantorEmail, CancellationToken ct = default) =>
+            Task.FromException<RecoveredVault>(Write());
+        public Task TakeoverAndResetPasswordAsync(string id, string grantorEmail, string newPassword, CancellationToken ct = default) =>
+            Task.FromException(Write());
     }
 
     /// <summary>可编排 View 结果/异常的替身，用于 stale-result 与 this-invocation 断言。</summary>

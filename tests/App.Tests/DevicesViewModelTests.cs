@@ -1,3 +1,5 @@
+using System.Net;
+using Api;
 using App.Services;
 using App.ViewModels;
 using App.ViewModels.Models;
@@ -438,6 +440,97 @@ public class DevicesViewModelTests
         Assert.Equal(UiOperationStatus.Cancelled, result.Status);
         Assert.Empty(fake.DeniedIds);
         Assert.Contains(item, vm.PendingRequests);
+    }
+
+    // ── Finding A: 真实 API 失败 = VaultApiException/VaultWriteException : HttpRequestException ──
+    // 这些是网络层抛出的真实类型(见 src/Api/VaultApiException.cs)。它们既不是 OCE 也不是
+    // AuthRequestOperationException,当前 catch 覆盖不到,会逃出 async void 页面处理器 → 全局
+    // fail-closed 终止进程。修复后必须被精确捕获、映射成固定脱敏文案(不回显服务端 Message)。
+
+    [Fact]
+    public async Task RefreshRequestsAsync_ServiceThrowsHttpRequestException_ReturnsFailed_DoesNotThrow_RedactsMessage()
+    {
+        var fake = new FakeAuthRequestService
+        {
+            ListOverride = _ => Task.FromException<IReadOnlyList<PendingAuthRequest>>(
+                new VaultApiException(HttpStatusCode.BadGateway, "SENSITIVE-SERVER-DETAIL", "SENSITIVE-SERVER-DETAIL")),
+        };
+        var vm = new DevicesViewModel(new MockDeviceUiService(), new AuthRequestUiService(fake));
+
+        var result = await vm.RefreshRequestsAsync();
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal(DataPageState.Error, vm.RequestsState);
+        Assert.False(vm.IsBusy);
+        Assert.NotNull(vm.Error);
+        Assert.False(string.IsNullOrEmpty(vm.Error));
+        Assert.DoesNotContain("SENSITIVE-SERVER-DETAIL", vm.Error);
+    }
+
+    [Fact]
+    public async Task ApproveAsync_ServiceThrowsHttpRequestException_SetsError_ItemStays_DoesNotThrow_RedactsMessage()
+    {
+        var fake = new FakeAuthRequestService
+        {
+            ApproveOverride = (_, _, _) => Task.FromException(
+                new VaultWriteException("SENSITIVE-SERVER-DETAIL")),
+        };
+        fake.AddRequest(new PendingAuthRequest("r1", "Android", "1.1.1.1", "2025-01-01T00:00:00Z", "pk"));
+        var vm = new DevicesViewModel(new MockDeviceUiService(), new AuthRequestUiService(fake));
+        await vm.RefreshRequestsAsync();
+        var item = vm.PendingRequests.Single();
+
+        var result = await vm.ApproveAsync(item, (_, _) => Task.FromResult(true));
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.False(vm.IsBusy);
+        Assert.NotNull(vm.Error);
+        Assert.DoesNotContain("SENSITIVE-SERVER-DETAIL", vm.Error);
+        Assert.Single(vm.PendingRequests); // 条目保留,允许重试
+        Assert.Equal(DataPageState.Content, vm.RequestsState);
+    }
+
+    [Fact]
+    public async Task DenyAsync_ServiceThrowsHttpRequestException_SetsError_ItemStays_DoesNotThrow_RedactsMessage()
+    {
+        var fake = new FakeAuthRequestService
+        {
+            DenyOverride = (_, _) => Task.FromException(
+                new VaultWriteException("SENSITIVE-SERVER-DETAIL")),
+        };
+        fake.AddRequest(new PendingAuthRequest("r2", "iOS", "9.9.9.9", "2025-02-01T15:00:00Z", "pk"));
+        var vm = new DevicesViewModel(new MockDeviceUiService(), new AuthRequestUiService(fake));
+        await vm.RefreshRequestsAsync();
+        var item = vm.PendingRequests.Single();
+
+        var result = await vm.DenyAsync(item, (_, _) => Task.FromResult(true));
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.False(vm.IsBusy);
+        Assert.NotNull(vm.Error);
+        Assert.DoesNotContain("SENSITIVE-SERVER-DETAIL", vm.Error);
+        Assert.Single(vm.PendingRequests);
+        Assert.Equal(DataPageState.Content, vm.RequestsState);
+    }
+
+    // 网络失败后闸门必须已释放:紧接着的操作不能返回 Busy。
+    [Fact]
+    public async Task ApproveAsync_ServiceThrowsHttpRequestException_ReleasesGate_ForNextOperation()
+    {
+        var fake = new FakeAuthRequestService
+        {
+            ApproveOverride = (_, _, _) => Task.FromException(
+                new VaultApiException(HttpStatusCode.ServiceUnavailable, "srv", "srv")),
+        };
+        fake.AddRequest(new PendingAuthRequest("r1", "Android", "1.1.1.1", "2025-01-01T00:00:00Z", "pk"));
+        var vm = new DevicesViewModel(new MockDeviceUiService(), new AuthRequestUiService(fake));
+        await vm.RefreshRequestsAsync();
+        var item = vm.PendingRequests.Single();
+
+        await vm.ApproveAsync(item, (_, _) => Task.FromResult(true));
+        var second = await vm.DenyAsync(item, (_, _) => Task.FromResult(false));
+
+        Assert.NotEqual(UiOperationStatus.Busy, second.Status);
     }
 
     // ── 私有 Stub / Fake 类 ───────────────────────────────────────────────────
