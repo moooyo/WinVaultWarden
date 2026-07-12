@@ -28,6 +28,10 @@ public sealed class FakeSendApiClient : ISendApiClient, IPublicSendApiClient
     // (回调内通常 session.Lock()),验证 post-upload / post-delete 的 ThrowIfExpired 补偿(补/不补)语义。
     public Action? AfterUploadSuccess { get; set; }
     public Dictionary<string, Action> AfterDeleteSuccess { get; } = [];
+    // 确定性竞态测试注入点:非 null 时,upload 记录调用后在此 Task 上等待(不 ConfigureAwait,以捕获调用方
+    // 的 SynchronizationContext)。让测试能用手动 SynchronizationContext 精确 pump upload 之后的 continuation,
+    // 在"inner CreateFileCore 完成"与"outer 删旧前 lease 校验"之间插入 Lock 以复现租约竞态。
+    public Task? UploadGate { get; set; }
     public bool DeleteTokenWasCanceled { get; private set; }
     public string? LastAccessId { get; private set; }
     public string? LastAccessPasswordProof { get; private set; }
@@ -73,6 +77,8 @@ public sealed class FakeSendApiClient : ISendApiClient, IPublicSendApiClient
         Calls.Add("upload");
         LastUploadUrl = uploadUrl;
         LastUploadFileName = encryptedFileName;
+        if (UploadGate is not null)
+            await UploadGate;
         if (UploadThrows is not null)
         {
             BeforeUploadFailure?.Invoke();

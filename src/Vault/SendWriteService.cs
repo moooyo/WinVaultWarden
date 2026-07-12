@@ -100,7 +100,8 @@ public sealed class SendWriteService : ISendWriteService
     // 复用旧 draft.Key 解出的原 seed 加密新件(WithId(null) 让其按"创建"处理)。
     // 删旧失败 → 回滚删新件(独立令牌补偿),并把原始删旧异常抛出;任何一步失败都不得伪装成功。
     // lease 竞态:删旧【成功】后即便 lease 失效也绝不回删新件(replacement 已提交,否则新旧双删=数据丢失),
-    // 校验放在 delete catch 之外;删旧【前】lease 已失效则不删旧件,新件留作孤儿待下次同步。
+    // 校验放在 delete catch 之外;删旧【前】lease 已失效则不删旧件,并【回滚删新件】——否则新件孤儿 + 旧件仍在
+    // = orphan new,故"删旧前校验"与 DeleteSendAsync 同处一个补偿 try。
     public async Task<SendFileWriteResult> ReplaceFileSendAsync(string existingSendId, SendDraftModel draft, SendFileSource file, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(existingSendId);
@@ -116,11 +117,12 @@ public sealed class SendWriteService : ISendWriteService
             var api = _clients.GetAuthenticated<ISendApiClient>(lease);
             var created = await CreateFileCoreAsync(
                 lease, api, userKey!, draft.WithId(null), file, seed, replacedExisting: true, ct: linked.Token);
-            // 删旧前先校验 lease:若此刻已失效,不删旧件(旧件仍在服务端);新件作为孤儿留待下次同步,
-            // 绝不双删。catch 只包 DeleteSendAsync 本身——仅当"删旧"这一步失败(旧件仍在)才回滚新件。
-            _session.ThrowIfExpired(lease);
             try
             {
+                // 删旧【前】先校验 lease:若此刻已失效则不删旧件(旧件仍在服务端),但【必须回滚新件】——
+                // 否则留下 orphan new(新件孤儿 + 旧件仍在)。因此 pre-delete 校验与 DeleteSendAsync 同处一个
+                // 补偿 try:无论"删旧前校验失败"还是"DeleteSendAsync 抛出",都用独立令牌补偿删掉刚建的新件。
+                _session.ThrowIfExpired(lease);
                 await api.DeleteSendAsync(existingSendId, linked.Token);
             }
             catch (Exception deleteOldError)

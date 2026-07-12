@@ -306,4 +306,95 @@ public class SendFileWorkflowTests
         Assert.Equal(["create-file-v2", "upload", "delete:new-send"], fixture.Api.Calls);
         Assert.DoesNotContain("delete:old-send", fixture.Api.Calls);
     }
+
+    // 竞态 D(替换,inner 完成与"删旧前"校验之间失效):建+传新件成功,inner CreateFileCore 的 post-upload
+    // lease 校验【已通过并返回】,但在 outer "删旧前" ThrowIfExpired 执行【之前】vault 被 Lock。此刻旧件仍在、
+    // 新件已建;pre-delete 校验发现 lease 失效必须【回滚新件】(delete:new-send),且绝不触碰旧件——否则留下
+    // orphan new(新件孤儿 + 旧件仍在)。RED(修复前):pre-delete ThrowIfExpired 在 delete 的 try/catch【之外】,
+    // 抛 OCE 但不补偿 → Calls 缺 delete:new-send。
+    //
+    // 用手动 SynchronizationContext + 可控 upload gate 制造确定性竞态:分两次 pump continuation,在 inner
+    // continuation 跑完(post-upload 校验通过、CreateFileCore 返回)之后、outer pre-delete continuation 执行
+    // 之前插入 Lock。驱动期间把线程 SynchronizationContext 置为中性(null),使每个后继 continuation 被 Post
+    // 回队列而非内联级联,从而每次 RunOne 仅推进一个 continuation,完全确定、单线程。
+    [Fact]
+    public void Replace_LeaseExpiresBetweenInnerCompletionAndPreDeleteCheck_RollsBackNewAndSkipsDeleteOld()
+    {
+        var fixture = NewFileFixture();
+        var uploadGate = new TaskCompletionSource();
+        fixture.Api.UploadGate = uploadGate.Task;
+
+        var original = SynchronizationContext.Current;
+        var pump = new ManualPumpSynchronizationContext();
+        Task replaceTask;
+        try
+        {
+            // 以 pump 为当前上下文启动:phase 1 同步跑到 upload 并阻塞在 gate(所有前置 await 均已完成 → 无排队)。
+            SynchronizationContext.SetSynchronizationContext(pump);
+            replaceTask = fixture.Service.ReplaceFileSendAsync(
+                "old-send", ExistingFileDraft(), MemorySource("new.bin", [4, 5, 6]), CancellationToken.None);
+            Assert.Equal(["create-file-v2", "upload"], fixture.Api.Calls);
+            Assert.False(replaceTask.IsCompleted);
+            Assert.Equal(0, pump.PendingCount);
+
+            // 切到中性上下文,使随后每个 Task 完成时其 continuation 被 Post 回 pump(而非内联级联执行)。
+            SynchronizationContext.SetSynchronizationContext(null);
+            uploadGate.SetResult();
+            Assert.True(pump.RunOne());   // upload 收尾并完成 → 排队 inner CreateFileCore 的 post-upload continuation
+            Assert.True(pump.RunOne());   // post-upload 校验通过、CreateFileCore 返回 → 排队 outer 的"删旧前"continuation
+
+            // 此刻 inner 已完成,outer pre-delete continuation 已排队但尚未执行;lease 仍有效。
+            Assert.False(replaceTask.IsCompleted);
+            Assert.Equal(["create-file-v2", "upload"], fixture.Api.Calls);
+            Assert.Equal(1, pump.PendingCount);
+
+            // 在 inner 完成与 outer pre-delete 校验之间 Lock,使 lease 失效。
+            fixture.Session.Lock();
+
+            // pump outer pre-delete continuation:ThrowIfExpired 发现 lease 失效并触发补偿。
+            pump.Drain();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(original);
+        }
+
+        // 方法以 OperationCanceledException 收场(async 方法抛 OCE → Task 进入 Canceled 状态)。
+        Assert.True(replaceTask.IsCanceled);
+        // 目标:pre-delete 校验失败必须回滚新件(delete:new-send,独立未取消令牌),且绝不触碰旧件。
+        Assert.Equal(["create-file-v2", "upload", "delete:new-send"], fixture.Api.Calls);
+        Assert.DoesNotContain("delete:old-send", fixture.Api.Calls);
+        Assert.False(fixture.Api.DeleteTokenWasCanceled);
+        Assert.Equal("new-send", fixture.Api.LastDeleteId);
+    }
+
+    // 单线程手动泵:Post 仅入队;RunOne 执行队首一个 continuation。测试驱动期间保持线程上下文为中性(null),
+    // 使被执行的 continuation 内完成的任何 Task 的后继 continuation 都被 Post 回本队列(内联优化条件是
+    // 目标上下文 == 当前上下文),从而每次 RunOne 精确推进一个 continuation。
+    private sealed class ManualPumpSynchronizationContext : SynchronizationContext
+    {
+        private readonly Queue<(SendOrPostCallback callback, object? state)> _queue = new();
+
+        public override void Post(SendOrPostCallback d, object? state) => _queue.Enqueue((d, state));
+
+        public override void Send(SendOrPostCallback d, object? state) => d(state);
+
+        public int PendingCount => _queue.Count;
+
+        public bool RunOne()
+        {
+            if (_queue.Count == 0)
+                return false;
+            var (callback, state) = _queue.Dequeue();
+            callback(state);
+            return true;
+        }
+
+        public void Drain()
+        {
+            while (RunOne())
+            {
+            }
+        }
+    }
 }
