@@ -23,7 +23,7 @@ public sealed partial class PasskeyApprovalView : UserControl
         SelectedCredential = presentation.InitialSelection;
         InitializeComponent();
         // A lone credential is shown inline elsewhere; only surface the picker when there is a choice.
-        CredentialPicker.Visibility = presentation.Candidates.Count > 1
+        CredentialPicker.Visibility = presentation.Candidates.Length > 1
             ? Visibility.Visible
             : Visibility.Collapsed;
     }

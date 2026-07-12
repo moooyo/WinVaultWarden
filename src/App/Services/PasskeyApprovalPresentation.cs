@@ -16,7 +16,7 @@ public sealed record PasskeyApprovalPresentation(
     string RpIdAscii,
     bool IsCrossOrigin,
     string? ReportedName,
-    IReadOnlyList<PasskeyCredentialTarget> Candidates,
+    PasskeyCredentialTarget[] Candidates,
     PasskeyCredentialTarget? InitialSelection)
 {
     public static PasskeyApprovalPresentation Build(
@@ -24,6 +24,7 @@ public sealed record PasskeyApprovalPresentation(
         string? reportedRpName,
         IReadOnlyList<PasskeyCredentialTarget> candidates)
     {
+        var materialized = candidates.ToArray();
         var frame = PasskeyOriginDisplay.Parse(source.FrameOrigin);
         var top = PasskeyOriginDisplay.Parse(source.TopOrigin);
         return new(
@@ -38,8 +39,8 @@ public sealed record PasskeyApprovalPresentation(
             string.IsNullOrWhiteSpace(reportedRpName)
                 ? null
                 : $"网站自报名称：{reportedRpName}",
-            candidates,
+            materialized,
             // Only a lone credential may be pre-selected; multiple candidates force an explicit pick.
-            candidates.Count == 1 ? candidates[0] : null);
+            materialized.Length == 1 ? materialized[0] : null);
     }
 }

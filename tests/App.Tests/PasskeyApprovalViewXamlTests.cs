@@ -34,6 +34,19 @@ public class PasskeyApprovalViewXamlTests
         Assert.DoesNotContain("SelectedIndex=\"0\"", LoadXamlText());
     }
 
+    // AOT contract: the generated XamlBindingSetters.Set…ItemsSource setter must target
+    // Presentation.Candidates so that the fix (changing Candidates to PasskeyCredentialTarget[])
+    // actually reaches the ItemsControl.set_ItemsSource assignment that crashed under Native AOT.
+    [Fact]
+    public void CredentialPicker_ItemsSource_BindsToPresentationCandidates()
+    {
+        var doc = LoadXaml();
+        var combo = doc.Descendants().First(e => e.Name.LocalName == "ComboBox");
+        var itemsSourceAttr = combo.Attribute("ItemsSource");
+        Assert.NotNull(itemsSourceAttr);
+        Assert.Equal("{x:Bind Presentation.Candidates}", itemsSourceAttr!.Value);
+    }
+
     private static XDocument LoadXaml() => XDocument.Parse(LoadXamlText());
 
     private static string LoadXamlText()
