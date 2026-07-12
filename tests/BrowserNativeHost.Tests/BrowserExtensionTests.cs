@@ -38,7 +38,7 @@ public class BrowserExtensionTests
                 new[] { "src/error-map.js", "src/request-coordinator.js", "src/page-webauthn.js" },
                 main.GetProperty("js").EnumerateArray().Select(script => script.GetString()).ToArray());
             Assert.Equal(
-                new[] { "src/request-coordinator.js", "src/content-webauthn.js" },
+                new[] { "src/content-webauthn.js" },
                 isolated.GetProperty("js").EnumerateArray().Select(script => script.GetString()).ToArray());
 
             // The passkey bridge is intentionally headless: no dynamic injection surface, no toolbar

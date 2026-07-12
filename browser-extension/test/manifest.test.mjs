@@ -20,18 +20,20 @@ for (const file of manifestFiles) {
       assert.deepEqual(script.matches, ["<all_urls>"]);
     }
 
-    // The page-world shim, its coordinator and its error map inject into MAIN; the
-    // isolated relay only shares the coordinator.
+    // The page-world shim, its coordinator and its error map inject into MAIN. The isolated relay
+    // must NOT list the same physical script as MAIN: real Chrome/Edge dedupe an identical script
+    // path across content_scripts entries and only inject it into the first world that claims it,
+    // so a shared `src/request-coordinator.js` entry silently never runs in ISOLATED.
     const [main, isolated] = manifest.content_scripts;
     assert.deepEqual(main.js, [
       "src/error-map.js",
       "src/request-coordinator.js",
       "src/page-webauthn.js",
     ]);
-    assert.deepEqual(isolated.js, [
-      "src/request-coordinator.js",
-      "src/content-webauthn.js",
-    ]);
+    assert.deepEqual(isolated.js, ["src/content-webauthn.js"]);
+    for (const script of main.js) {
+      assert.ok(!isolated.js.includes(script), `ISOLATED must not reuse MAIN script ${script}`);
+    }
 
     // No dynamic script injection surface, and no popup/options/autofill scope creep.
     assert.equal(manifest.web_accessible_resources, undefined);

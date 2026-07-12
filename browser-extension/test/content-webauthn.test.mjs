@@ -125,7 +125,11 @@ function createContentHarness({ isTop = true, policy = "allow", lastErrorMessage
     clearTimeout,
     queueMicrotask,
   };
-  const context = loadClassic(sandbox, "request-coordinator.js", "content-webauthn.js");
+  // Real Chrome/Edge dedupe an identical content-script path across content_scripts entries and
+  // only inject it into the first world that claims it, so the ISOLATED relay never sees a
+  // `WinVaultWardenRequestCoordinator` global in production. The harness must not load
+  // request-coordinator.js here, or it would mask that reality.
+  const context = loadClassic(sandbox, "content-webauthn.js");
 
   const fromIsolated = [];
   win.addEventListener("message", (event) => {
@@ -156,13 +160,23 @@ function createContentHarness({ isTop = true, policy = "allow", lastErrorMessage
   };
 }
 
-test("coordinator mints 32-byte channels and 16-byte request ids", () => {
+test("installs the relay, connects the port, and announces readiness without a global WinVaultWardenRequestCoordinator", () => {
   const harness = createContentHarness();
-  const coordinator = harness.context.WinVaultWardenRequestCoordinator;
 
-  assert.match(coordinator.randomChannelId(), /^[0-9a-f]{64}$/u);
-  assert.match(coordinator.randomRequestId(), /^[0-9a-f]{32}$/u);
-  assert.notEqual(coordinator.randomChannelId(), coordinator.randomChannelId());
+  assert.equal(harness.context.WinVaultWardenRequestCoordinator, undefined);
+  assert.equal(harness.connectCalls.length, 1);
+  assert.equal(harness.connectCalls[0].name, "winvaultwarden-passkey-frame-v1");
+  assert.ok(harness.fromIsolated.some((message) => message.kind === "isolated.ready"));
+  assert.match(harness.channelId, /^[0-9a-f]{64}$/u);
+});
+
+test("each frame mints its own distinct 32-byte channel id", () => {
+  const first = createContentHarness();
+  const second = createContentHarness();
+
+  assert.match(first.channelId, /^[0-9a-f]{64}$/u);
+  assert.match(second.channelId, /^[0-9a-f]{64}$/u);
+  assert.notEqual(first.channelId, second.channelId);
 });
 
 test("each frame connects one named long-lived port and exposes a 32-byte channel", () => {

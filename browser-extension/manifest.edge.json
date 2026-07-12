@@ -31,7 +31,6 @@
         "<all_urls>"
       ],
       "js": [
-        "src/request-coordinator.js",
         "src/content-webauthn.js"
       ],
       "run_at": "document_start",

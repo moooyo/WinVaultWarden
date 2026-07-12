@@ -11,14 +11,23 @@
   const MAIN_SOURCE = "winvaultwarden-main";
   const ISOLATED_SOURCE = "winvaultwarden-isolated";
   const PORT_NAME = "winvaultwarden-passkey-frame-v1";
-  const coordinator = globalThis.WinVaultWardenRequestCoordinator;
 
-  if (!coordinator || window.__winVaultWardenIsolatedRelay) {
+  // Real Chrome/Edge dedupe an identical content-script file path across content_scripts entries
+  // and only inject it into the first world that declares it, so this file cannot rely on a
+  // `request-coordinator.js` sibling ever having run in the ISOLATED world (it only runs in MAIN).
+  // Mint the 32-byte channel id locally instead of importing the shared coordinator.
+  function randomChannelId() {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  }
+
+  if (window.__winVaultWardenIsolatedRelay) {
     return;
   }
   Object.defineProperty(window, "__winVaultWardenIsolatedRelay", { value: true });
 
-  const channelId = coordinator.randomChannelId();
+  const channelId = randomChannelId();
   const active = new Set();
   const port = chrome.runtime.connect({ name: PORT_NAME });
 
