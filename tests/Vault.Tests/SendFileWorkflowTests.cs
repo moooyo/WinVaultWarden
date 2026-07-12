@@ -17,7 +17,7 @@ namespace Vault.Tests;
 //   - 元数据更新只发 PUT，绝不开流/上传。
 public class SendFileWorkflowTests
 {
-    private sealed record FileFixture(SendWriteService Service, FakeSendApiClient Api);
+    private sealed record FileFixture(SendWriteService Service, FakeSendApiClient Api, VaultSession Session);
 
     private static FileFixture NewFileFixture()
     {
@@ -62,7 +62,8 @@ public class SendFileWorkflowTests
                 FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(api),
                 new SendCryptoService(new CryptoService()),
                 session),
-            api);
+            api,
+            session);
     }
 
     private static SendFileSource MemorySource(string fileName, byte[] bytes) => new(
@@ -252,5 +253,57 @@ public class SendFileWorkflowTests
                 "delete:new-send",
             ],
             fixture.Api.Calls);
+    }
+
+    // 竞态 A(创建):上传成功后、方法返回前 lease 失效(vault 被 Lock)。post-upload 的 ThrowIfExpired
+    // 必须与 upload 处于同一补偿 try —— 抛 OperationCanceledException 前用【独立未取消令牌】删掉刚建的
+    // 孤儿新件,绝不能把新 Send 遗留在服务端。RED(修复前):post-upload 校验在 try 外 → 只有 create/upload、
+    // 无 delete:new(少补偿)。
+    [Fact]
+    public async Task CreateFile_LeaseExpiresAfterUpload_CompensatesNewWithIndependentToken()
+    {
+        var fixture = NewFileFixture();
+        fixture.Api.AfterUploadSuccess = () => fixture.Session.Lock();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            fixture.Service.CreateFileSendAsync(
+                FileDraft(), MemorySource("a.bin", [1, 2, 3]), CancellationToken.None));
+
+        Assert.Equal(["create-file-v2", "upload", "delete:new-send"], fixture.Api.Calls);
+        Assert.False(fixture.Api.DeleteTokenWasCanceled);
+        Assert.Equal("new-send", fixture.Api.LastDeleteId);
+    }
+
+    // 竞态 B(替换):建+传新件成功,删旧成功后、返回前 lease 失效。远端 replacement 已提交(旧件已删),
+    // 此时【绝不能】补偿删新件 —— 否则新旧双删 = 数据丢失。宁可调用方抛 OperationCanceledException,
+    // 下次同步看到新件。RED(修复前):删旧成功后的 ThrowIfExpired 在 delete catch 内 → 误删 new(多补偿)。
+    [Fact]
+    public async Task Replace_LeaseExpiresAfterDeletingOld_DoesNotDeleteNew()
+    {
+        var fixture = NewFileFixture();
+        fixture.Api.AfterDeleteSuccess["old-send"] = () => fixture.Session.Lock();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            fixture.Service.ReplaceFileSendAsync(
+                "old-send", ExistingFileDraft(), MemorySource("new.bin", [4, 5, 6]), CancellationToken.None));
+
+        Assert.Equal(["create-file-v2", "upload", "delete:old-send"], fixture.Api.Calls);
+        Assert.DoesNotContain("delete:new-send", fixture.Api.Calls);
+    }
+
+    // 竞态 C(替换,删旧前失效):替换的"建新件"阶段上传成功后 lease 立即失效。此时旧件尚未删,
+    // 补偿只回滚新件,并且绝不触碰旧件(delete:old-send 永不发生)。
+    [Fact]
+    public async Task Replace_LeaseExpiresAfterUpload_RollsBackNewAndSkipsDeleteOld()
+    {
+        var fixture = NewFileFixture();
+        fixture.Api.AfterUploadSuccess = () => fixture.Session.Lock();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            fixture.Service.ReplaceFileSendAsync(
+                "old-send", ExistingFileDraft(), MemorySource("new.bin", [7, 8, 9]), CancellationToken.None));
+
+        Assert.Equal(["create-file-v2", "upload", "delete:new-send"], fixture.Api.Calls);
+        Assert.DoesNotContain("delete:old-send", fixture.Api.Calls);
     }
 }

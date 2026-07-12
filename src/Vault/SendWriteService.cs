@@ -99,6 +99,8 @@ public sealed class SendWriteService : ISendWriteService
     // 替换既有文件 Send:服务端无法原地替换文件字节,故【先建+传新件,再删旧件】。
     // 复用旧 draft.Key 解出的原 seed 加密新件(WithId(null) 让其按"创建"处理)。
     // 删旧失败 → 回滚删新件(独立令牌补偿),并把原始删旧异常抛出;任何一步失败都不得伪装成功。
+    // lease 竞态:删旧【成功】后即便 lease 失效也绝不回删新件(replacement 已提交,否则新旧双删=数据丢失),
+    // 校验放在 delete catch 之外;删旧【前】lease 已失效则不删旧件,新件留作孤儿待下次同步。
     public async Task<SendFileWriteResult> ReplaceFileSendAsync(string existingSendId, SendDraftModel draft, SendFileSource file, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(existingSendId);
@@ -114,17 +116,22 @@ public sealed class SendWriteService : ISendWriteService
             var api = _clients.GetAuthenticated<ISendApiClient>(lease);
             var created = await CreateFileCoreAsync(
                 lease, api, userKey!, draft.WithId(null), file, seed, replacedExisting: true, ct: linked.Token);
+            // 删旧前先校验 lease:若此刻已失效,不删旧件(旧件仍在服务端);新件作为孤儿留待下次同步,
+            // 绝不双删。catch 只包 DeleteSendAsync 本身——仅当"删旧"这一步失败(旧件仍在)才回滚新件。
+            _session.ThrowIfExpired(lease);
             try
             {
                 await api.DeleteSendAsync(existingSendId, linked.Token);
-                _session.ThrowIfExpired(lease);
-                return created;
             }
             catch (Exception deleteOldError)
             {
                 await DeleteOrThrowCompensationAsync(api, created.SendId, deleteOldError);
                 throw;
             }
+            // 删旧成功后的 lease 校验必须在 catch 之外:remote replacement 已提交(旧件已删),
+            // 此刻即便 lease 失效也【绝不能】再删新件——否则新旧双删 = 数据丢失。宁可调用方抛 OCE。
+            _session.ThrowIfExpired(lease);
+            return created;
         }
         finally
         {
@@ -156,13 +163,15 @@ public sealed class SendWriteService : ISendWriteService
         try
         {
             await api.UploadSendFileAsync(response.Url, encryptedName, upload, ct);
+            // 上传成功后、返回前也必须在同一补偿 try 内校验 lease:若此刻 vault 被 Lock,
+            // 抛 OCE 前用独立令牌删掉刚建的孤儿记录,绝不把新 Send 遗留在服务端。
+            _session.ThrowIfExpired(lease);
         }
         catch (Exception uploadError)
         {
             await DeleteOrThrowCompensationAsync(api, response.SendResponse.Id, uploadError);
             throw;
         }
-        _session.ThrowIfExpired(lease);
         return new SendFileWriteResult(response.SendResponse.Id, response.SendResponse.AccessId, replacedExisting);
     }
 

@@ -24,6 +24,10 @@ public sealed class FakeSendApiClient : ISendApiClient, IPublicSendApiClient
     public Exception? DeleteThrows { get; set; }
     public Dictionary<string, Exception> DeleteFailures { get; } = [];
     public Action? BeforeUploadFailure { get; set; }
+    // 数据完整性竞态测试注入点:模拟"上传成功即将返回前"与"指定 sendId 删除成功即将返回前"lease 失效
+    // (回调内通常 session.Lock()),验证 post-upload / post-delete 的 ThrowIfExpired 补偿(补/不补)语义。
+    public Action? AfterUploadSuccess { get; set; }
+    public Dictionary<string, Action> AfterDeleteSuccess { get; } = [];
     public bool DeleteTokenWasCanceled { get; private set; }
     public string? LastAccessId { get; private set; }
     public string? LastAccessPasswordProof { get; private set; }
@@ -77,6 +81,7 @@ public sealed class FakeSendApiClient : ISendApiClient, IPublicSendApiClient
         await using var output = new MemoryStream();
         await encryptedContent.WriteAsync(output, ct);
         LastUploadBuffer = output.ToArray();
+        AfterUploadSuccess?.Invoke();
     }
 
     public Task<SendResponseDto> UpdateSendAsync(string sendId, SendRequest request, CancellationToken ct = default)
@@ -90,7 +95,10 @@ public sealed class FakeSendApiClient : ISendApiClient, IPublicSendApiClient
         Calls.Add($"delete:{sendId}");
         LastDeleteId = sendId;
         var failure = DeleteFailures.GetValueOrDefault(sendId) ?? DeleteThrows;
-        return failure is null ? Task.CompletedTask : Task.FromException(failure);
+        if (failure is not null)
+            return Task.FromException(failure);
+        AfterDeleteSuccess.GetValueOrDefault(sendId)?.Invoke();
+        return Task.CompletedTask;
     }
 
     public Task<SendResponseDto> RemoveSendPasswordAsync(string sendId, CancellationToken ct = default)
