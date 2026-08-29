@@ -111,7 +111,9 @@ public class WebAuthnCryptoTests
         // SPKI imports as P-256, and pairs with the PKCS8 private key (sign→verify round-trip).
         using var pub = System.Security.Cryptography.ECDsa.Create();
         pub.ImportSubjectPublicKeyInfo(spki, out _);
-        Assert.Equal("nistP256", pub.ExportParameters(false).Curve.Oid.FriendlyName);
+        Assert.Equal(
+            "1.2.840.10045.3.1.7",
+            pub.ExportParameters(false).Curve.Oid.Value);
         var sig = WebAuthnCrypto.SignAssertion(pkcs8, new byte[37], new byte[] { 1, 2, 3 });
         var signed = new byte[37 + 32];
         System.Security.Cryptography.SHA256.HashData(new byte[] { 1, 2, 3 }).CopyTo(signed.AsSpan(37));

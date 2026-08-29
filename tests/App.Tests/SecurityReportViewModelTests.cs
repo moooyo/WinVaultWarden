@@ -1,3 +1,4 @@
+using Api;
 using App.Services;
 using App.ViewModels;
 using Core.Models;
@@ -117,7 +118,7 @@ public class SecurityReportViewModelTests
         await vm.LoadOfflineAsync();
 
         Assert.Equal(DataPageState.Error, vm.OfflineState);
-        Assert.Equal("本地安全报告分析失败", vm.OfflineError);
+        Assert.Equal("无法完成安全报告分析，请稍后重试。", vm.OfflineError);
         Assert.Contains(nameof(SecurityReportViewModel.ShowOfflineLoading), notified);
         Assert.Contains(nameof(SecurityReportViewModel.ShowOfflineError), notified);
         Assert.Contains(nameof(SecurityReportViewModel.ShowOfflineContent), notified);
@@ -149,6 +150,19 @@ public class SecurityReportViewModelTests
         Assert.Equal(DataPageState.Loading, vm.OfflineState);
     }
 
+    [Fact]
+    public async Task LoadOffline_RequestTimeout_ReturnsFailureAndShowsSafeError()
+    {
+        var vm = new SecurityReportViewModel(new TimeoutHealthUiService());
+
+        var result = await vm.LoadOfflineAsync(CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, result.Error);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, vm.OfflineError);
+        Assert.Equal(DataPageState.Error, vm.OfflineState);
+    }
+
     // ── RunExposedCheckCommand ─────────────────────────────────────────────────
 
     [Fact]
@@ -157,9 +171,11 @@ public class SecurityReportViewModelTests
         var vm = new SecurityReportViewModel(new MockVaultHealthUiService());
         await vm.LoadOfflineAsync();
         await vm.RunExposedCheckCommand.ExecuteAsync(null);
+        Assert.Equal(ExposureCheckState.Succeeded, vm.ExposureState);
         Assert.True(vm.ExposedChecked);
         Assert.NotEmpty(vm.ExposedItems);
         Assert.False(vm.IsCheckingExposed);
+        Assert.True(vm.ShowExposedCount);
     }
 
     [Fact]
@@ -177,18 +193,33 @@ public class SecurityReportViewModelTests
         await vm.RunExposedCheckCommand.ExecuteAsync(null);
         Assert.False(vm.ExposedChecked);
         Assert.False(vm.IsCheckingExposed);
-        Assert.NotNull(vm.ExposedError);
-        Assert.False(string.IsNullOrEmpty(vm.ExposedError));
+        Assert.Equal(ExposureCheckState.Failed, vm.ExposureState);
+        Assert.Equal("无法完成暴露密码检查，请稍后重试。", vm.ExposedError);
+        Assert.False(vm.ShowExposedCount);
         Assert.Empty(vm.ExposedItems);
     }
 
     [Fact]
-    public async Task RunExposedCheck_ServiceThrows_IncludesExceptionMessage()
+    public async Task RunExposedCheck_ServiceThrows_DoesNotExposeExceptionMessage()
     {
         var msg = "HaveIBeenPwned is down";
         var vm = new SecurityReportViewModel(new ThrowingHealthUiService(msg));
         await vm.RunExposedCheckCommand.ExecuteAsync(null);
-        Assert.Contains(msg, vm.ExposedError);
+        Assert.Equal("无法完成暴露密码检查，请稍后重试。", vm.ExposedError);
+        Assert.DoesNotContain(msg, vm.ExposedError);
+    }
+
+    [Fact]
+    public async Task RunExposedCheck_RequestTimeout_ShowsSafeError()
+    {
+        var vm = new SecurityReportViewModel(new TimeoutHealthUiService());
+
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, vm.ExposedError);
+        Assert.Equal(ExposureCheckState.Failed, vm.ExposureState);
+        Assert.False(vm.ExposedChecked);
+        Assert.False(vm.IsCheckingExposed);
     }
 
     // ── HasX 空态布尔属性 ──────────────────────────────────────────────────────
@@ -281,7 +312,7 @@ public class SecurityReportViewModelTests
         Assert.Equal(1, vm.UnsecuredCount);
         Assert.Equal(0, vm.ExposedCount);
         Assert.Equal(3, vm.TotalIssueCount);
-        Assert.Equal("发现 3 项可改进", vm.SummaryText);
+        Assert.Equal("发现 3 项可改进，暴露检查尚未运行", vm.SummaryText);
         Assert.True(vm.HasAnyIssue);
         Assert.Equal(SecuritySeverity.Critical, vm.OverallSeverity);
     }
@@ -296,9 +327,52 @@ public class SecurityReportViewModelTests
         await vm.LoadOfflineAsync();
 
         Assert.Equal(0, vm.TotalIssueCount);
-        Assert.Equal("未发现问题", vm.SummaryText);
+        Assert.Equal("离线检查未发现问题，暴露检查尚未运行", vm.SummaryText);
         Assert.False(vm.HasAnyIssue);
+        Assert.Equal(SecuritySeverity.Unknown, vm.OverallSeverity);
+        Assert.Equal(ExposureCheckState.NotStarted, vm.ExposureState);
+        Assert.False(vm.ShowExposedCount);
+    }
+
+    [Fact]
+    public async Task Aggregates_EmptyReport_BecomesGoodOnlyAfterExposureCheckSucceeds()
+    {
+        var vm = new SecurityReportViewModel(new StubHealthUiService());
+
+        await vm.LoadOfflineAsync();
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+
+        Assert.Equal(ExposureCheckState.Succeeded, vm.ExposureState);
+        Assert.Equal("未发现问题", vm.SummaryText);
         Assert.Equal(SecuritySeverity.Good, vm.OverallSeverity);
+        Assert.True(vm.ShowExposedCount);
+        Assert.Equal("暴露密码，0 项", vm.ExposureMetricAccessibleName);
+    }
+
+    [Fact]
+    public async Task ExposureCheck_CheckingAndFailedRemainNeutralWhenOfflineReportIsEmpty()
+    {
+        var service = new ControlledExposedHealthUiService();
+        var vm = new SecurityReportViewModel(service);
+
+        await vm.LoadOfflineAsync();
+        var check = vm.RunExposedCheckCommand.ExecuteAsync(null);
+        await service.Entered.Task;
+
+        Assert.Equal(ExposureCheckState.Checking, vm.ExposureState);
+        Assert.Equal("离线检查未发现问题，正在检查暴露密码", vm.SummaryText);
+        Assert.Equal(SecuritySeverity.Unknown, vm.OverallSeverity);
+        Assert.False(vm.ShowExposedCount);
+        Assert.Equal("检查中", vm.ExposureStatusLabel);
+
+        service.Fail(0, new InvalidOperationException("raw service detail"));
+        await check;
+
+        Assert.Equal(ExposureCheckState.Failed, vm.ExposureState);
+        Assert.Equal("离线检查未发现问题，暴露检查失败", vm.SummaryText);
+        Assert.Equal(SecuritySeverity.Unknown, vm.OverallSeverity);
+        Assert.Equal("无法完成暴露密码检查，请稍后重试。", vm.ExposedError);
+        Assert.Equal("检查失败", vm.ExposureStatusLabel);
     }
 
     // ── Finding B: 泄露检查(HIBP)缺代次守卫 → 锁定清理后迟到结果回写 ────────────────────
@@ -323,6 +397,7 @@ public class SecurityReportViewModelTests
         Assert.Empty(vm.ExposedItems);
         Assert.False(vm.ExposedChecked);
         Assert.False(vm.HasExposed);
+        Assert.Equal(ExposureCheckState.NotStarted, vm.ExposureState);
     }
 
     [Fact]
@@ -340,6 +415,7 @@ public class SecurityReportViewModelTests
 
         Assert.Empty(vm.ExposedItems);
         Assert.False(vm.ExposedChecked);
+        Assert.Equal(ExposureCheckState.NotStarted, vm.ExposureState);
     }
 
     // 守卫不能永久破坏功能:一次迟到结果被丢弃后,新的检查仍能正常填充。
@@ -363,6 +439,7 @@ public class SecurityReportViewModelTests
         var finding = Assert.Single(vm.ExposedItems);
         Assert.Equal("fresh", finding.Item.CipherId);
         Assert.True(vm.ExposedChecked);
+        Assert.Equal(ExposureCheckState.Succeeded, vm.ExposureState);
     }
 
     // ── Fakes ──────────────────────────────────────────────────────────────────
@@ -448,11 +525,32 @@ public class SecurityReportViewModelTests
         public Task<HealthReport> AnalyzeOfflineAsync(
             IProgress<HealthAnalysisProgress>? progress = null,
             CancellationToken ct = default) =>
-            Task.FromException<HealthReport>(new OperationCanceledException("lease cancelled"));
+            Task.FromException<HealthReport>(new OperationCanceledException(
+                "lease cancelled",
+                new CancellationToken(canceled: true)));
 
         public Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(
             CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<ExposedFinding>>([]);
+    }
+
+    private sealed class TimeoutHealthUiService : IVaultHealthUiService
+    {
+        public Task<HealthReport> AnalyzeOfflineAsync(
+            IProgress<HealthAnalysisProgress>? progress = null,
+            CancellationToken ct = default) =>
+            Task.FromException<HealthReport>(RequestTimeout());
+
+        public Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(
+            CancellationToken ct = default) =>
+            Task.FromException<IReadOnlyList<ExposedFinding>>(RequestTimeout());
+
+        private static TaskCanceledException RequestTimeout() => new(
+            "request timed out",
+            new RequestTimeoutException(
+                RequestTimeoutPhase.ControlPlane,
+                TimeSpan.FromSeconds(30)),
+            CancellationToken.None);
     }
 
     private sealed class ImmediateHealthUiService(HealthReport report)
@@ -496,5 +594,8 @@ public class SecurityReportViewModelTests
 
         public void Complete(int call, IReadOnlyList<ExposedFinding> findings) =>
             _calls[call].SetResult(findings);
+
+        public void Fail(int call, Exception exception) =>
+            _calls[call].SetException(exception);
     }
 }

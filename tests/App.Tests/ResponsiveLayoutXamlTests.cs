@@ -13,7 +13,12 @@ public sealed class ResponsiveLayoutXamlTests
         Assert.Contains("x:Name=\"NarrowList\"", text);
         Assert.Contains("x:Name=\"NarrowDetail\"", text);
         Assert.Contains("VaultNarrowBackButton", text);
-        Assert.Contains("VaultWideThreshold = 800", ReadCodeBehind("VaultPage.xaml.cs"));
+        var source = ReadCodeBehind("VaultPage.xaml.cs");
+        Assert.Contains("VaultWideThreshold = 800", source);
+        Assert.Contains("previousState == \"NarrowList\" && state == \"NarrowDetail\"", source);
+        Assert.Contains("VaultNarrowBackButton.Focus(FocusState.Programmatic)", source);
+        Assert.Contains("CipherList.ContainerFromItem(item)", source);
+        Assert.Contains("CipherList.Focus(FocusState.Programmatic)", source);
     }
 
     [Fact]

@@ -538,6 +538,40 @@ public class EmergencyAccessViewModelTests
     }
 
     [Fact]
+    public async Task LoadAsync_RequestTimeout_ReturnsFailedAndShowsTimeout()
+    {
+        var vm = new EmergencyAccessViewModel(
+            new LeaseCancelledEaUiService(RequestTimeout()));
+
+        var result = await vm.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, result.Error);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, vm.OperationError);
+        Assert.Equal(DataPageState.Error, vm.PageState);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task InviteAsync_RequestTimeout_ReturnsFailedInsteadOfCancelled()
+    {
+        var vm = new EmergencyAccessViewModel(
+            new LeaseCancelledEaUiService(RequestTimeout()));
+
+        var result = await vm.InviteAsync(
+            "carol@x.com",
+            EmergencyAccessType.View,
+            7,
+            CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, result.Error);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, vm.OperationError);
+        Assert.False(vm.IsBusy);
+        Assert.Empty(vm.RecoveredItems);
+    }
+
+    [Fact]
     public async Task ViewAsync_ServiceThrowsHttpRequestException_ReturnsFailed_DoesNotThrow_RedactsMessage_NoRecoveredItems()
     {
         var vm = new EmergencyAccessViewModel(new HttpFailingEaUiService("SENSITIVE-SERVER-DETAIL"));
@@ -728,9 +762,16 @@ public class EmergencyAccessViewModelTests
     /// </summary>
     private sealed class LeaseCancelledEaUiService : IEmergencyAccessUiService
     {
-        private readonly OperationCanceledException _exception;
+        private readonly Exception _exception;
 
-        public LeaseCancelledEaUiService(string message) => _exception = new OperationCanceledException(message);
+        public LeaseCancelledEaUiService(string message)
+            : this(new OperationCanceledException(
+                message,
+                new CancellationToken(canceled: true)))
+        {
+        }
+
+        public LeaseCancelledEaUiService(Exception exception) => _exception = exception;
 
         public Task<IReadOnlyList<EmergencyContact>> GetTrustedAsync(CancellationToken ct = default) =>
             Task.FromException<IReadOnlyList<EmergencyContact>>(_exception);
@@ -751,6 +792,13 @@ public class EmergencyAccessViewModelTests
         public Task TakeoverAndResetPasswordAsync(string id, string grantorEmail, string newPassword, CancellationToken ct = default) =>
             Task.FromException(_exception);
     }
+
+    private static TaskCanceledException RequestTimeout() => new(
+        "request timed out",
+        new RequestTimeoutException(
+            RequestTimeoutPhase.ControlPlane,
+            TimeSpan.FromSeconds(30)),
+        CancellationToken.None);
 
     /// <summary>可编排 View 结果/异常的替身，用于 stale-result 与 this-invocation 断言。</summary>
     private sealed class ScriptedEaUiService : IEmergencyAccessUiService

@@ -4,7 +4,8 @@ using Xunit;
 
 namespace App.Tests;
 
-public class TraySettingsPersistenceTests
+[Collection(TestCollectionNames.AppPreferences)]
+public class TraySettingsPersistenceTests : AppPreferencesTestBase
 {
     [Fact]
     public void ShowTrayIcon_Persists_To_AppPreferences()
@@ -56,5 +57,17 @@ public class TraySettingsPersistenceTests
         {
             SettingsViewModel.ShowTrayIconSettingChanged -= Handler;
         }
+    }
+
+    [Fact]
+    public void CanConfigureTrayBehavior_FollowsShowTrayIcon()
+    {
+        AppPreferences.Current.ShowTrayIcon = true;
+        var vm = new SettingsViewModel();
+        Assert.True(vm.CanConfigureTrayBehavior);
+
+        vm.ShowTrayIcon = false;
+
+        Assert.False(vm.CanConfigureTrayBehavior);
     }
 }

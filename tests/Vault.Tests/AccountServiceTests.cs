@@ -4,6 +4,7 @@ using Core.Abstractions;
 using Core.Enums;
 using Core.Models;
 using Core.Services;
+using Core.Session;
 using Crypto;
 using Vault;
 using Xunit;
@@ -16,15 +17,22 @@ public class AccountServiceTests
     private const string OldPassword = "old-master-password";
     private const string NewPassword = "new-master-password-2!";
     private const int Iterations = 600_000;
+    private const string CustomSalt = "Case-Sensitive-Salt";
 
     private readonly CryptoService _crypto = new();
 
     // ---- 辅助：建立已解锁的 session + tokenStore ----
 
     private (VaultSession session, MemoryTokenStore store, SymmetricCryptoKey userKey, string protectedUserKey)
-        BuildUnlockedSession()
+        BuildUnlockedSession(string masterPasswordSalt = Email)
     {
-        var masterKey = _crypto.DeriveMasterKey(OldPassword, Email, KdfType.Pbkdf2, Iterations, null, null);
+        var masterKey = _crypto.DeriveMasterKey(
+            OldPassword,
+            masterPasswordSalt,
+            KdfType.Pbkdf2,
+            Iterations,
+            null,
+            null);
         var stretchedKey = _crypto.StretchMasterKey(masterKey);
         CryptographicOperations.ZeroMemory(masterKey);
 
@@ -42,7 +50,8 @@ public class AccountServiceTests
             KdfType.Pbkdf2,
             Iterations,
             null,
-            null));
+            null,
+            masterPasswordSalt));
 
         session.TryCommit(lease, () =>
         {
@@ -121,6 +130,58 @@ public class AccountServiceTests
         Assert.Equal(0, cacheStore.ClearCount);
     }
 
+    [Fact]
+    public async Task ChangePassword_CustomSalt_UsesExactSaltInLegacyAndOfficialPayloads()
+    {
+        var (session, store, userKey, _) = BuildUnlockedSession(CustomSalt);
+        var expectedUserKey = userKey.FullKey.ToArray();
+        var api = new FakeAccountApiClient();
+        var service = BuildService(
+            session,
+            store,
+            api,
+            new FakeAuthService(session, store));
+
+        await service.ChangePasswordAsync(
+            OldPassword,
+            NewPassword,
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(api.Password);
+        Assert.NotNull(api.Password.AuthenticationData);
+        Assert.NotNull(api.Password.UnlockData);
+        Assert.Equal(CustomSalt, api.Password.AuthenticationData.Salt);
+        Assert.Equal(CustomSalt, api.Password.UnlockData.Salt);
+        Assert.Equal(
+            api.Password.NewMasterPasswordHash,
+            api.Password.AuthenticationData.MasterPasswordAuthenticationHash);
+        Assert.Equal(api.Password.Key, api.Password.UnlockData.MasterKeyWrappedUserKey);
+
+        var newMasterKey = _crypto.DeriveMasterKey(
+            NewPassword,
+            CustomSalt,
+            KdfType.Pbkdf2,
+            Iterations,
+            null,
+            null);
+        try
+        {
+            Assert.Equal(
+                _crypto.ComputeMasterPasswordHash(newMasterKey, NewPassword),
+                api.Password.NewMasterPasswordHash);
+            using var stretched = _crypto.StretchMasterKey(newMasterKey);
+            using var decrypted = _crypto.DecryptUserKey(
+                stretched,
+                EncString.Parse(api.Password.Key));
+            Assert.Equal(expectedUserKey, decrypted.FullKey);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(newMasterKey);
+        }
+    }
+
     // ---- Test 2: ChangePassword 旧密码错误时抛出 AccountOperationException ----
 
     [Fact]
@@ -143,8 +204,11 @@ public class AccountServiceTests
 
     // ---- Test 3: ChangeKdf 低 iterations 客户端拒绝，不发 API ----
 
-    [Fact]
-    public async Task ChangeKdf_low_iterations_rejected_clientside()
+    [Theory]
+    [InlineData(599_999)]
+    [InlineData(2_000_001)]
+    public async Task ChangeKdf_iterations_outside_official_range_rejected_clientside(
+        int iterations)
     {
         var (session, store, _, _) = BuildUnlockedSession();
         var api = new FakeAccountApiClient();
@@ -152,7 +216,7 @@ public class AccountServiceTests
         var svc = BuildService(session, store, api, auth);
 
         await Assert.ThrowsAsync<AccountOperationException>(() =>
-            svc.ChangeKdfAsync(OldPassword, 99_999, TestContext.Current.CancellationToken));
+            svc.ChangeKdfAsync(OldPassword, iterations, TestContext.Current.CancellationToken));
 
         Assert.Null(api.Kdf);
         Assert.False(auth.LoggedOut);
@@ -242,6 +306,44 @@ public class AccountServiceTests
         Assert.Equal(0, cacheStore.ClearCount);
     }
 
+    [Fact]
+    public async Task ChangeKdf_CustomSalt_PreservesSaltForOldAndNewKdf()
+    {
+        var (session, store, _, _) = BuildUnlockedSession(CustomSalt);
+        var api = new FakeAccountApiClient();
+        var service = BuildService(
+            session,
+            store,
+            api,
+            new FakeAuthService(session, store));
+
+        await service.ChangeKdfAsync(
+            OldPassword,
+            700_000,
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(api.Kdf);
+        Assert.Equal(CustomSalt, api.Kdf.AuthenticationData.Salt);
+        Assert.Equal(CustomSalt, api.Kdf.UnlockData.Salt);
+        var newMasterKey = _crypto.DeriveMasterKey(
+            OldPassword,
+            CustomSalt,
+            KdfType.Pbkdf2,
+            700_000,
+            null,
+            null);
+        try
+        {
+            Assert.Equal(
+                _crypto.ComputeMasterPasswordHash(newMasterKey, OldPassword),
+                api.Kdf.NewMasterPasswordHash);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(newMasterKey);
+        }
+    }
+
     // ---- Test 5: UpdateName 名字过长时客户端拒绝 ----
 
     [Fact]
@@ -305,6 +407,21 @@ public class AccountServiceTests
         Assert.True(await svc.VerifyMasterPasswordAsync(OldPassword, TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task VerifyMasterPassword_CustomSalt_ReturnsTrue()
+    {
+        var (session, store, _, _) = BuildUnlockedSession(CustomSalt);
+        var service = BuildService(
+            session,
+            store,
+            new FakeAccountApiClient(),
+            new FakeAuthService(session, store));
+
+        Assert.True(await service.VerifyMasterPasswordAsync(
+            OldPassword,
+            TestContext.Current.CancellationToken));
+    }
+
     // ---- Test 9: VerifyMasterPassword 错误密码返回 false（不抛异常）----
 
     [Fact]
@@ -330,14 +447,14 @@ public class AccountServiceTests
         var userKey = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
         var protectedUserKey = recording.Encrypt(userKey.FullKey, stretched).ToString();
 
-        var store = new MemoryTokenStore();
-        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, Email, new ServerOrigin("https://vault.example"), 1, Email, "device-id", "refresh",
-            protectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
-
         var session = new VaultSession();
-        session.BeginAccountSession("test-account", Email, new ServerOrigin("https://vault.example"));
+        var lease = session.BeginAccountSession("test-account", Email, new ServerOrigin("https://vault.example"));
         session.SetTokens("access", "refresh");
         session.SetUnlockedKey(userKey);
+
+        var store = new MemoryTokenStore();
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, lease.AccountId, lease.Endpoints, lease.Generation, Email, "device-id", "refresh",
+            protectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
 
         var cacheStore = new FakeCacheStore();
         var cache = new VaultCacheService(cacheStore, new VaultDecryptor(recording), session);
@@ -353,6 +470,40 @@ public class AccountServiceTests
         Assert.NotEmpty(recording.Issued);
         Assert.All(recording.Issued, k => Assert.True(
             k.FullKey.All(b => b == 0), "派生密钥物料在校验后未被清零(泄露)"));
+    }
+
+    [Fact]
+    public async Task VerifyMasterPassword_RejectsPersistedSessionFromAnotherAccount()
+    {
+        var (session, store, _, protectedUserKey) = BuildUnlockedSession();
+        var other = new VaultSession();
+        var otherLease = other.BeginAccountSession(
+            "account-b",
+            "b@example.com",
+            new ServerOrigin("https://b.example"));
+        store.Save(new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            otherLease.AccountId,
+            otherLease.Endpoints,
+            otherLease.Generation,
+            "b@example.com",
+            "device-b",
+            "refresh-b",
+            protectedUserKey,
+            KdfType.Pbkdf2,
+            Iterations,
+            null,
+            null));
+        var service = BuildService(
+            session,
+            store,
+            new FakeAccountApiClient(),
+            new FakeAuthService(session, store));
+
+        await Assert.ThrowsAsync<AccountOperationException>(() =>
+            service.VerifyMasterPasswordAsync(
+                OldPassword,
+                TestContext.Current.CancellationToken));
     }
 
     // ---- Test 11: 改密请求挂起期间账户切到 B,迟到的 A 响应不得登出 B ----
@@ -453,6 +604,23 @@ public class AccountServiceTests
     private sealed class RecordingAuthService(
         VaultSession session) : IAuthService
     {
+        public AuthenticationAttemptLease BeginAuthenticationAttempt() =>
+            session.BeginAuthenticationAttempt();
+        public void AbandonAuthenticationAttempt(AuthenticationAttemptLease attempt) =>
+            session.AbandonAuthenticationAttempt(attempt);
+        public Task<AuthResult> LoginAsync(AuthenticationAttemptLease attempt, string serverUrl, string email, string password, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task<AuthResult> SubmitTwoFactorAsync(AuthenticationAttemptLease attempt, string code, int provider, CancellationToken ct = default, bool rememberDevice = true) =>
+            throw new NotSupportedException();
+        public Task<bool> ResendTwoFactorEmailAsync(AuthenticationAttemptLease attempt, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task<AuthResult> UnlockAsync(AuthenticationAttemptLease attempt, string password, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task<AuthResult> UnlockWithPinAsync(AuthenticationAttemptLease attempt, string pin, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task<AuthResult> UnlockWithHelloAsync(AuthenticationAttemptLease attempt, byte[] signature, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task LogoutAsync(CancellationToken ct = default)
         {
             session.Logout();
@@ -460,6 +628,8 @@ public class AccountServiceTests
         }
 
         public Task LockAsync(CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task LockAsync(VaultSessionLease expectedSession, CancellationToken ct = default) =>
             throw new NotSupportedException();
         public Task<AuthResult> LoginAsync(
             string serverUrl, string email, string password, CancellationToken ct = default) =>
@@ -475,6 +645,11 @@ public class AccountServiceTests
             throw new NotSupportedException();
         public Task<AuthResult> UnlockWithHelloAsync(byte[] signature, CancellationToken ct = default) =>
             throw new NotSupportedException();
+        public async Task<bool> LogoutAsync(VaultSessionLease expectedSession, CancellationToken ct = default)
+        {
+            await LogoutAsync(ct);
+            return true;
+        }
     }
 }
 
@@ -503,6 +678,7 @@ public sealed class RecordingCryptoService : CryptoService
 
 public sealed class FakeAuthService : IAuthService
 {
+    private readonly VaultSession _attempts = new();
     private readonly VaultSession? _session;
     private readonly ITokenStore? _store;
 
@@ -516,6 +692,23 @@ public sealed class FakeAuthService : IAuthService
         _session = session;
         _store = store;
     }
+
+    public AuthenticationAttemptLease BeginAuthenticationAttempt() =>
+        _attempts.BeginAuthenticationAttempt();
+    public void AbandonAuthenticationAttempt(AuthenticationAttemptLease attempt) =>
+        _attempts.AbandonAuthenticationAttempt(attempt);
+    public Task<AuthResult> LoginAsync(AuthenticationAttemptLease attempt, string serverUrl, string email, string masterPassword, CancellationToken ct = default) =>
+        LoginAsync(serverUrl, email, masterPassword, ct);
+    public Task<AuthResult> SubmitTwoFactorAsync(AuthenticationAttemptLease attempt, string code, int provider, CancellationToken ct = default, bool rememberDevice = true) =>
+        SubmitTwoFactorAsync(code, provider, ct, rememberDevice);
+    public Task<bool> ResendTwoFactorEmailAsync(AuthenticationAttemptLease attempt, CancellationToken ct = default) =>
+        ResendTwoFactorEmailAsync(ct);
+    public Task<AuthResult> UnlockAsync(AuthenticationAttemptLease attempt, string masterPassword, CancellationToken ct = default) =>
+        UnlockAsync(masterPassword, ct);
+    public Task<AuthResult> UnlockWithPinAsync(AuthenticationAttemptLease attempt, string pin, CancellationToken ct = default) =>
+        UnlockWithPinAsync(pin, ct);
+    public Task<AuthResult> UnlockWithHelloAsync(AuthenticationAttemptLease attempt, byte[] signature, CancellationToken ct = default) =>
+        UnlockWithHelloAsync(signature, ct);
 
     public Task<AuthResult> LoginAsync(string serverUrl, string email, string masterPassword, CancellationToken ct = default)
         => Task.FromResult<AuthResult>(new AuthResult.Failure("not implemented"));
@@ -535,6 +728,8 @@ public sealed class FakeAuthService : IAuthService
         => Task.FromResult<AuthResult>(new AuthResult.Failure("not implemented"));
 
     public Task LockAsync(CancellationToken ct = default) => Task.CompletedTask;
+    public Task LockAsync(VaultSessionLease expectedSession, CancellationToken ct = default) =>
+        LockAsync(ct);
 
     public Task LogoutAsync(CancellationToken ct = default)
     {
@@ -543,5 +738,11 @@ public sealed class FakeAuthService : IAuthService
         _store?.Clear();
         Cache?.Clear();
         return Task.CompletedTask;
+    }
+
+    public async Task<bool> LogoutAsync(VaultSessionLease expectedSession, CancellationToken ct = default)
+    {
+        await LogoutAsync(ct);
+        return true;
     }
 }

@@ -15,10 +15,13 @@ public interface ITwoFactorService
     Task<(string secret, string otpauth)> BeginTotpSetupAsync(string pw, CancellationToken ct = default);
 
     /// <summary>
-    /// 完成 TOTP 启用：提交主密码、secret、当前 TOTP code。
-    /// 返回最新 Recovery Code（服务端下发）。
+    /// Completes TOTP activation and returns the explicit commit state together
+    /// with recovery-code availability.
     /// </summary>
-    Task<string> EnableTotpAsync(string pw, string secret, string code, CancellationToken ct = default);
+    Task<TotpActivationResult> EnableTotpAsync(string pw, string secret, string code, CancellationToken ct = default);
+
+    /// <summary>Retrieves the recovery code without activating TOTP again.</summary>
+    Task<string> GetRecoveryCodeAsync(string pw, CancellationToken ct = default);
 
     /// <summary>
     /// 启动 Email 两步验证设置流程：服务端发送验证邮件到账户邮箱。

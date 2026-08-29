@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.ComponentModel;
 using App.Controls;
+using App.Services;
 using App.ViewModels;
 using App.ViewModels.Models;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,6 +18,10 @@ namespace App.Views;
 public sealed partial class VaultPage : Page
 {
     public VaultViewModel ViewModel { get; }
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Grid, RowActionState> _rowActionStates = new();
+    private string? _currentLayoutState;
+    private CipherListItem? _pendingListFocusItem;
+    private bool _restoreListFocus;
 
     // 响应式布局阈值:>= 800 DIP 显示双栏(列表+详情);更窄时按是否有详情/编辑态在
     // NarrowList / NarrowDetail 之间切换,窄详情态显示"返回列表"入口。
@@ -44,16 +49,58 @@ public sealed partial class VaultPage : Page
             : ViewModel.Detail is not null || ViewModel.IsEditing
                 ? "NarrowDetail"
                 : "NarrowList";
+        var previousState = _currentLayoutState;
+        _currentLayoutState = state;
         VaultNarrowBackButton.Visibility =
             state == "NarrowDetail" ? Visibility.Visible : Visibility.Collapsed;
         VisualStateManager.GoToState(this, state, true);
+
+        if (previousState == "NarrowList" && state == "NarrowDetail")
+            QueueNarrowDetailFocus();
+        else if (_restoreListFocus && state == "NarrowList")
+            QueueNarrowListFocus();
     }
 
     private void OnVaultNarrowBackClick(object sender, RoutedEventArgs e)
     {
+        _pendingListFocusItem = ViewModel.SelectedItem;
+        _restoreListFocus = true;
         ViewModel.CancelEdit();
         ViewModel.SelectedItem = null;
         UpdateVaultLayoutState();
+    }
+
+    private void QueueNarrowDetailFocus()
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_currentLayoutState == "NarrowDetail"
+                && VaultNarrowBackButton.Visibility == Visibility.Visible)
+            {
+                _ = VaultNarrowBackButton.Focus(FocusState.Programmatic);
+            }
+        });
+    }
+
+    private void QueueNarrowListFocus()
+    {
+        var item = _pendingListFocusItem;
+        _pendingListFocusItem = null;
+        _restoreListFocus = false;
+
+        if (item is not null)
+            CipherList.ScrollIntoView(item);
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_currentLayoutState != "NarrowList")
+                return;
+
+            if (item is not null && CipherList.ContainerFromItem(item) is Control container)
+                _ = container.Focus(FocusState.Programmatic);
+            else
+                _ = CipherList.Focus(FocusState.Programmatic);
+        });
     }
 
     /// <summary>供 NotificationsHost 在收到 VaultChanged 推送后从 UI 线程调用，刷新列表快照。</summary>
@@ -91,19 +138,81 @@ public sealed partial class VaultPage : Page
                 ViewModel.SetItemSelected(item.Id, selected: true);
     }
 
-    private static void SetRowActionsOpacity(object sender, double opacity)
+    private sealed class RowActionState
     {
-        if (sender is Grid root && root.FindName("RowActions") is FrameworkElement panel)
-        {
-            panel.Opacity = opacity;
-            panel.IsHitTestVisible = opacity > 0;
-        }
+        public bool IsPointerOver { get; set; }
+        public bool IsFocusWithin { get; set; }
     }
 
-    private void OnRowPointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e) => SetRowActionsOpacity(sender, 1);
-    private void OnRowPointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e) => SetRowActionsOpacity(sender, 0);
-    private void OnRowGotFocus(object sender, RoutedEventArgs e) => SetRowActionsOpacity(sender, 1);
-    private void OnRowLostFocus(object sender, RoutedEventArgs e) => SetRowActionsOpacity(sender, 0);
+    internal static bool ShouldShowRowActions(bool isPointerOver, bool isFocusWithin) =>
+        isPointerOver || isFocusWithin;
+
+    private void UpdateRowActionVisibility(
+        object sender,
+        bool? isPointerOver = null,
+        bool? isFocusWithin = null)
+    {
+        if (sender is not Grid root
+            || root.FindName("RowActions") is not FrameworkElement panel)
+        {
+            return;
+        }
+
+        var state = _rowActionStates.GetValue(root, static _ => new RowActionState());
+        if (isPointerOver.HasValue)
+            state.IsPointerOver = isPointerOver.Value;
+        if (isFocusWithin.HasValue)
+            state.IsFocusWithin = isFocusWithin.Value;
+
+        var show = ShouldShowRowActions(state.IsPointerOver, state.IsFocusWithin);
+        panel.Opacity = show ? 1 : 0;
+        panel.IsHitTestVisible = show;
+    }
+
+    private static bool IsWithinRow(DependencyObject? element, Grid row)
+    {
+        for (var current = element; current is not null;
+             current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, row))
+                return true;
+        }
+
+        return false;
+    }
+
+    private void OnRowPointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e) =>
+        UpdateRowActionVisibility(sender, isPointerOver: true);
+
+    private void OnRowPointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e) =>
+        UpdateRowActionVisibility(sender, isPointerOver: false);
+
+    private void OnRowGotFocus(object sender, RoutedEventArgs e) =>
+        UpdateRowActionVisibility(sender, isFocusWithin: true);
+
+    private void OnRowLostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Grid root)
+            return;
+
+        var focusedElement = root.XamlRoot is { } xamlRoot
+            ? Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(xamlRoot) as DependencyObject
+            : null;
+        UpdateRowActionVisibility(root, isFocusWithin: IsWithinRow(focusedElement, root));
+    }
+
+    private void OnRowUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Grid root)
+            return;
+
+        _rowActionStates.Remove(root);
+        if (root.FindName("RowActions") is FrameworkElement panel)
+        {
+            panel.Opacity = 0;
+            panel.IsHitTestVisible = false;
+        }
+    }
 
     private static CipherListItem? RowItem(object sender) =>
         (sender as FrameworkElement)?.DataContext as CipherListItem;
@@ -416,45 +525,45 @@ public sealed partial class VaultPage : Page
     {
         if (ViewModel.SelectedItem is not { } item)
             return;
-
-        var picker = new Windows.Storage.Pickers.FileOpenPicker
-        {
-            ViewMode = Windows.Storage.Pickers.PickerViewMode.List,
-            SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary,
-        };
-        picker.FileTypeFilter.Add("*");
-
-        // WinUI 3 桌面应用:必须把 picker 关联到本窗口的 HWND。
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
-
-        var file = await FilePickerHelper.PickSingleAsync(picker);
-        if (file is null)
-            return;
-
-        var props = await file.GetBasicPropertiesAsync();
-        var size = (long)props.Size;
-        if (!global::App.Services.AttachmentSizePolicy.IsWithinLimit(size))
-        {
-            var sizeText = global::App.Services.AttachmentSizePolicy.FormatSize(size);
-            var maxSizeText = global::App.Services.AttachmentSizePolicy.FormatSize(global::App.Services.AttachmentSizePolicy.MaxBytes);
-            ViewModel.OperationError = $"文件 {sizeText} 超过附件上限 {maxSizeText}。";
-            return;
-        }
-
-        // 文件读取 + 上传:ReadBufferAsync 在 code-behind 内、不在 VM 的 try/catch 内,
-        // 文件被锁/网络盘掉线/拒绝访问会抛异常并从 async void 逸出——就地捕获并经 InfoBar 上报。
         try
         {
-            var buffer = await FilePickerHelper.RunTrackedAsync(
-                ct => Windows.Storage.FileIO.ReadBufferAsync(file).AsTask(ct));
-            if (buffer is null)
+            var picker = new Windows.Storage.Pickers.FileOpenPicker
+            {
+                ViewMode = Windows.Storage.Pickers.PickerViewMode.List,
+                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary,
+            };
+            picker.FileTypeFilter.Add("*");
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+            var file = await FilePickerHelper.PickSingleAsync(picker);
+            if (file is null)
                 return;
-            await ViewModel.AddAttachmentAsync(item.Id, buffer.ToArray(), file.Name);
+
+            await FilePickerHelper.RunTrackedAsync<object?>(
+                async ct =>
+                {
+                    var source = await global::App.Services.StorageFileSource.CreateAsync(
+                        file,
+                        Core.Services.AttachmentLimits.MaxPlaintextBytes,
+                        ct);
+                    await ViewModel.AddAttachmentAsync(item.Id, source, ct);
+                    return null;
+                });
         }
-        catch (Exception ex)
+        catch (ArgumentOutOfRangeException)
         {
-            ViewModel.OperationError = $"读取文件失败:{ex.Message}";
+            var maxSizeText = global::App.Services.AttachmentSizePolicy.FormatSize(
+                global::App.Services.AttachmentSizePolicy.MaxBytes);
+            ViewModel.OperationError = $"文件超过附件上限 {maxSizeText}。";
+        }
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex))
+        {
+        }
+        catch (Exception ex) when (IsRecoverableFileTransferException(ex))
+        {
+            ViewModel.OperationError = FileTransferError(ex, "上传附件失败");
         }
     }
 
@@ -463,38 +572,99 @@ public sealed partial class VaultPage : Page
         if (ViewModel.SelectedItem is not { } item
             || (sender as FrameworkElement)?.DataContext is not AttachmentItem attachment)
             return;
-
-        var picker = new Windows.Storage.Pickers.FileSavePicker
-        {
-            SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads,
-            SuggestedFileName = attachment.FileName,
-        };
-        picker.FileTypeChoices.Add("文件", new System.Collections.Generic.List<string> { "." });
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
-
-        var file = await FilePickerHelper.PickSaveAsync(picker);
-        if (file is null)
+        if (!TryCaptureExpectedLease(out var expectedLease))
             return;
 
-        var download = await ViewModel.DownloadAttachmentAsync(item.Id, attachment.Id, PromptMasterPasswordAsync);
-        if (!download.IsSuccess || download.Value is not { } bytes)
-            return;
-
-        // 文件写入在 code-behind 内、不在 VM 的 try/catch 内:磁盘满/拒绝访问/网络盘掉线会抛异常
-        // 并从 async void 逸出——就地捕获并经 InfoBar 上报。
         try
         {
+            var picker = new Windows.Storage.Pickers.FileSavePicker
+            {
+                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads,
+                SuggestedFileName = attachment.FileName,
+            };
+            picker.FileTypeChoices.Add("文件", new System.Collections.Generic.List<string> { "." });
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+            var file = await FilePickerHelper.PickSaveAsync(picker);
+            if (file is null)
+                return;
+
             await FilePickerHelper.RunTrackedAsync<object?>(
                 async ct =>
                 {
-                    await Windows.Storage.FileIO.WriteBytesAsync(file, bytes).AsTask(ct);
+                    using var transaction = await file.OpenTransactedWriteAsync().AsTask(ct);
+                    await using var destination = transaction.Stream.AsStreamForWrite();
+                    destination.SetLength(0);
+                    destination.Position = 0;
+
+                    var download = await ViewModel.DownloadAttachmentAsync(
+                        item.Id,
+                        attachment.Id,
+                        PromptMasterPasswordAsync,
+                        destination,
+                        ct);
+                    if (!download.IsSuccess)
+                        return null;
+
+                    await destination.FlushAsync(ct);
+                    ct.ThrowIfCancellationRequested();
+                    await FilePickerHelper.CommitSensitiveAsync(
+                        transaction,
+                        expectedLease,
+                        ct);
                     return null;
                 });
         }
-        catch (Exception ex)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex))
         {
-            ViewModel.OperationError = $"保存文件失败:{ex.Message}";
+        }
+        catch (Exception ex) when (IsRecoverableFileTransferException(ex))
+        {
+            ViewModel.OperationError = FileTransferError(ex, "保存附件失败");
+        }
+    }
+
+    private static bool IsRecoverableFileTransferException(Exception exception) =>
+        Api.RequestTimeoutClassifier.IsTimeout(exception)
+        || exception is IOException
+            or UnauthorizedAccessException
+            or HttpRequestException
+            or TimeoutException
+            or InvalidDataException
+            or System.Security.Cryptography.CryptographicException
+            or ObjectDisposedException;
+
+    private static string FileTransferError(Exception exception, string fallback)
+    {
+        if (Api.RequestTimeoutClassifier.IsTimeout(exception))
+            return "文件传输长时间没有进展，请检查连接后重试。";
+
+        return exception switch
+        {
+            UnauthorizedAccessException => "没有访问所选文件的权限。",
+            InvalidDataException or System.Security.Cryptography.CryptographicException =>
+                "附件完整性校验失败，文件未保存。",
+            HttpRequestException => "网络请求失败，请检查连接后重试。",
+            IOException => "文件读写失败，请检查磁盘和文件状态后重试。",
+            ObjectDisposedException => "操作已取消，文件未保存。",
+            _ => fallback,
+        };
+    }
+
+    private static bool TryCaptureExpectedLease(out Core.Session.VaultSessionLease lease)
+    {
+        var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+        try
+        {
+            lease = session.CaptureLease();
+            return session.IsUnlocked(lease);
+        }
+        catch (InvalidOperationException)
+        {
+            lease = null!;
+            return false;
         }
     }
 

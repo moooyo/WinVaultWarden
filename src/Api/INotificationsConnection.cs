@@ -13,10 +13,10 @@ public interface INotificationsConnection : IAsyncDisposable
     /// Opens the WebSocket, performs the SignalR MessagePack handshake, and
     /// prepares the connection to receive messages.
     /// </summary>
-    /// <param name="serverUrl">Base URL of the Vaultwarden server (http or https).</param>
+    /// <param name="notificationsEndpoint">Resolved notifications service endpoint.</param>
     /// <param name="accessToken">Bearer access token to authenticate the hub connection.</param>
     /// <param name="ct">Cancellation token.</param>
-    Task ConnectAsync(string serverUrl, string accessToken, CancellationToken ct);
+    Task ConnectAsync(string notificationsEndpoint, string accessToken, CancellationToken ct);
 
     /// <summary>
     /// Asynchronously yields decoded <see cref="NotificationMessage"/> values until

@@ -115,7 +115,7 @@ public class EncArrayBufferTests
     }
 
     [Fact]
-    public void Unpack_AtMinimumLength_YieldsEmptyCt()
+    public void Unpack_MetadataWithoutCiphertext_Throws()
     {
         var iv = RandomNumberGenerator.GetBytes(16);
         var mac = RandomNumberGenerator.GetBytes(32);
@@ -124,10 +124,44 @@ public class EncArrayBufferTests
         System.Buffer.BlockCopy(iv, 0, buffer, 1, 16);
         System.Buffer.BlockCopy(mac, 0, buffer, 17, 32);
 
-        var enc = EncArrayBuffer.Unpack(buffer);
+        Assert.Throws<CryptographicException>(() => EncArrayBuffer.Unpack(buffer));
+    }
 
-        Assert.Equal(iv, enc.Iv);
-        Assert.Equal(mac, enc.Mac!);
-        Assert.Empty(enc.Ct);
+    [Fact]
+    public void Unpack_NonBlockAlignedCiphertext_Throws()
+    {
+        var buffer = new byte[EncArrayBuffer.MinimumEncodedLength + 1];
+        buffer[0] = EncArrayBuffer.EncryptionTypeByte;
+
+        Assert.Throws<CryptographicException>(() => EncArrayBuffer.Unpack(buffer));
+    }
+
+    [Theory]
+    [InlineData(0, 65)]
+    [InlineData(15, 65)]
+    [InlineData(16, 81)]
+    [InlineData(31, 81)]
+    [InlineData(32, 97)]
+    public void GetEncodedLength_IncludesFramingAndPkcs7Block(long plaintextLength, long expected)
+    {
+        Assert.Equal(expected, EncArrayBuffer.GetEncodedLength(plaintextLength));
+    }
+
+    [Fact]
+    public void GetEncodedLength_NegativeLength_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => EncArrayBuffer.GetEncodedLength(-1));
+    }
+
+    [Fact]
+    public void Pack_NonBlockAlignedCiphertext_Throws()
+    {
+        var enc = new EncString(
+            EncryptionType.AesCbc256_HmacSha256_B64,
+            RandomNumberGenerator.GetBytes(16),
+            RandomNumberGenerator.GetBytes(17),
+            RandomNumberGenerator.GetBytes(32));
+
+        Assert.Throws<CryptographicException>(() => EncArrayBuffer.Pack(enc));
     }
 }

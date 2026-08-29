@@ -40,8 +40,29 @@ public sealed partial class SendEditorDraft : ObservableObject
     [ObservableProperty]
     public partial string Password { get; set; } = string.Empty;
 
-    [ObservableProperty]
-    public partial DateTimeOffset? ExpirationDate { get; set; }
+    private SendExpirationSelection _expirationSelection =
+        SendExpirationSelection.FromExpiration(expirationDate: null);
+
+    public DateTimeOffset? ExpirationDate
+    {
+        get => _expirationSelection.ExpirationDate;
+        set => SetExpirationSelection(SendExpirationSelection.FromExpiration(value));
+    }
+
+    public string ExpirationDateLabel => _expirationSelection.Label;
+
+    public bool IsCustomExpiration =>
+        ExpirationDateLabel == SendExpirationSelection.CustomLabel;
+
+    public DateTimeOffset? CustomExpirationDate =>
+        IsCustomExpiration && ExpirationDate is { } expiration
+            ? expiration.ToLocalTime()
+            : null;
+
+    public string CustomExpirationDescription =>
+        CustomExpirationDate is { } expiration
+            ? $"{expiration:yyyy/MM/dd HH:mm:ss zzz}"
+            : string.Empty;
 
     [ObservableProperty]
     public partial DateTimeOffset? DeletionDate { get; set; }
@@ -58,6 +79,13 @@ public sealed partial class SendEditorDraft : ObservableObject
     // 服务端 wrapped seed(akey)。非绑定属性(同 ReplacementFile,不进 x:Bind)。编辑时用于让写入层复用原 seed。
     public string? WrappedKey { get; set; }
 
+    // A protected file replacement must collect plaintext password input because the server-side
+    // verifier is not a reusable create proof. This flag is state only and is not bound to the UI.
+    public bool ExistingHasPassword { get; set; }
+    public Core.Enums.SendAuthType ExistingAuthType { get; set; } = Core.Enums.SendAuthType.Unknown;
+    public int ExistingRawAuthType { get; set; } = int.MinValue;
+    public Core.Session.VaultSessionLease? OriginatingSession { get; set; }
+
     // 锁屏/登出或对话框强制关闭时清空内存中的敏感字段:文本/密码/备注,以及选中的文件源与 wrapped key。
     public void ClearSensitive()
     {
@@ -66,6 +94,7 @@ public sealed partial class SendEditorDraft : ObservableObject
         Notes = string.Empty;
         ReplacementFile = null;
         WrappedKey = null;
+        OriginatingSession = null;
     }
 
     // 相对删除标签 → 绝对删除时间(服务端要求 <=31 天)。"自定义" 用 DeletionDate(为空则回退 7 天)。
@@ -89,6 +118,14 @@ public sealed partial class SendEditorDraft : ObservableObject
 
     public static SendEditorDraft CreateDefault(SendType type) => new() { Type = type };
 
+    public void SelectExpiration(string label, DateTimeOffset now) =>
+        SetExpirationSelection(_expirationSelection.Select(label, now));
+
+    public void SelectCustomExpirationDate(
+        DateTimeOffset selectedDate,
+        TimeZoneInfo localTimeZone) =>
+        SetExpirationSelection(_expirationSelection.SelectCustomDate(selectedDate, localTimeZone));
+
     // 从完整解密 Send 水合可编辑草稿(F1)。复制全部元数据字段,避免保存时把未加载字段覆盖为默认。
     public static SendEditorDraft FromExisting(Core.Models.Send send) => new()
     {
@@ -106,15 +143,32 @@ public sealed partial class SendEditorDraft : ObservableObject
         // 绝对删除日期:标为"自定义"使 ToDeletionDate() 使用 DeletionDate(而非相对天数)。
         DeletionDateLabel = "自定义",
         WrappedKey = send.Key,
+        ExistingHasPassword = send.HasPassword,
+        ExistingAuthType = send.AuthType,
+        ExistingRawAuthType = send.RawAuthType,
         // 编辑既有 Send 时默认不替换文件字节(只改元数据);仅当用户显式重选文件才置为非 null。
         ReplacementFile = null,
-        // Password 不回填:仅有 PBKDF2 证明无法还原明文;留空 = 更新时服务端保留原密码。
+        // Plaintext password is never hydrated. Blank keeps protection for metadata updates, while
+        // a protected file replacement must collect password input before creating the new Send.
     };
 
     partial void OnTypeChanged(SendType value)
     {
         OnPropertyChanged(nameof(IsText));
         OnPropertyChanged(nameof(IsFile));
+    }
+
+    private void SetExpirationSelection(SendExpirationSelection selection)
+    {
+        if (_expirationSelection == selection)
+            return;
+
+        _expirationSelection = selection;
+        OnPropertyChanged(nameof(ExpirationDate));
+        OnPropertyChanged(nameof(ExpirationDateLabel));
+        OnPropertyChanged(nameof(IsCustomExpiration));
+        OnPropertyChanged(nameof(CustomExpirationDate));
+        OnPropertyChanged(nameof(CustomExpirationDescription));
     }
 
     public bool HasRequiredData()

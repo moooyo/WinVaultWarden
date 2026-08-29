@@ -14,15 +14,28 @@ public sealed class RecoverableUiException : Exception
 }
 
 /// <summary>
-/// 全局未处理 UI 异常的"可继续"白名单策略(纯逻辑、可单测)。
-/// 仅当异常是显式的取消(<see cref="OperationCanceledException"/>,含 <c>TaskCanceledException</c>)
-/// 或显式可恢复(<see cref="RecoverableUiException"/>)时才允许继续;其余(含把未知异常包进
-/// <see cref="AggregateException"/> 的情形)一律不可继续,交由调用方 fail-closed 后终止。
-/// 不对 <see cref="AggregateException"/> 解包——包装未知异常不能"洗白"为可恢复。
+/// Allows the global UI boundary to continue only for explicit recovery or genuine cancellation.
+/// A timeout-shaped <see cref="TaskCanceledException"/> is a failure, not user cancellation, and
+/// must be handled by the operation surface. Aggregate exceptions are never unwrapped here.
 /// </summary>
 public static class UiExceptionPolicy
 {
+    public const string RequestTimeoutMessage = "网络请求超时，请检查连接后重试。";
+
+    public static bool IsGenuineCancellation(
+        OperationCanceledException exception,
+        CancellationToken callerToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        if (callerToken.IsCancellationRequested)
+            return true;
+
+        return !Api.RequestTimeoutClassifier.IsTimeout(exception)
+            && exception.CancellationToken.IsCancellationRequested;
+    }
+
     public static bool CanContinue(Exception exception) =>
-        exception is OperationCanceledException
-            or RecoverableUiException;
+        (exception is OperationCanceledException cancellation
+            && IsGenuineCancellation(cancellation))
+        || exception is RecoverableUiException;
 }

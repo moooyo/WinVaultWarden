@@ -47,4 +47,5 @@ public sealed record AuthRequestRequest(
     [property: JsonPropertyName("accessCode")]          string AccessCode,
     [property: JsonPropertyName("deviceIdentifier")]    string DeviceIdentifier,
     [property: JsonPropertyName("email")]               string Email,
-    [property: JsonPropertyName("publicKey")]           string PublicKey);
+    [property: JsonPropertyName("publicKey")]           string PublicKey,
+    [property: JsonPropertyName("type")]                int Type);

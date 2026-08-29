@@ -115,7 +115,8 @@ public static class NativeMessagingHost
         }
         catch (Exception ex) when (ex is IOException or TimeoutException or InvalidDataException or UnauthorizedAccessException)
         {
-            // A connection that WAS established is now lost mid-request: abort, never fall back.
+            // Authorization/handshake/integrity failed, or an established connection was lost.
+            // Listener absence was not proven, so abort and never fall back.
             return Error(
                 request,
                 PasskeyErrorCodes.OperationAborted,

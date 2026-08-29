@@ -105,39 +105,37 @@ public class EmergencyAccessApiClientTests
         Assert.Contains("\"token\":\"tok123\"", handler.Bodies[0]);
     }
 
-    // ===== POST with body, returns JSON (confirm) =====
+    // ===== POST with body, empty success response (confirm) =====
 
     [Fact]
-    public async Task Confirm_PostsKey_ReturnsDto()
+    public async Task Confirm_PostsKey_AcceptsVaultwardenJsonSuccessResponse()
     {
         var handler = new FakeHttpMessageHandler();
-        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(
+            HttpStatusCode.OK,
             "{\"id\":\"e1\",\"status\":2,\"type\":1,\"waitTimeDays\":7}"));
         var client = NewClient(handler);
-        var dto = await ((IEmergencyAccessApiClient)client).ConfirmAsync("e1",
+        await ((IEmergencyAccessApiClient)client).ConfirmAsync("e1",
             new EmergencyAccessConfirmRequest { Key = "4.enc" }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
         Assert.Equal("/api/emergency-access/e1/confirm", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Contains("\"key\":\"4.enc\"", handler.Bodies[0]);
-        Assert.Equal(2, dto.Status);
     }
 
-    // ===== PUT with body, returns JSON (update) =====
+    // ===== PUT with body, empty success response (update) =====
 
     [Fact]
-    public async Task Update_PutsToId_ReturnsDto()
+    public async Task Update_PutsToId_AcceptsEmptySuccessResponse()
     {
         var handler = new FakeHttpMessageHandler();
-        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
-            "{\"id\":\"e1\",\"status\":1,\"type\":0,\"waitTimeDays\":14}"));
+        handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
         var client = NewClient(handler);
-        var dto = await ((IEmergencyAccessApiClient)client).UpdateAsync("e1",
+        await ((IEmergencyAccessApiClient)client).UpdateAsync("e1",
             new EmergencyAccessUpdateRequest { Type = 0, WaitTimeDays = 14 },
             TestContext.Current.CancellationToken);
         Assert.Equal(HttpMethod.Put, handler.Requests[0].Method);
         Assert.Equal("/api/emergency-access/e1", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Contains("\"waitTimeDays\":14", handler.Bodies[0]);
-        Assert.Equal(14, dto.WaitTimeDays);
     }
 
     // ===== DELETE no body =====
@@ -154,52 +152,46 @@ public class EmergencyAccessApiClientTests
         Assert.Equal(string.Empty, handler.Bodies[0]);
     }
 
-    // ===== POST no body, returns JSON (initiate) =====
+    // ===== POST no body, empty success response (initiate) =====
 
     [Fact]
-    public async Task Initiate_PostsNoBody_ReturnsDto()
+    public async Task Initiate_PostsNoBody_AcceptsEmptySuccessResponse()
     {
         var handler = new FakeHttpMessageHandler();
-        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
-            "{\"id\":\"e1\",\"status\":1,\"type\":0,\"waitTimeDays\":7}"));
+        handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
         var client = NewClient(handler);
-        var dto = await ((IEmergencyAccessApiClient)client).InitiateAsync("e1", TestContext.Current.CancellationToken);
+        await ((IEmergencyAccessApiClient)client).InitiateAsync("e1", TestContext.Current.CancellationToken);
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
         Assert.Equal("/api/emergency-access/e1/initiate", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Equal(string.Empty, handler.Bodies[0]);
-        Assert.Equal("e1", dto.Id);
     }
 
-    // ===== POST no body, returns JSON (approve) =====
+    // ===== POST no body, empty success response (approve) =====
 
     [Fact]
-    public async Task Approve_PostsNoBody_ReturnsDto()
+    public async Task Approve_PostsNoBody_AcceptsEmptySuccessResponse()
     {
         var handler = new FakeHttpMessageHandler();
-        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
-            "{\"id\":\"e2\",\"status\":2,\"type\":0,\"waitTimeDays\":7}"));
+        handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
         var client = NewClient(handler);
-        var dto = await ((IEmergencyAccessApiClient)client).ApproveAsync("e2", TestContext.Current.CancellationToken);
+        await ((IEmergencyAccessApiClient)client).ApproveAsync("e2", TestContext.Current.CancellationToken);
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
         Assert.Equal("/api/emergency-access/e2/approve", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Equal(string.Empty, handler.Bodies[0]);
-        Assert.Equal("e2", dto.Id);
     }
 
-    // ===== POST no body, returns JSON (reject) =====
+    // ===== POST no body, empty success response (reject) =====
 
     [Fact]
-    public async Task Reject_PostsNoBody_ReturnsDto()
+    public async Task Reject_PostsNoBody_AcceptsEmptySuccessResponse()
     {
         var handler = new FakeHttpMessageHandler();
-        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
-            "{\"id\":\"e3\",\"status\":3,\"type\":0,\"waitTimeDays\":7}"));
+        handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
         var client = NewClient(handler);
-        var dto = await ((IEmergencyAccessApiClient)client).RejectAsync("e3", TestContext.Current.CancellationToken);
+        await ((IEmergencyAccessApiClient)client).RejectAsync("e3", TestContext.Current.CancellationToken);
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
         Assert.Equal("/api/emergency-access/e3/reject", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Equal(string.Empty, handler.Bodies[0]);
-        Assert.Equal("e3", dto.Id);
     }
 
     // ===== POST no body, returns JSON (view) =====
@@ -224,13 +216,14 @@ public class EmergencyAccessApiClientTests
     {
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
-            "{\"kdf\":0,\"kdfIterations\":600000,\"keyEncrypted\":\"4.k\"}"));
+            "{\"kdf\":0,\"kdfIterations\":600000,\"salt\":\"custom-salt\",\"keyEncrypted\":\"4.k\"}"));
         var client = NewClient(handler);
         var res = await ((IEmergencyAccessApiClient)client).TakeoverAsync("e1", TestContext.Current.CancellationToken);
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
         Assert.Equal("/api/emergency-access/e1/takeover", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Equal(string.Empty, handler.Bodies[0]);
         Assert.Equal(600000, res.KdfIterations);
+        Assert.Equal("custom-salt", res.Salt);
     }
 
     // ===== POST with body, no return (password) =====

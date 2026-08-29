@@ -183,6 +183,63 @@ public class SendCryptoTests
         Assert.Empty(seed);
     }
 
+    [Fact]
+    public void TryParseShareUrl_RejectsUnboundedOrAmbiguousInputBeforeSeedDecode()
+    {
+        var svc = NewService();
+        var validSeed = Base64UrlNoPad(svc.GenerateSeed());
+        var shortSeed = Base64UrlNoPad(new byte[15]);
+        var longSeed = Base64UrlNoPad(new byte[17]);
+        var oversizedAccessId = new string('a', SendCryptoService.MaxAccessIdLength + 1);
+        var oversizedUrl = "https://vault.example/#/send/id/" +
+            new string('a', SendCryptoService.MaxShareUrlLength);
+
+        Assert.False(svc.TryParseShareUrl(
+            $"ftp://vault.example/#/send/id/{validSeed}", out ParsedSendShareUrl? _));
+        Assert.False(svc.TryParseShareUrl(
+            $"https://user@vault.example/#/send/id/{validSeed}", out ParsedSendShareUrl? _));
+        Assert.False(svc.TryParseShareUrl(
+            $"https://vault.example/?query=1#/send/id/{validSeed}", out ParsedSendShareUrl? _));
+        Assert.False(svc.TryParseShareUrl(
+            $"https://vault.example/#/send/id/{validSeed}/extra", out ParsedSendShareUrl? _));
+        Assert.False(svc.TryParseShareUrl(
+            $"https://vault.example/#/send/id/{shortSeed}", out ParsedSendShareUrl? _));
+        Assert.False(svc.TryParseShareUrl(
+            $"https://vault.example/#/send/id/{longSeed}", out ParsedSendShareUrl? _));
+        Assert.False(svc.TryParseShareUrl(
+            $"https://vault.example/#/send/{oversizedAccessId}/{validSeed}", out ParsedSendShareUrl? _));
+        Assert.False(svc.TryParseShareUrl(oversizedUrl, out ParsedSendShareUrl? _));
+    }
+
+    [Theory]
+    [InlineData(
+        "https://vault.example/warden/#/send/abc-123_XY/AAECAwQFBgcICQoLDA0ODw",
+        "https://vault.example/warden",
+        "https://vault.example/warden/api")]
+    [InlineData(
+        "https://send.bitwarden.com/#/send/abc-123_XY/AAECAwQFBgcICQoLDA0ODw",
+        "https://vault.bitwarden.com",
+        "https://api.bitwarden.com")]
+    public void TryParseShareUrl_ReturnsOneValidatedRoutingResult(
+        string url,
+        string expectedWebVault,
+        string expectedApi)
+    {
+        var svc = NewService();
+
+        Assert.True(svc.TryParseShareUrl(url, out ParsedSendShareUrl? parsed));
+        Assert.NotNull(parsed);
+        using (parsed)
+        {
+            Assert.Equal("abc-123_XY", parsed.AccessId);
+            Assert.Equal(expectedWebVault, parsed.Endpoints.WebVault.Value);
+            Assert.Equal(expectedApi, parsed.Endpoints.Api.Value);
+            Assert.Equal(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 }, parsed.CopySeed());
+        }
+
+        Assert.Throws<ObjectDisposedException>(() => parsed.CopySeed());
+    }
+
     private static string Base64UrlNoPad(byte[] bytes) =>
         Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_').TrimEnd('=');
 }

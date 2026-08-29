@@ -1,4 +1,6 @@
+using Api;
 using App.Services;
+using Core.Models;
 using Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -13,12 +15,23 @@ public enum RegisterFocusTarget
     ConfirmPassword,
 }
 
+public enum RegisterState
+{
+    Editing,
+    AwaitingEmailVerification,
+    OutcomeUncertain,
+    Registered,
+}
+
 public partial class RegisterViewModel : ObservableObject, ISensitiveState
 {
     private const string BitwardenUsUrl = "https://vault.bitwarden.com";
     private const string BitwardenEuUrl = "https://vault.bitwarden.eu";
 
     private readonly IRegisterUiService? _registerUi;
+    private readonly object _registrationStateLock = new();
+    private CancellationTokenSource? _activeRegistrationCancellation;
+    private long _registrationGeneration;
 
     // ── Observable 属性 ────────────────────────────────────────────────────
 
@@ -57,10 +70,13 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
     [NotifyPropertyChangedFor(nameof(HasOperationError))]
     public partial string OperationError { get; set; } = string.Empty;
 
-    // ── 成功后由 VM 暴露给页面读取 ────────────────────────────────────────
-
     [ObservableProperty]
-    public partial bool Registered { get; set; }
+    [NotifyPropertyChangedFor(nameof(Registered))]
+    [NotifyPropertyChangedFor(nameof(IsEditing))]
+    [NotifyPropertyChangedFor(nameof(IsAwaitingEmailVerification))]
+    [NotifyPropertyChangedFor(nameof(IsOutcomeUncertain))]
+    [NotifyPropertyChangedFor(nameof(CanEditForm))]
+    public partial RegisterState State { get; set; } = RegisterState.Editing;
 
     [ObservableProperty]
     public partial string RegisteredEmail { get; set; } = string.Empty;
@@ -72,8 +88,17 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
 
     public bool HasOperationError => !string.IsNullOrEmpty(OperationError);
 
+    public bool Registered => State == RegisterState.Registered;
+
+    public bool IsEditing => State == RegisterState.Editing;
+
+    public bool IsAwaitingEmailVerification =>
+        State == RegisterState.AwaitingEmailVerification;
+
+    public bool IsOutcomeUncertain => State == RegisterState.OutcomeUncertain;
+
     // 注册进行中禁用整个表单(含返回登录):由 OnIsBusyChanged 通知刷新。
-    public bool CanEditForm => !IsBusy;
+    public bool CanEditForm => IsEditing && !IsBusy;
 
     public bool ShowCustomServerUrl => SelectedServerOptionIndex == 2;
 
@@ -92,6 +117,65 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
     // 锁屏/登出时清空注册页机密输入:主密码、确认密码与提示。幂等。
     public void ClearSensitive()
     {
+        CancellationTokenSource? active;
+        lock (_registrationStateLock)
+        {
+            active = DetachActiveRegistration();
+            ClearSecretInputs();
+        }
+        CancelDetached(active);
+    }
+
+    public void CancelPendingRegistration()
+    {
+        CancellationTokenSource? active;
+        lock (_registrationStateLock)
+            active = DetachActiveRegistration();
+        CancelDetached(active);
+    }
+
+    public void ResumeEditing()
+    {
+        CancellationTokenSource? active;
+        lock (_registrationStateLock)
+        {
+            active = DetachActiveRegistration();
+            ClearSecretInputs();
+            RegisteredEmail = string.Empty;
+            RegisteredServerUrl = string.Empty;
+            OperationError = string.Empty;
+            State = RegisterState.Editing;
+            RequestFocus(RegisterFocusTarget.Email);
+        }
+        CancelDetached(active);
+    }
+
+    private CancellationTokenSource? DetachActiveRegistration()
+    {
+        _registrationGeneration++;
+        var active = _activeRegistrationCancellation;
+        _activeRegistrationCancellation = null;
+        IsBusy = false;
+        return active;
+    }
+
+    private static void CancelDetached(CancellationTokenSource? cancellation)
+    {
+        if (cancellation is null)
+            return;
+
+        try
+        {
+            cancellation.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The owning operation reached its terminal finally block first.
+        }
+    }
+
+    private void ClearSecretInputs()
+    {
         MasterPassword = string.Empty;
         ConfirmPassword = string.Empty;
         MasterPasswordHint = null;
@@ -107,55 +191,182 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
             return;
         }
 
-        if (IsBusy)
-            return;
+        var operationCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        CancellationTokenSource? previousCancellation;
+        long operationGeneration;
+        string serverUrl;
+        string email;
+        string? name;
+        string password;
+        string confirmPassword;
+        string? passwordHint;
+        lock (_registrationStateLock)
+        {
+            if (IsBusy || !IsEditing)
+            {
+                operationCancellation.Dispose();
+                return;
+            }
 
-        if (!ValidateInput())
-            return;
+            if (!ValidateInput())
+            {
+                operationCancellation.Dispose();
+                return;
+            }
 
-        IsBusy = true;
-        OperationError = string.Empty;
+            operationGeneration = ++_registrationGeneration;
+            previousCancellation = _activeRegistrationCancellation;
+            _activeRegistrationCancellation = operationCancellation;
+            IsBusy = true;
+            OperationError = string.Empty;
+            serverUrl = ResolveServerUrl();
+            email = Email.Trim();
+            name = Name;
+            password = MasterPassword;
+            confirmPassword = ConfirmPassword;
+            passwordHint = MasterPasswordHint;
+        }
+        CancelDetached(previousCancellation);
 
         try
         {
-            var serverUrl = ResolveServerUrl();
-            var email = Email.Trim();
+            var outcome = await _registerUi.RegisterAsync(
+                serverUrl,
+                email,
+                name,
+                password,
+                confirmPassword,
+                passwordHint,
+                operationCancellation.Token);
 
-            await _registerUi.RegisterAsync(serverUrl, email, Name, MasterPassword, ConfirmPassword, MasterPasswordHint, ct);
-
-            RegisteredServerUrl = serverUrl;
-            RegisteredEmail = email;
-            Registered = true;
+            var state = outcome switch
+            {
+                RegistrationOutcome.Registered => RegisterState.Registered,
+                RegistrationOutcome.EmailVerificationRequired =>
+                    RegisterState.AwaitingEmailVerification,
+                RegistrationOutcome.OutcomeUncertain =>
+                    RegisterState.OutcomeUncertain,
+                _ => throw new InvalidOperationException(
+                    "The registration service returned an unknown outcome."),
+            };
+            if (!TryCommitOutcome(
+                    operationGeneration,
+                    operationCancellation,
+                    serverUrl,
+                    email,
+                    state))
+            {
+                return;
+            }
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(
+                ex,
+                operationCancellation.Token))
         {
-            // 用户取消,不设错误
-            OperationError = string.Empty;
+            TryUpdateCurrentOperation(
+                operationGeneration,
+                operationCancellation,
+                allowCancellation: true,
+                () => OperationError = string.Empty);
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            TryUpdateCurrentOperation(
+                operationGeneration,
+                operationCancellation,
+                allowCancellation: false,
+                () =>
+                {
+                    OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+                    RequestFocus(RegisterFocusTarget.Email);
+                });
         }
         catch (RegistrationException ex)
         {
-            OperationError = ex.Message;
-            RequestFocus(RegisterFocusTarget.Email);
+            TryUpdateCurrentOperation(
+                operationGeneration,
+                operationCancellation,
+                allowCancellation: false,
+                () =>
+                {
+                    OperationError = ex.Message;
+                    RequestFocus(RegisterFocusTarget.Email);
+                });
         }
         finally
         {
-            IsBusy = false;
+            lock (_registrationStateLock)
+            {
+                if (ReferenceEquals(
+                        _activeRegistrationCancellation,
+                        operationCancellation))
+                {
+                    _activeRegistrationCancellation = null;
+                    IsBusy = false;
+                }
+            }
+            operationCancellation.Dispose();
         }
     }
+
+    private bool TryCommitOutcome(
+        long generation,
+        CancellationTokenSource cancellation,
+        string serverUrl,
+        string email,
+        RegisterState state)
+    {
+        lock (_registrationStateLock)
+        {
+            if (!IsCurrentOperation(generation, cancellation, allowCancellation: false))
+                return false;
+
+            _activeRegistrationCancellation = null;
+            RegisteredServerUrl = serverUrl;
+            RegisteredEmail = email;
+            ClearSecretInputs();
+            State = state;
+            IsBusy = false;
+            return true;
+        }
+    }
+
+    private void TryUpdateCurrentOperation(
+        long generation,
+        CancellationTokenSource cancellation,
+        bool allowCancellation,
+        Action update)
+    {
+        lock (_registrationStateLock)
+        {
+            if (IsCurrentOperation(generation, cancellation, allowCancellation))
+                update();
+        }
+    }
+
+    private bool IsCurrentOperation(
+        long generation,
+        CancellationTokenSource cancellation,
+        bool allowCancellation) =>
+        generation == _registrationGeneration
+        && ReferenceEquals(_activeRegistrationCancellation, cancellation)
+        && (allowCancellation || !cancellation.IsCancellationRequested);
 
     // 调用服务前完成字段校验,并把焦点请求给第一个无效字段(文案沿用现有中文)。
     private bool ValidateInput()
     {
         var serverUrl = ResolveServerUrl();
-        if (!Uri.TryCreate(serverUrl, UriKind.Absolute, out var uri)
-            || uri.Scheme is not ("http" or "https"))
+        if (!TryParseServerEndpoint(serverUrl))
         {
             OperationError = "请输入有效的服务器地址";
             RequestFocus(RegisterFocusTarget.ServerUrl);
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(Email) || !Email.Contains('@'))
+        if (string.IsNullOrWhiteSpace(Email)
+            || Email.Trim().Length > MasterPasswordSaltPolicy.MaxLength
+            || !Email.Contains('@'))
         {
             OperationError = "请输入有效的邮箱地址";
             RequestFocus(RegisterFocusTarget.Email);
@@ -184,6 +395,18 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
         }
 
         return true;
+    }
+
+    private static bool TryParseServerEndpoint(string value)
+    {
+        try
+        {
+            return ServerEndpoint.TryParse(value, out _);
+        }
+        catch (Exception ex) when (ex is ArgumentException or UriFormatException)
+        {
+            return false;
+        }
     }
 
     private void RequestFocus(RegisterFocusTarget target)

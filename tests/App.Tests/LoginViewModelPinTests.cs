@@ -17,6 +17,7 @@ public class LoginViewModelPinTests
 
         Assert.Equal(LoginStage.PinUnlock, vm.Stage);
         Assert.True(vm.IsPinUnlockStage);
+        Assert.Equal(LoginStatusKind.Info, vm.StatusKind);
     }
 
     [Fact]
@@ -35,11 +36,15 @@ public class LoginViewModelPinTests
     [Fact]
     public async Task LoginCommand_PinUnlockStage_CallsUnlockWithPinAndInvokesSuccess()
     {
-        var auth = new FakeAuthService { UnlockWithPinResult = new AuthResult.Success() };
+        var auth = new FakeAuthService
+        {
+            UnlockWithPinResult = new AuthResult.Success(
+                TestSessionLeases.CreateSessionLease()),
+        };
         var pin = new FakePinService { IsPinSet = true };
         var vm = new LoginViewModel(auth, demoVault: null, pin: pin);
         var success = false;
-        vm.SetSuccessCallback(() => success = true);
+        vm.SetSuccessCallback(_ => success = true);
         vm.PrepareUnlock("https://vault.example", "me@example.com");
         vm.Pin = "1234";
 
@@ -68,7 +73,12 @@ public class LoginViewModelPinTests
     [Fact]
     public async Task LoginCommand_PinUnlockStage_FailureClearsPinAndStaysOnStage()
     {
-        var auth = new FakeAuthService { UnlockWithPinResult = new AuthResult.Failure("PIN 错误") };
+        var auth = new FakeAuthService
+        {
+            UnlockWithPinResult = new AuthResult.Failure(
+                "PIN 错误",
+                AuthFailureKind.SafeMessage),
+        };
         var pin = new FakePinService { IsPinSet = true };
         var vm = new LoginViewModel(auth, demoVault: null, pin: pin);
         vm.PrepareUnlock("https://vault.example", "me@example.com");
@@ -79,6 +89,8 @@ public class LoginViewModelPinTests
         Assert.Equal(LoginStage.PinUnlock, vm.Stage);
         Assert.Equal("PIN 错误", vm.Status);
         Assert.Equal(string.Empty, vm.Pin);
+        Assert.Equal(LoginStatusKind.Error, vm.StatusKind);
+        Assert.Equal(LoginFocusTarget.Pin, vm.FocusTarget);
     }
 
     [Fact]
@@ -113,6 +125,7 @@ public class LoginViewModelPinTests
 
     private sealed class FakeAuthService : IAuthService
     {
+        private readonly Vault.VaultSession _attempts = new();
         public AuthResult LoginResult { get; init; } = new AuthResult.Failure("not set");
         public AuthResult SubmitResult { get; init; } = new AuthResult.Failure("not set");
         public AuthResult UnlockResult { get; init; } = new AuthResult.Failure("not set");
@@ -125,6 +138,15 @@ public class LoginViewModelPinTests
         public string? UnlockPin { get; private set; }
         public bool UnlockHelloCalled { get; private set; }
         public bool LoggedOut { get; private set; }
+
+        public Core.Session.AuthenticationAttemptLease BeginAuthenticationAttempt() => _attempts.BeginAuthenticationAttempt();
+        public void AbandonAuthenticationAttempt(Core.Session.AuthenticationAttemptLease attempt) => _attempts.AbandonAuthenticationAttempt(attempt);
+        public Task<AuthResult> LoginAsync(Core.Session.AuthenticationAttemptLease attempt, string serverUrl, string email, string masterPassword, CancellationToken ct = default) => LoginAsync(serverUrl, email, masterPassword, ct);
+        public Task<AuthResult> SubmitTwoFactorAsync(Core.Session.AuthenticationAttemptLease attempt, string code, int provider, CancellationToken ct = default, bool rememberDevice = true) => SubmitTwoFactorAsync(code, provider, ct, rememberDevice);
+        public Task<bool> ResendTwoFactorEmailAsync(Core.Session.AuthenticationAttemptLease attempt, CancellationToken ct = default) => ResendTwoFactorEmailAsync(ct);
+        public Task<AuthResult> UnlockAsync(Core.Session.AuthenticationAttemptLease attempt, string masterPassword, CancellationToken ct = default) => UnlockAsync(masterPassword, ct);
+        public Task<AuthResult> UnlockWithPinAsync(Core.Session.AuthenticationAttemptLease attempt, string pin, CancellationToken ct = default) => UnlockWithPinAsync(pin, ct);
+        public Task<AuthResult> UnlockWithHelloAsync(Core.Session.AuthenticationAttemptLease attempt, byte[] signature, CancellationToken ct = default) => UnlockWithHelloAsync(signature, ct);
 
         public Task<AuthResult> LoginAsync(string serverUrl, string email, string masterPassword, CancellationToken ct = default)
         {
@@ -160,11 +182,18 @@ public class LoginViewModelPinTests
         }
 
         public Task LockAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task LockAsync(Core.Session.VaultSessionLease expectedSession, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task LogoutAsync(CancellationToken ct = default)
         {
             LoggedOut = true;
             return Task.CompletedTask;
+        }
+
+        public async Task<bool> LogoutAsync(Core.Session.VaultSessionLease expectedSession, CancellationToken ct = default)
+        {
+            await LogoutAsync(ct);
+            return true;
         }
     }
 

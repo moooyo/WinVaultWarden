@@ -19,6 +19,9 @@ public class ImportExportPageXamlTests
 
     private static XDocument LoadXaml() => XDocument.Load(RepoRootFile(Path.Combine("src", "App", "Views", "ImportExportPage.xaml")));
 
+    private static string LoadPageCode() =>
+        File.ReadAllText(RepoRootFile(Path.Combine("src", "App", "Views", "ImportExportPage.xaml.cs")));
+
     private static string LoadMainWindowCode() => File.ReadAllText(RepoRootFile(Path.Combine("src", "App", "MainWindow.xaml.cs")));
 
     private static string LoadFrameNavServiceCode() =>
@@ -56,13 +59,25 @@ public class ImportExportPageXamlTests
     }
 
     [Fact]
-    public void ExportSection_ResultText_BoundToExportStatus()
+    public void Page_UsesUnifiedOperationStatusInfoBarsWithLiveRegions()
     {
         var doc = LoadXaml();
-        var textBlock = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "TextBlock"
-            && e.Attribute("AutomationProperties.AutomationId")?.Value == "ExportResultText");
-        Assert.NotNull(textBlock);
-        Assert.Contains("ExportStatus", textBlock!.Attribute("Text")?.Value ?? string.Empty);
+        var statuses = doc.Descendants()
+            .Where(e => e.Name.LocalName == "InfoBar")
+            .Where(e => (e.Attribute("AutomationProperties.AutomationId")?.Value ?? string.Empty)
+                .StartsWith("Operation", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.Equal(4, statuses.Length);
+        Assert.All(statuses, infoBar =>
+        {
+            Assert.Contains("OperationMessage", infoBar.Attribute("Message")?.Value ?? string.Empty);
+            Assert.NotNull(infoBar.Attribute("AutomationProperties.LiveSetting"));
+        });
+        Assert.Contains(statuses, e => (e.Attribute("IsOpen")?.Value ?? string.Empty).Contains("HasSucceededStatus"));
+        Assert.Contains(statuses, e => (e.Attribute("IsOpen")?.Value ?? string.Empty).Contains("HasWarningStatus"));
+        Assert.Contains(statuses, e => (e.Attribute("IsOpen")?.Value ?? string.Empty).Contains("HasCancelledStatus"));
+        Assert.Contains(statuses, e => (e.Attribute("IsOpen")?.Value ?? string.Empty).Contains("HasFailedStatus"));
     }
 
     // ── 导入区 ───────────────────────────────────────────────────────────────
@@ -118,23 +133,70 @@ public class ImportExportPageXamlTests
     }
 
     [Fact]
-    public void ImportSection_ErrorInfoBar_BoundToHasImportError()
+    public void Page_ShowsBusyStateInLiveRegion()
     {
         var doc = LoadXaml();
-        var infoBar = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "InfoBar"
-            && e.Attribute("AutomationProperties.AutomationId")?.Value == "ImportErrorInfoBar");
-        Assert.NotNull(infoBar);
-        Assert.Contains("HasImportError", infoBar!.Attribute("IsOpen")?.Value ?? string.Empty);
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var panel = doc.Descendants().FirstOrDefault(e =>
+            e.Attribute(x + "Name")?.Value == "OperationBusyPanel");
+        Assert.NotNull(panel);
+        Assert.Contains("IsBusy", panel!.Attribute("Visibility")?.Value ?? string.Empty);
+        Assert.Contains(panel.Descendants(), e =>
+            e.Attribute("AutomationProperties.LiveSetting")?.Value == "Polite"
+            && (e.Attribute("Text")?.Value ?? string.Empty).Contains("BusyMessage"));
     }
 
     [Fact]
-    public void ImportSection_ResultText_BoundToResultMessage()
+    public void InteractiveControls_AreDisabledBySharedBusyState()
     {
         var doc = LoadXaml();
-        var textBlock = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "TextBlock"
-            && e.Attribute("AutomationProperties.AutomationId")?.Value == "ImportResultText");
-        Assert.NotNull(textBlock);
-        Assert.Contains("ResultMessage", textBlock!.Attribute("Text")?.Value ?? string.Empty);
+        var ids = new[]
+        {
+            "ExportFormatCombo",
+            "ExportButton",
+            "ImportFormatCombo",
+            "ImportChooseFileButton",
+        };
+
+        foreach (var id in ids)
+        {
+            var element = doc.Descendants().Single(e =>
+                e.Attribute("AutomationProperties.AutomationId")?.Value == id);
+            Assert.Contains("CanOperate", element.Attribute("IsEnabled")?.Value ?? string.Empty);
+        }
+    }
+
+    [Fact]
+    public void Page_DisablesHorizontalScrollingAndAvoidsFixedMinimumWidths()
+    {
+        var doc = LoadXaml();
+        var scrollViewer = doc.Descendants().Single(e => e.Name.LocalName == "ScrollViewer");
+
+        Assert.Equal("Disabled", scrollViewer.Attribute("HorizontalScrollMode")?.Value);
+        Assert.Equal("Disabled", scrollViewer.Attribute("HorizontalScrollBarVisibility")?.Value);
+        Assert.DoesNotContain(doc.Descendants(), e => e.Attribute("MinWidth") is not null);
+    }
+
+    [Fact]
+    public void PageCode_UsesSharedGateAndFrozenExportFormat()
+    {
+        var code = LoadPageCode();
+
+        Assert.Contains("BeginOperation(ImportExportOperationKind.Export)", code, StringComparison.Ordinal);
+        Assert.Contains("BeginOperation(ImportExportOperationKind.ChooseImportFile)", code, StringComparison.Ordinal);
+        Assert.Contains("var format = operation.ExportFormat;", code, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.ExportToText(format)", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("ViewModel.SelectedExportFormat", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PageCode_AutoSelectsImportFormatAndDoesNotExposeExceptionDetails()
+    {
+        var code = LoadPageCode();
+
+        Assert.Contains("ApplySelectedImportFile(operation, file.Name, content)", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("ex.Message", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("MinWidth", code, StringComparison.Ordinal);
     }
 
     // ── 导航 ─────────────────────────────────────────────────────────────────

@@ -17,9 +17,10 @@ public class SendServiceTests
     {
         var userKey = new SymmetricCryptoKey(UserKeyBytes);
         var session = new VaultSession();
-        session.BeginAccountSession("test-account", "test@test.com", new Core.Models.ServerOrigin(serverUrl));
+        var endpoints = ServerEndpoints.FromWebVault(serverUrl);
+        session.BeginAccountSession("test-account", "test@test.com", endpoints);
         session.SetUnlockedKey(userKey);
-        session.SetAccount(new Core.Models.AccountInfo("test-account", "test@test.com", new Core.Models.ServerOrigin(serverUrl), "T", "PBKDF2"));
+        session.SetAccount(new Core.Models.AccountInfo("test-account", "test@test.com", endpoints, "T", "PBKDF2"));
         var crypto = new SendCryptoService(new CryptoService());
         var api = new FakeSendApiClient();
         return (new SendService(FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(api), crypto, session), api, crypto, userKey);
@@ -55,7 +56,7 @@ public class SendServiceTests
             MaxAccessCount: 5,
             AccessCount: 2,
             Password: null,
-            AuthType: 0,
+            AuthType: (int)SendAuthType.None,
             Disabled: false,
             HideEmail: true,
             RevisionDate: null,
@@ -111,6 +112,25 @@ public class SendServiceTests
     }
 
     [Fact]
+    public async Task GetSends_UnsupportedItemSend_FailsClosed()
+    {
+        var (service, api, crypto, userKey) = NewService();
+        api.ListResult = new SendListResponse(
+            Data: [BuildEncryptedDto(
+                crypto,
+                userKey,
+                type: 2,
+                name: "Item Send",
+                notes: null,
+                text: null,
+                fileName: null)],
+            Object: "list");
+
+        await Assert.ThrowsAsync<NotSupportedException>(() =>
+            service.GetSendsAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task GetSends_PasswordPresent_SetsHasPassword()
     {
         var (service, api, crypto, userKey) = NewService();
@@ -121,6 +141,22 @@ public class SendServiceTests
         var sends = await service.GetSendsAsync(TestContext.Current.CancellationToken);
 
         Assert.True(Assert.Single(sends).HasPassword);
+    }
+
+    [Fact]
+    public async Task GetSends_PasswordAuthTypeWithoutVerifier_FailsClosedAsProtected()
+    {
+        var (service, api, crypto, userKey) = NewService();
+        var dto = BuildEncryptedDto(crypto, userKey, 1, "n", null, null, "file.bin") with
+        {
+            Password = null,
+            AuthType = 1,
+        };
+        api.ListResult = new SendListResponse(Data: [dto], Object: "list");
+
+        var send = Assert.Single(await service.GetSendsAsync(TestContext.Current.CancellationToken));
+
+        Assert.True(send.HasPassword);
     }
 
     [Fact]
@@ -153,6 +189,23 @@ public class SendServiceTests
         Assert.Equal(knownSeed, parsedSeed);
     }
 
+    [Theory]
+    [InlineData("https://vault.bitwarden.com", "https://send.bitwarden.com/#/send/")]
+    [InlineData("https://vault.bitwarden.eu", "https://vault.bitwarden.eu/#/send/")]
+    public async Task GetSends_OfficialEnvironment_UsesCatalogSendWebEndpoint(
+        string webVault,
+        string expectedPrefix)
+    {
+        var (service, api, crypto, userKey) = NewService(webVault);
+        api.ListResult = new SendListResponse(
+            Data: [BuildEncryptedDto(crypto, userKey, 0, "Cloud Send", null, "body", null)],
+            Object: "list");
+
+        var send = Assert.Single(await service.GetSendsAsync(TestContext.Current.CancellationToken));
+
+        Assert.StartsWith(expectedPrefix, send.ShareUrl, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task GetSendsAsync_SkipsCorruptSend_KeepsOthers()
     {
@@ -166,6 +219,112 @@ public class SendServiceTests
 
         var single = Assert.Single(sends);
         Assert.Equal("Good", single.Name);
+    }
+
+    [Fact]
+    public async Task ObserveSendsAsync_PreservesCorruptRawIdentityForReconciliation()
+    {
+        var (service, api, crypto, userKey) = NewService();
+        var good = BuildEncryptedDto(crypto, userKey, 1, "Good", null, null, "good.bin");
+        var bad = good with { Id = "corrupt-send", Key = null! };
+        api.ListResult = new SendListResponse(Data: [bad, good], Object: "list");
+
+        var snapshot = await service.ObserveSendsAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(snapshot.IsComplete);
+        Assert.Equal(2, snapshot.Observations.Count);
+        var corrupt = Assert.Single(snapshot.Observations, item => item.Id == "corrupt-send");
+        Assert.Equal(SendDecryptStatus.Corrupt, corrupt.DecryptStatus);
+        Assert.Null(corrupt.Value);
+        Assert.False(string.IsNullOrEmpty(corrupt.RawMutationWitness));
+    }
+
+    [Fact]
+    public async Task ObserveSendsAsync_NullOrEmptyRawIdentity_MarksSnapshotIncomplete()
+    {
+        var (service, api, crypto, userKey) = NewService();
+        var valid = BuildEncryptedDto(crypto, userKey, 0, "Valid", null, "body", null);
+        api.ListResult = new SendListResponse(
+            Data: [null!, valid with { Id = string.Empty }, valid],
+            Object: "list");
+
+        var snapshot = await service.ObserveSendsAsync(TestContext.Current.CancellationToken);
+
+        Assert.False(snapshot.IsComplete);
+        Assert.Equal("s-1", Assert.Single(snapshot.Observations).Id);
+    }
+
+    [Theory]
+    [InlineData(0, SendAuthType.Email)]
+    [InlineData(1, SendAuthType.Password)]
+    [InlineData(2, SendAuthType.None)]
+    [InlineData(42, SendAuthType.Unknown)]
+    public async Task GetSends_MapsWireAuthenticationMode(int rawAuthType, SendAuthType expected)
+    {
+        var (service, api, crypto, userKey) = NewService();
+        var dto = BuildEncryptedDto(crypto, userKey, 0, "Auth", null, "body", null) with
+        {
+            AuthType = rawAuthType,
+        };
+        api.ListResult = new SendListResponse(Data: [dto], Object: "list");
+
+        var send = Assert.Single(await service.GetSendsAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal(expected, send.AuthType);
+        Assert.Equal(rawAuthType, send.RawAuthType);
+    }
+
+    [Theory]
+    [InlineData(null, null, SendAuthType.None, false)]
+    [InlineData("legacy-password-verifier", null, SendAuthType.Password, true)]
+    [InlineData(null, "one@example.test", SendAuthType.Email, false)]
+    [InlineData("legacy-password-verifier", "one@example.test", SendAuthType.Unknown, true)]
+    public async Task GetSends_MissingAuthenticationMode_UsesLegacyPasswordContract(
+        string? passwordVerifier,
+        string? emails,
+        SendAuthType expected,
+        bool expectedHasPassword)
+    {
+        var (service, api, crypto, userKey) = NewService();
+        var dto = BuildEncryptedDto(crypto, userKey, 0, "Auth", null, "body", null) with
+        {
+            AuthType = null,
+            Password = passwordVerifier,
+            Emails = emails,
+        };
+        api.ListResult = new SendListResponse(Data: [dto], Object: "list");
+
+        var send = Assert.Single(await service.GetSendsAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal(expected, send.AuthType);
+        Assert.Equal(expectedHasPassword, send.HasPassword);
+        Assert.Equal(int.MinValue, send.RawAuthType);
+    }
+
+    [Theory]
+    [InlineData((int)SendAuthType.Email, "verifier", null)]
+    [InlineData((int)SendAuthType.Password, null, "one@example.test")]
+    [InlineData((int)SendAuthType.None, "verifier", null)]
+    [InlineData((int)SendAuthType.None, null, "one@example.test")]
+    [InlineData(99, "verifier", null)]
+    public async Task GetSends_ContradictoryAuthenticationEvidence_IsUnknown(
+        int rawAuthType,
+        string? passwordVerifier,
+        string? emails)
+    {
+        var (service, api, crypto, userKey) = NewService();
+        var dto = BuildEncryptedDto(crypto, userKey, 0, "Auth", null, "body", null) with
+        {
+            AuthType = rawAuthType,
+            Password = passwordVerifier,
+            Emails = emails,
+        };
+        api.ListResult = new SendListResponse(Data: [dto], Object: "list");
+
+        var send = Assert.Single(await service.GetSendsAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal(SendAuthType.Unknown, send.AuthType);
+        Assert.Equal(rawAuthType, send.RawAuthType);
     }
 
     [Fact]

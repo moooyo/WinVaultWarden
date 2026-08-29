@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Api;
 using Api.Dtos;
+using Core.Enums;
 using Xunit;
 
 namespace Api.Tests;
@@ -86,7 +87,7 @@ public class AttachmentDtoWireTests
         var dto = JsonSerializer.Deserialize<AttachmentUploadV2Response>(json, Web)!;
         Assert.Equal("att-1", dto.AttachmentId);
         Assert.Equal("/ciphers/c-1/attachment/att-1", dto.Url);
-        Assert.Equal(0, dto.FileUploadType);
+        Assert.Equal(FileUploadType.Direct, dto.FileUploadType);
     }
 
     [Fact]

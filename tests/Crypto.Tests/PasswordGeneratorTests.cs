@@ -125,11 +125,13 @@ public class PasswordGeneratorTests
     }
 
     [Fact]
-    public void GeneratePassphrase_DefaultOptions_ReturnsSixWords()
+    public void GeneratePassphrase_DefaultWordCount_ReturnsSixWords()
     {
-        var passphrase = PasswordGenerator.GeneratePassphrase();
+        var defaults = new PassphraseGenerationOptions();
+        var passphrase = PasswordGenerator.GeneratePassphrase(defaults with { Separator = "|" });
 
-        Assert.Equal(6, passphrase.Split('-').Length);
+        Assert.Equal(6, defaults.WordCount);
+        Assert.Equal(defaults.WordCount, passphrase.Split('|').Length);
     }
 
     [Fact]
@@ -140,8 +142,8 @@ public class PasswordGeneratorTests
         var distinct = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < 200; i++)
             foreach (var w in PasswordGenerator.GeneratePassphrase(
-                         new PassphraseGenerationOptions(WordCount: 10, Separator: "-", Capitalize: false, IncludeNumber: false))
-                     .Split('-'))
+                         new PassphraseGenerationOptions(WordCount: 10, Separator: "|", Capitalize: false, IncludeNumber: false))
+                     .Split('|'))
                 distinct.Add(w);
 
         // 2000 次抽样:22 词表最多 22 个 distinct;大表应有数百个。
@@ -166,8 +168,19 @@ public class PasswordGeneratorTests
         var username = PasswordGenerator.GenerateUsername();
 
         Assert.False(string.IsNullOrWhiteSpace(username));
-        Assert.DoesNotContain("-", username);
+        Assert.DoesNotContain(' ', username);
         Assert.DoesNotContain("@", username);
+    }
+
+    [Theory]
+    [InlineData(UsernameGenerationType.ForwardedEmailAlias)]
+    [InlineData(UsernameGenerationType.CatchAllEmail)]
+    [InlineData(UsernameGenerationType.PlusAddressedEmail)]
+    public void GenerateUsername_UnsupportedType_Throws(UsernameGenerationType type)
+    {
+        var options = new UsernameGenerationOptions(Type: type);
+
+        Assert.Throws<NotSupportedException>(() => PasswordGenerator.GenerateUsername(options));
     }
 
     [Fact]

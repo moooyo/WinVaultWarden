@@ -1,31 +1,43 @@
-using System.Buffers;
 using System.Security.Cryptography;
 using System.Text;
-using Core.Enums;
 using Core.Models;
+using Core.Services;
 
 namespace Crypto;
 
-// Bitwarden Send 加密链。与 bitwarden/clients 实现逐位对齐。
+// Bitwarden Send encryption aligned with bitwarden/clients.
 // seed(16B) --HKDF(bitwarden-send/send,64B)--> cryptoKey(enc32+mac32)
-// 字段用 cryptoKey 加密;seed 本身用 userKey 包裹放入 key 字段。
+// Fields use cryptoKey; userKey wraps the seed stored in the key field.
 public sealed class SendCryptoService
 {
     private const int SeedLength = 16;
+    private const int EncodedSeedLength = 22;
+    private const string ShareFragmentPrefix = "#/send/";
     private const int SendKdfIterations = 100_000;
     private static readonly byte[] HkdfSalt = "bitwarden-send"u8.ToArray();
     private static readonly byte[] HkdfInfo = "send"u8.ToArray();
     private const string ShareUrlMarker = "/#/send/";
 
+    public const int MaxShareUrlLength = 2_048;
+    public const int MaxShareFragmentLength = 158;
+    public const int MaxAccessIdLength = 128;
+
     private readonly CryptoService _crypto;
+    private readonly EncArrayBufferStreamCrypto _streamCrypto;
 
-    public SendCryptoService(CryptoService crypto) => _crypto = crypto;
+    public SendCryptoService(CryptoService crypto, EncArrayBufferStreamCrypto? streamCrypto = null)
+    {
+        _crypto = crypto;
+        _streamCrypto = streamCrypto ?? new EncArrayBufferStreamCrypto();
+    }
 
-    // 16 字节随机种子。放进分享 URL 片段,并用 userKey 包裹后作为 key 字段。
+    public static long MaxEncryptedFileBytes { get; } =
+        EncArrayBuffer.GetEncodedLength(SendFileSource.MaxPlaintextBytes);
+
+    // The random 16-byte seed is placed in the share URL fragment and wrapped for the key field.
     public byte[] GenerateSeed() => RandomNumberGenerator.GetBytes(SeedLength);
 
-    // 完整 HKDF(extract+expand)SHA256:salt="bitwarden-send",info="send",输出 64B。
-    // 拆为 enc(32)+mac(32) 的对称密钥。
+    // Full HKDF extract-and-expand with SHA-256, producing enc(32) and MAC(32) keys.
     public SymmetricCryptoKey DeriveCryptoKey(byte[] seed)
     {
         var key = HKDF.DeriveKey(
@@ -37,14 +49,14 @@ public sealed class SendCryptoService
         return new SymmetricCryptoKey(key);
     }
 
-    // key 字段 = Encrypt(seed, userKey) 的 EncString 字符串(type 2)。
+    // The key field is a type-2 EncString containing the seed encrypted by userKey.
     public string WrapSeed(byte[] seed, SymmetricCryptoKey userKey)
         => _crypto.Encrypt(seed, userKey).ToString();
 
     public byte[] UnwrapSeed(string encKey, SymmetricCryptoKey userKey)
         => _crypto.Decrypt(EncString.Parse(encKey), userKey);
 
-    // name/notes/text/fileName 等字段 = Encrypt(utf8, cryptoKey) 的 EncString 字符串。
+    // Send text fields are UTF-8 encoded and encrypted with cryptoKey.
     public string EncryptField(string plaintext, SymmetricCryptoKey cryptoKey)
         => _crypto.Encrypt(Encoding.UTF8.GetBytes(plaintext), cryptoKey).ToString();
 
@@ -56,192 +68,82 @@ public sealed class SendCryptoService
         return Encoding.UTF8.GetString(bytes);
     }
 
-    // 文件体 = Bitwarden EncArrayBuffer 二进制:concat[ (byte)2, iv(16), mac(32), ct ]。
+    // File body layout is type(2), IV(16), MAC(32), and ciphertext.
     public byte[] EncryptToBuffer(byte[] plaintext, SymmetricCryptoKey cryptoKey)
         => EncArrayBuffer.Pack(_crypto.Encrypt(plaintext, cryptoKey));
 
-    // 解析 EncArrayBuffer:byte0(=2),iv=[1..17],mac=[17..49],ct=[49..]。
+    // This array API remains for small compatibility callers; file transfers use the stream API.
     public byte[] DecryptBuffer(byte[] buffer, SymmetricCryptoKey cryptoKey)
         => _crypto.Decrypt(EncArrayBuffer.Unpack(buffer), cryptoKey);
 
-    // 两遍式常量内存流加密,产出与 EncryptToBuffer 逐字节一致的 EncArrayBuffer,但绝不把明文/密文整份载入内存。
-    // 布局 = [ (byte)2, iv(16), mac(32), ct ],mac = HMAC-SHA256(macKey, iv‖ct),与 CryptoService.Encrypt/Decrypt 一致。
-    // 因 MAC 位于密文之前,而计算 MAC 需读完全部密文,故必须两遍:
-    //   第一遍(ComputeFileMacAsync):重开源、以固定 iv/密钥做 AES-CBC 加密并把密文喂给 IncrementalHash,只得到 MAC;
-    //   第二遍(WriteAsync 委托):重开源、复用【同一】iv/密钥,把 [2, iv, mac, ct] 直接写进目标流。
-    // AES-CBC + PKCS7 在相同 iv/密钥/明文下确定,两遍密文必然一致,故第一遍算出的 MAC 可鉴别第二遍写出的密文。
-    // fail-closed 一致性(Vault Task 12 复审):源(如 file-backed StorageFile)可变,可能在两遍之间被改成
-    // 【相同长度但不同内容】——此时 CopyExactlyAsync 的长度校验无法侦测。第二遍在写密文的同时以同一 iv/密钥
-    // 重算 HMAC,并用固定时间比较与第一遍(已写进头部)的 MAC 比对;不一致即抛 InvalidDataException 拒绝上传,
-    // 绝不留下 MAC/密文不匹配的损坏 Send。上层创建流程随即用独立令牌补偿删除孤儿记录。
-    // 返回的 Length 是加密后精确字节数,供上传方设置 Content-Length 与服务端长度比对。
-    public async Task<StreamUploadContent> PrepareFileUploadAsync(
+    // Retains the existing Send contract while delegating both passes to the shared file crypto.
+    public Task<StreamUploadContent> PrepareFileUploadAsync(
         SendFileSource source,
         SymmetricCryptoKey cryptoKey,
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(cryptoKey);
         ArgumentException.ThrowIfNullOrWhiteSpace(source.FileName);
-        ArgumentNullException.ThrowIfNull(source.OpenReadAsync);
-        SendFileSource.ValidateLength(source.Length);
-        if (cryptoKey.MacKey is null)
-            throw new CryptographicException("Send file encryption requires a MAC key.");
-
-        var iv = RandomNumberGenerator.GetBytes(16);
-        var mac = await ComputeFileMacAsync(source, cryptoKey, iv, ct).ConfigureAwait(false);
-        // 1(header)+16(iv)+32(mac)+PKCS7 密文长度(明文长度向上取整到下一个 16 字节块)。
-        var encryptedLength = checked(49L + ((source.Length / 16L) + 1L) * 16L);
-
-        return new StreamUploadContent(
-            encryptedLength,
-            async (destination, writeCt) =>
-            {
-                await destination.WriteAsync(
-                    new[] { (byte)EncryptionType.AesCbc256_HmacSha256_B64 }, writeCt).ConfigureAwait(false);
-                await destination.WriteAsync(iv, writeCt).ConfigureAwait(false);
-                await destination.WriteAsync(mac, writeCt).ConfigureAwait(false);
-                // 第二遍在流式写密文的同时以同一 iv/密钥重算 HMAC,供随后与第一遍的 mac 固定时间比对(fail-closed)。
-                using var verify = IncrementalHash.CreateHMAC(HashAlgorithmName.SHA256, cryptoKey.MacKey!);
-                verify.AppendData(iv);
-                await using var plaintext = await source.OpenReadAsync(writeCt).ConfigureAwait(false);
-                using var aes = Aes.Create();
-                aes.Mode = CipherMode.CBC;
-                aes.Padding = PaddingMode.PKCS7;
-                aes.Key = cryptoKey.EncKey;
-                aes.IV = iv;
-                await using (var tee = new HmacTeeStream(destination, verify))
-                await using (var encrypting = new CryptoStream(
-                    tee, aes.CreateEncryptor(), CryptoStreamMode.Write, leaveOpen: true))
-                {
-                    await CopyExactlyAsync(plaintext, encrypting, source.Length, writeCt).ConfigureAwait(false);
-                    await encrypting.FlushFinalBlockAsync(writeCt).ConfigureAwait(false);
-                }
-                if (!CryptographicOperations.FixedTimeEquals(mac, verify.GetHashAndReset()))
-                    throw new InvalidDataException(
-                        "Send file content changed between passes; refusing to upload a MAC/ciphertext mismatch.");
-            });
+        return _streamCrypto.PrepareUploadAsync(
+            source,
+            cryptoKey,
+            SendFileSource.MaxPlaintextBytes,
+            ct);
     }
 
-    // 第一遍:重开源,以固定 iv/密钥做 AES-CBC 加密,把 iv 与流式密文喂进 HMAC,得到 mac。绝不缓存密文。
-    private static async Task<byte[]> ComputeFileMacAsync(
+    public Task<StreamUploadContent> PrepareFileUploadAsync(
         SendFileSource source,
-        SymmetricCryptoKey key,
-        byte[] iv,
+        SymmetricCryptoKey cryptoKey,
+        ITransferIdleTimeoutPolicy timeoutPolicy,
         CancellationToken ct)
     {
-        using var hash = IncrementalHash.CreateHMAC(HashAlgorithmName.SHA256, key.MacKey!);
-        hash.AppendData(iv);
-        await using var plaintext = await source.OpenReadAsync(ct).ConfigureAwait(false);
-        using var aes = Aes.Create();
-        aes.Mode = CipherMode.CBC;
-        aes.Padding = PaddingMode.PKCS7;
-        aes.Key = key.EncKey;
-        aes.IV = iv;
-        await using var sink = new IncrementalHashWriteStream(hash);
-        await using var encrypting = new CryptoStream(
-            sink, aes.CreateEncryptor(), CryptoStreamMode.Write, leaveOpen: true);
-        await CopyExactlyAsync(plaintext, encrypting, source.Length, ct).ConfigureAwait(false);
-        await encrypting.FlushFinalBlockAsync(ct).ConfigureAwait(false);
-        return hash.GetHashAndReset();
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(timeoutPolicy);
+        ArgumentException.ThrowIfNullOrWhiteSpace(source.FileName);
+        return _streamCrypto.PrepareUploadAsync(
+            source,
+            cryptoKey,
+            SendFileSource.MaxPlaintextBytes,
+            timeoutPolicy,
+            ct);
     }
 
-    // 精确拷贝 expectedLength 字节:多读到(源在选择后变长)或读不满(变短)都抛 InvalidDataException,
-    // 保证两遍读到的内容一致,且服务端长度比对不会失败。使用租借缓冲,归还前清零,常量内存。
-    private static async Task CopyExactlyAsync(
-        Stream source,
-        Stream destination,
-        long expectedLength,
-        CancellationToken ct)
+    public Task<long> DecryptFileAsync(
+        Stream encryptedSource,
+        Stream plaintextDestination,
+        SymmetricCryptoKey cryptoKey,
+        long? declaredLength,
+        CancellationToken ct = default) =>
+        _streamCrypto.DecryptAsync(
+            encryptedSource,
+            plaintextDestination,
+            cryptoKey,
+            MaxEncryptedFileBytes,
+            SendFileSource.MaxPlaintextBytes,
+            declaredLength,
+            ct);
+
+    public Task<long> DecryptFileAsync(
+        Stream encryptedSource,
+        Stream plaintextDestination,
+        SymmetricCryptoKey cryptoKey,
+        long? declaredLength,
+        ITransferIdleTimeoutPolicy timeoutPolicy,
+        CancellationToken ct = default)
     {
-        var buffer = ArrayPool<byte>.Shared.Rent(81_920);
-        long total = 0;
-        try
-        {
-            while (true)
-            {
-                var read = await source.ReadAsync(buffer, ct).ConfigureAwait(false);
-                if (read == 0)
-                    break;
-                total = checked(total + read);
-                if (total > expectedLength)
-                    throw new InvalidDataException("Send file grew after selection.");
-                await destination.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
-            }
-            if (total != expectedLength)
-                throw new InvalidDataException("Send file length changed after selection.");
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(buffer);
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        ArgumentNullException.ThrowIfNull(timeoutPolicy);
+        return _streamCrypto.DecryptAsync(
+            encryptedSource,
+            plaintextDestination,
+            cryptoKey,
+            MaxEncryptedFileBytes,
+            SendFileSource.MaxPlaintextBytes,
+            declaredLength,
+            timeoutPolicy,
+            ct);
     }
 
-    // 只写、把写入内容转发给 IncrementalHash 的适配流:让 CryptoStream 的密文直接进入 HMAC,无需中间缓冲。
-    private sealed class IncrementalHashWriteStream(IncrementalHash hash) : Stream
-    {
-        public override bool CanRead => false;
-        public override bool CanSeek => false;
-        public override bool CanWrite => true;
-        public override long Length => throw new NotSupportedException();
-        public override long Position
-        {
-            get => throw new NotSupportedException();
-            set => throw new NotSupportedException();
-        }
-
-        public override void Write(byte[] buffer, int offset, int count) =>
-            hash.AppendData(buffer, offset, count);
-
-        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
-        {
-            ct.ThrowIfCancellationRequested();
-            hash.AppendData(buffer.Span);
-            return ValueTask.CompletedTask;
-        }
-
-        public override void Flush() { }
-        public override Task FlushAsync(CancellationToken ct) => Task.CompletedTask;
-        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-        public override void SetLength(long value) => throw new NotSupportedException();
-    }
-
-    // 只写的"三通"流:把写入内容同时转发给底层目标流与 IncrementalHash,使第二遍密文得以一边上传、一边重算 HMAC
-    // 做一致性校验,无需任何额外缓冲。不拥有底层流生命周期(Dispose 不关闭 inner,与原 leaveOpen 语义一致)。
-    private sealed class HmacTeeStream(Stream inner, IncrementalHash hash) : Stream
-    {
-        public override bool CanRead => false;
-        public override bool CanSeek => false;
-        public override bool CanWrite => true;
-        public override long Length => throw new NotSupportedException();
-        public override long Position
-        {
-            get => throw new NotSupportedException();
-            set => throw new NotSupportedException();
-        }
-
-        public override void Write(byte[] buffer, int offset, int count)
-        {
-            hash.AppendData(buffer, offset, count);
-            inner.Write(buffer, offset, count);
-        }
-
-        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
-        {
-            hash.AppendData(buffer.Span);
-            await inner.WriteAsync(buffer, ct).ConfigureAwait(false);
-        }
-
-        public override void Flush() => inner.Flush();
-        public override Task FlushAsync(CancellationToken ct) => inner.FlushAsync(ct);
-        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-        public override void SetLength(long value) => throw new NotSupportedException();
-    }
-
-    // 密码证明 = base64( PBKDF2-SHA256(pw, salt=seed, iter=100000, 32B) )。发往服务端,非明文。
+    // Password proof is base64(PBKDF2-SHA256(password, seed, 100000, 32B)).
     public string ComputePasswordProof(string password, byte[] seed)
     {
         var proof = Rfc2898DeriveBytes.Pbkdf2(
@@ -253,57 +155,153 @@ public sealed class SendCryptoService
         return Convert.ToBase64String(proof);
     }
 
-    // 分享 URL = serverUrl.TrimEnd('/') + "/#/send/" + accessId + "/" + base64urlNoPad(seed)。
+    // Share URL uses the access id and unpadded base64url seed in the fragment.
     public string BuildShareUrl(string serverUrl, string accessId, byte[] seed)
         => $"{serverUrl.TrimEnd('/')}{ShareUrlMarker}{accessId}/{Base64UrlEncode(seed)}";
 
-    // 解析分享 URL:在 "/#/send/" 处切分,后段按 '/' 取 accessId 与 base64url seed。
-    public bool TryParseShareUrl(string url, out string accessId, out byte[] seed)
+    /// <summary>
+    /// Parses and validates one bounded Send share URL before decoding its fixed-size seed.
+    /// </summary>
+    public bool TryParseShareUrl(string? url, out ParsedSendShareUrl? result)
     {
-        accessId = "";
-        seed = Array.Empty<byte>();
-        if (string.IsNullOrEmpty(url))
+        result = null;
+        if (url is null
+            || url.Length == 0
+            || url.Length > MaxShareUrlLength
+            || ContainsWhitespace(url))
             return false;
 
-        var idx = url.IndexOf(ShareUrlMarker, StringComparison.Ordinal);
-        if (idx < 0)
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var shareUri)
+            || (!shareUri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                && !shareUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            || string.IsNullOrWhiteSpace(shareUri.Host)
+            || !string.IsNullOrEmpty(shareUri.UserInfo)
+            || !string.IsNullOrEmpty(shareUri.Query))
             return false;
 
-        var tail = url[(idx + ShareUrlMarker.Length)..];
-        var slash = tail.IndexOf('/');
-        if (slash <= 0 || slash == tail.Length - 1)
+        var fragment = shareUri.Fragment;
+        if (fragment.Length > MaxShareFragmentLength
+            || !fragment.StartsWith(ShareFragmentPrefix, StringComparison.Ordinal))
             return false;
 
-        var id = tail[..slash];
-        var seedSegment = tail[(slash + 1)..];
+        var separator = fragment.IndexOf('/', ShareFragmentPrefix.Length);
+        if (separator < 0 || fragment.IndexOf('/', separator + 1) >= 0)
+            return false;
+
+        var accessIdLength = separator - ShareFragmentPrefix.Length;
+        var encodedSeedLength = fragment.Length - separator - 1;
+        if (accessIdLength <= 0
+            || accessIdLength > MaxAccessIdLength
+            || encodedSeedLength != EncodedSeedLength)
+            return false;
+
+        var accessIdSpan = fragment.AsSpan(ShareFragmentPrefix.Length, accessIdLength);
+        var encodedSeed = fragment.AsSpan(separator + 1, encodedSeedLength);
+        if (!IsBase64Url(accessIdSpan) || !IsBase64Url(encodedSeed))
+            return false;
+
+        ServerEndpoints endpoints;
         try
         {
-            seed = Base64UrlDecode(seedSegment);
+            var webVault = new ServerEndpoint(shareUri.GetLeftPart(UriPartial.Path));
+            endpoints = ServerEndpoints.FromWebVault(webVault);
         }
-        catch (FormatException)
+        catch (ArgumentException)
         {
             return false;
         }
 
-        if (seed.Length == 0)
+        if (!TryDecodeSeed(encodedSeed, out var seed))
             return false;
 
-        accessId = id;
-        return true;
+        try
+        {
+            result = new ParsedSendShareUrl(
+                shareUri,
+                accessIdSpan.ToString(),
+                endpoints,
+                seed);
+            return true;
+        }
+        catch
+        {
+            CryptographicOperations.ZeroMemory(seed);
+            throw;
+        }
     }
 
-    // base64url(无填充):'+'->'-','/'->'_',去掉 '='。
+    // Compatibility overload. New callers should consume the single validated parse result.
+    public bool TryParseShareUrl(string url, out string accessId, out byte[] seed)
+    {
+        accessId = string.Empty;
+        seed = Array.Empty<byte>();
+        if (!TryParseShareUrl(url, out var parsed) || parsed is null)
+            return false;
+
+        using (parsed)
+        {
+            accessId = parsed.AccessId;
+            seed = parsed.CopySeed();
+            return true;
+        }
+    }
+
+    // Unpadded base64url encoding.
     private static string Base64UrlEncode(byte[] bytes)
         => Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_').TrimEnd('=');
 
-    private static byte[] Base64UrlDecode(string value)
+    private static bool TryDecodeSeed(ReadOnlySpan<char> encoded, out byte[] seed)
     {
-        var s = value.Replace('-', '+').Replace('_', '/');
-        switch (s.Length % 4)
+        seed = Array.Empty<byte>();
+        if (encoded.Length != EncodedSeedLength)
+            return false;
+
+        Span<char> padded = stackalloc char[24];
+        for (var index = 0; index < encoded.Length; index++)
         {
-            case 2: s += "=="; break;
-            case 3: s += "="; break;
+            padded[index] = encoded[index] switch
+            {
+                '-' => '+',
+                '_' => '/',
+                var character => character,
+            };
         }
-        return Convert.FromBase64String(s);
+        padded[22] = '=';
+        padded[23] = '=';
+
+        var decoded = new byte[SeedLength];
+        if (!Convert.TryFromBase64Chars(padded, decoded, out var written)
+            || written != SeedLength)
+        {
+            CryptographicOperations.ZeroMemory(decoded);
+            return false;
+        }
+
+        seed = decoded;
+        return true;
+    }
+
+    private static bool IsBase64Url(ReadOnlySpan<char> value)
+    {
+        foreach (var character in value)
+        {
+            if (!char.IsAsciiLetterOrDigit(character)
+                && character != '-'
+                && character != '_')
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool ContainsWhitespace(string value)
+    {
+        foreach (var character in value)
+        {
+            if (char.IsWhiteSpace(character))
+                return true;
+        }
+
+        return false;
     }
 }

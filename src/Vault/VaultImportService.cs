@@ -1,6 +1,7 @@
 using Api;
 using Api.Dtos;
 using Core.Services;
+using Core.Session;
 using Crypto;
 using Vault.Porting;
 
@@ -38,19 +39,29 @@ public sealed class VaultImportService : IVaultImportService
 
     public async Task<int> ImportAsync(ImportFormat format, string content, CancellationToken ct = default)
     {
-        var userKey = RequireUserKey();
+        var lease = _session.CaptureLease();
         var data = ParseContent(format, content);
+        if (!_session.TryCopyUserKey(lease, out var copiedKey) || copiedKey is null)
+            throw new InvalidOperationException("Vault is locked.");
 
-        var ciphers = data.Ciphers.Select(c => _encryptor.Encrypt(c, userKey)).ToArray();
-        var folders = data.Folders.Select(f => new FolderRequest { Name = _encryptor.EncryptFolderName(f.Name, userKey) }).ToArray();
+        CipherRequest[] ciphers;
+        FolderRequest[] folders;
+        using (copiedKey)
+        {
+            ciphers = data.Ciphers
+                .Select(c => _encryptor.Encrypt(c.WithFolderId(null), copiedKey))
+                .ToArray();
+            folders = data.Folders.Select(f => new FolderRequest { Name = _encryptor.EncryptFolderName(f.Name, copiedKey) }).ToArray();
+        }
         var rels = data.Relations.Select(r => new ImportRelationship { Key = r.CipherIndex, Value = r.FolderIndex }).ToArray();
 
-        var lease = _session.CaptureLease();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        _session.ThrowIfExpired(lease);
         var api = _clients.GetAuthenticated<IVaultWriteApiClient>(lease);
+        _session.ThrowIfExpired(lease);
         await api.ImportCiphersAsync(new ImportRequest { Ciphers = ciphers, Folders = folders, FolderRelationships = rels }, linked.Token);
         _session.ThrowIfExpired(lease);
-        await ResyncAsync(ct);
+        await ResyncAsync(lease, ct);
 
         return data.Ciphers.Count;
     }
@@ -62,22 +73,19 @@ public sealed class VaultImportService : IVaultImportService
         _ => throw new NotSupportedException($"Unsupported import format: {format}"),
     };
 
-    private SymmetricCryptoKey RequireUserKey() =>
-        _session.UserKey ?? throw new InvalidOperationException("Vault is locked.");
-
     // 写后整库重同步:导入已在服务端成功,若刷新失败则本地快照可能过期。
     // 包装为 VaultRefreshException 让上层区分"导入失败"与"导入成功但刷新失败"。
-    private async Task ResyncAsync(CancellationToken ct)
+    private async Task ResyncAsync(VaultSessionLease lease, CancellationToken ct)
     {
         try
         {
-            await _sync.SyncAsync(ct);
+            await _sync.SyncAsync(lease, ct);
         }
         catch (OperationCanceledException)
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             throw new VaultRefreshException("导入已完成,但刷新本地数据失败,请手动刷新。", ex);
         }

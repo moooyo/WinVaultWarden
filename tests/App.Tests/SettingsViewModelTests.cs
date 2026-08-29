@@ -1,3 +1,4 @@
+using Api;
 using App.Services;
 using App.ViewModels;
 using Core.Models;
@@ -16,7 +17,8 @@ namespace App.Tests;
 /// TDD: SettingsViewModel 的 2FA 命令测试。
 /// 链：VM → TwoFactorUiService（真实）→ FakeTwoFactorService
 /// </summary>
-public class SettingsViewModelTwoFactorTests
+[Collection(TestCollectionNames.AppPreferences)]
+public class SettingsViewModelTwoFactorTests : AppPreferencesTestBase
 {
     // -----------------------------------------------------------------------
     // FakeTwoFactorService：记录调用并可控抛出
@@ -26,14 +28,23 @@ public class SettingsViewModelTwoFactorTests
         public bool ThrowOnList { get; set; }
         public bool ThrowOnBeginTotp { get; set; }
         public bool ThrowOnEnableTotp { get; set; }
+        public bool ThrowOnGetRecoveryCode { get; set; }
         public bool ThrowOnBeginEmail { get; set; }
         public bool ThrowOnSendEmail { get; set; }
         public bool ThrowOnEnableEmail { get; set; }
         public bool ThrowOnDisable { get; set; }
         public bool ThrowCancelOnDisable { get; set; }
+        public Exception? Failure { get; set; }
+        public (string secret, string otpauth) TotpSetup { get; set; } =
+            ("TOTPSECRET", "otpauth://totp/test");
+        public TotpActivationResult ActivationResult { get; set; } =
+            TotpActivationResult.EnabledWithRecoveryCode("RECOVERY-CODE-123");
+        public string RecoveryCode { get; set; } = "RECOVERY-CODE-123";
 
         public string? LastPw { get; private set; }
         public (string pw, string secret, string code)? LastEnableTotp { get; private set; }
+        public int EnableTotpCalls { get; private set; }
+        public string? LastRecoveryPassword { get; private set; }
         public (string pw, string email, string token)? LastEnableEmail { get; private set; }
         public (string pw, int type)? LastDisable { get; private set; }
 
@@ -45,26 +56,39 @@ public class SettingsViewModelTwoFactorTests
 
         public Task<IReadOnlyList<TwoFactorProvider>> ListProvidersAsync(CancellationToken ct = default)
         {
+            if (Failure is { } failure) throw failure;
             if (ThrowOnList) throw new TwoFactorOperationException("list failed");
             return Task.FromResult(Providers);
         }
 
         public Task<(string secret, string otpauth)> BeginTotpSetupAsync(string pw, CancellationToken ct = default)
         {
+            if (Failure is { } failure) throw failure;
             if (ThrowOnBeginTotp) throw new TwoFactorOperationException("begin totp failed");
             LastPw = pw;
-            return Task.FromResult(("TOTPSECRET", "otpauth://totp/test"));
+            return Task.FromResult(TotpSetup);
         }
 
-        public Task<string> EnableTotpAsync(string pw, string secret, string code, CancellationToken ct = default)
+        public Task<TotpActivationResult> EnableTotpAsync(string pw, string secret, string code, CancellationToken ct = default)
         {
+            if (Failure is { } failure) throw failure;
             if (ThrowOnEnableTotp) throw new TwoFactorOperationException("enable totp failed");
+            EnableTotpCalls++;
             LastEnableTotp = (pw, secret, code);
-            return Task.FromResult("RECOVERY-CODE-123");
+            return Task.FromResult(ActivationResult);
+        }
+
+        public Task<string> GetRecoveryCodeAsync(string pw, CancellationToken ct = default)
+        {
+            if (Failure is { } failure) throw failure;
+            if (ThrowOnGetRecoveryCode) throw new TwoFactorOperationException("recovery read failed");
+            LastRecoveryPassword = pw;
+            return Task.FromResult(RecoveryCode);
         }
 
         public Task<string?> BeginEmailSetupAsync(string pw, CancellationToken ct = default)
         {
+            if (Failure is { } failure) throw failure;
             if (ThrowOnBeginEmail) throw new TwoFactorOperationException("begin email failed");
             LastPw = pw;
             return Task.FromResult<string?>("t***@example.com");
@@ -72,6 +96,7 @@ public class SettingsViewModelTwoFactorTests
 
         public Task SendEmailAsync(string pw, string email, CancellationToken ct = default)
         {
+            if (Failure is { } failure) throw failure;
             if (ThrowOnSendEmail) throw new TwoFactorOperationException("send email failed");
             LastPw = pw;
             return Task.CompletedTask;
@@ -79,6 +104,7 @@ public class SettingsViewModelTwoFactorTests
 
         public Task EnableEmailAsync(string pw, string email, string token, CancellationToken ct = default)
         {
+            if (Failure is { } failure) throw failure;
             if (ThrowOnEnableEmail) throw new TwoFactorOperationException("enable email failed");
             LastEnableEmail = (pw, email, token);
             return Task.CompletedTask;
@@ -86,7 +112,11 @@ public class SettingsViewModelTwoFactorTests
 
         public Task DisableAsync(string pw, int type, CancellationToken ct = default)
         {
-            if (ThrowCancelOnDisable) throw new OperationCanceledException("user cancelled");
+            if (Failure is { } failure) throw failure;
+            if (ThrowCancelOnDisable)
+                throw new OperationCanceledException(
+                    "user cancelled",
+                    new CancellationToken(canceled: true));
             if (ThrowOnDisable) throw new TwoFactorOperationException("disable failed");
             LastDisable = (pw, type);
             return Task.CompletedTask;
@@ -152,6 +182,22 @@ public class SettingsViewModelTwoFactorTests
         Assert.Equal(DataPageState.Error, vm.TwoFactorState);
     }
 
+    [Fact]
+    public async Task LoadProviders_RequestTimeout_ReturnsFailedAndShowsTimeout()
+    {
+        var service = new FakeTwoFactorService { Failure = RequestTimeout() };
+        var vm = new SettingsViewModel(
+            twoFactorUi: new TwoFactorUiService(service));
+
+        var result = await vm.LoadProvidersAsync(CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, result.Error);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, vm.OperationError);
+        Assert.Equal(DataPageState.Error, vm.TwoFactorState);
+        Assert.False(vm.IsBusy);
+    }
+
     // -----------------------------------------------------------------------
     // LoadProvidersAsync: IsBusy → Busy，非空集合成功
     // -----------------------------------------------------------------------
@@ -196,10 +242,11 @@ public class SettingsViewModelTwoFactorTests
 
         var result = await vm.BeginTotpSetupAsync("master-pw");
 
+        Assert.Equal(UiOperationStatus.Succeeded, result.Status);
         Assert.Equal(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
-        Assert.Equal("TOTPSECRET", result.secret);
-        Assert.Equal("otpauth://totp/test", result.otpauth);
+        Assert.Equal("TOTPSECRET", result.Value.secret);
+        Assert.Equal("otpauth://totp/test", result.Value.otpauth);
     }
 
     // -----------------------------------------------------------------------
@@ -212,9 +259,23 @@ public class SettingsViewModelTwoFactorTests
 
         var result = await vm.BeginTotpSetupAsync("master-pw");
 
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
         Assert.NotEqual(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
-        Assert.Equal(string.Empty, result.secret);
+    }
+
+    [Fact]
+    public async Task BeginTotpSetup_RequestTimeout_SetsSafeTimeoutError()
+    {
+        var service = new FakeTwoFactorService { Failure = RequestTimeout() };
+        var vm = new SettingsViewModel(
+            twoFactorUi: new TwoFactorUiService(service));
+
+        var result = await vm.BeginTotpSetupAsync("master-pw", CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, vm.OperationError);
+        Assert.False(vm.IsBusy);
     }
 
     // -----------------------------------------------------------------------
@@ -226,11 +287,14 @@ public class SettingsViewModelTwoFactorTests
         var (vm, svc) = Build2Fa();
         vm.OperationError = "stale";
 
-        var recovery = await vm.EnableTotpAsync("pw", "TOTPSECRET", "123456");
+        var result = await vm.EnableTotpAsync("pw", "TOTPSECRET", "123456");
 
+        Assert.Equal(UiOperationStatus.Succeeded, result.Status);
         Assert.Equal(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
-        Assert.Equal("RECOVERY-CODE-123", recovery);
+        Assert.True(result.Value?.IsEnabled);
+        Assert.True(result.Value?.HasRecoveryCode);
+        Assert.Equal("RECOVERY-CODE-123", result.Value?.RecoveryCode);
         Assert.Equal(("pw", "TOTPSECRET", "123456"), svc.LastEnableTotp);
     }
 
@@ -242,11 +306,11 @@ public class SettingsViewModelTwoFactorTests
     {
         var (vm, _) = Build2Fa(throwOnEnableTotp: true);
 
-        var recovery = await vm.EnableTotpAsync("pw", "secret", "code");
+        var result = await vm.EnableTotpAsync("pw", "secret", "code");
 
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
         Assert.NotEqual(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
-        Assert.Equal(string.Empty, recovery);
     }
 
     // -----------------------------------------------------------------------
@@ -258,8 +322,9 @@ public class SettingsViewModelTwoFactorTests
         var (vm, svc) = Build2Fa();
         vm.OperationError = "stale";
 
-        await vm.SendEmailAsync("pw", "user@example.com");
+        var result = await vm.SendEmailAsync("pw", "user@example.com");
 
+        Assert.Equal(UiOperationStatus.Succeeded, result.Status);
         Assert.Equal(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
         Assert.Equal("pw", svc.LastPw);
@@ -273,8 +338,9 @@ public class SettingsViewModelTwoFactorTests
     {
         var (vm, _) = Build2Fa(throwOnSendEmail: true);
 
-        await vm.SendEmailAsync("pw", "user@example.com");
+        var result = await vm.SendEmailAsync("pw", "user@example.com");
 
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
         Assert.NotEqual(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
     }
@@ -288,8 +354,9 @@ public class SettingsViewModelTwoFactorTests
         var (vm, svc) = Build2Fa();
         vm.OperationError = "stale";
 
-        await vm.EnableEmailAsync("pw", "user@example.com", "TOKEN123");
+        var result = await vm.EnableEmailAsync("pw", "user@example.com", "TOKEN123");
 
+        Assert.Equal(UiOperationStatus.Succeeded, result.Status);
         Assert.Equal(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
         Assert.Equal(("pw", "user@example.com", "TOKEN123"), svc.LastEnableEmail);
@@ -303,8 +370,9 @@ public class SettingsViewModelTwoFactorTests
     {
         var (vm, _) = Build2Fa(throwOnEnableEmail: true);
 
-        await vm.EnableEmailAsync("pw", "user@example.com", "TOKEN");
+        var result = await vm.EnableEmailAsync("pw", "user@example.com", "TOKEN");
 
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
         Assert.NotEqual(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
     }
@@ -318,8 +386,9 @@ public class SettingsViewModelTwoFactorTests
         var (vm, svc) = Build2Fa();
         vm.OperationError = "stale";
 
-        await vm.DisableTwoFactorAsync("pw", 0);
+        var result = await vm.DisableTwoFactorAsync("pw", 0);
 
+        Assert.Equal(UiOperationStatus.Succeeded, result.Status);
         Assert.Equal(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
         Assert.Equal(("pw", 0), svc.LastDisable);
@@ -333,8 +402,9 @@ public class SettingsViewModelTwoFactorTests
     {
         var (vm, _) = Build2Fa(throwOnDisable: true);
 
-        await vm.DisableTwoFactorAsync("pw", 0);
+        var result = await vm.DisableTwoFactorAsync("pw", 0);
 
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
         Assert.NotEqual(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
     }
@@ -349,8 +419,9 @@ public class SettingsViewModelTwoFactorTests
         var ui = new TwoFactorUiService(svc);
         var vm = new SettingsViewModel(twoFactorUi: ui);
 
-        await vm.DisableTwoFactorAsync("pw", 0);
+        var result = await vm.DisableTwoFactorAsync("pw", 0);
 
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
         Assert.Equal(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
     }
@@ -377,8 +448,8 @@ public class SettingsViewModelTwoFactorTests
 
         var result = await vm.BeginTotpSetupAsync("pw");
 
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
         Assert.NotEqual(string.Empty, vm.OperationError);
-        Assert.Equal(string.Empty, result.secret);
     }
 
     [Fact]
@@ -388,8 +459,8 @@ public class SettingsViewModelTwoFactorTests
 
         var result = await vm.EnableTotpAsync("pw", "secret", "code");
 
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
         Assert.NotEqual(string.Empty, vm.OperationError);
-        Assert.Equal(string.Empty, result);
     }
 
     [Fact]
@@ -397,8 +468,9 @@ public class SettingsViewModelTwoFactorTests
     {
         var vm = new SettingsViewModel();
 
-        await vm.DisableTwoFactorAsync("pw", 0);
+        var result = await vm.DisableTwoFactorAsync("pw", 0);
 
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
         Assert.NotEqual(string.Empty, vm.OperationError);
     }
 
@@ -407,8 +479,9 @@ public class SettingsViewModelTwoFactorTests
     {
         var vm = new SettingsViewModel();
 
-        await vm.SendEmailAsync("pw", "user@example.com");
+        var result = await vm.SendEmailAsync("pw", "user@example.com");
 
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
         Assert.NotEqual(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
     }
@@ -418,11 +491,167 @@ public class SettingsViewModelTwoFactorTests
     {
         var vm = new SettingsViewModel();
 
-        await vm.EnableEmailAsync("pw", "user@example.com", "TOKEN");
+        var result = await vm.EnableEmailAsync("pw", "user@example.com", "TOKEN");
 
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
         Assert.NotEqual(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
     }
+
+    [Fact]
+    public async Task BeginTotpSetup_WhenBusy_ReturnsBusyWithoutAdvancing()
+    {
+        var (vm, svc) = Build2Fa();
+        vm.IsBusy = true;
+
+        var result = await vm.BeginTotpSetupAsync("pw");
+
+        Assert.Equal(UiOperationStatus.Busy, result.Status);
+        Assert.Null(svc.LastPw);
+    }
+
+    [Fact]
+    public async Task SendEmail_WhenBusy_ReturnsBusyWithoutCallingService()
+    {
+        var (vm, svc) = Build2Fa();
+        vm.IsBusy = true;
+
+        var result = await vm.SendEmailAsync("pw", "user@example.com");
+
+        Assert.Equal(UiOperationStatus.Busy, result.Status);
+        Assert.Null(svc.LastPw);
+    }
+
+    [Fact]
+    public async Task BeginTotpSetup_WhenCancelled_ReturnsCancelled()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var service = new FakeTwoFactorService
+        {
+            Failure = new OperationCanceledException(cts.Token),
+        };
+        var vm = new SettingsViewModel(
+            twoFactorUi: new TwoFactorUiService(service));
+
+        var result = await vm.BeginTotpSetupAsync("pw", cts.Token);
+
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
+        Assert.Equal(string.Empty, vm.OperationError);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Theory]
+    [InlineData("", "otpauth://totp/test")]
+    [InlineData("TOTPSECRET", "")]
+    public async Task BeginTotpSetup_WithIncompletePayload_ReturnsFailed(
+        string secret,
+        string otpauth)
+    {
+        var service = new FakeTwoFactorService { TotpSetup = (secret, otpauth) };
+        var vm = new SettingsViewModel(
+            twoFactorUi: new TwoFactorUiService(service));
+
+        var result = await vm.BeginTotpSetupAsync("pw");
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.False(string.IsNullOrWhiteSpace(result.Error));
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task EnableTotp_WithoutRecoveryCode_ReturnsCommittedSuccess()
+    {
+        var service = new FakeTwoFactorService
+        {
+            ActivationResult = TotpActivationResult.EnabledWithoutRecoveryCode(),
+        };
+        var vm = new SettingsViewModel(
+            twoFactorUi: new TwoFactorUiService(service));
+
+        var result = await vm.EnableTotpAsync("pw", "secret", "123456");
+
+        Assert.Equal(UiOperationStatus.Succeeded, result.Status);
+        Assert.True(result.Value?.IsEnabled);
+        Assert.False(result.Value?.HasRecoveryCode);
+        Assert.Null(result.Error);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task GetRecoveryCode_Success_DoesNotEnableTotpAgain()
+    {
+        var service = new FakeTwoFactorService { RecoveryCode = "RETRIED-CODE" };
+        var vm = new SettingsViewModel(
+            twoFactorUi: new TwoFactorUiService(service));
+
+        var result = await vm.GetRecoveryCodeAsync("recovery-password");
+
+        Assert.Equal(UiOperationStatus.Succeeded, result.Status);
+        Assert.Equal("RETRIED-CODE", result.Value);
+        Assert.Equal("recovery-password", service.LastRecoveryPassword);
+        Assert.Equal(0, service.EnableTotpCalls);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task GetRecoveryCode_Failure_IsExplicitAndDoesNotEnableTotpAgain()
+    {
+        var service = new FakeTwoFactorService { ThrowOnGetRecoveryCode = true };
+        var vm = new SettingsViewModel(
+            twoFactorUi: new TwoFactorUiService(service));
+
+        var result = await vm.GetRecoveryCodeAsync("recovery-password");
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.False(string.IsNullOrWhiteSpace(result.Error));
+        Assert.Equal(0, service.EnableTotpCalls);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task GetRecoveryCode_WhenBusy_ReturnsBusyWithoutCallingService()
+    {
+        var service = new FakeTwoFactorService();
+        var vm = new SettingsViewModel(
+            twoFactorUi: new TwoFactorUiService(service))
+        {
+            IsBusy = true,
+        };
+
+        var result = await vm.GetRecoveryCodeAsync("recovery-password");
+
+        Assert.Equal(UiOperationStatus.Busy, result.Status);
+        Assert.Null(service.LastRecoveryPassword);
+        Assert.Equal(0, service.EnableTotpCalls);
+    }
+
+    [Fact]
+    public async Task GetRecoveryCode_WhenCancelled_ReturnsCancelled()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var service = new FakeTwoFactorService
+        {
+            Failure = new OperationCanceledException(cts.Token),
+        };
+        var vm = new SettingsViewModel(
+            twoFactorUi: new TwoFactorUiService(service));
+
+        var result = await vm.GetRecoveryCodeAsync("recovery-password", cts.Token);
+
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
+        Assert.Equal(string.Empty, vm.OperationError);
+        Assert.Equal(0, service.EnableTotpCalls);
+        Assert.False(vm.IsBusy);
+    }
+
+    private static TaskCanceledException RequestTimeout() => new(
+        "request timed out",
+        new RequestTimeoutException(
+            RequestTimeoutPhase.ControlPlane,
+            TimeSpan.FromSeconds(30)),
+        CancellationToken.None);
 }
 
 /// <summary>
@@ -430,7 +659,8 @@ public class SettingsViewModelTwoFactorTests
 /// 验证范围：confirm 校验 → 错误，成功时清空错误，命令委托到 IAccountService。
 /// 链：VM → AccountUiService（真实）→ FakeAccountService
 /// </summary>
-public class SettingsViewModelTests
+[Collection(TestCollectionNames.AppPreferences)]
+public class SettingsViewModelTests : AppPreferencesTestBase
 {
     // -----------------------------------------------------------------------
     // FakeVaultSnapshot / FakeVaultService
@@ -476,9 +706,11 @@ public class SettingsViewModelTests
         public bool ThrowOnChangePassword { get; set; }
         public bool ThrowOnChangeKdf { get; set; }
         public bool ThrowCancelOnChangePassword { get; set; }
+        public Exception? Failure { get; set; }
 
         public Task UpdateNameAsync(string name, CancellationToken ct = default)
         {
+            if (Failure is { } failure) throw failure;
             if (ThrowOnRename)
                 throw new AccountOperationException("rename failed");
             LastName = name;
@@ -488,7 +720,10 @@ public class SettingsViewModelTests
         public Task ChangePasswordAsync(string currentPassword, string newPassword, string? hint, CancellationToken ct = default)
         {
             if (ThrowCancelOnChangePassword)
-                throw new OperationCanceledException("user cancelled");
+                throw new OperationCanceledException(
+                    "user cancelled",
+                    new CancellationToken(canceled: true));
+            if (Failure is { } failure) throw failure;
             if (ThrowOnChangePassword)
                 throw new AccountOperationException("change password failed");
             LastChangePassword = (currentPassword, newPassword, hint);
@@ -497,6 +732,7 @@ public class SettingsViewModelTests
 
         public Task ChangeKdfAsync(string currentPassword, int newIterations, CancellationToken ct = default)
         {
+            if (Failure is { } failure) throw failure;
             if (ThrowOnChangeKdf)
                 throw new AccountOperationException("change kdf failed");
             LastChangeKdf = (currentPassword, newIterations);
@@ -532,12 +768,14 @@ public class SettingsViewModelTests
     {
         public List<AppLifecycleIntent> Requests { get; } = new();
         public bool IsTransitioning => false;
-        public Task RequestAsync(AppLifecycleIntent intent)
+        public Task RequestAsync(
+            AppLifecycleIntent intent,
+            Core.Session.VaultSessionLease? expectedSession = null)
         {
             Requests.Add(intent);
             return Task.CompletedTask;
         }
-        public void MarkSessionReady() { }
+        public bool MarkSessionReady() => true;
         public void FailClosedSynchronously() { }
     }
 
@@ -703,6 +941,19 @@ public class SettingsViewModelTests
         Assert.False(vm.IsBusy);
     }
 
+    [Fact]
+    public async Task Rename_RequestTimeout_SetsSafeTimeoutError()
+    {
+        var svc = new FakeAccountService { Failure = RequestTimeout() };
+        var vm = new SettingsViewModel(
+            new AccountUiService(new FakeVaultService(), svc));
+
+        await vm.RenameAsync("Alice", CancellationToken.None);
+
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, vm.OperationError);
+        Assert.False(vm.IsBusy);
+    }
+
     // -----------------------------------------------------------------------
     // ChangeIterations: 成功时清空 OperationError，委托到 FakeAccountService
     // -----------------------------------------------------------------------
@@ -778,9 +1029,29 @@ public class SettingsViewModelTests
         var ui = new AccountUiService(vault, svc);
         var vm = new SettingsViewModel(ui);
 
-        await vm.ChangePasswordAsync("current", "newPwd", "newPwd", null);
+        var result = await vm.ChangePasswordAsync("current", "newPwd", "newPwd", null);
 
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
         Assert.Equal(string.Empty, vm.OperationError);
         Assert.False(vm.IsBusy);
     }
+
+    [Fact]
+    public async Task Rename_WhenBusy_ReturnsBusyWithoutCallingService()
+    {
+        var (vm, service) = Build();
+        vm.IsBusy = true;
+
+        var result = await vm.RenameAsync("Alice");
+
+        Assert.Equal(UiOperationStatus.Busy, result.Status);
+        Assert.Null(service.LastName);
+    }
+
+    private static TaskCanceledException RequestTimeout() => new(
+        "request timed out",
+        new RequestTimeoutException(
+            RequestTimeoutPhase.ControlPlane,
+            TimeSpan.FromSeconds(30)),
+        CancellationToken.None);
 }

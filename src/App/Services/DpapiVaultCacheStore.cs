@@ -9,6 +9,7 @@ namespace App.Services;
 public sealed class DpapiVaultCacheStore : ICacheStore
 {
     private readonly string _path;
+    private readonly Func<string, byte[]>? _reader;
 
     public DpapiVaultCacheStore()
         : this(Path.Combine(
@@ -18,6 +19,15 @@ public sealed class DpapiVaultCacheStore : ICacheStore
     }
 
     public DpapiVaultCacheStore(string path) => _path = path;
+
+    internal DpapiVaultCacheStore(
+        string path,
+        Func<string, byte[]> reader)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+        _path = path;
+        _reader = reader;
+    }
 
     public void SaveVaultCache(VaultCacheEntry entry)
     {
@@ -48,7 +58,9 @@ public sealed class DpapiVaultCacheStore : ICacheStore
         byte[]? jsonBytes = null;
         try
         {
-            var protectedBytes = File.ReadAllBytes(_path);
+            var protectedBytes = _reader is null
+                ? File.ReadAllBytes(_path)
+                : _reader(_path);
             jsonBytes = ProtectedData.Unprotect(protectedBytes, null, DataProtectionScope.CurrentUser);
             var loaded = JsonSerializer.Deserialize(jsonBytes, AppJsonContext.Default.VaultCacheEntry);
             if (loaded is null)
@@ -56,7 +68,12 @@ public sealed class DpapiVaultCacheStore : ICacheStore
             entry = loaded;
             return true;
         }
-        catch (Exception ex) when (ex is CryptographicException or JsonException or PlatformNotSupportedException)
+        catch (Exception ex) when (
+            ex is CryptographicException
+                or JsonException
+                or PlatformNotSupportedException
+                or IOException
+                or UnauthorizedAccessException)
         {
             return false;
         }

@@ -45,6 +45,7 @@ public sealed class EmergencyAccessService : IEmergencyAccessService
 
     public async Task InviteAsync(string email, EmergencyAccessType type, int waitTimeDays, CancellationToken ct = default)
     {
+        ValidateWaitTimeDays(waitTimeDays);
         var lease = _session.CaptureLease();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
@@ -63,21 +64,31 @@ public sealed class EmergencyAccessService : IEmergencyAccessService
 
     public async Task ConfirmAsync(string id, string granteeId, CancellationToken ct = default)
     {
-        var userKey = _session.UserKey ?? throw new InvalidOperationException("Vault is locked.");
         var lease = _session.CaptureLease();
+        if (!_session.IsUnlocked(lease))
+            throw new InvalidOperationException("Vault is locked.");
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
+        _session.ThrowIfExpired(lease);
         var pk = await api.GetPublicKeyAsync(granteeId, linked.Token);
+        _session.ThrowIfExpired(lease);
         if (string.IsNullOrEmpty(pk.PublicKey))
             throw new EmergencyAccessOperationException("Grantee has no public key.");
         byte[] pubDer = Convert.FromBase64String(pk.PublicKey);
-        var enc = _crypto.EncryptRsa(userKey.FullKey, pubDer);
-        await api.ConfirmAsync(id, new EmergencyAccessConfirmRequest { Key = enc.ToString() }, linked.Token);
+        if (!_session.TryCopyUserKey(lease, out var copiedKey) || copiedKey is null)
+            throw new OperationCanceledException("Vault session lease expired.", lease.CancellationToken);
+        string encryptedUserKey;
+        using (copiedKey)
+            encryptedUserKey = _crypto.EncryptRsa(copiedKey.FullKey, pubDer).ToString();
+
+        _session.ThrowIfExpired(lease);
+        await api.ConfirmAsync(id, new EmergencyAccessConfirmRequest { Key = encryptedUserKey }, linked.Token);
         _session.ThrowIfExpired(lease);
     }
 
     public async Task UpdateAsync(string id, EmergencyAccessType type, int waitTimeDays, CancellationToken ct = default)
     {
+        ValidateWaitTimeDays(waitTimeDays);
         var lease = _session.CaptureLease();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
@@ -152,18 +163,12 @@ public sealed class EmergencyAccessService : IEmergencyAccessService
         var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
         var res = await api.ViewAsync(id, linked.Token);
         _session.ThrowIfExpired(lease);
-        var grantorKey = RecoverGrantorKey(res.KeyEncrypted);
-        try
-        {
-            var ciphers = (res.Ciphers ?? Array.Empty<CipherDto>())
-                .Select(dto => _decryptor.DecryptCipher(dto, grantorKey))
-                .ToArray();
-            return new RecoveredVault(grantorEmail, ciphers);
-        }
-        finally
-        {
-            ZeroKey(grantorKey);
-        }
+        using var grantorKey = RecoverGrantorKey(lease, res.KeyEncrypted);
+        var ciphers = (res.Ciphers ?? Array.Empty<CipherDto>())
+            .Select(dto => _decryptor.DecryptCipher(dto, grantorKey))
+            .ToArray();
+        _session.ThrowIfExpired(lease);
+        return new RecoveredVault(grantorEmail, ciphers);
     }
 
     public async Task TakeoverAndResetPasswordAsync(string id, string grantorEmail, string newPassword, CancellationToken ct = default)
@@ -173,49 +178,82 @@ public sealed class EmergencyAccessService : IEmergencyAccessService
         var api = _clients.GetAuthenticated<IEmergencyAccessApiClient>(lease);
         var res = await api.TakeoverAsync(id, linked.Token);
         _session.ThrowIfExpired(lease);
-        var grantorKey = RecoverGrantorKey(res.KeyEncrypted);
+        string salt;
+        try
+        {
+            salt = MasterPasswordSaltPolicy.Resolve(grantorEmail, res.Salt);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new EmergencyAccessOperationException(
+                "The server returned an invalid master-password salt.",
+                ex);
+        }
+        using var grantorKey = RecoverGrantorKey(lease, res.KeyEncrypted);
         byte[]? newMasterKey = null;
         try
         {
-            newMasterKey = _crypto.DeriveMasterKey(newPassword, grantorEmail,
-                (Core.Enums.KdfType)res.Kdf, res.KdfIterations, res.KdfMemory, res.KdfParallelism);
+            try
+            {
+                newMasterKey = _crypto.DeriveMasterKey(newPassword, salt,
+                    (Core.Enums.KdfType)res.Kdf, res.KdfIterations, res.KdfMemory, res.KdfParallelism);
+            }
+            catch (CryptographicException ex)
+            {
+                throw new EmergencyAccessOperationException(
+                    "The grantor account uses KDF settings below this client's security floor.",
+                    ex);
+            }
             var newHash = _crypto.ComputeMasterPasswordHash(newMasterKey, newPassword);
             var protectedKey = _crypto.ProtectUserKey(newMasterKey, grantorKey);   // EncString
+            _session.ThrowIfExpired(lease);
             await api.PasswordAsync(id, new EmergencyAccessPasswordRequest { NewMasterPasswordHash = newHash, Key = protectedKey.ToString() }, linked.Token);
             _session.ThrowIfExpired(lease);
         }
         finally
         {
             if (newMasterKey is not null) CryptographicOperations.ZeroMemory(newMasterKey);
-            ZeroKey(grantorKey);
         }
     }
 
-    private static void ZeroKey(SymmetricCryptoKey k)
+    private static void ValidateWaitTimeDays(int waitTimeDays)
     {
-        CryptographicOperations.ZeroMemory(k.FullKey);
-        CryptographicOperations.ZeroMemory(k.EncKey);
-        if (k.MacKey is not null)
-            CryptographicOperations.ZeroMemory(k.MacKey);
+        if (waitTimeDays is < 1 or > short.MaxValue)
+            throw new ArgumentOutOfRangeException(
+                nameof(waitTimeDays),
+                waitTimeDays,
+                $"Wait time must be between 1 and {short.MaxValue} days.");
     }
 
     // 用受托方私钥 RSA-解出授予方 userKey（64 字节 enc+mac）
-    private SymmetricCryptoKey RecoverGrantorKey(string? keyEncrypted)
+    private SymmetricCryptoKey RecoverGrantorKey(
+        Core.Session.VaultSessionLease lease,
+        string? keyEncrypted)
     {
-        var userKey = _session.UserKey ?? throw new EmergencyAccessOperationException("Vault is locked.");
-        if (string.IsNullOrEmpty(_session.EncryptedPrivateKey))
+        if (!_session.TryCopyUserKey(lease, out var copiedKey) || copiedKey is null)
+            throw new EmergencyAccessOperationException("Vault is locked.");
+        using var userKey = copiedKey;
+        if (!_session.TryGetEncryptedPrivateKey(lease, out var encryptedPrivateKey))
+            throw new OperationCanceledException("Vault session lease expired.", lease.CancellationToken);
+        if (string.IsNullOrEmpty(encryptedPrivateKey))
             throw new EmergencyAccessOperationException("Private key unavailable; re-sync required.");
         if (string.IsNullOrEmpty(keyEncrypted))
             throw new EmergencyAccessOperationException("Server returned no encrypted key.");
-        byte[] pkcs8 = _crypto.Decrypt(EncString.Parse(_session.EncryptedPrivateKey), userKey);
+        byte[] pkcs8 = _crypto.Decrypt(EncString.Parse(encryptedPrivateKey), userKey);
+        byte[]? grantorKeyBytes = null;
         try
         {
-            byte[] grantorKeyBytes = _crypto.DecryptRsa(EncString.Parse(keyEncrypted), pkcs8);
-            return new SymmetricCryptoKey(grantorKeyBytes);
+            grantorKeyBytes = _crypto.DecryptRsa(EncString.Parse(keyEncrypted), pkcs8);
+            _session.ThrowIfExpired(lease);
+            var grantorKey = new SymmetricCryptoKey(grantorKeyBytes);
+            grantorKeyBytes = null;
+            return grantorKey;
         }
         finally
         {
             CryptographicOperations.ZeroMemory(pkcs8);
+            if (grantorKeyBytes is not null)
+                CryptographicOperations.ZeroMemory(grantorKeyBytes);
         }
     }
 }

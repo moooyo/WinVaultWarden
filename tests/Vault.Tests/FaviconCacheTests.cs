@@ -13,8 +13,13 @@ public class FaviconCacheTests : IDisposable
     private VaultSession Session(string serverUrl = "https://vault.example")
     {
         var s = new VaultSession();
-        var origin = ServerOrigin.TryParse(serverUrl, out var o) ? (ServerOrigin?)o : null;
-        s.SetAccount(new AccountInfo("test-account", "e@x.com", origin, "E", "kdf"));
+        if (!string.IsNullOrWhiteSpace(serverUrl))
+        {
+            s.BeginAccountSession(
+                "test-account",
+                "e@x.com",
+                ServerEndpoints.FromWebVault(serverUrl));
+        }
         return s;
     }
 
@@ -88,6 +93,44 @@ public class FaviconCacheTests : IDisposable
         var cache = new FaviconCache(new HttpClient(handler), Session(serverUrl: ""), _dir);
         Assert.Null(await cache.GetAsync("x.com", TestContext.Current.CancellationToken));
         Assert.Equal(0, handler.Calls);
+    }
+
+    [Theory]
+    [InlineData("https://vault.example/warden", "https://vault.example/warden/icons/example.com/icon.png")]
+    [InlineData("https://vault.bitwarden.com", "https://icons.bitwarden.net/example.com/icon.png")]
+    public async Task GetAsync_UsesIconsEndpoint(
+        string webVault,
+        string expectedUrl)
+    {
+        var handler = new StubHandler(_ => Png([1]));
+        var cache = new FaviconCache(new HttpClient(handler), Session(webVault), _dir);
+
+        await cache.GetAsync("example.com", TestContext.Current.CancellationToken);
+
+        Assert.Equal(expectedUrl, handler.Requests.Single().RequestUri!.AbsoluteUri);
+    }
+
+    [Fact]
+    public async Task CacheIdentity_IncludesIconsEndpoint()
+    {
+        var firstHandler = new StubHandler(_ => Png([1]));
+        var first = new FaviconCache(
+            new HttpClient(firstHandler),
+            Session("https://a.example/warden"),
+            _dir);
+        Assert.Equal([1], await first.GetAsync(
+            "example.com", TestContext.Current.CancellationToken));
+
+        var secondHandler = new StubHandler(_ => Png([2]));
+        var second = new FaviconCache(
+            new HttpClient(secondHandler),
+            Session("https://b.example/warden"),
+            _dir);
+        Assert.Equal([2], await second.GetAsync(
+            "example.com", TestContext.Current.CancellationToken));
+
+        Assert.Equal(1, firstHandler.Calls);
+        Assert.Equal(1, secondHandler.Calls);
     }
 
     private sealed class GatedHandler : HttpMessageHandler

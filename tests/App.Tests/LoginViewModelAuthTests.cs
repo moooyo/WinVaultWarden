@@ -22,9 +22,33 @@ public class LoginViewModelAuthTests
         await vm.LoginCommand.ExecuteAsync(null);
 
         Assert.True(vm.IsPasswordStage);
-        Assert.Equal("vault.example", vm.ServerSummary);
+        Assert.Equal("https://vault.example", vm.ServerSummary);
         Assert.Equal("me@example.com", vm.AccountSummary);
         Assert.Null(auth.LoginCall);
+    }
+
+    [Fact]
+    public void ServerSummary_PreservesSchemePortAndBasePath()
+    {
+        var vm = new LoginViewModel(new FakeAuthService())
+        {
+            SelectedServerOptionIndex = 2,
+            ServerUrl = "http://127.0.0.1:18082/passwords/",
+        };
+
+        Assert.Equal("http://127.0.0.1:18082/passwords", vm.ServerSummary);
+    }
+
+    [Fact]
+    public void SelectingSelfHosted_ClearsExampleValueAndRequestsServerFocus()
+    {
+        var vm = new LoginViewModel(new FakeAuthService());
+
+        vm.SelectedServerOptionIndex = 2;
+
+        Assert.Equal(string.Empty, vm.ServerUrl);
+        Assert.Equal(LoginFocusTarget.ServerUrl, vm.FocusTarget);
+        Assert.True(vm.FocusRequestId > 0);
     }
 
     [Fact]
@@ -43,12 +67,36 @@ public class LoginViewModelAuthTests
         Assert.True(vm.IsAccountStage);
         Assert.Equal("请输入有效的服务器地址。", vm.Status);
         Assert.True(vm.HasStatus);
+        Assert.Equal(LoginStatusKind.Error, vm.StatusKind);
+        Assert.Equal(LoginFocusTarget.ServerUrl, vm.FocusTarget);
+    }
+
+    [Theory]
+    [InlineData("https://user@vault.example")]
+    [InlineData("https://vault.example/path?query=1")]
+    [InlineData("https://vault.example/path#fragment")]
+    public async Task LoginCommand_AccountStage_RejectsUnsafeServerEndpoint(string serverUrl)
+    {
+        var auth = new FakeAuthService();
+        var vm = new LoginViewModel(auth)
+        {
+            SelectedServerOptionIndex = 2,
+            ServerUrl = serverUrl,
+            Email = "me@example.com",
+        };
+
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.True(vm.IsAccountStage);
+        Assert.Null(auth.LoginCall);
+        Assert.Equal("请输入有效的服务器地址。", vm.Status);
+        Assert.Equal(LoginFocusTarget.ServerUrl, vm.FocusTarget);
     }
 
     [Fact]
     public async Task LoginCommand_OnSuccess_InvokesCallback()
     {
-        var auth = new FakeAuthService { LoginResult = new AuthResult.Success() };
+        var auth = new FakeAuthService { LoginResult = Success() };
         var vm = new LoginViewModel(auth)
         {
             SelectedServerOptionIndex = 2,
@@ -57,7 +105,7 @@ public class LoginViewModelAuthTests
             MasterPassword = "password",
         };
         var success = false;
-        vm.SetSuccessCallback(() => success = true);
+        vm.SetSuccessCallback(_ => success = true);
 
         await vm.LoginCommand.ExecuteAsync(null);
         vm.MasterPassword = "password";
@@ -74,7 +122,7 @@ public class LoginViewModelAuthTests
         var auth = new FakeAuthService
         {
             LoginResult = new AuthResult.TwoFactorRequired([0]),
-            SubmitResult = new AuthResult.Success(),
+            SubmitResult = Success(),
         };
         var vm = new LoginViewModel(auth)
         {
@@ -84,7 +132,7 @@ public class LoginViewModelAuthTests
             MasterPassword = "password",
         };
         var success = false;
-        vm.SetSuccessCallback(() => success = true);
+        vm.SetSuccessCallback(_ => success = true);
 
         await vm.LoginCommand.ExecuteAsync(null);
         vm.MasterPassword = "password";
@@ -92,6 +140,8 @@ public class LoginViewModelAuthTests
 
         Assert.True(vm.IsTwoFactorStage);
         Assert.False(vm.CanEditServer);
+        Assert.Equal(LoginStatusKind.Info, vm.StatusKind);
+        Assert.Equal(LoginFocusTarget.TwoFactorCode, vm.FocusTarget);
 
         vm.TwoFactorCode = "123456";
         vm.RememberDevice = false;
@@ -107,7 +157,7 @@ public class LoginViewModelAuthTests
     [Fact]
     public async Task LoginCommand_OnSuccess_ClearsMasterPassword()
     {
-        var auth = new FakeAuthService { LoginResult = new AuthResult.Success() };
+        var auth = new FakeAuthService { LoginResult = Success() };
         var vm = new LoginViewModel(auth)
         {
             SelectedServerOptionIndex = 2,
@@ -126,10 +176,10 @@ public class LoginViewModelAuthTests
     [Fact]
     public async Task LoginCommand_UnlockStage_CallsUnlock()
     {
-        var auth = new FakeAuthService { UnlockResult = new AuthResult.Success() };
+        var auth = new FakeAuthService { UnlockResult = Success() };
         var vm = new LoginViewModel(auth);
         var success = false;
-        vm.SetSuccessCallback(() => success = true);
+        vm.SetSuccessCallback(_ => success = true);
         vm.PrepareUnlock("https://vault.example", "me@example.com");
         vm.MasterPassword = "password";
 
@@ -162,7 +212,7 @@ public class LoginViewModelAuthTests
         var demo = new FakeDemoVaultSessionService();
         var vm = new LoginViewModel(auth, demo);
         var success = false;
-        vm.SetSuccessCallback(() => success = true);
+        vm.SetSuccessCallback(_ => success = true);
         vm.Status = "previous";
 
         await vm.UseDemoVaultCommand.ExecuteAsync(null);
@@ -196,6 +246,7 @@ public class LoginViewModelAuthTests
 
         Assert.Equal(1, auth.ResendEmailCalls);
         Assert.Equal("验证码已重新发送，请查收邮箱。", vm.Status);
+        Assert.Equal(LoginStatusKind.Success, vm.StatusKind);
     }
 
     [Fact]
@@ -224,7 +275,7 @@ public class LoginViewModelAuthTests
         var auth = new FakeAuthService
         {
             LoginResult = new AuthResult.TwoFactorRequired([0, 1]),
-            SubmitResult = new AuthResult.Success(),
+            SubmitResult = Success(),
         };
         var vm = new LoginViewModel(auth)
         {
@@ -288,7 +339,7 @@ public class LoginViewModelAuthTests
     [Fact]
     public async Task UnlockWithHello_WhenGestureSucceeds_CallsAuthUnlockWithHello()
     {
-        var auth = new FakeAuthService { UnlockHelloResult = new AuthResult.Success() };
+        var auth = new FakeAuthService { UnlockHelloResult = Success() };
         var hello = new FakeHello { GetResult = Enumerable.Repeat((byte)7, 256).ToArray() };
         var unlock = new FakeHelloUnlock { Set = true };
         var vm = new LoginViewModel(auth, null, hello: hello, helloUnlock: unlock);
@@ -319,7 +370,7 @@ public class LoginViewModelAuthTests
     [Fact]
     public async Task UnlockWithHello_GuardsWithIsBusy()
     {
-        var auth = new FakeAuthService { UnlockHelloResult = new AuthResult.Success() };
+        var auth = new FakeAuthService { UnlockHelloResult = Success() };
         var hello = new FakeHello { GetResult = Enumerable.Repeat((byte)7, 256).ToArray() };
         var unlock = new FakeHelloUnlock { Set = true };
         var vm = new LoginViewModel(auth, null, hello: hello, helloUnlock: unlock);
@@ -332,7 +383,7 @@ public class LoginViewModelAuthTests
 
         // While a Hello (or master-password/PIN) unlock is already in flight, re-entering must
         // be a no-op: no second call into Hello/auth, and IsBusy stays as the caller left it.
-        var auth2 = new FakeAuthService { UnlockHelloResult = new AuthResult.Success() };
+        var auth2 = new FakeAuthService { UnlockHelloResult = Success() };
         var vm2 = new LoginViewModel(auth2, null, hello: hello, helloUnlock: unlock);
         vm2.PrepareUnlock("https://vault.example", "me@example.com");
         vm2.IsBusy = true;
@@ -355,6 +406,126 @@ public class LoginViewModelAuthTests
 
         Assert.Equal("无法连接服务器，请检查网络后重试。", vm.Status);
         Assert.DoesNotContain("internal endpoint detail", vm.Status);
+        Assert.Equal(LoginStatusKind.Error, vm.StatusKind);
+        Assert.Equal(LoginFocusTarget.MasterPassword, vm.FocusTarget);
+    }
+
+    [Fact]
+    public async Task UnspecifiedFailure_DoesNotExposeTechnicalMessage()
+    {
+        const string technicalDetail =
+            "No connection could be made because the target machine actively refused it. (127.0.0.1:18082)";
+        var auth = new FakeAuthService
+        {
+            LoginResult = new AuthResult.Failure(technicalDetail),
+        };
+        var vm = new LoginViewModel(auth)
+        {
+            SelectedServerOptionIndex = 2,
+            ServerUrl = "http://127.0.0.1:18082",
+            Email = "me@example.com",
+        };
+
+        await vm.LoginCommand.ExecuteAsync(null);
+        vm.MasterPassword = "master";
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.Equal("登录失败，请稍后重试。", vm.Status);
+        Assert.DoesNotContain("127.0.0.1", vm.Status);
+        Assert.Equal(LoginFocusTarget.MasterPassword, vm.FocusTarget);
+    }
+
+    [Fact]
+    public async Task TypedNetworkFailure_ShowsStableLocalizedMessage()
+    {
+        var auth = new FakeAuthService
+        {
+            LoginResult = new AuthResult.Failure(
+                "sensitive endpoint detail",
+                AuthFailureKind.Network),
+        };
+        var vm = new LoginViewModel(auth)
+        {
+            SelectedServerOptionIndex = 2,
+            ServerUrl = "https://vault.example",
+            Email = "me@example.com",
+        };
+
+        await vm.LoginCommand.ExecuteAsync(null);
+        vm.MasterPassword = "master";
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.Equal("无法连接服务器，请检查网络后重试。", vm.Status);
+        Assert.DoesNotContain("sensitive endpoint detail", vm.Status);
+        Assert.Equal(LoginStatusKind.Error, vm.StatusKind);
+    }
+
+    [Fact]
+    public async Task TwoFactorNetworkFailure_PreservesAttemptAndCanRetry()
+    {
+        var auth = new FakeAuthService
+        {
+            LoginResult = new AuthResult.TwoFactorRequired([0]),
+            SubmitResult = new AuthResult.Failure(
+                "sensitive endpoint detail",
+                AuthFailureKind.Network),
+        };
+        var vm = new LoginViewModel(auth)
+        {
+            SelectedServerOptionIndex = 2,
+            ServerUrl = "https://vault.example",
+            Email = "me@example.com",
+        };
+        var succeeded = false;
+        vm.SetSuccessCallback(_ => succeeded = true);
+
+        await vm.LoginCommand.ExecuteAsync(null);
+        vm.MasterPassword = "master";
+        await vm.LoginCommand.ExecuteAsync(null);
+        vm.TwoFactorCode = "123456";
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.True(vm.IsTwoFactorStage);
+        Assert.Equal("无法连接服务器，请检查网络后重试。", vm.Status);
+        Assert.Equal(LoginFocusTarget.TwoFactorCode, vm.FocusTarget);
+        Assert.Equal(0, auth.AbandonCalls);
+
+        auth.SubmitResult = Success();
+        vm.TwoFactorCode = "654321";
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.True(succeeded);
+        Assert.Equal("654321", auth.SubmitCode);
+    }
+
+    [Fact]
+    public async Task TwoFactorExpiredFailure_ReturnsToPasswordStage()
+    {
+        var auth = new FakeAuthService
+        {
+            LoginResult = new AuthResult.TwoFactorRequired([0]),
+            SubmitResult = new AuthResult.Failure(
+                "expired internal detail",
+                AuthFailureKind.SessionExpired),
+        };
+        var vm = new LoginViewModel(auth)
+        {
+            SelectedServerOptionIndex = 2,
+            ServerUrl = "https://vault.example",
+            Email = "me@example.com",
+        };
+
+        await vm.LoginCommand.ExecuteAsync(null);
+        vm.MasterPassword = "master";
+        await vm.LoginCommand.ExecuteAsync(null);
+        vm.TwoFactorCode = "123456";
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.True(vm.IsPasswordStage);
+        Assert.Equal(string.Empty, vm.TwoFactorCode);
+        Assert.Equal("认证会话已失效，请重试。", vm.Status);
+        Assert.Equal(LoginFocusTarget.MasterPassword, vm.FocusTarget);
+        Assert.True(auth.AbandonCalls > 0);
     }
 
     [Fact]
@@ -374,8 +545,17 @@ public class LoginViewModelAuthTests
 
     private sealed class ThrowingAuth(Exception exception) : IAuthService
     {
+        private readonly Vault.VaultSession _attempts = new();
         private Task<AuthResult> Throw() =>
             Task.FromException<AuthResult>(exception);
+        public Core.Session.AuthenticationAttemptLease BeginAuthenticationAttempt() => _attempts.BeginAuthenticationAttempt();
+        public void AbandonAuthenticationAttempt(Core.Session.AuthenticationAttemptLease attempt) => _attempts.AbandonAuthenticationAttempt(attempt);
+        public Task<AuthResult> LoginAsync(Core.Session.AuthenticationAttemptLease attempt, string serverUrl, string email, string masterPassword, CancellationToken ct = default) => Throw();
+        public Task<AuthResult> SubmitTwoFactorAsync(Core.Session.AuthenticationAttemptLease attempt, string code, int provider, CancellationToken ct = default, bool rememberDevice = true) => Throw();
+        public Task<bool> ResendTwoFactorEmailAsync(Core.Session.AuthenticationAttemptLease attempt, CancellationToken ct = default) => Task.FromException<bool>(exception);
+        public Task<AuthResult> UnlockAsync(Core.Session.AuthenticationAttemptLease attempt, string masterPassword, CancellationToken ct = default) => Throw();
+        public Task<AuthResult> UnlockWithPinAsync(Core.Session.AuthenticationAttemptLease attempt, string pin, CancellationToken ct = default) => Throw();
+        public Task<AuthResult> UnlockWithHelloAsync(Core.Session.AuthenticationAttemptLease attempt, byte[] signature, CancellationToken ct = default) => Throw();
         public Task<AuthResult> LoginAsync(string serverUrl, string email, string masterPassword, CancellationToken ct = default) => Throw();
         public Task<AuthResult> SubmitTwoFactorAsync(string code, int provider, CancellationToken ct = default, bool rememberDevice = true) => Throw();
         public Task<bool> ResendTwoFactorEmailAsync(CancellationToken ct = default) => Task.FromException<bool>(exception);
@@ -383,19 +563,24 @@ public class LoginViewModelAuthTests
         public Task<AuthResult> UnlockWithPinAsync(string pin, CancellationToken ct = default) => Throw();
         public Task<AuthResult> UnlockWithHelloAsync(byte[] signature, CancellationToken ct = default) => Throw();
         public Task LockAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task LockAsync(Core.Session.VaultSessionLease expectedSession, CancellationToken ct = default) => Task.CompletedTask;
         public Task LogoutAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task<bool> LogoutAsync(Core.Session.VaultSessionLease expectedSession, CancellationToken ct = default) => Task.FromResult(true);
     }
+
+    private static AuthResult.Success Success() =>
+        new(TestSessionLeases.CreateSessionLease());
 
     private sealed class RecordingLifecycle : IAppLifecycleCoordinator
     {
         public bool IsTransitioning => false;
         public AppLifecycleIntent? Requested { get; private set; }
-        public Task RequestAsync(AppLifecycleIntent intent)
+        public Task RequestAsync(AppLifecycleIntent intent, Core.Session.VaultSessionLease? expectedSession = null)
         {
             Requested = intent;
             return Task.CompletedTask;
         }
-        public void MarkSessionReady() { }
+        public bool MarkSessionReady() => true;
         public void FailClosedSynchronously() { }
     }
 
@@ -420,8 +605,9 @@ public class LoginViewModelAuthTests
 
     private sealed class FakeAuthService : IAuthService
     {
-        public AuthResult LoginResult { get; init; } = new AuthResult.Failure("not set");
-        public AuthResult SubmitResult { get; init; } = new AuthResult.Failure("not set");
+        private readonly Vault.VaultSession _attempts = new();
+        public AuthResult LoginResult { get; set; } = new AuthResult.Failure("not set");
+        public AuthResult SubmitResult { get; set; } = new AuthResult.Failure("not set");
         public AuthResult UnlockResult { get; init; } = new AuthResult.Failure("not set");
         public AuthResult UnlockWithPinResult { get; init; } = new AuthResult.Failure("not set");
         public AuthResult UnlockHelloResult { get; init; } = new AuthResult.Failure("not set");
@@ -433,6 +619,20 @@ public class LoginViewModelAuthTests
         public string? UnlockPin { get; private set; }
         public bool UnlockHelloCalled { get; private set; }
         public bool LoggedOut { get; private set; }
+        public int AbandonCalls { get; private set; }
+
+        public Core.Session.AuthenticationAttemptLease BeginAuthenticationAttempt() => _attempts.BeginAuthenticationAttempt();
+        public void AbandonAuthenticationAttempt(Core.Session.AuthenticationAttemptLease attempt)
+        {
+            AbandonCalls++;
+            _attempts.AbandonAuthenticationAttempt(attempt);
+        }
+        public Task<AuthResult> LoginAsync(Core.Session.AuthenticationAttemptLease attempt, string serverUrl, string email, string masterPassword, CancellationToken ct = default) => LoginAsync(serverUrl, email, masterPassword, ct);
+        public Task<AuthResult> SubmitTwoFactorAsync(Core.Session.AuthenticationAttemptLease attempt, string code, int provider, CancellationToken ct = default, bool rememberDevice = true) => SubmitTwoFactorAsync(code, provider, ct, rememberDevice);
+        public Task<bool> ResendTwoFactorEmailAsync(Core.Session.AuthenticationAttemptLease attempt, CancellationToken ct = default) => ResendTwoFactorEmailAsync(ct);
+        public Task<AuthResult> UnlockAsync(Core.Session.AuthenticationAttemptLease attempt, string masterPassword, CancellationToken ct = default) => UnlockAsync(masterPassword, ct);
+        public Task<AuthResult> UnlockWithPinAsync(Core.Session.AuthenticationAttemptLease attempt, string pin, CancellationToken ct = default) => UnlockWithPinAsync(pin, ct);
+        public Task<AuthResult> UnlockWithHelloAsync(Core.Session.AuthenticationAttemptLease attempt, byte[] signature, CancellationToken ct = default) => UnlockWithHelloAsync(signature, ct);
 
         public Task<AuthResult> LoginAsync(string serverUrl, string email, string masterPassword, CancellationToken ct = default)
         {
@@ -476,11 +676,18 @@ public class LoginViewModelAuthTests
         }
 
         public Task LockAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task LockAsync(Core.Session.VaultSessionLease expectedSession, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task LogoutAsync(CancellationToken ct = default)
         {
             LoggedOut = true;
             return Task.CompletedTask;
+        }
+
+        public async Task<bool> LogoutAsync(Core.Session.VaultSessionLease expectedSession, CancellationToken ct = default)
+        {
+            await LogoutAsync(ct);
+            return true;
         }
     }
 
@@ -488,10 +695,10 @@ public class LoginViewModelAuthTests
     {
         public bool Opened { get; private set; }
 
-        public Task OpenDemoVaultAsync(CancellationToken ct = default)
+        public Task<Core.Session.VaultSessionLease> OpenDemoVaultAsync(CancellationToken ct = default)
         {
             Opened = true;
-            return Task.CompletedTask;
+            return Task.FromResult(TestSessionLeases.CreateSessionLease());
         }
     }
 }

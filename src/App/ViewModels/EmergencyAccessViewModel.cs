@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Api;
 using App.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Core.Models;
@@ -108,9 +109,16 @@ public partial class EmergencyAccessViewModel : ObservableObject, ISensitiveStat
                 await ReloadAsync(ct);
                 return UiOperationResult.Success();
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
+                when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
             {
                 return UiOperationResult.Cancelled();
+            }
+            catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+            {
+                OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+                PageState = DataPageState.Error;
+                return UiOperationResult.Failure(UiExceptionPolicy.RequestTimeoutMessage);
             }
             catch (HttpRequestException)
             {
@@ -295,9 +303,15 @@ public partial class EmergencyAccessViewModel : ObservableObject, ISensitiveStat
             {
                 return UiOperationResult<T>.Success(await action(ct));
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
+                when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
             {
                 return UiOperationResult<T>.Cancelled();
+            }
+            catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+            {
+                OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+                return UiOperationResult<T>.Failure(UiExceptionPolicy.RequestTimeoutMessage);
             }
             catch (HttpRequestException)
             {

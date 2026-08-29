@@ -1,3 +1,4 @@
+using Api;
 using App.Services;
 using Core.Abstractions;
 using Core.Models;
@@ -27,23 +28,71 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>当前运行环境是否支持浏览器集成（仅便携版为 true；MSIX packaged 为 false）。</summary>
     public bool BrowserIntegrationSupported => _browserIntegrationSupported;
 
-    [ObservableProperty]
-    public partial int SelectedSessionTimeoutIndex { get; set; } = AppPreferences.Current.SessionTimeoutIndex;
+    private int _selectedSessionTimeoutIndex = LoadSessionTimeoutIndex();
 
-    [ObservableProperty]
-    public partial int SelectedTimeoutActionIndex { get; set; } = AppPreferences.Current.TimeoutActionIndex;
+    public int SelectedSessionTimeoutIndex
+    {
+        get => _selectedSessionTimeoutIndex;
+        set
+        {
+            if (AppPreferenceIndexPolicy.IsTransientNoSelection(value))
+            {
+                OnPropertyChanged(nameof(SelectedSessionTimeoutIndex));
+                return;
+            }
+            var normalized = AppPreferenceIndexPolicy.NormalizeSessionTimeoutIndex(value);
+            SetProperty(ref _selectedSessionTimeoutIndex, normalized);
+            SaveSessionTimeoutIndex(normalized);
+        }
+    }
+
+    private int _selectedTimeoutActionIndex = LoadTimeoutActionIndex();
+
+    public int SelectedTimeoutActionIndex
+    {
+        get => _selectedTimeoutActionIndex;
+        set
+        {
+            if (AppPreferenceIndexPolicy.IsTransientNoSelection(value))
+            {
+                OnPropertyChanged(nameof(SelectedTimeoutActionIndex));
+                return;
+            }
+            var normalized = AppPreferenceIndexPolicy.NormalizeTimeoutActionIndex(value);
+            SetProperty(ref _selectedTimeoutActionIndex, normalized);
+            SaveTimeoutActionIndex(normalized);
+        }
+    }
 
     [ObservableProperty]
     public partial bool UsePinUnlock { get; set; }
 
-    [ObservableProperty]
-    public partial int SelectedClearClipboardIndex { get; set; } = AppPreferences.Current.ClearClipboardIndex;
+    private int _selectedClearClipboardIndex = LoadClearClipboardIndex();
+
+    public int SelectedClearClipboardIndex
+    {
+        get => _selectedClearClipboardIndex;
+        set
+        {
+            if (AppPreferenceIndexPolicy.IsTransientNoSelection(value))
+            {
+                OnPropertyChanged(nameof(SelectedClearClipboardIndex));
+                return;
+            }
+            var normalized = AppPreferenceIndexPolicy.NormalizeClearClipboardIndex(value);
+            SetProperty(ref _selectedClearClipboardIndex, normalized);
+            SaveClearClipboardIndex(normalized);
+        }
+    }
 
     [ObservableProperty]
     public partial bool MinimizeOnCopy { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanConfigureTrayBehavior))]
     public partial bool ShowTrayIcon { get; set; } = AppPreferences.Current.ShowTrayIcon;
+
+    public bool CanConfigureTrayBehavior => ShowTrayIcon;
 
     [ObservableProperty]
     public partial bool MinimizeToTray { get; set; } = AppPreferences.Current.MinimizeToTray;
@@ -83,20 +132,50 @@ public partial class SettingsViewModel : ObservableObject
 
     public bool HasOperationError => !string.IsNullOrEmpty(OperationError);
 
-    partial void OnSelectedSessionTimeoutIndexChanged(int value)
+    private static int LoadSessionTimeoutIndex()
     {
+        var normalized = AppPreferenceIndexPolicy.NormalizeSessionTimeoutIndex(
+            AppPreferences.Current.SessionTimeoutIndex);
+        SaveSessionTimeoutIndex(normalized);
+        return normalized;
+    }
+
+    private static void SaveSessionTimeoutIndex(int value)
+    {
+        if (AppPreferences.Current.SessionTimeoutIndex == value)
+            return;
         AppPreferences.Current.SessionTimeoutIndex = value;
         AppPreferences.Save();
     }
 
-    partial void OnSelectedTimeoutActionIndexChanged(int value)
+    private static int LoadTimeoutActionIndex()
     {
+        var normalized = AppPreferenceIndexPolicy.NormalizeTimeoutActionIndex(
+            AppPreferences.Current.TimeoutActionIndex);
+        SaveTimeoutActionIndex(normalized);
+        return normalized;
+    }
+
+    private static void SaveTimeoutActionIndex(int value)
+    {
+        if (AppPreferences.Current.TimeoutActionIndex == value)
+            return;
         AppPreferences.Current.TimeoutActionIndex = value;
         AppPreferences.Save();
     }
 
-    partial void OnSelectedClearClipboardIndexChanged(int value)
+    private static int LoadClearClipboardIndex()
     {
+        var normalized = AppPreferenceIndexPolicy.NormalizeClearClipboardIndex(
+            AppPreferences.Current.ClearClipboardIndex);
+        SaveClearClipboardIndex(normalized);
+        return normalized;
+    }
+
+    private static void SaveClearClipboardIndex(int value)
+    {
+        if (AppPreferences.Current.ClearClipboardIndex == value)
+            return;
         AppPreferences.Current.ClearClipboardIndex = value;
         AppPreferences.Save();
     }
@@ -226,9 +305,11 @@ public partial class SettingsViewModel : ObservableObject
     // ── Windows Hello 解锁 ───────────────────────────────────────────────────
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanToggleWindowsHello))]
     public partial bool IsWindowsHelloAvailable { get; set; }
 
     public bool IsWindowsHelloEnabled => _helloUnlock?.IsHelloSet ?? false;
+    public bool CanToggleWindowsHello => IsWindowsHelloAvailable || IsWindowsHelloEnabled;
 
     public async Task RefreshWindowsHelloAvailabilityAsync()
         => IsWindowsHelloAvailable = _hello is not null && await _hello.IsAvailableAsync();
@@ -246,6 +327,7 @@ public partial class SettingsViewModel : ObservableObject
 
         _helloUnlock.SetHello(signature, challenge);
         OnPropertyChanged(nameof(IsWindowsHelloEnabled));
+        OnPropertyChanged(nameof(CanToggleWindowsHello));
         return true;
     }
 
@@ -253,21 +335,22 @@ public partial class SettingsViewModel : ObservableObject
     {
         _helloUnlock?.ClearHello();
         OnPropertyChanged(nameof(IsWindowsHelloEnabled));
+        OnPropertyChanged(nameof(CanToggleWindowsHello));
     }
 
     // ── 账户操作 ─────────────────────────────────────────────────────────────
 
     // 直接可 await 的方法（供 code-behind 调用）；RelayCommand 包装供 XAML 绑定。
 
-    public async Task ChangePasswordAsync(string current, string next, string confirm, string? hint, CancellationToken ct = default)
+    public async Task<UiOperationResult> ChangePasswordAsync(string current, string next, string confirm, string? hint, CancellationToken ct = default)
     {
         if (_accountUi is null)
         {
             OperationError = "账户服务不可用";
-            return;
+            return UiOperationResult.Failure(OperationError);
         }
         if (IsBusy)
-            return;
+            return UiOperationResult.Busy();
 
         IsBusy = true;
         OperationError = string.Empty;
@@ -277,18 +360,27 @@ public partial class SettingsViewModel : ObservableObject
             // 改密成功后由 App 层统一登出:发 CredentialChanged intent,协调器清理并回登录页。
             if (_lifecycle is not null)
                 await _lifecycle.RequestAsync(AppLifecycleIntent.CredentialChanged);
+            return UiOperationResult.Success();
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
         {
-            // 用户取消，不设错误
+            return UiOperationResult.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return UiOperationResult.Failure(OperationError);
         }
         catch (AccountOperationException ex)
         {
             OperationError = ex.Message;
+            return UiOperationResult.Failure(OperationError);
         }
         catch
         {
             OperationError = "操作失败，请稍后重试";
+            return UiOperationResult.Failure(OperationError);
         }
         finally
         {
@@ -296,33 +388,42 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    public async Task RenameAsync(string name, CancellationToken ct = default)
+    public async Task<UiOperationResult> RenameAsync(string name, CancellationToken ct = default)
     {
         if (_accountUi is null)
         {
             OperationError = "账户服务不可用";
-            return;
+            return UiOperationResult.Failure(OperationError);
         }
         if (IsBusy)
-            return;
+            return UiOperationResult.Busy();
 
         IsBusy = true;
         OperationError = string.Empty;
         try
         {
             await _accountUi.RenameAsync(name, ct);
+            return UiOperationResult.Success();
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
         {
-            // 用户取消，不设错误
+            return UiOperationResult.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return UiOperationResult.Failure(OperationError);
         }
         catch (AccountOperationException ex)
         {
             OperationError = ex.Message;
+            return UiOperationResult.Failure(OperationError);
         }
         catch
         {
             OperationError = "操作失败，请稍后重试";
+            return UiOperationResult.Failure(OperationError);
         }
         finally
         {
@@ -330,15 +431,15 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    public async Task ChangeIterationsAsync(string current, int iterations, CancellationToken ct = default)
+    public async Task<UiOperationResult> ChangeIterationsAsync(string current, int iterations, CancellationToken ct = default)
     {
         if (_accountUi is null)
         {
             OperationError = "账户服务不可用";
-            return;
+            return UiOperationResult.Failure(OperationError);
         }
         if (IsBusy)
-            return;
+            return UiOperationResult.Busy();
 
         IsBusy = true;
         OperationError = string.Empty;
@@ -348,18 +449,27 @@ public partial class SettingsViewModel : ObservableObject
             // 改 KDF 成功后由 App 层统一登出:发 CredentialChanged intent,协调器清理并回登录页。
             if (_lifecycle is not null)
                 await _lifecycle.RequestAsync(AppLifecycleIntent.CredentialChanged);
+            return UiOperationResult.Success();
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
         {
-            // 用户取消，不设错误
+            return UiOperationResult.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return UiOperationResult.Failure(OperationError);
         }
         catch (AccountOperationException ex)
         {
             OperationError = ex.Message;
+            return UiOperationResult.Failure(OperationError);
         }
         catch
         {
             OperationError = "操作失败，请稍后重试";
+            return UiOperationResult.Failure(OperationError);
         }
         finally
         {
@@ -401,9 +511,17 @@ public partial class SettingsViewModel : ObservableObject
                 : DataPageState.Content;
             return UiOperationResult<IReadOnlyList<TwoFactorProvider>>.Success(providers);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
         {
             return UiOperationResult<IReadOnlyList<TwoFactorProvider>>.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            TwoFactorState = DataPageState.Error;
+            return UiOperationResult<IReadOnlyList<TwoFactorProvider>>.Failure(
+                UiExceptionPolicy.RequestTimeoutMessage);
         }
         catch (TwoFactorOperationException ex)
         {
@@ -423,35 +541,47 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    public async Task<(string secret, string otpauth)> BeginTotpSetupAsync(string pw, CancellationToken ct = default)
+    public async Task<UiOperationResult<(string secret, string otpauth)>> BeginTotpSetupAsync(string pw, CancellationToken ct = default)
     {
         if (_twoFactorUi is null)
         {
             OperationError = "两步验证服务不可用";
-            return (string.Empty, string.Empty);
+            return UiOperationResult<(string secret, string otpauth)>.Failure(OperationError);
         }
         if (IsBusy)
-            return (string.Empty, string.Empty);
+            return UiOperationResult<(string secret, string otpauth)>.Busy();
 
         IsBusy = true;
         OperationError = string.Empty;
         try
         {
-            return await _twoFactorUi.BeginTotpSetupAsync(pw, ct);
+            var setup = await _twoFactorUi.BeginTotpSetupAsync(pw, ct);
+            if (string.IsNullOrWhiteSpace(setup.secret) || string.IsNullOrWhiteSpace(setup.otpauth))
+            {
+                OperationError = "服务器返回的验证器设置无效，请稍后重试";
+                return UiOperationResult<(string secret, string otpauth)>.Failure(OperationError);
+            }
+            return UiOperationResult<(string secret, string otpauth)>.Success(setup);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
         {
-            return (string.Empty, string.Empty);
+            return UiOperationResult<(string secret, string otpauth)>.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return UiOperationResult<(string secret, string otpauth)>.Failure(OperationError);
         }
         catch (TwoFactorOperationException ex)
         {
             OperationError = ex.Message;
-            return (string.Empty, string.Empty);
+            return UiOperationResult<(string secret, string otpauth)>.Failure(OperationError);
         }
         catch
         {
             OperationError = "操作失败，请稍后重试";
-            return (string.Empty, string.Empty);
+            return UiOperationResult<(string secret, string otpauth)>.Failure(OperationError);
         }
         finally
         {
@@ -459,35 +589,42 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    public async Task<string> EnableTotpAsync(string pw, string secret, string code, CancellationToken ct = default)
+    public async Task<UiOperationResult<TotpActivationResult>> EnableTotpAsync(string pw, string secret, string code, CancellationToken ct = default)
     {
         if (_twoFactorUi is null)
         {
             OperationError = "两步验证服务不可用";
-            return string.Empty;
+            return UiOperationResult<TotpActivationResult>.Failure(OperationError);
         }
         if (IsBusy)
-            return string.Empty;
+            return UiOperationResult<TotpActivationResult>.Busy();
 
         IsBusy = true;
         OperationError = string.Empty;
         try
         {
-            return await _twoFactorUi.EnableTotpAsync(pw, secret, code, ct);
+            var activation = await _twoFactorUi.EnableTotpAsync(pw, secret, code, ct);
+            return UiOperationResult<TotpActivationResult>.Success(activation);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
         {
-            return string.Empty;
+            return UiOperationResult<TotpActivationResult>.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return UiOperationResult<TotpActivationResult>.Failure(OperationError);
         }
         catch (TwoFactorOperationException ex)
         {
             OperationError = ex.Message;
-            return string.Empty;
+            return UiOperationResult<TotpActivationResult>.Failure(OperationError);
         }
         catch
         {
             OperationError = "操作失败，请稍后重试";
-            return string.Empty;
+            return UiOperationResult<TotpActivationResult>.Failure(OperationError);
         }
         finally
         {
@@ -495,33 +632,90 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    public async Task SendEmailAsync(string pw, string email, CancellationToken ct = default)
+    public async Task<UiOperationResult<string>> GetRecoveryCodeAsync(string pw, CancellationToken ct = default)
     {
         if (_twoFactorUi is null)
         {
             OperationError = "两步验证服务不可用";
-            return;
+            return UiOperationResult<string>.Failure(OperationError);
         }
         if (IsBusy)
-            return;
+            return UiOperationResult<string>.Busy();
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            var recoveryCode = await _twoFactorUi.GetRecoveryCodeAsync(pw, ct);
+            if (string.IsNullOrWhiteSpace(recoveryCode))
+            {
+                OperationError = "服务器暂未返回恢复码，请稍后重试";
+                return UiOperationResult<string>.Failure(OperationError);
+            }
+            return UiOperationResult<string>.Success(recoveryCode);
+        }
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
+        {
+            return UiOperationResult<string>.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return UiOperationResult<string>.Failure(OperationError);
+        }
+        catch (TwoFactorOperationException ex)
+        {
+            OperationError = ex.Message;
+            return UiOperationResult<string>.Failure(OperationError);
+        }
+        catch
+        {
+            OperationError = "操作失败，请稍后重试";
+            return UiOperationResult<string>.Failure(OperationError);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task<UiOperationResult> SendEmailAsync(string pw, string email, CancellationToken ct = default)
+    {
+        if (_twoFactorUi is null)
+        {
+            OperationError = "两步验证服务不可用";
+            return UiOperationResult.Failure(OperationError);
+        }
+        if (IsBusy)
+            return UiOperationResult.Busy();
 
         IsBusy = true;
         OperationError = string.Empty;
         try
         {
             await _twoFactorUi.SendEmailAsync(pw, email, ct);
+            return UiOperationResult.Success();
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
         {
-            // 用户取消，不设错误
+            return UiOperationResult.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return UiOperationResult.Failure(OperationError);
         }
         catch (TwoFactorOperationException ex)
         {
             OperationError = ex.Message;
+            return UiOperationResult.Failure(OperationError);
         }
         catch
         {
             OperationError = "操作失败，请稍后重试";
+            return UiOperationResult.Failure(OperationError);
         }
         finally
         {
@@ -529,33 +723,42 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    public async Task EnableEmailAsync(string pw, string email, string token, CancellationToken ct = default)
+    public async Task<UiOperationResult> EnableEmailAsync(string pw, string email, string token, CancellationToken ct = default)
     {
         if (_twoFactorUi is null)
         {
             OperationError = "两步验证服务不可用";
-            return;
+            return UiOperationResult.Failure(OperationError);
         }
         if (IsBusy)
-            return;
+            return UiOperationResult.Busy();
 
         IsBusy = true;
         OperationError = string.Empty;
         try
         {
             await _twoFactorUi.EnableEmailAsync(pw, email, token, ct);
+            return UiOperationResult.Success();
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
         {
-            // 用户取消，不设错误
+            return UiOperationResult.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return UiOperationResult.Failure(OperationError);
         }
         catch (TwoFactorOperationException ex)
         {
             OperationError = ex.Message;
+            return UiOperationResult.Failure(OperationError);
         }
         catch
         {
             OperationError = "操作失败，请稍后重试";
+            return UiOperationResult.Failure(OperationError);
         }
         finally
         {
@@ -563,33 +766,42 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    public async Task DisableTwoFactorAsync(string pw, int type, CancellationToken ct = default)
+    public async Task<UiOperationResult> DisableTwoFactorAsync(string pw, int type, CancellationToken ct = default)
     {
         if (_twoFactorUi is null)
         {
             OperationError = "两步验证服务不可用";
-            return;
+            return UiOperationResult.Failure(OperationError);
         }
         if (IsBusy)
-            return;
+            return UiOperationResult.Busy();
 
         IsBusy = true;
         OperationError = string.Empty;
         try
         {
             await _twoFactorUi.DisableAsync(pw, type, ct);
+            return UiOperationResult.Success();
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
         {
-            // 用户取消，不设错误
+            return UiOperationResult.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return UiOperationResult.Failure(OperationError);
         }
         catch (TwoFactorOperationException ex)
         {
             OperationError = ex.Message;
+            return UiOperationResult.Failure(OperationError);
         }
         catch
         {
             OperationError = "操作失败，请稍后重试";
+            return UiOperationResult.Failure(OperationError);
         }
         finally
         {

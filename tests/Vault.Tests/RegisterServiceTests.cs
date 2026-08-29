@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Net;
 using Api;
 using Core.Enums;
 using Core.Services;
@@ -30,8 +31,15 @@ public class RegisterServiceTests
         var api = new FakeAccountApiClient();
         var svc = new RegisterService(_crypto, FakeVaultApiClientProvider.ForAnonymous<IRegistrationApiClient>(api));
 
-        await svc.RegisterAsync(ServerUrl, Email, Name, Password, Hint, TestContext.Current.CancellationToken);
+        var outcome = await svc.RegisterAsync(
+            ServerUrl,
+            Email,
+            Name,
+            Password,
+            Hint,
+            TestContext.Current.CancellationToken);
 
+        Assert.IsType<RegistrationOutcome.Registered>(outcome);
         Assert.NotNull(api.Register);
         Assert.Equal(0, api.Register.Kdf);
         Assert.Equal(600_000, api.Register.KdfIterations);
@@ -52,6 +60,45 @@ public class RegisterServiceTests
         Assert.Equal(Email, api.Register.Email);
         Assert.Equal(Name, api.Register.Name);
         Assert.Equal(Hint, api.Register.MasterPasswordHint);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_NormalizesEmailBeforeDerivingAndSendingIdentity()
+    {
+        const string mixedEmail = " User@Example.COM ";
+        const string normalizedEmail = "user@example.com";
+        var api = new FakeAccountApiClient();
+        var service = new RegisterService(
+            _crypto,
+            FakeVaultApiClientProvider.ForAnonymous<IRegistrationApiClient>(api));
+
+        await service.RegisterAsync(
+            ServerUrl,
+            mixedEmail,
+            Name,
+            Password,
+            Hint,
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(api.Register);
+        Assert.Equal(normalizedEmail, api.Register.Email);
+        var masterKey = _crypto.DeriveMasterKey(
+            Password,
+            normalizedEmail,
+            KdfType.Pbkdf2,
+            600_000,
+            null,
+            null);
+        try
+        {
+            Assert.Equal(
+                _crypto.ComputeMasterPasswordHash(masterKey, Password),
+                api.Register.MasterPasswordHash);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(masterKey);
+        }
     }
 
     // Test 3: MasterPasswordHash 与 crypto 计算值一致
@@ -132,5 +179,314 @@ public class RegisterServiceTests
             svc.RegisterAsync(ServerUrl, Email, Name, Password, Hint, TestContext.Current.CancellationToken));
 
         Assert.Equal("Registration not allowed", ex.Message);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_OfficialFlow_RequestsTokenThenFinishes()
+    {
+        var api = new FakeAccountApiClient { SupportsRegistrationFinish = true };
+        var svc = new RegisterService(
+            _crypto,
+            FakeVaultApiClientProvider.ForAnonymous<IRegistrationApiClient>(api));
+
+        var outcome = await svc.RegisterAsync(
+            ServerUrl,
+            Email,
+            Name,
+            Password,
+            Hint,
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<RegistrationOutcome.Registered>(outcome);
+        Assert.NotNull(api.RegisterVerification);
+        Assert.Equal(Email, api.RegisterVerification.Email);
+        Assert.Equal(Name, api.RegisterVerification.Name);
+        Assert.False(api.RegisterVerification.ReceiveMarketingEmails);
+        Assert.NotNull(api.RegisterFinish);
+        var token = Assert.IsType<RegistrationVerificationResult.InlineToken>(
+            api.RegistrationVerificationResult);
+        Assert.Equal(token.Token, api.RegisterFinish.EmailVerificationToken);
+        Assert.Equal(Email, api.RegisterFinish.Email);
+        Assert.Equal(Hint, api.RegisterFinish.MasterPasswordHint);
+        Assert.Equal(600_000, api.RegisterFinish.KdfIterations);
+        Assert.Null(api.Register);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_OfficialNoContent_ReturnsEmailVerificationRequiredWithoutFinish()
+    {
+        var api = new FakeAccountApiClient
+        {
+            SupportsRegistrationFinish = true,
+            RegistrationVerificationResult =
+                new RegistrationVerificationResult.EmailVerificationSent(),
+        };
+        var svc = new RegisterService(
+            _crypto,
+            FakeVaultApiClientProvider.ForAnonymous<IRegistrationApiClient>(api));
+
+        var outcome = await svc.RegisterAsync(
+            ServerUrl,
+            Email,
+            Name,
+            Password,
+            Hint,
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<RegistrationOutcome.EmailVerificationRequired>(outcome);
+        Assert.Null(api.RegisterFinish);
+        Assert.Null(api.Register);
+        Assert.Equal(1, api.RegistrationVerificationRequestCount);
+        Assert.Equal(0, api.RegistrationFinishRequestCount);
+        Assert.Equal(0, api.LegacyRegistrationRequestCount);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_NonNotFoundVerificationFailure_DoesNotDowngradeToLegacy()
+    {
+        var api = new FakeAccountApiClient
+        {
+            Throw = new VaultWriteException(
+                HttpStatusCode.BadRequest,
+                "Registration blocked",
+                null),
+        };
+        var svc = new RegisterService(
+            _crypto,
+            FakeVaultApiClientProvider.ForAnonymous<IRegistrationApiClient>(api));
+
+        var error = await Assert.ThrowsAsync<RegistrationException>(() =>
+            svc.RegisterAsync(
+                ServerUrl,
+                Email,
+                Name,
+                Password,
+                Hint,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal("Registration blocked", error.Message);
+        Assert.Null(api.Register);
+        Assert.Equal(0, api.LegacyRegistrationRequestCount);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_OnlyVerificationNotFoundFallsBackToLegacyRegistration()
+    {
+        var api = new FakeAccountApiClient
+        {
+            SupportsRegistrationFinish = false,
+        };
+        var service = new RegisterService(
+            _crypto,
+            FakeVaultApiClientProvider.ForAnonymous<IRegistrationApiClient>(api));
+
+        var outcome = await service.RegisterAsync(
+            ServerUrl,
+            Email,
+            Name,
+            Password,
+            Hint,
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<RegistrationOutcome.Registered>(outcome);
+        Assert.NotNull(api.Register);
+        Assert.Null(api.RegisterFinish);
+        Assert.Equal(1, api.RegistrationVerificationRequestCount);
+        Assert.Equal(1, api.LegacyRegistrationRequestCount);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RegisterAsync_StateChangingTimeout_ReturnsOutcomeUncertain(
+        bool officialFlow)
+    {
+        var timeout = new TaskCanceledException(
+            "request timed out",
+            new RequestTimeoutException(
+                RequestTimeoutPhase.ControlPlane,
+                TimeSpan.FromSeconds(30)),
+            CancellationToken.None);
+        var api = new FakeAccountApiClient
+        {
+            SupportsRegistrationFinish = officialFlow,
+            RegistrationFinishThrow = officialFlow ? timeout : null,
+            LegacyRegistrationThrow = officialFlow ? null : timeout,
+        };
+        var service = new RegisterService(
+            _crypto,
+            FakeVaultApiClientProvider.ForAnonymous<IRegistrationApiClient>(api));
+
+        var outcome = await service.RegisterAsync(
+            ServerUrl,
+            Email,
+            Name,
+            Password,
+            Hint,
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<RegistrationOutcome.OutcomeUncertain>(outcome);
+        Assert.Equal(officialFlow ? 1 : 0, api.RegistrationFinishRequestCount);
+        Assert.Equal(officialFlow ? 0 : 1, api.LegacyRegistrationRequestCount);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_VerificationTimeout_IsNotConvertedToPendingOrUncertain()
+    {
+        var timeout = new TaskCanceledException(
+            "request timed out",
+            new RequestTimeoutException(
+                RequestTimeoutPhase.ControlPlane,
+                TimeSpan.FromSeconds(30)),
+            CancellationToken.None);
+        var api = new FakeAccountApiClient
+        {
+            SupportsRegistrationFinish = true,
+            RegistrationVerificationThrow = timeout,
+        };
+        var service = new RegisterService(
+            _crypto,
+            FakeVaultApiClientProvider.ForAnonymous<IRegistrationApiClient>(api));
+
+        await Assert.ThrowsAsync<TaskCanceledException>(() =>
+            service.RegisterAsync(
+                ServerUrl,
+                Email,
+                Name,
+                Password,
+                Hint,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(0, api.RegistrationFinishRequestCount);
+        Assert.Equal(0, api.LegacyRegistrationRequestCount);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_VerificationTransportFailure_IsRecoverableRegistrationError()
+    {
+        var api = new FakeAccountApiClient
+        {
+            SupportsRegistrationFinish = true,
+            RegistrationVerificationThrow = new HttpRequestException("network unavailable"),
+        };
+        var service = new RegisterService(
+            _crypto,
+            FakeVaultApiClientProvider.ForAnonymous<IRegistrationApiClient>(api));
+
+        var error = await Assert.ThrowsAsync<RegistrationException>(() =>
+            service.RegisterAsync(
+                ServerUrl,
+                Email,
+                Name,
+                Password,
+                Hint,
+                TestContext.Current.CancellationToken));
+
+        Assert.IsType<HttpRequestException>(error.InnerException);
+        Assert.Equal(0, api.RegistrationFinishRequestCount);
+        Assert.Equal(0, api.LegacyRegistrationRequestCount);
+    }
+
+    [Theory]
+    [InlineData(true, HttpStatusCode.RequestTimeout)]
+    [InlineData(true, HttpStatusCode.InternalServerError)]
+    [InlineData(false, HttpStatusCode.BadGateway)]
+    public async Task RegisterAsync_StateChangingAmbiguousHttpFailure_ReturnsOutcomeUncertain(
+        bool officialFlow,
+        HttpStatusCode statusCode)
+    {
+        var failure = new VaultWriteException(statusCode, "ambiguous write response", null);
+        var api = new FakeAccountApiClient
+        {
+            SupportsRegistrationFinish = officialFlow,
+            RegistrationFinishThrow = officialFlow ? failure : null,
+            LegacyRegistrationThrow = officialFlow ? null : failure,
+        };
+        var service = new RegisterService(
+            _crypto,
+            FakeVaultApiClientProvider.ForAnonymous<IRegistrationApiClient>(api));
+
+        var outcome = await service.RegisterAsync(
+            ServerUrl,
+            Email,
+            Name,
+            Password,
+            Hint,
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<RegistrationOutcome.OutcomeUncertain>(outcome);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RegisterAsync_UnexpectedSuccessfulWriteStatus_ReturnsOutcomeUncertain(
+        bool officialFlow)
+    {
+        var api = new FakeAccountApiClient
+        {
+            SupportsRegistrationFinish = officialFlow,
+            RegistrationFinishResult = new RegistrationWriteResult.OutcomeUncertain(),
+            LegacyRegistrationResult = new RegistrationWriteResult.OutcomeUncertain(),
+        };
+        var service = new RegisterService(
+            _crypto,
+            FakeVaultApiClientProvider.ForAnonymous<IRegistrationApiClient>(api));
+
+        var outcome = await service.RegisterAsync(
+            ServerUrl,
+            Email,
+            Name,
+            Password,
+            Hint,
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<RegistrationOutcome.OutcomeUncertain>(outcome);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_CancelledBeforeStateChangingRequest_DoesNotBecomeUncertain()
+    {
+        var api = new FakeAccountApiClient { SupportsRegistrationFinish = true };
+        var service = new RegisterService(
+            _crypto,
+            FakeVaultApiClientProvider.ForAnonymous<IRegistrationApiClient>(api));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            service.RegisterAsync(
+                ServerUrl,
+                Email,
+                Name,
+                Password,
+                Hint,
+                cancellation.Token));
+
+        Assert.Equal(0, api.RegistrationFinishRequestCount);
+        Assert.Equal(0, api.LegacyRegistrationRequestCount);
+    }
+
+    [Theory]
+    [InlineData("https://user@vault.example")]
+    [InlineData("https://vault.example/path?query=1")]
+    [InlineData("https://vault.example/path#fragment")]
+    public async Task RegisterAsync_UnsafeServerUrl_IsRecoverableValidationError(string serverUrl)
+    {
+        var api = new FakeAccountApiClient { SupportsRegistrationFinish = true };
+        var service = new RegisterService(
+            _crypto,
+            FakeVaultApiClientProvider.ForAnonymous<IRegistrationApiClient>(api));
+
+        await Assert.ThrowsAsync<RegistrationException>(() =>
+            service.RegisterAsync(
+                serverUrl,
+                Email,
+                Name,
+                Password,
+                Hint,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(0, api.RegistrationVerificationRequestCount);
     }
 }

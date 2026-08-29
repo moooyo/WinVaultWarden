@@ -122,6 +122,8 @@ public static class PasswordGenerator
     public static string GenerateUsername(UsernameGenerationOptions? options = null)
     {
         options ??= new UsernameGenerationOptions();
+        if (options.Type != UsernameGenerationType.RandomWord)
+            throw new NotSupportedException($"Username generation type '{options.Type}' is not implemented.");
 
         var value = PickWord(options.Capitalize);
         if (options.IncludeNumber)

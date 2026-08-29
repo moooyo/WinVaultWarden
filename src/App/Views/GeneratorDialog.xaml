@@ -7,7 +7,7 @@
     xmlns:conv="using:App.Converters"
     Title="生成器"
     CloseButtonText="关闭"
-    PrimaryButtonText="复制并使用"
+    PrimaryButtonText="复制"
     PrimaryButtonClick="OnPrimaryButtonClick"
     DefaultButton="Primary">
 
@@ -72,39 +72,58 @@
 
                         <TextBlock Text="选项" Style="{StaticResource SectionHeaderTextBlockStyle}" />
                         <StackPanel Spacing="{StaticResource SpacingXSmall}">
-                            <tk:SettingsCard Header="长度">
-                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingMedium}">
-                                    <Slider Width="160"
+                            <tk:SettingsCard Header="长度" HorizontalContentAlignment="Stretch">
+                                <Grid MinWidth="0" ColumnSpacing="{StaticResource SpacingMedium}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider MinWidth="96"
                                             VerticalAlignment="Center"
                                             Minimum="5"
                                             Maximum="128"
                                             StepFrequency="1"
+                                            AutomationProperties.Name="密码长度滑块"
                                             AutomationProperties.AutomationId="PasswordLengthSlider"
                                             Value="{x:Bind ViewModel.LengthValue, Mode=TwoWay}" />
-                                    <NumberBox Width="84"
+                                    <NumberBox Grid.Column="1"
+                                               Width="84"
                                                Minimum="5"
                                                Maximum="128"
                                                SpinButtonPlacementMode="Inline"
+                                               AutomationProperties.Name="密码长度数值"
                                                AutomationProperties.AutomationId="PasswordLengthNumberBox"
                                                Value="{x:Bind ViewModel.LengthValue, Mode=TwoWay}" />
-                                </StackPanel>
+                                </Grid>
                             </tk:SettingsCard>
 
-                            <tk:SettingsCard Header="包含字符">
-                                <StackPanel Orientation="Horizontal" Spacing="10">
+                            <tk:SettingsCard Header="包含字符" HorizontalContentAlignment="Stretch">
+                                <Grid MinWidth="0" ColumnSpacing="10" RowSpacing="4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
                                     <CheckBox Content="A-Z"
                                               AutomationProperties.AutomationId="IncludeUppercaseCheckBox"
                                               IsChecked="{x:Bind ViewModel.IncludeUppercase, Mode=TwoWay}" />
-                                    <CheckBox Content="a-z"
+                                    <CheckBox Grid.Column="1"
+                                              Content="a-z"
                                               AutomationProperties.AutomationId="IncludeLowercaseCheckBox"
                                               IsChecked="{x:Bind ViewModel.IncludeLowercase, Mode=TwoWay}" />
-                                    <CheckBox Content="0-9"
+                                    <CheckBox Grid.Row="1"
+                                              Content="0-9"
                                               AutomationProperties.AutomationId="IncludeNumbersCheckBox"
                                               IsChecked="{x:Bind ViewModel.IncludeNumbers, Mode=TwoWay}" />
-                                    <CheckBox Content="!@#$%^&amp;*"
+                                    <CheckBox Grid.Row="1"
+                                              Grid.Column="1"
+                                              Content="!@#$%^&amp;*"
                                               AutomationProperties.AutomationId="IncludeSpecialCheckBox"
                                               IsChecked="{x:Bind ViewModel.IncludeSpecial, Mode=TwoWay}" />
-                                </StackPanel>
+                                </Grid>
                             </tk:SettingsCard>
 
                             <tk:SettingsCard Header="数字最少个数">
@@ -112,6 +131,7 @@
                                            Minimum="0"
                                            Maximum="128"
                                            SpinButtonPlacementMode="Inline"
+                                           IsEnabled="{x:Bind ViewModel.IncludeNumbers, Mode=OneWay}"
                                            AutomationProperties.AutomationId="MinNumbersNumberBox"
                                            Value="{x:Bind ViewModel.MinNumbersValue, Mode=TwoWay}" />
                             </tk:SettingsCard>
@@ -121,6 +141,7 @@
                                            Minimum="0"
                                            Maximum="128"
                                            SpinButtonPlacementMode="Inline"
+                                           IsEnabled="{x:Bind ViewModel.IncludeSpecial, Mode=OneWay}"
                                            AutomationProperties.AutomationId="MinSpecialNumberBox"
                                            Value="{x:Bind ViewModel.MinSpecialValue, Mode=TwoWay}" />
                             </tk:SettingsCard>
@@ -249,14 +270,8 @@
                         <TextBlock Text="选项" Style="{StaticResource SectionHeaderTextBlockStyle}" />
                         <StackPanel Spacing="{StaticResource SpacingXSmall}">
                             <tk:SettingsCard Header="类型">
-                                <ComboBox MinWidth="200"
-                                          AutomationProperties.AutomationId="UsernameTypeComboBox"
-                                          SelectedIndex="{x:Bind ViewModel.UsernameTypeIndex, Mode=TwoWay}">
-                                    <ComboBoxItem Content="随机单词" />
-                                    <ComboBoxItem Content="转发的电子邮箱别名" />
-                                    <ComboBoxItem Content="Catch-all 电子邮箱" />
-                                    <ComboBoxItem Content="附加地址电子邮箱" />
-                                </ComboBox>
+                                <TextBlock Text="随机单词"
+                                           AutomationProperties.AutomationId="UsernameTypeText" />
                             </tk:SettingsCard>
 
                             <tk:SettingsCard Header="首字母大写">

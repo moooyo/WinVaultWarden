@@ -86,4 +86,21 @@ public sealed class SendCompensationClientTests
         // 冻结 binding 的令牌绝不跨 origin 泄漏。
         Assert.NotEqual("token-a", toB.Headers.Authorization.Parameter);
     }
+
+    [Fact]
+    public async Task DeleteAsync_AlreadyMissingSend_IsSuccessfulCompensation()
+    {
+        var (factory, handler) = NewFactory();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.NotFound, "{}"));
+        var binding = new AccessTokenBinding(
+            "account-a",
+            new ServerOrigin("https://a.example"),
+            3,
+            "token-a");
+        var compensation = new SendCompensationClient(factory);
+
+        await compensation.DeleteAsync(binding, "already-absent", TestContext.Current.CancellationToken);
+
+        Assert.Single(handler.Requests);
+    }
 }

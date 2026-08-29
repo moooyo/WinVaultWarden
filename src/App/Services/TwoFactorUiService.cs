@@ -11,8 +11,11 @@ public interface ITwoFactorUiService
     /// <summary>启动 TOTP 设置流程，返回 (secret, otpauth_url)。</summary>
     Task<(string secret, string otpauth)> BeginTotpSetupAsync(string pw, CancellationToken ct = default);
 
-    /// <summary>完成 TOTP 启用，返回 RecoveryCode。</summary>
-    Task<string> EnableTotpAsync(string pw, string secret, string code, CancellationToken ct = default);
+    /// <summary>Completes TOTP activation and returns its commit state and recovery-code availability.</summary>
+    Task<TotpActivationResult> EnableTotpAsync(string pw, string secret, string code, CancellationToken ct = default);
+
+    /// <summary>Retrieves the recovery code without activating TOTP again.</summary>
+    Task<string> GetRecoveryCodeAsync(string pw, CancellationToken ct = default);
 
     /// <summary>启动 Email 两步验证设置，发验证邮件到账户邮箱，返回脱敏邮箱或 null。</summary>
     Task<string?> BeginEmailSetupAsync(string pw, CancellationToken ct = default);
@@ -49,8 +52,11 @@ public sealed class TwoFactorUiService : ITwoFactorUiService
     public Task<(string secret, string otpauth)> BeginTotpSetupAsync(string pw, CancellationToken ct = default) =>
         Require().BeginTotpSetupAsync(pw, ct);
 
-    public Task<string> EnableTotpAsync(string pw, string secret, string code, CancellationToken ct = default) =>
+    public Task<TotpActivationResult> EnableTotpAsync(string pw, string secret, string code, CancellationToken ct = default) =>
         Require().EnableTotpAsync(pw, secret, code, ct);
+
+    public Task<string> GetRecoveryCodeAsync(string pw, CancellationToken ct = default) =>
+        Require().GetRecoveryCodeAsync(pw, ct);
 
     public Task<string?> BeginEmailSetupAsync(string pw, CancellationToken ct = default) =>
         Require().BeginEmailSetupAsync(pw, ct);

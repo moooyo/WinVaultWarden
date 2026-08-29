@@ -19,7 +19,7 @@ public class IdleTimeoutPolicyTests
     [Theory]
     [InlineData(0, 0)] [InlineData(1, 1)] [InlineData(2, 5)] [InlineData(3, 15)]
     [InlineData(4, 30)] [InlineData(5, 60)] [InlineData(6, 240)] [InlineData(7, 0)]
-    [InlineData(99, 0)] [InlineData(-1, 0)]
+    [InlineData(99, 15)] [InlineData(-1, 15)]
     public void MinutesForIndex_Cases(int index, int expected) =>
         Assert.Equal(expected, IdleTimeoutPolicy.MinutesForIndex(index));
 
@@ -27,6 +27,7 @@ public class IdleTimeoutPolicyTests
     [InlineData(0, VaultTimeoutAction.Lock)]
     [InlineData(1, VaultTimeoutAction.Logout)]
     [InlineData(2, VaultTimeoutAction.Lock)]
+    [InlineData(-1, VaultTimeoutAction.Lock)]
     public void ActionForIndex_Cases(int index, VaultTimeoutAction expected) =>
         Assert.Equal(expected, IdleTimeoutPolicy.ActionForIndex(index));
 }

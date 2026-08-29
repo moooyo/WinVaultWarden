@@ -544,6 +544,39 @@ public class BrowserPasskeyRequestHandlerTests
     }
 
     [Fact]
+    public async Task HandleCreate_RemoteCommitWithRefreshFailure_StillReturnsAttestation()
+    {
+        var write = new FakeVaultWriteService
+        {
+            SaveException = new VaultRefreshException(
+                "Remote write committed.",
+                new HttpRequestException("Refresh failed.")),
+        };
+        var approval = new CapturingApprovalService(approve: true)
+        {
+            CreateResult = new PasskeyCreateApprovalResult(
+                new PasskeyApprovalEvidence(true, true, true),
+                CreateNew: true,
+                CipherId: null),
+        };
+        var handler = new BrowserPasskeyRequestHandler(
+            new FakeVaultService(VaultState.Unlocked, []),
+            write,
+            approval);
+
+        using var doc = CreatePayload();
+        var response = await handler.HandleAsync(
+            new BrowserPasskeyRequest("req-committed", "passkey.create", doc.RootElement, Context: Ctx()),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(response.Ok);
+        var payload = response.Payload!.Value.Deserialize(
+            PasskeyJsonContext.Default.PasskeyCreateAttestationPayload)!;
+        Assert.False(string.IsNullOrWhiteSpace(payload.AttestationObject));
+        Assert.NotNull(write.Saved);
+    }
+
+    [Fact]
     public async Task HandleCreate_ApprovalAttach_AugmentsExistingCipher()
     {
         var existing = new Cipher { Id = "c-9", Type = CipherType.Login, Name = "GitHub", Login = new CipherLogin("u", null, null, []) };
@@ -1036,17 +1069,18 @@ public class BrowserPasskeyRequestHandlerTests
     private sealed class FakeVaultWriteService : IVaultWriteService
     {
         public Cipher? Saved { get; private set; }
+        public Exception? SaveException { get; init; }
 
         public Task SaveCipherAsync(Cipher cipher, CancellationToken ct = default)
         {
             Saved = cipher;
-            return Task.CompletedTask;
+            return SaveException is null ? Task.CompletedTask : Task.FromException(SaveException);
         }
 
         public Task SaveCipherAsync(Cipher cipher, VaultSessionLease lease, CancellationToken ct = default)
         {
             Saved = cipher;
-            return Task.CompletedTask;
+            return SaveException is null ? Task.CompletedTask : Task.FromException(SaveException);
         }
 
         public Task DeleteCipherAsync(string cipherId, bool permanent, CancellationToken ct = default) =>

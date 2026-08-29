@@ -77,10 +77,45 @@ public class SendEditorDialogXamlTests
     public void Dialog_HasCalendarDatePicker_BoundToDraftDeletionDate()
     {
         var doc = LoadDialogXaml();
-        var picker = doc.Descendants(Xaml + "CalendarDatePicker").SingleOrDefault();
+        var picker = doc
+            .Descendants(Xaml + "CalendarDatePicker")
+            .SingleOrDefault(element =>
+                (element.Attribute("Date")?.Value ?? string.Empty).Contains("Draft.DeletionDate"));
         Assert.NotNull(picker);
         Assert.Contains("Draft.DeletionDate", picker!.Attribute("Date")?.Value ?? string.Empty);
         Assert.Contains("ShowCustomDeletionPicker", picker.Attribute("Visibility")?.Value ?? string.Empty);
+    }
+
+    [Fact]
+    public void Dialog_CustomExpirationUsesOneWayInitializationAndExplicitChangeHandlers()
+    {
+        var doc = LoadDialogXaml();
+        var expirationCombo = doc
+            .Descendants(Xaml + "ComboBox")
+            .Single(element => element.Attribute("Header")?.Value == "过期时间（可选）");
+        var customPicker = doc
+            .Descendants(Xaml + "CalendarDatePicker")
+            .Single(element => element.Attribute("Header")?.Value == "自定义过期日期");
+
+        Assert.Equal(
+            "{x:Bind Draft.ExpirationDateLabel, Mode=OneWay}",
+            expirationCombo.Attribute("SelectedItem")?.Value);
+        Assert.Equal("OnExpirationLabelChanged", expirationCombo.Attribute("SelectionChanged")?.Value);
+        Assert.Contains(
+            expirationCombo.Elements(X + "String"),
+            element => element.Value == "自定义");
+        Assert.Equal(
+            "{x:Bind Draft.CustomExpirationDate, Mode=OneWay}",
+            customPicker.Attribute("Date")?.Value);
+        Assert.Equal("OnCustomExpirationDateChanged", customPicker.Attribute("DateChanged")?.Value);
+        var code = CodeBehindText();
+        var initialBindingUpdate = code.IndexOf("Bindings?.Update();", StringComparison.Ordinal);
+        var expirationChangesEnabled = code.IndexOf(
+            "_canApplyExpirationChanges = true;",
+            StringComparison.Ordinal);
+        Assert.True(initialBindingUpdate >= 0);
+        Assert.True(expirationChangesEnabled > initialBindingUpdate);
+        Assert.Contains("if (!_canApplyExpirationChanges", code);
     }
 
     [Fact]

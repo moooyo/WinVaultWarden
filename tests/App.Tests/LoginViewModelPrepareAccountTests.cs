@@ -160,25 +160,38 @@ public class LoginViewModelPrepareAccountTests
 
     private sealed class FakeAuthService : IAuthService
     {
+        private readonly Vault.VaultSession _attempts = new();
+
+        public Core.Session.AuthenticationAttemptLease BeginAuthenticationAttempt() => _attempts.BeginAuthenticationAttempt();
+        public void AbandonAuthenticationAttempt(Core.Session.AuthenticationAttemptLease attempt) => _attempts.AbandonAuthenticationAttempt(attempt);
+        public Task<AuthResult> LoginAsync(Core.Session.AuthenticationAttemptLease attempt, string serverUrl, string email, string masterPassword, CancellationToken ct = default) => LoginAsync(serverUrl, email, masterPassword, ct);
+        public Task<AuthResult> SubmitTwoFactorAsync(Core.Session.AuthenticationAttemptLease attempt, string code, int provider, CancellationToken ct = default, bool rememberDevice = true) => SubmitTwoFactorAsync(code, provider, ct, rememberDevice);
+        public Task<bool> ResendTwoFactorEmailAsync(Core.Session.AuthenticationAttemptLease attempt, CancellationToken ct = default) => ResendTwoFactorEmailAsync(ct);
+        public Task<AuthResult> UnlockAsync(Core.Session.AuthenticationAttemptLease attempt, string masterPassword, CancellationToken ct = default) => UnlockAsync(masterPassword, ct);
+        public Task<AuthResult> UnlockWithPinAsync(Core.Session.AuthenticationAttemptLease attempt, string pin, CancellationToken ct = default) => UnlockWithPinAsync(pin, ct);
+        public Task<AuthResult> UnlockWithHelloAsync(Core.Session.AuthenticationAttemptLease attempt, byte[] signature, CancellationToken ct = default) => UnlockWithHelloAsync(signature, ct);
+
         public Task<AuthResult> LoginAsync(string serverUrl, string email, string masterPassword, CancellationToken ct = default)
-            => Task.FromResult<AuthResult>(new AuthResult.Success());
+            => Task.FromResult<AuthResult>(new AuthResult.Success(TestSessionLeases.CreateSessionLease()));
 
         public Task<AuthResult> SubmitTwoFactorAsync(string code, int provider, CancellationToken ct = default, bool rememberDevice = true)
-            => Task.FromResult<AuthResult>(new AuthResult.Success());
+            => Task.FromResult<AuthResult>(new AuthResult.Success(TestSessionLeases.CreateSessionLease()));
 
         public Task<bool> ResendTwoFactorEmailAsync(CancellationToken ct = default) => Task.FromResult(false);
 
         public Task<AuthResult> UnlockAsync(string masterPassword, CancellationToken ct = default)
-            => Task.FromResult<AuthResult>(new AuthResult.Success());
+            => Task.FromResult<AuthResult>(new AuthResult.Success(TestSessionLeases.CreateSessionLease()));
 
         public Task<AuthResult> UnlockWithPinAsync(string pin, CancellationToken ct = default)
-            => Task.FromResult<AuthResult>(new AuthResult.Success());
+            => Task.FromResult<AuthResult>(new AuthResult.Success(TestSessionLeases.CreateSessionLease()));
 
         public Task<AuthResult> UnlockWithHelloAsync(byte[] signature, CancellationToken ct = default)
-            => Task.FromResult<AuthResult>(new AuthResult.Success());
+            => Task.FromResult<AuthResult>(new AuthResult.Success(TestSessionLeases.CreateSessionLease()));
 
         public Task LockAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task LockAsync(Core.Session.VaultSessionLease expectedSession, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task LogoutAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task<bool> LogoutAsync(Core.Session.VaultSessionLease expectedSession, CancellationToken ct = default) => Task.FromResult(true);
     }
 }

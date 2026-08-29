@@ -49,18 +49,19 @@ public class AuthRequestWireTests
     [Fact]
     public void AuthRequestRequest_serialises_accessCode_deviceIdentifier_email_publicKey()
     {
-        var req = new AuthRequestRequest("code-abc", "dev-123", "user@example.com", "pub-key-xyz");
+        var req = new AuthRequestRequest("code-abc", "dev-123", "user@example.com", "pub-key-xyz", 0);
         var json = JsonSerializer.Serialize(req, Web);
         Assert.Contains("\"accessCode\":\"code-abc\"", json);
         Assert.Contains("\"deviceIdentifier\":\"dev-123\"", json);
         Assert.Contains("\"email\":\"user@example.com\"", json);
         Assert.Contains("\"publicKey\":\"pub-key-xyz\"", json);
+        Assert.Contains("\"type\":0", json);
     }
 
     [Fact]
     public void AuthRequestRequest_context_matches_reflection()
     {
-        var req = new AuthRequestRequest("code", "dev-id", "user@test.com", "pub-key");
+        var req = new AuthRequestRequest("code", "dev-id", "user@test.com", "pub-key", 0);
         Assert.Equal(
             JsonSerializer.Serialize(req, Web),
             JsonSerializer.Serialize(req, ApiJsonContext.Default.AuthRequestRequest));

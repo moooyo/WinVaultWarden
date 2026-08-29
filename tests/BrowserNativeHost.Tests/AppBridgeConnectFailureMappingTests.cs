@@ -13,9 +13,9 @@ namespace BrowserNativeHost.Tests;
 // fallback:true). Once a connection HAS been established and a request goes out over it, a later
 // disconnect/IOException must map to operation_aborted and never fall back — the App may already be
 // mid-ceremony and a platform-authenticator retry behind its back would be unsafe. The two cases are
-// told apart by exception TYPE — AppBridgeSession.EnsureConnectedAsync wraps only its own connect-time
-// failures as AppBridgeConnectFailedException, while an established connection's read-loop failure
-// (FailAllPending) stays a plain IOException/UnauthorizedAccessException — never by message content.
+// told apart by an explicit marker created at the production named-pipe ConnectAsync timeout catch.
+// The generic AppBridgeSession never infers listener absence from TimeoutException, so authorization,
+// handshake, framing, and established-connection failures always abort without fallback.
 public class AppBridgeConnectFailureMappingTests
 {
     private const string Id81 = "00000000000000000000000000000081";
@@ -91,6 +91,42 @@ public class AppBridgeConnectFailureMappingTests
         Assert.False(response.Ok);
         Assert.Equal(PasskeyErrorCodes.OperationAborted, response.Error?.Code);
     }
+
+    [Theory]
+    [InlineData("unauthorized")]
+    [InlineData("invalid_data")]
+    [InlineData("io")]
+    [InlineData("timeout")]
+    public async Task ConnectPhaseIntegrityFailure_AbortsInPersistentAndLegacyPaths(string failureKind)
+    {
+        await using var persistentBridge = new AppBridgeSession(
+            _ => Task.FromException<AppBridgeConnection>(CreateIntegrityFailure(failureKind)));
+        var persistent = await RunSingleRequestAsync(persistentBridge, Id83);
+
+        Assert.False(persistent.Ok);
+        Assert.Equal(PasskeyErrorCodes.OperationAborted, persistent.Error?.Code);
+        Assert.NotEqual(PasskeyErrorCodes.ClientNotHandled, persistent.Error?.Code);
+
+        await using var legacyBridge = new AppBridgeSession(
+            _ => Task.FromException<AppBridgeConnection>(CreateIntegrityFailure(failureKind)));
+        var legacy = await NativeMessagingHost.HandleAsync(
+            NativeMessagingSessionTests.Request(Id84, TimeSpan.FromSeconds(60)),
+            legacyBridge,
+            TestContext.Current.CancellationToken);
+
+        Assert.False(legacy.Ok);
+        Assert.Equal(PasskeyErrorCodes.OperationAborted, legacy.Error?.Code);
+        Assert.NotEqual(PasskeyErrorCodes.ClientNotHandled, legacy.Error?.Code);
+    }
+
+    private static Exception CreateIntegrityFailure(string kind) => kind switch
+    {
+        "unauthorized" => new UnauthorizedAccessException("Peer identity rejected."),
+        "invalid_data" => new InvalidDataException("Handshake frame was malformed."),
+        "io" => new IOException("Handshake transport failed."),
+        "timeout" => new TimeoutException("A post-connect phase timed out."),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
 
     private static async Task<NativeResponse> RunSingleRequestAsync(IAppPasskeyBridgeClient bridge, string id)
     {

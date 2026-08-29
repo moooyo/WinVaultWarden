@@ -27,6 +27,7 @@ public sealed class AuthService : IAuthService
     private readonly VaultBootstrapper _bootstrapper;
     private readonly VaultCacheService _cache;
     private readonly ITokenRefresher _refresher;
+    private readonly object _pendingGate = new();
     private PendingTwoFactorContext? _pendingTwoFactor;
 
     public AuthService(
@@ -48,85 +49,189 @@ public sealed class AuthService : IAuthService
     }
 
     // 匿名 identity 角色按 origin 获取;登录/刷新/发码全部走匿名 transport,绝不携带 Bearer。
-    private IIdentityApiClient Identity(ServerOrigin origin) =>
-        _clients.GetAnonymous<IIdentityApiClient>(origin);
+    private IIdentityApiClient Identity(ServerEndpoints endpoints) =>
+        _clients.GetAnonymous<IIdentityApiClient>(endpoints);
+
+    public AuthenticationAttemptLease BeginAuthenticationAttempt()
+    {
+        var attempt = _session.BeginAuthenticationAttempt();
+        DisposePendingTwoFactor();
+        return attempt;
+    }
+
+    public void AbandonAuthenticationAttempt(AuthenticationAttemptLease attempt)
+    {
+        ArgumentNullException.ThrowIfNull(attempt);
+        _session.AbandonAuthenticationAttempt(attempt);
+        DisposePendingTwoFactor(attempt);
+    }
+
+    public Task<AuthResult> LoginAsync(
+        string serverUrl,
+        string email,
+        string masterPassword,
+        CancellationToken ct = default) =>
+        LoginAsync(BeginAuthenticationAttempt(), serverUrl, email, masterPassword, ct);
 
     public async Task<AuthResult> LoginAsync(
+        AuthenticationAttemptLease attempt,
         string serverUrl,
         string email,
         string masterPassword,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(attempt);
+        PendingTwoFactorContext? context = null;
         try
         {
-            var origin = new ServerOrigin(NormalizeServerUrl(serverUrl));
-            var api = Identity(origin);
+            if (!_session.IsCurrent(attempt))
+                return AuthenticationExpired();
+
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                ct, attempt.CancellationToken);
+            var endpoints = ServerEndpoints.FromWebVault(NormalizeServerUrl(serverUrl));
+            var api = Identity(endpoints);
+            var normalizedEmail = MasterPasswordSaltPolicy.Resolve(email, explicitSalt: null);
 
             // prelogin/token 返回前不得改动当前(可能属于账户 A 的)会话状态,也不得开启 B 的 lease。
-            var prelogin = await api.PreloginAsync(email, ct);
+            var prelogin = await api.PreloginAsync(normalizedEmail, linked.Token);
+            if (!_session.IsCurrent(attempt))
+                return AuthenticationExpired();
 
             // 同一账户二次登录:复用上次的 device identifier(服务端把"记住此设备"令牌按 device 存储,
             // 换新 id 会令令牌失效),并带上已存的 remember 令牌免交互 2FA。仅在同 origin + 同 email 下复用。
             var deviceIdentifier = NewDeviceIdentifier();
             TwoFactorPayload? rememberPayload = null;
             if (_tokenStore.TryLoad(out var existing)
-                && existing.Origin == origin
-                && string.Equals(existing.Email, email, StringComparison.OrdinalIgnoreCase))
+                && existing.Endpoints == endpoints
+                && string.Equals(
+                    MasterPasswordSaltPolicy.NormalizeEmail(existing.Email),
+                    normalizedEmail,
+                    StringComparison.Ordinal))
             {
                 deviceIdentifier = existing.DeviceIdentifier;
                 if (!string.IsNullOrEmpty(existing.TwoFactorToken))
                     rememberPayload = new TwoFactorPayload(RememberTwoFactorProvider, existing.TwoFactorToken, false);
             }
 
-            var context = BuildLoginContext(origin, email, masterPassword, prelogin, deviceIdentifier);
+            context = BuildLoginContext(attempt, endpoints, normalizedEmail, masterPassword, prelogin, deviceIdentifier);
             var result = await api.ConnectTokenAsync(ConnectTokenRequest.Password(
-                email,
+                normalizedEmail,
                 context.PasswordHash,
                 context.DeviceIdentifier,
                 DeviceName,
-                rememberPayload), ct);
+                rememberPayload), linked.Token);
 
-            return await HandleLoginResultAsync(context, result, ct, autoSendEmail: true);
+            if (!_session.IsCurrent(attempt))
+                return AuthenticationExpired();
+
+            var ownedContext = context;
+            context = null;
+            return await HandleLoginResultAsync(
+                ownedContext,
+                result,
+                ct,
+                autoSendEmail: true);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            AbandonAuthenticationAttempt(attempt);
+            throw;
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
         {
-            return new AuthResult.Failure(ex.Message);
+            AbandonAuthenticationAttempt(attempt);
+            return ClassifyExpectedFailure(ex, ct);
+        }
+        finally
+        {
+            context?.StretchedKey.Dispose();
         }
     }
 
-    public async Task<AuthResult> SubmitTwoFactorAsync(string code, int provider, CancellationToken ct = default, bool rememberDevice = true)
+    public Task<AuthResult> SubmitTwoFactorAsync(
+        string code,
+        int provider,
+        CancellationToken ct = default,
+        bool rememberDevice = true)
     {
-        if (_pendingTwoFactor is not { } context)
-            return new AuthResult.Failure("No two-factor challenge is pending.");
+        var attempt = GetPendingTwoFactorAttempt();
+        return attempt is null
+            ? Task.FromResult<AuthResult>(SessionExpiredFailure())
+            : SubmitTwoFactorAsync(attempt, code, provider, ct, rememberDevice);
+    }
+
+    public async Task<AuthResult> SubmitTwoFactorAsync(
+        AuthenticationAttemptLease attempt,
+        string code,
+        int provider,
+        CancellationToken ct = default,
+        bool rememberDevice = true)
+    {
+        ArgumentNullException.ThrowIfNull(attempt);
+        if (!TryGetPendingTwoFactor(attempt, out var context)
+            || !_session.IsCurrent(attempt))
+            return SessionExpiredFailure();
 
         try
         {
-            var result = await Identity(context.Origin).ConnectTokenAsync(ConnectTokenRequest.Password(
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                ct, attempt.CancellationToken);
+            var result = await Identity(context.Endpoints).ConnectTokenAsync(ConnectTokenRequest.Password(
                 context.Email,
                 context.PasswordHash,
                 context.DeviceIdentifier,
                 DeviceName,
-                new TwoFactorPayload(provider, code, rememberDevice)), ct);
+                new TwoFactorPayload(provider, code, rememberDevice)), linked.Token);
+
+            if (!_session.IsCurrent(attempt))
+                return AuthenticationExpired();
 
             return await HandleLoginResultAsync(context with { Providers = Array.Empty<int>() }, result, ct);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            AbandonAuthenticationAttempt(attempt);
+            throw;
+        }
         catch (Exception ex) when (IsExpectedAuthException(ex))
         {
-            return new AuthResult.Failure(ex.Message);
+            if (!_session.IsCurrent(attempt))
+            {
+                AbandonAuthenticationAttempt(attempt);
+                return SessionExpiredFailure();
+            }
+            return ClassifyExpectedFailure(ex, ct);
         }
     }
 
-    public async Task<AuthResult> UnlockAsync(string masterPassword, CancellationToken ct = default)
+    public Task<AuthResult> UnlockAsync(
+        string masterPassword,
+        CancellationToken ct = default) =>
+        UnlockAsync(BeginAuthenticationAttempt(), masterPassword, ct);
+
+    public async Task<AuthResult> UnlockAsync(
+        AuthenticationAttemptLease attempt,
+        string masterPassword,
+        CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(attempt);
+        if (!_session.IsCurrent(attempt))
+            return AuthenticationExpired();
         if (!_tokenStore.TryLoad(out var persisted) || string.IsNullOrEmpty(persisted.ProtectedUserKey))
-            return new AuthResult.Failure("No saved session.");
+        {
+            AbandonAuthenticationAttempt(attempt);
+            return new AuthResult.Failure(
+                "No saved session.",
+                AuthFailureKind.NoSavedSession);
+        }
 
         SymmetricCryptoKey userKey;
         try
         {
             var stretchedKey = DeriveStretchedKey(
                 masterPassword,
-                persisted.Email,
+                persisted.EffectiveMasterPasswordSalt,
                 persisted.KdfType,
                 persisted.KdfIterations,
                 persisted.KdfMemory,
@@ -143,23 +248,42 @@ public sealed class AuthService : IAuthService
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
         {
-            _session.Lock();
-            return new AuthResult.Failure(ex.Message);
+            if (!_session.TryRestorePersistedSession(attempt, persisted, out _))
+                return AuthenticationExpired();
+            return ex is CryptographicException or FormatException
+                ? new AuthResult.Failure(
+                    "The master password could not unlock the stored key.",
+                    AuthFailureKind.InvalidCredentials)
+                : ClassifyExpectedFailure(ex, ct);
         }
 
-        return await FinishLocalUnlockAsync(persisted, userKey, ct);
+        return await FinishLocalUnlockAsync(attempt, persisted, userKey, ct);
     }
 
-    public async Task<AuthResult> UnlockWithPinAsync(string pin, CancellationToken ct = default)
+    public Task<AuthResult> UnlockWithPinAsync(
+        string pin,
+        CancellationToken ct = default) =>
+        UnlockWithPinAsync(BeginAuthenticationAttempt(), pin, ct);
+
+    public async Task<AuthResult> UnlockWithPinAsync(
+        AuthenticationAttemptLease attempt,
+        string pin,
+        CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(attempt);
+        if (!_session.IsCurrent(attempt))
+            return AuthenticationExpired();
         if (!_tokenStore.TryLoad(out var persisted) || string.IsNullOrEmpty(persisted.PinProtectedUserKey))
-            return new AuthResult.Failure("未设置 PIN。");
+        {
+            AbandonAuthenticationAttempt(attempt);
+            return SafeFailure("未设置 PIN。");
+        }
 
         SymmetricCryptoKey userKey;
         try
         {
             var stretchedKey = DeriveStretchedKey(
-                pin, persisted.Email, persisted.KdfType,
+                pin, MasterPasswordSaltPolicy.NormalizeEmail(persisted.Email), persisted.KdfType,
                 persisted.KdfIterations, persisted.KdfMemory, persisted.KdfParallelism);
             try
             {
@@ -167,7 +291,7 @@ public sealed class AuthService : IAuthService
             }
             catch (Exception ex) when (ex is CryptographicException or FormatException)
             {
-                return HandleWrongPin(persisted);
+                return HandleWrongPin(attempt, persisted);
             }
             finally
             {
@@ -177,43 +301,65 @@ public sealed class AuthService : IAuthService
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
         {
-            _session.Lock();
-            return new AuthResult.Failure(ex.Message);
+            AbandonAuthenticationAttempt(attempt);
+            return ClassifyExpectedFailure(ex, ct);
         }
 
         // 成功解包 → 清零失败计数,经 normalized 记录在解锁门禁内落盘。
-        return await FinishLocalUnlockAsync(persisted with { PinFailedAttempts = 0 }, userKey, ct);
+        return await FinishLocalUnlockAsync(
+            attempt,
+            persisted with { PinFailedAttempts = 0 },
+            userKey,
+            ct);
     }
 
     // PIN 错误:经恢复出的 locked lease 门禁写回失败计数/清 PIN,绝不在 TryCommit 外触碰 token store。
-    private AuthResult HandleWrongPin(PersistedSession persisted)
+    private AuthResult HandleWrongPin(
+        AuthenticationAttemptLease attempt,
+        PersistedSession persisted)
     {
-        var lease = _session.RestorePersistedSession(persisted);
+        if (!_session.TryRestorePersistedSession(attempt, persisted, out var lease))
+            return AuthenticationExpired();
         var n = persisted.PinFailedAttempts + 1;
         if (n >= 5)
         {
-            _session.TryCommit(lease, () => _tokenStore.Save(persisted with
+            _session.TryCommit(lease!, () => _tokenStore.Save(persisted with
             {
                 PinProtectedUserKey = null,
                 PinFailedAttempts = 0,
-                Generation = lease.Generation,
+                Generation = lease!.Generation,
             }));
             return new AuthResult.PinCleared("PIN 已因多次错误被清除，请用主密码解锁。");
         }
-        _session.TryCommit(lease, () => _tokenStore.Save(persisted with
+        _session.TryCommit(lease!, () => _tokenStore.Save(persisted with
         {
             PinFailedAttempts = n,
-            Generation = lease.Generation,
+            Generation = lease!.Generation,
         }));
-        return new AuthResult.Failure($"PIN 错误，还可尝试 {5 - n} 次。");
+        return SafeFailure($"PIN 错误，还可尝试 {5 - n} 次。");
     }
 
-    public async Task<AuthResult> UnlockWithHelloAsync(byte[] signature, CancellationToken ct = default)
+    public Task<AuthResult> UnlockWithHelloAsync(
+        byte[] signature,
+        CancellationToken ct = default) =>
+        UnlockWithHelloAsync(BeginAuthenticationAttempt(), signature, ct);
+
+    public async Task<AuthResult> UnlockWithHelloAsync(
+        AuthenticationAttemptLease attempt,
+        byte[] signature,
+        CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(attempt);
+        if (!_session.IsCurrent(attempt))
+        {
+            CryptographicOperations.ZeroMemory(signature);
+            return AuthenticationExpired();
+        }
         if (!_tokenStore.TryLoad(out var persisted) || string.IsNullOrEmpty(persisted.HelloProtectedUserKey))
         {
             CryptographicOperations.ZeroMemory(signature);
-            return new AuthResult.Failure("未启用 Windows Hello。");
+            AbandonAuthenticationAttempt(attempt);
+            return SafeFailure("未启用 Windows Hello。");
         }
 
         SymmetricCryptoKey userKey;
@@ -227,51 +373,74 @@ public sealed class AuthService : IAuthService
             catch (Exception ex) when (ex is CryptographicException or FormatException)
             {
                 // Hello 凭据失效(重录/移除)或数据损坏 → 经恢复出的 locked lease 门禁清除 Hello,回退主密码。
-                var lease = _session.RestorePersistedSession(persisted);
-                _session.TryCommit(lease, () => _tokenStore.Save(persisted with
+                if (!_session.TryRestorePersistedSession(attempt, persisted, out var lease))
+                    return AuthenticationExpired();
+                _session.TryCommit(lease!, () => _tokenStore.Save(persisted with
                 {
                     HelloProtectedUserKey = null,
                     HelloChallenge = null,
-                    Generation = lease.Generation,
+                    Generation = lease!.Generation,
                 }));
-                return new AuthResult.Failure("Windows Hello 解锁失败，请用主密码解锁。");
+                return SafeFailure("Windows Hello 解锁失败，请用主密码解锁。");
             }
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
         {
-            _session.Lock();
-            return new AuthResult.Failure(ex.Message);
+            AbandonAuthenticationAttempt(attempt);
+            return ClassifyExpectedFailure(ex, ct);
         }
         finally
         {
             CryptographicOperations.ZeroMemory(signature);
         }
 
-        return await FinishLocalUnlockAsync(persisted, userKey, ct);
+        return await FinishLocalUnlockAsync(attempt, persisted, userKey, ct);
     }
 
     // 主密码/PIN/Hello 三入口共用:恢复绑定 → 门禁落 UserKey + 归一化持久化 → 缓存即时出数据 →
     // 统一走 refresher/bootstrap;网络失败按有无缓存分流。禁止在此复制三套刷新/缓存/引导逻辑。
     private async Task<AuthResult> FinishLocalUnlockAsync(
+        AuthenticationAttemptLease attempt,
         PersistedSession persisted,
         SymmetricCryptoKey userKey,
         CancellationToken ct)
     {
-        var lease = _session.RestorePersistedSession(persisted);
-        var normalized = persisted with { Generation = lease.Generation };
+        if (!_session.TryRestorePersistedSession(attempt, persisted, out var lease))
+        {
+            userKey.Dispose();
+            return AuthenticationExpired();
+        }
+        var normalized = persisted with { Generation = lease!.Generation };
 
         var transferred = false;
+        var cacheGenerationCurrent = persisted.Generation == lease!.Generation;
         try
         {
-            if (!_session.TryCommit(lease, () =>
+            // Cache generation rebinding is an optimization. A persistence failure
+            // makes the cache unavailable for this attempt but must not block refresh.
+            if (!cacheGenerationCurrent)
+                cacheGenerationCurrent = _cache.RebindGeneration(lease!);
+
+            try
             {
-                // 归一化持久化(消费 Task 6 generation 轮换),同一门禁内落 UserKey 与回种 refresh token。
-                _tokenStore.Save(normalized);
-                _session.SetUnlockedKey(userKey);
-                _session.SetRefreshTokenOnly(normalized.RefreshToken);
-                transferred = true;
-            }))
-                return new AuthResult.Failure("Unlock session expired.");
+                if (!_session.TryCommit(lease!, () =>
+                {
+                    // Persist the rotated generation before transferring key and refresh-token ownership.
+                    _tokenStore.Save(normalized);
+                    _session.SetUnlockedKey(userKey);
+                    _session.SetRefreshTokenOnly(normalized.RefreshToken);
+                    transferred = true;
+                }))
+                    return SessionExpiredFailure();
+            }
+            catch (Exception ex) when (
+                ex is IOException
+                    or UnauthorizedAccessException
+                or CryptographicException)
+            {
+                _session.TryLockIfCurrent(lease!);
+                return SafeFailure("无法安全保存会话，请检查磁盘权限后重试。");
+            }
         }
         finally
         {
@@ -279,28 +448,27 @@ public sealed class AuthService : IAuthService
                 userKey.Dispose();
         }
 
-        // generation 轮换后(同会话内 Lock/Unlock)让旧缓存重新对齐当前租约,供 TryLoadInto 命中。
-        if (persisted.Generation != lease.Generation)
-            _cache.RebindGeneration(lease);
-
-        if (!_session.TryCopyUserKey(lease, out var cacheKey))
-            return new AuthResult.Failure("Unlock session expired.");
+        if (!_session.TryCopyUserKey(lease!, out var cacheKey))
+            return SessionExpiredFailure();
         bool fromCache;
         using (cacheKey)
-            fromCache = _cache.TryLoadInto(lease, cacheKey!);
+            fromCache = cacheGenerationCurrent
+                && _cache.TryLoadInto(lease!, cacheKey!);
 
         try
         {
-            if (!await _refresher.TryRefreshAsync(lease, ct).ConfigureAwait(false))
-                return FinishUnlockOffline(lease, fromCache);
+            if (!await _refresher.TryRefreshAsync(lease!, ct).ConfigureAwait(false))
+                return FinishUnlockOffline(lease!, fromCache);
 
-            await _bootstrapper.BootstrapAsync(lease, ct).ConfigureAwait(false);
-            return new AuthResult.Success();
+            await _bootstrapper.BootstrapAsync(lease!, ct).ConfigureAwait(false);
+            return _session.IsUnlocked(lease!)
+                ? new AuthResult.Success(lease!)
+                : SessionExpiredFailure();
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
         {
             // 刷新成功但整库同步失败(如账户错配 InvalidDataException/网络抖动)→ 按有无缓存分流。
-            return FinishUnlockOffline(lease, fromCache);
+            return FinishUnlockOffline(lease!, fromCache);
         }
     }
 
@@ -310,10 +478,10 @@ public sealed class AuthService : IAuthService
     {
         if (fromCache
             && _session.TryCommit(lease, () => _session.SetState(VaultState.Unlocked)))
-            return new AuthResult.Success();
+            return new AuthResult.Success(lease);
 
-        _session.TryCommit(lease, () => _session.Lock());
-        return new AuthResult.Failure("无法连接服务器,且无离线缓存,请联网后重试。");
+        _session.TryLockIfCurrent(lease);
+        return SafeFailure("无法连接服务器，且无离线缓存，请联网后重试。");
     }
 
     // core 原语:第一动作即失效旧 lease(rotation-first);不停止通知、不清剪贴板、不导航——
@@ -321,6 +489,24 @@ public sealed class AuthService : IAuthService
     public Task LockAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
+        LockCurrentSession();
+        DisposePendingTwoFactor();
+        return Task.CompletedTask;
+    }
+
+    public Task LockAsync(
+        VaultSessionLease expectedSession,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(expectedSession);
+        ct.ThrowIfCancellationRequested();
+        if (_session.TryCommit(expectedSession, LockCurrentSession))
+            DisposePendingTwoFactor();
+        return Task.CompletedTask;
+    }
+
+    private void LockCurrentSession()
+    {
         var lockedLease = _session.Lock();
         if (lockedLease is not null)
         {
@@ -328,7 +514,7 @@ public sealed class AuthService : IAuthService
             {
                 if (_tokenStore.TryLoad(out var persisted)
                     && persisted.AccountId == lockedLease.AccountId
-                    && persisted.Origin == lockedLease.Origin)
+                    && persisted.Endpoints == lockedLease.Endpoints)
                     _tokenStore.Save(persisted with
                     {
                         Generation = lockedLease.Generation,
@@ -336,25 +522,80 @@ public sealed class AuthService : IAuthService
                 _cache.RebindGeneration(lockedLease);
             });
         }
-        DisposePendingTwoFactor();
-        return Task.CompletedTask;
     }
 
     public Task LogoutAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-        _session.Logout();
-        _tokenStore.Clear();
-        _cache.Clear();
+        LogoutCurrentSession();
         DisposePendingTwoFactor();
         return Task.CompletedTask;
     }
 
-    // 放弃/登出时清零并丢弃挂起 2FA 上下文里的拉伸主密钥。
+    public Task<bool> LogoutAsync(
+        VaultSessionLease expectedSession,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(expectedSession);
+        ct.ThrowIfCancellationRequested();
+        var committed = _session.TryCommit(expectedSession, LogoutCurrentSession);
+        if (committed)
+            DisposePendingTwoFactor();
+        return Task.FromResult(committed);
+    }
+
+    private void LogoutCurrentSession()
+    {
+        _session.Logout();
+        _tokenStore.Clear();
+        _cache.Clear();
+    }
+
     private void DisposePendingTwoFactor()
     {
-        _pendingTwoFactor?.StretchedKey.Dispose();
-        _pendingTwoFactor = null;
+        PendingTwoFactorContext? pending;
+        lock (_pendingGate)
+        {
+            pending = _pendingTwoFactor;
+            _pendingTwoFactor = null;
+        }
+        pending?.StretchedKey.Dispose();
+    }
+
+    private void DisposePendingTwoFactor(AuthenticationAttemptLease attempt)
+    {
+        PendingTwoFactorContext? pending = null;
+        lock (_pendingGate)
+        {
+            if (_pendingTwoFactor?.Attempt == attempt)
+            {
+                pending = _pendingTwoFactor;
+                _pendingTwoFactor = null;
+            }
+        }
+        pending?.StretchedKey.Dispose();
+    }
+
+    private AuthenticationAttemptLease? GetPendingTwoFactorAttempt()
+    {
+        lock (_pendingGate)
+            return _pendingTwoFactor?.Attempt;
+    }
+
+    private bool TryGetPendingTwoFactor(
+        AuthenticationAttemptLease attempt,
+        out PendingTwoFactorContext context)
+    {
+        lock (_pendingGate)
+        {
+            if (_pendingTwoFactor is { } pending && pending.Attempt == attempt)
+            {
+                context = pending;
+                return true;
+            }
+        }
+        context = null!;
+        return false;
     }
 
     private async Task<AuthResult> HandleLoginResultAsync(
@@ -366,20 +607,39 @@ public sealed class AuthService : IAuthService
         switch (result)
         {
             case ConnectTokenResult.Success success:
-                _pendingTwoFactor = null;
+                lock (_pendingGate)
+                {
+                    if (_pendingTwoFactor?.Attempt == context.Attempt)
+                        _pendingTwoFactor = null;
+                }
                 return await CompleteLoginAsync(context, success.Token, ct);
             case ConnectTokenResult.TwoFactorRequired twoFactor:
-                // 若已存在一个过期的 pending 2FA(其拉伸密钥与本次不是同一对象),先清零旧的再替换,防止泄漏。
-                // 2FA 重试时 context.StretchedKey 与旧 _pendingTwoFactor 是同一对象,ReferenceEquals 守卫避免误清。
-                if (_pendingTwoFactor is { } stale && !ReferenceEquals(stale.StretchedKey, context.StretchedKey))
-                    stale.StretchedKey.Dispose();
                 var pending = context with { Providers = twoFactor.Providers.ToArray() };
-                _pendingTwoFactor = pending;
+                PendingTwoFactorContext? stale;
+                lock (_pendingGate)
+                {
+                    stale = _pendingTwoFactor;
+                    _pendingTwoFactor = pending;
+                }
+                if (stale is not null
+                    && !ReferenceEquals(stale.StretchedKey, context.StretchedKey))
+                    stale.StretchedKey.Dispose();
                 // 仅在首次进入验证码阶段(LoginAsync 路径)自动发码;2FA 提交失败再次挑战时不重复发信(避免每次错码都发一封)。
                 if (autoSendEmail && twoFactor.Providers.Contains(EmailTwoFactorProvider))
                     await TrySendTwoFactorEmailAsync(pending, ct);
+                if (ct.IsCancellationRequested
+                    || !_session.IsCurrent(context.Attempt))
+                {
+                    AbandonAuthenticationAttempt(context.Attempt);
+                    return AuthenticationExpired();
+                }
                 return new AuthResult.TwoFactorRequired(twoFactor.Providers);
             default:
+                if (!TryGetPendingTwoFactor(context.Attempt, out _))
+                {
+                    context.StretchedKey.Dispose();
+                    _session.AbandonAuthenticationAttempt(context.Attempt);
+                }
                 return ToFailure(result);
         }
     }
@@ -389,25 +649,51 @@ public sealed class AuthService : IAuthService
     {
         try
         {
-            await Identity(context.Origin).SendTwoFactorEmailLoginAsync(context.Email, context.PasswordHash, context.DeviceIdentifier, ct);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                ct, context.Attempt.CancellationToken);
+            await Identity(context.Endpoints).SendTwoFactorEmailLoginAsync(
+                context.Email,
+                context.PasswordHash,
+                context.DeviceIdentifier,
+                linked.Token);
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
         {
         }
     }
 
-    public async Task<bool> ResendTwoFactorEmailAsync(CancellationToken ct = default)
+    public Task<bool> ResendTwoFactorEmailAsync(CancellationToken ct = default)
     {
-        if (_pendingTwoFactor is not { } context)
+        var attempt = GetPendingTwoFactorAttempt();
+        return attempt is null
+            ? Task.FromResult(false)
+            : ResendTwoFactorEmailAsync(attempt, ct);
+    }
+
+    public async Task<bool> ResendTwoFactorEmailAsync(
+        AuthenticationAttemptLease attempt,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(attempt);
+        if (!TryGetPendingTwoFactor(attempt, out var context)
+            || !_session.IsCurrent(attempt))
             return false;
 
         try
         {
-            await Identity(context.Origin).SendTwoFactorEmailLoginAsync(context.Email, context.PasswordHash, context.DeviceIdentifier, ct);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                ct, attempt.CancellationToken);
+            await Identity(context.Endpoints).SendTwoFactorEmailLoginAsync(
+                context.Email,
+                context.PasswordHash,
+                context.DeviceIdentifier,
+                linked.Token);
             return true;
         }
         catch (Exception ex) when (IsExpectedAuthException(ex))
         {
+            if (ct.IsCancellationRequested || !_session.IsCurrent(attempt))
+                AbandonAuthenticationAttempt(attempt);
             return false;
         }
     }
@@ -419,19 +705,30 @@ public sealed class AuthService : IAuthService
     {
         try
         {
+            if (!_session.IsCurrent(context.Attempt))
+                return AuthenticationExpired();
             if (string.IsNullOrWhiteSpace(token.Key))
-                return new AuthResult.Failure("Token response did not include a protected user key.");
+                return InvalidResponseFailure();
             // fail-closed:AccountId 只从 access token JWT 的 sub 派生,缺失/非法一律拒绝建立会话。
             if (!AccessTokenSubjectReader.TryReadAccountId(token.AccessToken, out var accountId))
-                return new AuthResult.Failure("Token response did not include a valid account subject.");
+                return InvalidResponseFailure();
 
             var userKey = _crypto.DecryptUserKey(context.StretchedKey, EncString.Parse(token.Key));
-            var lease = _session.BeginAccountSession(accountId, context.Email, context.Origin);
+            if (!_session.TryBeginAccountSession(
+                    context.Attempt,
+                    accountId,
+                    context.Email,
+                    context.Endpoints,
+                    out var lease))
+            {
+                userKey.Dispose();
+                return AuthenticationExpired();
+            }
             var persisted = new PersistedSession(
                 PersistedSession.CurrentSchemaVersion,
                 accountId,
-                context.Origin,
-                lease.Generation,
+                context.Endpoints,
+                lease!.Generation,
                 context.Email,
                 context.DeviceIdentifier,
                 token.RefreshToken,
@@ -439,7 +736,8 @@ public sealed class AuthService : IAuthService
                 context.KdfType,
                 context.KdfIterations,
                 context.KdfMemory,
-                context.KdfParallelism)
+                context.KdfParallelism,
+                context.MasterPasswordSalt)
             {
                 TwoFactorToken = ResolveRememberToken(context, token),
             };
@@ -447,7 +745,7 @@ public sealed class AuthService : IAuthService
             var transferred = false;
             try
             {
-                if (!_session.TryCommit(lease, () =>
+                if (!_session.TryCommit(lease!, () =>
                 {
                     _tokenStore.Save(persisted);
                     _session.SetTokens(token.AccessToken, token.RefreshToken);
@@ -455,7 +753,7 @@ public sealed class AuthService : IAuthService
                     _session.SetEncryptedPrivateKey(token.PrivateKey);
                     transferred = true;
                 }))
-                    return new AuthResult.Failure("Login session expired.");
+                    return SessionExpiredFailure();
             }
             finally
             {
@@ -465,8 +763,10 @@ public sealed class AuthService : IAuthService
 
             try
             {
-                await _bootstrapper.BootstrapAsync(lease, ct).ConfigureAwait(false);
-                return new AuthResult.Success();
+                await _bootstrapper.BootstrapAsync(lease!, ct).ConfigureAwait(false);
+                return _session.IsUnlocked(lease!)
+                    ? new AuthResult.Success(lease!)
+                    : SessionExpiredFailure();
             }
             catch (Exception ex) when (
                 ex is OperationCanceledException
@@ -476,15 +776,16 @@ public sealed class AuthService : IAuthService
             {
                 // 凭据已成功,但初始整库同步/设备拉取失败。与 Unlock 失败路径一致地 Lock:清零刚解锁的
                 // UserKey/tokens,并把状态收敛为 Locked。已保存的会话保留,用户可重新解锁重试(S7)。
-                await LockAsync(CancellationToken.None).ConfigureAwait(false);
-                return new AuthResult.Failure(
-                    "登录成功,但加载密码库数据失败,请重新解锁重试。");
+                await LockAsync(lease!, CancellationToken.None).ConfigureAwait(false);
+                return SafeFailure(
+                    "登录成功，但加载密码库数据失败，请重新解锁重试。");
             }
         }
         finally
         {
             // 拉伸主密钥用完即弃:解包 UserKey 后不再需要,清零防止驻留内存(userKey 为独立数组,不受影响)。
             context.StretchedKey.Dispose();
+            _session.AbandonAuthenticationAttempt(context.Attempt);
         }
     }
 
@@ -497,43 +798,47 @@ public sealed class AuthService : IAuthService
         if (!string.IsNullOrEmpty(token.TwoFactorToken))
             return token.TwoFactorToken;
         return _tokenStore.TryLoad(out var prior)
-            && prior.Origin == context.Origin
+            && prior.Endpoints == context.Endpoints
             && string.Equals(
-                prior.Email,
+                MasterPasswordSaltPolicy.NormalizeEmail(prior.Email),
                 context.Email,
-                StringComparison.OrdinalIgnoreCase)
+                StringComparison.Ordinal)
             ? prior.TwoFactorToken
             : null;
     }
 
     private PendingTwoFactorContext BuildLoginContext(
-        ServerOrigin origin,
+        AuthenticationAttemptLease attempt,
+        ServerEndpoints endpoints,
         string email,
         string masterPassword,
         PreloginResponse prelogin,
         string deviceIdentifier)
     {
+        var resolved = prelogin.Resolve(email);
         var masterKey = _crypto.DeriveMasterKey(
             masterPassword,
-            email,
-            prelogin.Kdf,
-            prelogin.KdfIterations,
-            prelogin.KdfMemory,
-            prelogin.KdfParallelism);
+            resolved.MasterPasswordSalt,
+            resolved.KdfType,
+            resolved.Iterations,
+            resolved.Memory,
+            resolved.Parallelism);
         try
         {
             var passwordHash = _crypto.ComputeMasterPasswordHash(masterKey, masterPassword);
             var stretchedKey = _crypto.StretchMasterKey(masterKey);
             return new PendingTwoFactorContext(
-                origin,
+                attempt,
+                endpoints,
                 email,
                 deviceIdentifier,
                 passwordHash,
                 stretchedKey,
-                prelogin.Kdf,
-                prelogin.KdfIterations,
-                prelogin.KdfMemory,
-                prelogin.KdfParallelism,
+                resolved.KdfType,
+                resolved.Iterations,
+                resolved.Memory,
+                resolved.Parallelism,
+                resolved.MasterPasswordSalt,
                 Array.Empty<int>());
         }
         finally
@@ -544,13 +849,13 @@ public sealed class AuthService : IAuthService
 
     private SymmetricCryptoKey DeriveStretchedKey(
         string masterPassword,
-        string email,
+        string salt,
         KdfType kdfType,
         int iterations,
         int? memory,
         int? parallelism)
     {
-        var masterKey = _crypto.DeriveMasterKey(masterPassword, email, kdfType, iterations, memory, parallelism);
+        var masterKey = _crypto.DeriveMasterKey(masterPassword, salt, kdfType, iterations, memory, parallelism);
         try
         {
             return _crypto.StretchMasterKey(masterKey);
@@ -563,10 +868,54 @@ public sealed class AuthService : IAuthService
 
     private static AuthResult.Failure ToFailure(ConnectTokenResult result) => result switch
     {
-        ConnectTokenResult.Error error => new AuthResult.Failure(error.Message),
-        ConnectTokenResult.TwoFactorRequired => new AuthResult.Failure("Two-factor authentication is still required."),
-        _ => new AuthResult.Failure("Authentication failed."),
+        ConnectTokenResult.Error { HttpStatus: 400 or 401 } => new AuthResult.Failure(
+            "Authentication credentials were rejected.",
+            AuthFailureKind.InvalidCredentials),
+        ConnectTokenResult.Error => new AuthResult.Failure(
+            "Authentication failed.",
+            AuthFailureKind.Unspecified),
+        ConnectTokenResult.TwoFactorRequired => new AuthResult.Failure(
+            "Two-factor authentication is still required.",
+            AuthFailureKind.InvalidCredentials),
+        _ => new AuthResult.Failure(
+            "Authentication failed.",
+            AuthFailureKind.Unspecified),
     };
+
+    private static AuthResult.Failure ClassifyExpectedFailure(
+        Exception exception,
+        CancellationToken callerToken)
+    {
+        if (RequestTimeoutClassifier.IsTimeout(exception, callerToken))
+        {
+            return new AuthResult.Failure(
+                "The authentication request timed out.",
+                AuthFailureKind.Timeout);
+        }
+
+        if (exception is HttpRequestException)
+        {
+            return new AuthResult.Failure(
+                "The authentication server could not be reached.",
+                AuthFailureKind.Network);
+        }
+
+        if (exception is TaskCanceledException)
+            return SessionExpiredFailure();
+
+        return InvalidResponseFailure();
+    }
+
+    private static AuthResult.Failure InvalidResponseFailure() =>
+        new("The authentication response was invalid.", AuthFailureKind.InvalidResponse);
+
+    private static AuthResult.Failure SessionExpiredFailure() =>
+        new("The authentication session expired.", AuthFailureKind.SessionExpired);
+
+    private static AuthResult.Failure SafeFailure(string message) =>
+        new(message, AuthFailureKind.SafeMessage);
+
+    private static AuthResult.Failure AuthenticationExpired() => SessionExpiredFailure();
 
     private static string NewDeviceIdentifier() => Guid.NewGuid().ToString("D");
 
@@ -584,7 +933,8 @@ public sealed class AuthService : IAuthService
             or NotImplementedException;
 
     private sealed record PendingTwoFactorContext(
-        ServerOrigin Origin,
+        AuthenticationAttemptLease Attempt,
+        ServerEndpoints Endpoints,
         string Email,
         string DeviceIdentifier,
         string PasswordHash,
@@ -593,5 +943,6 @@ public sealed class AuthService : IAuthService
         int KdfIterations,
         int? KdfMemory,
         int? KdfParallelism,
+        string MasterPasswordSalt,
         IReadOnlyList<int> Providers);
 }

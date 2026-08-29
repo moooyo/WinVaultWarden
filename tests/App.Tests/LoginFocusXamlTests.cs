@@ -28,6 +28,17 @@ public sealed class LoginFocusXamlTests
         Assert.Contains("ViewModel.CanEditForm", panel.Attribute("IsEnabled")?.Value);
     }
 
+    [Fact]
+    public void LoginBackButton_HasAccessibleName()
+    {
+        var document = Load("LoginPage.xaml");
+        var button = document.Descendants().Single(node =>
+            node.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Name" && attribute.Value == "BackButton"));
+
+        Assert.Equal("返回", button.Attribute("AutomationProperties.Name")?.Value);
+    }
+
     private static XDocument Load(string file)
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory);

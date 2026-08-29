@@ -9,13 +9,9 @@ namespace BrowserNativeHost;
 // unit-testable over an in-memory duplex.
 public sealed record AppBridgeConnection(Stream Stream, string Nonce, IAsyncDisposable Resource);
 
-// Browser-task-7 remediation: raised only when this request's own attempt to (re)establish the App
-// pipe connection failed — i.e. the request was never handed off to a connected App at all. This is
-// deliberately a distinct type from any failure surfaced once a connection existed (read-loop
-// disconnect/nonce mismatch, still plain IOException/UnauthorizedAccessException from FailAllPending):
-// NativeMessagingSession maps THIS type alone to client_not_handled (the sole fallback trigger, e.g.
-// the App is simply not running/listening yet), while an established-then-lost connection must map to
-// operation_aborted and never fall back.
+// Raised only by the production named-pipe client at the exact point where pipe connection times out
+// before any App listener accepts the request. The generic session never infers this state from an
+// exception type, so handshake, authorization, framing, and integrity failures cannot enable fallback.
 public sealed class AppBridgeConnectFailedException : Exception
 {
     public AppBridgeConnectFailedException(Exception inner)
@@ -32,59 +28,124 @@ public sealed class AppBridgeConnectFailedException : Exception
 /// slot and forwards a nonce-bound cancel envelope upstream; a disconnect or a nonce-mismatched
 /// response faults the connection and fails every pending request, after which the next request
 /// transparently reconnects. Every request and cancel carries the session nonce and every response is
-/// nonce-checked before it can satisfy a caller.
+/// nonce-checked before it can satisfy a caller. At most <see cref="MaxPendingRequests"/> requests may
+/// await App responses; excess work fails locally with <see cref="PasskeyErrorCodes.RateLimited"/>.
 /// </summary>
 public sealed class AppBridgeSession : IAppPasskeyBridgeClient
 {
+    public const int MaxPendingRequests = 8;
+
     private readonly Func<CancellationToken, Task<AppBridgeConnection>> _connect;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly SemaphoreSlim _connectGate = new(1, 1);
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<BrowserPasskeyResponse>> _pending =
+    private readonly SemaphoreSlim _pendingSlots = new(MaxPendingRequests, MaxPendingRequests);
+    private readonly ConcurrentDictionary<string, PendingEntry> _pending =
         new(StringComparer.Ordinal);
+    private readonly AppBridgeSessionTestHooks? _testHooks;
     private Connection? _connection;
     private int _disposed;
 
-    public AppBridgeSession(Func<CancellationToken, Task<AppBridgeConnection>> connect) =>
+    public AppBridgeSession(Func<CancellationToken, Task<AppBridgeConnection>> connect)
+        : this(connect, null)
+    {
+    }
+
+    internal AppBridgeSession(
+        Func<CancellationToken, Task<AppBridgeConnection>> connect,
+        AppBridgeSessionTestHooks? testHooks)
+    {
         _connect = connect ?? throw new ArgumentNullException(nameof(connect));
+        _testHooks = testHooks;
+    }
 
     public async Task<BrowserPasskeyResponse> SendAsync(BrowserPasskeyRequest request, CancellationToken ct = default)
     {
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrEmpty(request.Id);
 
-        var connection = await EnsureConnectedAsync(ct).ConfigureAwait(false);
-
-        var completion = new TaskCompletionSource<BrowserPasskeyResponse>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!_pending.TryAdd(request.Id, completion))
+        if (_pending.ContainsKey(request.Id))
             return BrowserPasskeyResponse.Failure(request.Id, PasskeyErrorCodes.RequestInProgress);
 
-        using var registration = ct.Register(() =>
-        {
-            if (_pending.TryRemove(request.Id, out var pending))
-                pending.TrySetCanceled(ct);
-        });
+        if (!_pendingSlots.Wait(0))
+            return BrowserPasskeyResponse.Failure(request.Id, PasskeyErrorCodes.RateLimited);
 
+        var slotReserved = true;
         try
         {
-            await WriteAsync(connection, request with { Nonce = connection.Nonce }, ct).ConfigureAwait(false);
-        }
-        catch
-        {
-            // The frame never left (or only its gate wait was cancelled); drop the slot and surface it.
-            _pending.TryRemove(request.Id, out _);
-            throw;
-        }
+            _testHooks?.PendingSlotReserved?.Invoke(request.Id);
 
-        try
-        {
-            return await completion.Task.ConfigureAwait(false);
+            while (true)
+            {
+                var connection = await EnsureConnectedAsync(ct).ConfigureAwait(false);
+                var completion = new TaskCompletionSource<BrowserPasskeyResponse>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                var entry = new PendingEntry(connection, completion);
+                CancellationTokenRegistration registration = default;
+                var registered = false;
+
+                try
+                {
+                    await connection.LifecycleGate.WaitAsync(ct).ConfigureAwait(false);
+                    try
+                    {
+                        // The read loop marks Faulted before waiting for this gate. A sender that
+                        // observed the old generation just before that transition retries instead of
+                        // registering work that its completed read loop can never answer.
+                        if (connection.Faulted || !ReferenceEquals(connection, Volatile.Read(ref _connection)))
+                            continue;
+
+                        if (!_pending.TryAdd(request.Id, entry))
+                            return BrowserPasskeyResponse.Failure(request.Id, PasskeyErrorCodes.RequestInProgress);
+
+                        slotReserved = false;
+                        registration = ct.Register(() =>
+                        {
+                            if (TryTakePending(request.Id, entry, out var cancelled))
+                                cancelled.Completion.TrySetCanceled(ct);
+                        });
+                        registered = true;
+
+                        try
+                        {
+                            await WriteAsync(connection, request with { Nonce = connection.Nonce }, ct)
+                                .ConfigureAwait(false);
+                        }
+                        catch
+                        {
+                            // Remove exactly this generation's entry without touching a later reuse
+                            // of the same request id.
+                            TryTakePending(request.Id, entry, out _);
+                            throw;
+                        }
+                    }
+                    finally
+                    {
+                        connection.LifecycleGate.Release();
+                    }
+
+                    try
+                    {
+                        return await completion.Task.ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Forward cancellation to the connection that owned the request, never to a
+                        // replacement generation.
+                        await CancelAsync(request.Id, connection, CancellationToken.None).ConfigureAwait(false);
+                        throw;
+                    }
+                }
+                finally
+                {
+                    if (registered)
+                        registration.Dispose();
+                }
+            }
         }
-        catch (OperationCanceledException)
+        finally
         {
-            // The caller walked away: tell the App to abandon the ceremony, then propagate the cancel.
-            await CancelAsync(request.Id, CancellationToken.None).ConfigureAwait(false);
-            throw;
+            if (slotReserved)
+                _pendingSlots.Release();
         }
     }
 
@@ -93,18 +154,34 @@ public sealed class AppBridgeSession : IAppPasskeyBridgeClient
         if (string.IsNullOrEmpty(requestId))
             return;
 
-        var connection = Volatile.Read(ref _connection);
+        var connection = _pending.TryGetValue(requestId, out var entry)
+            ? entry.Owner
+            : Volatile.Read(ref _connection);
         if (connection is null || connection.Faulted)
             return;
 
+        await CancelAsync(requestId, connection, ct).ConfigureAwait(false);
+    }
+
+    private async Task CancelAsync(string requestId, Connection connection, CancellationToken ct)
+    {
+        await connection.LifecycleGate.WaitAsync(ct).ConfigureAwait(false);
+
         try
         {
+            if (connection.Faulted)
+                return;
+
             await WriteAsync(connection, new BrowserPasskeyCancel(requestId, Nonce: connection.Nonce), ct)
                 .ConfigureAwait(false);
         }
         catch
         {
             // Best-effort: the pending slot is already gone, so a failed cancel write changes nothing.
+        }
+        finally
+        {
+            connection.LifecycleGate.Release();
         }
     }
 
@@ -128,25 +205,9 @@ public sealed class AppBridgeSession : IAppPasskeyBridgeClient
                 _connection = null;
             }
 
-            AppBridgeConnection transport;
-            try
-            {
-                transport = await _connect(ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // The caller walked away (external ct or disposal), not a "the App isn't there"
-                // outcome: propagate as-is so it maps to a cancel, not client_not_handled.
-                throw;
-            }
-            catch (Exception ex)
-            {
-                // This request never reached a connected App: e.g. no listener yet (connect timeout),
-                // handshake/peer-authorization failure, or any other connect-time fault. Wrap so the
-                // native-messaging layer can tell this apart from an established connection that was
-                // later lost mid-ceremony.
-                throw new AppBridgeConnectFailedException(ex);
-            }
+            // The connect factory classifies the exact named-pipe connect timeout itself. All other
+            // failures propagate unchanged, including a TimeoutException produced after connection.
+            var transport = await _connect(ct).ConfigureAwait(false);
 
             var connection = new Connection(transport);
             connection.ReadLoop = ReadLoopAsync(connection);
@@ -193,14 +254,27 @@ public sealed class AppBridgeSession : IAppPasskeyBridgeClient
                     break;
                 }
 
-                if (response.Id is not null && _pending.TryRemove(response.Id, out var pending))
-                    pending.TrySetResult(response with { Nonce = null });
+                if (response.Id is not null && TryTakePending(response.Id, connection, out var pending))
+                    pending.Completion.TrySetResult(response with { Nonce = null });
             }
         }
         finally
         {
+            // Publish the terminal generation state before waiting for an in-progress full-frame
+            // write. New senders will reconnect instead of attaching to this completed read loop.
             connection.Faulted = true;
-            FailAllPending(failure);
+            if (_testHooks?.ConnectionFaultedBeforePendingFailureAsync is { } teardownBarrier)
+                await teardownBarrier().ConfigureAwait(false);
+
+            await connection.LifecycleGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            try
+            {
+                FailPendingOwnedBy(connection, failure);
+            }
+            finally
+            {
+                connection.LifecycleGate.Release();
+            }
         }
     }
 
@@ -236,12 +310,52 @@ public sealed class AppBridgeSession : IAppPasskeyBridgeClient
         }
     }
 
+    private void FailPendingOwnedBy(Connection owner, Exception exception)
+    {
+        foreach (var pair in _pending.ToArray())
+        {
+            if (ReferenceEquals(pair.Value.Owner, owner)
+                && TryTakePending(pair.Key, pair.Value, out var pending))
+            {
+                pending.Completion.TrySetException(exception);
+            }
+        }
+    }
+
+    private bool TryTakePending(
+        string id,
+        Connection owner,
+        out PendingEntry entry)
+    {
+        if (!_pending.TryGetValue(id, out var candidate) || !ReferenceEquals(candidate.Owner, owner))
+        {
+            entry = null!;
+            return false;
+        }
+
+        return TryTakePending(id, candidate, out entry);
+    }
+
+    private bool TryTakePending(string id, PendingEntry expected, out PendingEntry entry)
+    {
+        var pair = new KeyValuePair<string, PendingEntry>(id, expected);
+        if (((ICollection<KeyValuePair<string, PendingEntry>>)_pending).Remove(pair))
+        {
+            _pendingSlots.Release();
+            entry = expected;
+            return true;
+        }
+
+        entry = null!;
+        return false;
+    }
+
     private void FailAllPending(Exception exception)
     {
-        foreach (var id in _pending.Keys.ToArray())
+        foreach (var pair in _pending.ToArray())
         {
-            if (_pending.TryRemove(id, out var pending))
-                pending.TrySetException(exception);
+            if (TryTakePending(pair.Key, pair.Value, out var pending))
+                pending.Completion.TrySetException(exception);
         }
     }
 
@@ -263,6 +377,7 @@ public sealed class AppBridgeSession : IAppPasskeyBridgeClient
         FailAllPending(new ObjectDisposedException(nameof(AppBridgeSession)));
         _writeGate.Dispose();
         _connectGate.Dispose();
+        _pendingSlots.Dispose();
     }
 
     private sealed class Connection : IAsyncDisposable
@@ -274,6 +389,7 @@ public sealed class AppBridgeSession : IAppPasskeyBridgeClient
         public Stream Stream => _transport.Stream;
         public string Nonce => _transport.Nonce;
         public CancellationTokenSource ReadCts { get; } = new();
+        public SemaphoreSlim LifecycleGate { get; } = new(1, 1);
         public Task ReadLoop { get; set; } = Task.CompletedTask;
         public volatile bool Faulted;
 
@@ -293,4 +409,14 @@ public sealed class AppBridgeSession : IAppPasskeyBridgeClient
             ReadCts.Dispose();
         }
     }
+
+    private sealed record PendingEntry(
+        Connection Owner,
+        TaskCompletionSource<BrowserPasskeyResponse> Completion);
+}
+
+internal sealed class AppBridgeSessionTestHooks
+{
+    public Action<string>? PendingSlotReserved { get; init; }
+    public Func<Task>? ConnectionFaultedBeforePendingFailureAsync { get; init; }
 }

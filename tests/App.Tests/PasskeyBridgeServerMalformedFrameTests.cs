@@ -22,9 +22,9 @@ namespace App.Tests;
 // finally into StopAsync's `await listen!`, faulting the listener/shutdown instead of just the one
 // connection. This test drives the real pipe/handshake and asserts: the bad connection is torn down
 // cleanly, a subsequent connection is still accepted and fully served, and StopAsync does not throw.
-public class PasskeyBridgeServerMalformedFrameTests
+public partial class PasskeyBridgeServerMalformedFrameTests
 {
-    [Fact]
+    [WindowsFact]
     public async Task MalformedFrame_ClosesOnlyThatConnection_ListenerKeepsAcceptingAndStopsCleanly()
     {
         var handler = new BrowserPasskeyRequestHandler(
@@ -93,7 +93,7 @@ public class PasskeyBridgeServerMalformedFrameTests
     // path/token/stack anywhere in the wire bytes — and the SAME connection must still serve a second,
     // ordinary request afterwards (proving the read loop wasn't torn down), and Start/StopAsync must
     // remain usable (a fresh connection round-trips after a restart).
-    [Fact]
+    [WindowsFact]
     public async Task HandlerThrows_PipeResponseIsCodeOnlyInternalError_ConnectionAndStopStayUsable()
     {
         const string sentinel = @"SENTINEL_INTERNAL C:\Users\alice\vault token=secret stack=BrowserPasskeyRequestHandler";

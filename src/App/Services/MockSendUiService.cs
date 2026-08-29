@@ -77,7 +77,10 @@ public sealed class MockSendUiService : ISendUiService
         return Task.FromResult(updated);
     }
 
-    public Task DeleteSendAsync(string id, CancellationToken ct = default)
+    public Task DeleteSendAsync(
+        string id,
+        Core.Session.VaultSessionLease originatingSession,
+        CancellationToken ct = default)
     {
         DeleteSend(id);
         return Task.CompletedTask;

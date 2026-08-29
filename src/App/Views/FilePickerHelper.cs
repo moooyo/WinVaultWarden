@@ -39,7 +39,9 @@ public static class FilePickerHelper
             clearSensitive ?? (() => { }));
         try
         {
-            return await operation(linked.Token);
+            var result = await operation(linked.Token);
+            linked.Token.ThrowIfCancellationRequested();
+            return result;
         }
         catch (OperationCanceledException) when (linked.IsCancellationRequested)
         {
@@ -51,6 +53,43 @@ public static class FilePickerHelper
         }
     }
 
+    /// <summary>
+    /// Starts an uncancellable storage transaction only while the expected vault lease remains
+    /// unlocked and no lifecycle transition is pending. Starting the OS operation is the
+    /// linearization point; the operation is awaited outside both coordinator and session locks.
+    /// </summary>
+    public static async Task CommitSensitiveAsync(
+        StorageStreamTransaction transaction,
+        Core.Session.VaultSessionLease expectedLease,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(transaction);
+        ArgumentNullException.ThrowIfNull(expectedLease);
+        ct.ThrowIfCancellationRequested();
+
+        var lifecycle = global::App.App.Services
+            .GetRequiredService<global::App.Services.IAppLifecycleCoordinator>();
+        var session = global::App.App.Services
+            .GetRequiredService<Vault.VaultSession>();
+        IAsyncAction? commitOperation = null;
+        var started = lifecycle.TryRunSensitive(
+            () => session.TryRunIfUnlocked(
+                expectedLease,
+                () =>
+                {
+                    ct.ThrowIfCancellationRequested();
+                    commitOperation = transaction.CommitAsync();
+                }));
+        if (!started || commitOperation is null)
+        {
+            throw new OperationCanceledException(
+                "A lock or logout prevented the file commit.",
+                ct.IsCancellationRequested ? ct : new CancellationToken(canceled: true));
+        }
+
+        await commitOperation.AsTask().ConfigureAwait(false);
+    }
+
     private static async Task<StorageFile?> AwaitPickerAsync(
         IAsyncOperation<StorageFile> operation,
         CancellationToken ct)
@@ -58,18 +97,61 @@ public static class FilePickerHelper
         var registry = global::App.App.Services
             .GetRequiredService<global::App.Services.ITransientOperationRegistry>();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var cancellationRequested = 0;
+        void CancelPickerWait()
+        {
+            if (Interlocked.Exchange(ref cancellationRequested, 1) != 0)
+                return;
+
+            TryCancel(linked);
+            TryCancel(operation);
+        }
         using var tracked = registry.Register(
-            operation.Cancel,
+            CancelPickerWait,
             () => { },
             () => { });
         try
         {
-            return await operation.AsTask(linked.Token);
+            var result = await operation.AsTask(linked.Token);
+            if (Volatile.Read(ref cancellationRequested) != 0
+                || linked.IsCancellationRequested)
+                return null;
+            return result;
         }
         catch (OperationCanceledException)
             when (linked.IsCancellationRequested || operation.Status == AsyncStatus.Canceled)
         {
             return null;
+        }
+    }
+
+    private static void TryCancel(CancellationTokenSource source)
+    {
+        try
+        {
+            source.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (AggregateException)
+        {
+            // A cancellation callback cannot keep a picker wait alive during lifecycle cleanup.
+        }
+    }
+
+    private static void TryCancel(IAsyncInfo operation)
+    {
+        try
+        {
+            operation.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+            // The picker completed while lifecycle cleanup was claiming its registration.
         }
     }
 }

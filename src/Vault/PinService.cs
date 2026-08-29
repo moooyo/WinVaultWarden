@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Core.Abstractions;
+using Core.Models;
 using Core.Services;
 using Crypto;
 
@@ -32,13 +33,13 @@ public sealed class PinService : IPinService
         using var userKey = copiedKey;
         if (!_tokenStore.TryLoad(out var persisted)
             || persisted.AccountId != lease.AccountId
-            || persisted.Origin != lease.Origin
+            || persisted.Endpoints != lease.Endpoints
             || persisted.Generation != lease.Generation)
             throw new InvalidOperationException("No matching saved session.");
 
         var pinKey = _crypto.DeriveMasterKey(
             pin,
-            persisted.Email,
+            MasterPasswordSaltPolicy.NormalizeEmail(persisted.Email),
             persisted.KdfType,
             persisted.KdfIterations,
             persisted.KdfMemory,
@@ -65,7 +66,7 @@ public sealed class PinService : IPinService
         var lease = _session.CaptureLease();
         if (!_tokenStore.TryLoad(out var persisted)
             || persisted.AccountId != lease.AccountId
-            || persisted.Origin != lease.Origin
+            || persisted.Endpoints != lease.Endpoints
             || persisted.Generation != lease.Generation)
             return;
 

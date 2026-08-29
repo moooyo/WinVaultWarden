@@ -1,5 +1,8 @@
 using Api;
 using Api.Dtos;
+using Core.Enums;
+using Core.Models;
+using Core.Session;
 
 namespace Vault.Tests;
 
@@ -67,15 +70,18 @@ public sealed class BlockingAttachmentApiClient(
     public Task<CipherDto> GetCipherAsync(
         string cipherId, CancellationToken ct = default) =>
         getCipher(ct);
-    public Task<AttachmentUploadV2Response> CreateAttachmentV2Async(
+    public Task<AuthenticatedWriteReceipt<AttachmentUploadV2Response>> CreateAttachmentV2Async(
         string cipherId,
         AttachmentUploadRequest request,
         CancellationToken ct = default) =>
         throw new NotSupportedException();
     public Task UploadAttachmentDataAsync(
+        FileUploadType fileUploadType,
         string uploadUrl,
+        string cipherId,
+        string attachmentId,
         string encryptedFileName,
-        byte[] encryptedBuffer,
+        StreamUploadContent encryptedContent,
         CancellationToken ct = default) =>
         throw new NotSupportedException();
     public Task DeleteAttachmentAsync(
@@ -83,7 +89,7 @@ public sealed class BlockingAttachmentApiClient(
         string attachmentId,
         CancellationToken ct = default) =>
         throw new NotSupportedException();
-    public Task<byte[]> DownloadAttachmentBytesAsync(
+    public Task<DownloadContent> OpenAttachmentDownloadAsync(
         string downloadUrl,
         CancellationToken ct = default) =>
         throw new NotSupportedException();

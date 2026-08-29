@@ -247,9 +247,11 @@ public class DevicesViewModelTests
     [Fact]
     public async Task ApproveAsync_ServiceThrowsOperationCanceled_ReturnsCancelledAndPreservesContent()
     {
+        var lifecycleToken = new CancellationToken(canceled: true);
         var fake = new FakeAuthRequestService();
         fake.AddRequest(new PendingAuthRequest("r1", "Android", "1.2.3.4", "2025-01-01T10:00:00Z", "pk"));
-        fake.ApproveOverride = (_, _, _) => Task.FromException(new OperationCanceledException());
+        fake.ApproveOverride = (_, _, _) => Task.FromException(
+            new OperationCanceledException(lifecycleToken));
 
         var vm = new DevicesViewModel(new MockDeviceUiService(), new AuthRequestUiService(fake));
         await vm.RefreshRequestsAsync();
@@ -299,16 +301,72 @@ public class DevicesViewModelTests
     [Fact]
     public async Task ApproveAsync_WhenConfirmationThrowsOperationCanceled_DoesNotApprove_AndItemStays()
     {
+        using var caller = new CancellationTokenSource();
         var fake = new FakeAuthRequestService();
         fake.AddRequest(new PendingAuthRequest("r1", "Android", "1.2.3.4", "2025-01-01T10:00:00Z", "pk"));
         var vm = new DevicesViewModel(new MockDeviceUiService(), new AuthRequestUiService(fake));
         await vm.RefreshRequestsAsync();
         var item = vm.PendingRequests.Single();
 
-        await vm.ApproveAsync(item, (_, _) => throw new OperationCanceledException());
+        await vm.ApproveAsync(
+            item,
+            (_, _) =>
+            {
+                caller.Cancel();
+                throw new OperationCanceledException(caller.Token);
+            },
+            caller.Token);
 
         Assert.Empty(fake.ApprovedIds);
         Assert.Single(vm.PendingRequests);
+    }
+
+    [Fact]
+    public async Task RefreshRequestsAsync_RequestTimeout_ReturnsFailedAndShowsTimeout()
+    {
+        var fake = new FakeAuthRequestService
+        {
+            ListOverride = _ => Task.FromException<IReadOnlyList<PendingAuthRequest>>(
+                RequestTimeout()),
+        };
+        var vm = new DevicesViewModel(
+            new MockDeviceUiService(),
+            new AuthRequestUiService(fake));
+
+        var result = await vm.RefreshRequestsAsync(CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, result.Error);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, vm.Error);
+        Assert.Equal(DataPageState.Error, vm.RequestsState);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task ApproveAsync_RequestTimeout_ReturnsFailedAndPreservesItem()
+    {
+        var fake = new FakeAuthRequestService
+        {
+            ApproveOverride = (_, _, _) => Task.FromException(RequestTimeout()),
+        };
+        fake.AddRequest(new PendingAuthRequest(
+            "r1", "Android", "1.2.3.4", "2025-01-01T10:00:00Z", "pk"));
+        var vm = new DevicesViewModel(
+            new MockDeviceUiService(),
+            new AuthRequestUiService(fake));
+        await vm.RefreshRequestsAsync();
+        var item = Assert.Single(vm.PendingRequests);
+
+        var result = await vm.ApproveAsync(
+            item,
+            (_, _) => Task.FromResult(true),
+            CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, result.Error);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, vm.Error);
+        Assert.Contains(item, vm.PendingRequests);
+        Assert.False(vm.IsBusy);
     }
 
     // ── DenyAsync ────────────────────────────────────────────────────────────
@@ -539,6 +597,13 @@ public class DevicesViewModelTests
     {
         public IReadOnlyList<DeviceItem> GetDevices() => Array.Empty<DeviceItem>();
     }
+
+    private static TaskCanceledException RequestTimeout() => new(
+        "request timed out",
+        new RequestTimeoutException(
+            RequestTimeoutPhase.ControlPlane,
+            TimeSpan.FromSeconds(30)),
+        CancellationToken.None);
 
     /// <summary>可控的 FakeAuthRequestService，支持记录调用参数。</summary>
     private sealed class FakeAuthRequestService : IAuthRequestService

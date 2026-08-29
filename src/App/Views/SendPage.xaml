@@ -16,15 +16,21 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="*" MinHeight="120" />
         </Grid.RowDefinitions>
 
-        <InfoBar x:Name="SendErrorInfoBar"
-                 Grid.Row="0"
-                 IsClosable="True"
-                 Severity="Error"
-                 IsOpen="{x:Bind ViewModel.ShowError, Mode=OneWay}"
-                 Message="{x:Bind ViewModel.Error, Mode=OneWay}" />
+        <StackPanel Grid.Row="0" Spacing="8">
+            <InfoBar x:Name="SendErrorInfoBar"
+                     IsClosable="True"
+                     Severity="Error"
+                     IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
+                     Message="{x:Bind ViewModel.Error, Mode=OneWay}" />
+            <InfoBar x:Name="SendNoticeInfoBar"
+                     IsClosable="True"
+                     Severity="Warning"
+                     IsOpen="{x:Bind ViewModel.ShowNotice, Mode=OneWay}"
+                     Message="{x:Bind ViewModel.Notice, Mode=OneWay}" />
+        </StackPanel>
 
         <Grid Grid.Row="1" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
@@ -59,13 +65,28 @@
                          IsClosable="False"
                          Severity="Warning"
                          Message="密码不正确，请重试。" />
-                <TextBlock Text="{x:Bind ViewModel.ReceivedText, Mode=OneWay}"
-                           TextWrapping="Wrap"
-                           IsTextSelectionEnabled="True"
-                           Visibility="{x:Bind ViewModel.HasReceivedText, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                <Button Content="保存收到的文件"
+                <ScrollViewer x:Name="ReceivedTextScrollViewer"
+                              MaxHeight="240"
+                              VerticalScrollMode="Auto"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollMode="Disabled"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Visibility="{x:Bind ViewModel.HasReceivedText, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <TextBlock x:Name="ReceivedTextBlock"
+                               Text="{x:Bind ViewModel.ReceivedText, Mode=OneWay}"
+                               TextWrapping="Wrap"
+                               IsTextSelectionEnabled="True" />
+                </ScrollViewer>
+                <Button x:Name="SaveReceivedFileButton"
+                        Content="保存收到的文件"
                         Click="OnSaveReceivedFileClick"
                         Visibility="{x:Bind ViewModel.HasReceivedFile, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                <ProgressRing x:Name="ReceivedFileSaveProgressRing"
+                              IsActive="False"
+                              Visibility="Collapsed"
+                              AutomationProperties.Name="正在保存收到的 Send 文件"
+                              AutomationProperties.LiveSetting="Polite"
+                              HorizontalAlignment="Left" />
             </StackPanel>
         </Expander>
 
@@ -110,6 +131,8 @@
                       VerticalAlignment="Top"
                       Margin="0,72,0,0"
                       IsActive="{x:Bind ViewModel.ShowLoading, Mode=OneWay}"
+                      AutomationProperties.Name="正在加载 Send"
+                      AutomationProperties.LiveSetting="Polite"
                       Visibility="{x:Bind ViewModel.ShowLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
         <StackPanel x:Name="SendEmptyPanel"
@@ -141,7 +164,8 @@
                           PointerEntered="OnRowPointerEntered"
                           PointerExited="OnRowPointerExited"
                           GotFocus="OnRowGotFocus"
-                          LostFocus="OnRowLostFocus">
+                          LostFocus="OnRowLostFocus"
+                          Unloaded="OnRowUnloaded">
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup>
                                 <VisualState x:Name="WideColumns">
@@ -193,6 +217,7 @@
                         <StackPanel x:Name="RowActions"
                                     Grid.Column="2" Orientation="Horizontal" Spacing="4"
                                     Opacity="0"
+                                    IsHitTestVisible="False"
                                     HorizontalAlignment="Right" VerticalAlignment="Center">
                             <Button Width="36" Height="32" Padding="0"
                                     AutomationProperties.Name="复制链接"
@@ -214,12 +239,16 @@
                                                 <FontIcon Glyph="&#xE8C8;" />
                                             </MenuFlyoutItem.Icon>
                                         </MenuFlyoutItem>
-                                        <MenuFlyoutItem Text="编辑" Click="OnEditSendClick">
+                                        <MenuFlyoutItem Text="编辑"
+                                                        IsEnabled="{x:Bind CanModify, Mode=OneTime}"
+                                                        Click="OnEditSendClick">
                                             <MenuFlyoutItem.Icon>
                                                 <FontIcon Glyph="&#xE70F;" />
                                             </MenuFlyoutItem.Icon>
                                         </MenuFlyoutItem>
-                                        <MenuFlyoutItem Text="删除" Click="OnDeleteSendClick">
+                                        <MenuFlyoutItem Text="删除"
+                                                        IsEnabled="{x:Bind CanModify, Mode=OneTime}"
+                                                        Click="OnDeleteSendClick">
                                             <MenuFlyoutItem.Icon>
                                                 <FontIcon Glyph="&#xE74D;" />
                                             </MenuFlyoutItem.Icon>

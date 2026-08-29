@@ -58,35 +58,34 @@
                                VerticalAlignment="Center" />
                 </Border>
 
-                <TextBlock Text="创建账户"
-                           Margin="0,16,0,0"
-                           Style="{ThemeResource TitleTextBlockStyle}"
-                           HorizontalAlignment="Center"
-                           TextAlignment="Center" />
+                <StackPanel x:Name="RegisterEditingPanel"
+                            Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Text="创建账户"
+                               Margin="0,16,0,0"
+                               Style="{ThemeResource TitleTextBlockStyle}"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center" />
 
-                <TextBlock Text="注册 Bitwarden / Vaultwarden 账户"
-                           Margin="0,4,0,0"
-                           FontSize="14"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           HorizontalAlignment="Center"
-                           TextAlignment="Center"
-                           TextWrapping="Wrap" />
+                    <TextBlock Text="注册 Bitwarden / Vaultwarden 账户"
+                               Margin="0,4,0,0"
+                               FontSize="14"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap" />
 
-                <!-- 错误提示 -->
-                <InfoBar x:Name="RegisterErrorInfoBar"
-                         Margin="0,18,0,0"
-                         IsOpen="{x:Bind ViewModel.HasOperationError, Mode=OneWay}"
-                         Severity="Error"
-                         Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" />
+                    <InfoBar x:Name="RegisterErrorInfoBar"
+                             Margin="0,18,0,0"
+                             IsOpen="{x:Bind ViewModel.HasOperationError, Mode=OneWay}"
+                             Severity="Error"
+                             Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" />
 
-                <!-- 表单主体:整体随 CanEditForm 禁用(注册进行中禁用全部输入与"返回登录")。
-                     WinUI 的 IsEnabled 属于 Control,StackPanel(Panel)无此属性,故用 ContentControl 承载。 -->
-                <ContentControl x:Name="RegisterInputPanel"
-                                Margin="0,18,0,0"
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Stretch"
-                                IsEnabled="{x:Bind ViewModel.CanEditForm, Mode=OneWay}">
-                    <StackPanel Spacing="14">
+                    <ContentControl x:Name="RegisterInputPanel"
+                                    Margin="0,18,0,0"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch"
+                                    IsEnabled="{x:Bind ViewModel.CanEditForm, Mode=OneWay}">
+                        <StackPanel Spacing="14">
 
                     <!-- 服务器选择 -->
                     <ComboBox x:Name="ServerOptionBox"
@@ -176,8 +175,69 @@
                                      HorizontalAlignment="Center"
                                      Click="OnBackToLoginClick" />
 
-                    </StackPanel>
-                </ContentControl>
+                        </StackPanel>
+                    </ContentControl>
+                </StackPanel>
+
+                <StackPanel x:Name="RegisterEmailVerificationPanel"
+                            Margin="0,16,0,0"
+                            Spacing="12"
+                            Visibility="{x:Bind ViewModel.IsAwaitingEmailVerification, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Text="检查邮箱以继续"
+                               Style="{ThemeResource TitleTextBlockStyle}"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center" />
+                    <TextBlock Text="服务器已接受验证请求。若该地址可用于注册，请按邮件中的链接在 Web Vault 完成流程，然后返回登录。"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="{x:Bind ViewModel.RegisteredEmail, Mode=OneWay}"
+                               FontWeight="SemiBold"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap" />
+                    <Button x:Name="RegisterContinueToLoginButton"
+                            AutomationProperties.AutomationId="RegisterContinueToLoginButton"
+                            Content="验证完成后登录"
+                            Click="OnContinueToLoginClick"
+                            Style="{ThemeResource AccentButtonStyle}"
+                            HorizontalAlignment="Stretch"
+                            MinHeight="40" />
+                    <Button AutomationProperties.AutomationId="RegisterEditEmailButton"
+                            Content="修改邮箱"
+                            Click="OnResumeEditingClick"
+                            HorizontalAlignment="Stretch"
+                            MinHeight="40" />
+                </StackPanel>
+
+                <StackPanel x:Name="RegisterOutcomeUncertainPanel"
+                            Margin="0,16,0,0"
+                            Spacing="12"
+                            Visibility="{x:Bind ViewModel.IsOutcomeUncertain, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Text="注册结果待确认"
+                               Style="{ThemeResource TitleTextBlockStyle}"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center" />
+                    <TextBlock Text="提交期间连接中断，服务器可能已经完成注册。应用不会自动重试，请先尝试登录；若无法登录，再返回修改信息。"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="{x:Bind ViewModel.RegisteredEmail, Mode=OneWay}"
+                               FontWeight="SemiBold"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap" />
+                    <Button x:Name="RegisterUncertainLoginButton"
+                            AutomationProperties.AutomationId="RegisterUncertainLoginButton"
+                            Content="尝试登录"
+                            Click="OnContinueToLoginClick"
+                            Style="{ThemeResource AccentButtonStyle}"
+                            HorizontalAlignment="Stretch"
+                            MinHeight="40" />
+                    <Button AutomationProperties.AutomationId="RegisterUncertainEditButton"
+                            Content="修改信息"
+                            Click="OnResumeEditingClick"
+                            HorizontalAlignment="Stretch"
+                            MinHeight="40" />
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Grid>

@@ -20,13 +20,21 @@ public class TwoFactorServiceTests
     private const string Email = "test@example.com";
     private const string MasterPassword = "correct-horse-battery-staple";
     private const int Iterations = 600_000;
+    private const string CustomSalt = "Case-Sensitive-Salt";
 
     private readonly CryptoService _crypto = new();
 
     // ---- 辅助：构建已持久化（但不需要解锁）的 token store ----
-    private (MemoryTokenStore store, string masterPasswordHash) BuildStore()
+    private (MemoryTokenStore store, string masterPasswordHash) BuildStore(
+        string masterPasswordSalt = Email)
     {
-        var mk = _crypto.DeriveMasterKey(MasterPassword, Email, KdfType.Pbkdf2, Iterations, null, null);
+        var mk = _crypto.DeriveMasterKey(
+            MasterPassword,
+            masterPasswordSalt,
+            KdfType.Pbkdf2,
+            Iterations,
+            null,
+            null);
         var mphash = _crypto.ComputeMasterPasswordHash(mk, MasterPassword);
         CryptographicOperations.ZeroMemory(mk);
 
@@ -40,7 +48,8 @@ public class TwoFactorServiceTests
             KdfType.Pbkdf2,
             Iterations,
             null,
-            null));
+            null,
+            masterPasswordSalt));
 
         return (store, mphash);
     }
@@ -49,7 +58,10 @@ public class TwoFactorServiceTests
     {
         // 2FA 操作是已认证操作（需要活跃会话以获取 lease），但不需要解锁 vault（无需 UserKey）。
         var session = new VaultSession();
-        session.BeginAccountSession("test-account", "test@test.com", new ServerOrigin("https://vault.example"));
+        if (store.TryLoad(out var persisted))
+            session.RestorePersistedSession(persisted);
+        else
+            session.BeginAccountSession("test-account", "test@test.com", new ServerOrigin("https://vault.example"));
         return new TwoFactorService(_crypto, FakeVaultApiClientProvider.ForAuthenticated<ITwoFactorApiClient>(api), session, store);
     }
 
@@ -110,6 +122,21 @@ public class TwoFactorServiceTests
         Assert.Equal(mphash, api.LastPasswordVerify!.MasterPasswordHash);
     }
 
+    [Fact]
+    public async Task BeginTotpSetup_CustomSalt_UsesExactSaltForPasswordHash()
+    {
+        var (store, expectedHash) = BuildStore(CustomSalt);
+        var api = new FakeTwoFactorApiClient();
+        var service = BuildService(store, api);
+
+        await service.BeginTotpSetupAsync(
+            MasterPassword,
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(api.LastPasswordVerify);
+        Assert.Equal(expectedHash, api.LastPasswordVerify.MasterPasswordHash);
+    }
+
     // ============================================================
     // Test 3: BeginTotpSetupAsync — 密码错误时抛 TwoFactorOperationException
     // ============================================================
@@ -148,11 +175,13 @@ public class TwoFactorServiceTests
         };
         var svc = BuildService(store, api);
 
-        var recoveryCode = await svc.EnableTotpAsync(
+        var activation = await svc.EnableTotpAsync(
             MasterPassword, Secret, TotpCode, TestContext.Current.CancellationToken);
 
-        // 返回正确的 recovery code
-        Assert.Equal(ExpectedRecovery, recoveryCode);
+        Assert.True(activation.IsEnabled);
+        Assert.True(activation.HasRecoveryCode);
+        Assert.Equal(RecoveryCodeAvailability.Available, activation.RecoveryCodeAvailability);
+        Assert.Equal(ExpectedRecovery, activation.RecoveryCode);
 
         // EnableAuthenticatorAsync 收到正确请求
         Assert.NotNull(api.LastEnableAuthenticator);
@@ -170,7 +199,7 @@ public class TwoFactorServiceTests
     // ============================================================
 
     [Fact]
-    public async Task EnableTotp_null_recovery_code_returns_empty_string()
+    public async Task EnableTotp_null_recovery_code_returns_committed_without_recovery_code()
     {
         var (store, _) = BuildStore();
         var api = new FakeTwoFactorApiClient
@@ -181,7 +210,94 @@ public class TwoFactorServiceTests
 
         var result = await svc.EnableTotpAsync(MasterPassword, "SECRET", "000000", TestContext.Current.CancellationToken);
 
-        Assert.Equal(string.Empty, result);
+        Assert.True(result.IsEnabled);
+        Assert.False(result.HasRecoveryCode);
+        Assert.Equal(RecoveryCodeAvailability.TemporarilyUnavailable, result.RecoveryCodeAvailability);
+        Assert.Null(result.RecoveryCode);
+        Assert.Equal(1, api.EnableAuthenticatorCalls);
+        Assert.Equal(1, api.GetRecoverCalls);
+    }
+
+    [Fact]
+    public async Task EnableTotp_recovery_read_failure_returns_committed_result()
+    {
+        var (store, _) = BuildStore();
+        var api = new FakeTwoFactorApiClient
+        {
+            GetRecoverException = new HttpRequestException("recovery read failed"),
+        };
+        var svc = BuildService(store, api);
+
+        var result = await svc.EnableTotpAsync(
+            MasterPassword,
+            "SECRET",
+            "000000",
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsEnabled);
+        Assert.False(result.HasRecoveryCode);
+        Assert.Equal(1, api.EnableAuthenticatorCalls);
+        Assert.Equal(1, api.GetRecoverCalls);
+    }
+
+    [Fact]
+    public async Task EnableTotp_recovery_out_of_memory_is_not_downgraded()
+    {
+        var (store, _) = BuildStore();
+        var api = new FakeTwoFactorApiClient
+        {
+            GetRecoverException = new OutOfMemoryException(),
+        };
+        var svc = BuildService(store, api);
+
+        await Assert.ThrowsAsync<OutOfMemoryException>(() => svc.EnableTotpAsync(
+            MasterPassword,
+            "SECRET",
+            "000000",
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal(1, api.EnableAuthenticatorCalls);
+        Assert.Equal(1, api.GetRecoverCalls);
+    }
+
+    [Fact]
+    public async Task EnableTotp_activation_failure_does_not_read_recovery_code()
+    {
+        var (store, _) = BuildStore();
+        var api = new FakeTwoFactorApiClient
+        {
+            EnableAuthenticatorException = new HttpRequestException("activation failed"),
+        };
+        var svc = BuildService(store, api);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => svc.EnableTotpAsync(
+            MasterPassword,
+            "SECRET",
+            "000000",
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal(1, api.EnableAuthenticatorCalls);
+        Assert.Equal(0, api.GetRecoverCalls);
+    }
+
+    [Fact]
+    public async Task GetRecoveryCode_retries_only_recovery_read()
+    {
+        var (store, mphash) = BuildStore();
+        var api = new FakeTwoFactorApiClient
+        {
+            RecoverResponse = new Api.Dtos.RecoverResponse(Code: "retry-recovery-code"),
+        };
+        var svc = BuildService(store, api);
+
+        var result = await svc.GetRecoveryCodeAsync(
+            MasterPassword,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("retry-recovery-code", result);
+        Assert.Equal(0, api.EnableAuthenticatorCalls);
+        Assert.Equal(1, api.GetRecoverCalls);
+        Assert.Equal(mphash, api.LastPasswordVerify?.MasterPasswordHash);
     }
 
     // ============================================================
@@ -348,6 +464,8 @@ public class TwoFactorServiceTests
         await Assert.ThrowsAsync<TwoFactorOperationException>(() =>
             svc.EnableTotpAsync("pw", "SECRET", "000000", TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<TwoFactorOperationException>(() =>
+            svc.GetRecoveryCodeAsync("pw", TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<TwoFactorOperationException>(() =>
             svc.BeginEmailSetupAsync("pw", TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<TwoFactorOperationException>(() =>
             svc.SendEmailAsync("pw", "x@y.com", TestContext.Current.CancellationToken));
@@ -355,5 +473,29 @@ public class TwoFactorServiceTests
             svc.EnableEmailAsync("pw", "x@y.com", "tok", TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<TwoFactorOperationException>(() =>
             svc.DisableAsync("pw", 0, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task BeginTotpSetup_RejectsPersistedSessionFromAnotherAccountBeforeApiCall()
+    {
+        var (store, _) = BuildStore();
+        var session = new VaultSession();
+        session.BeginAccountSession(
+            "account-b",
+            "b@example.com",
+            new ServerOrigin("https://b.example"));
+        var api = new FakeTwoFactorApiClient();
+        var service = new TwoFactorService(
+            _crypto,
+            FakeVaultApiClientProvider.ForAuthenticated<ITwoFactorApiClient>(api),
+            session,
+            store);
+
+        await Assert.ThrowsAsync<TwoFactorOperationException>(() =>
+            service.BeginTotpSetupAsync(
+                MasterPassword,
+                TestContext.Current.CancellationToken));
+
+        Assert.Null(api.LastPasswordVerify);
     }
 }

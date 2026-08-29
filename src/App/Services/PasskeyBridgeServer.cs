@@ -10,75 +10,139 @@ namespace App.Services;
 
 public sealed class PasskeyBridgeServer : IAsyncDisposable
 {
-    private readonly BrowserPasskeyRequestHandler _handler;
+    public const int MaxActiveRequestsPerConnection = 8;
+    public const int MaxConcurrentConnections = 4;
+
+    private readonly Func<BrowserPasskeyRequest, CancellationToken, Task<BrowserPasskeyResponse>> _handleRequestAsync;
     private readonly IPipePeerAuthorizer _peerAuthorizer;
+    private readonly Func<string, CancellationToken, Task> _listenAsync;
+    private readonly SemaphoreSlim _connectionSlots = new(MaxConcurrentConnections, MaxConcurrentConnections);
     private readonly object _gate = new();
     private CancellationTokenSource? _shutdown;
     private Task? _listenTask;
-    // Per-session challenge: minted on Start(), cleared on StopAsync(); every restart rotates it.
-    private string? _sessionNonce;
+    private Task _stopTask = Task.CompletedTask;
+    private Task? _disposeTask;
+    private bool _disposed;
 
     public PasskeyBridgeServer(BrowserPasskeyRequestHandler handler, IPipePeerAuthorizer peerAuthorizer)
     {
-        _handler = handler;
-        _peerAuthorizer = peerAuthorizer;
+        ArgumentNullException.ThrowIfNull(handler);
+        _handleRequestAsync = handler.HandleAsync;
+        _peerAuthorizer = peerAuthorizer ?? throw new ArgumentNullException(nameof(peerAuthorizer));
+        _listenAsync = ListenAsync;
+    }
+
+    // Keeps listener lifecycle and connection dispatch independently testable without weakening the
+    // production constructor or the authenticated named-pipe boundary.
+    internal PasskeyBridgeServer(
+        Func<BrowserPasskeyRequest, CancellationToken, Task<BrowserPasskeyResponse>> handleRequestAsync,
+        IPipePeerAuthorizer peerAuthorizer,
+        Func<string, CancellationToken, Task>? listenAsync = null)
+    {
+        _handleRequestAsync = handleRequestAsync ?? throw new ArgumentNullException(nameof(handleRequestAsync));
+        _peerAuthorizer = peerAuthorizer ?? throw new ArgumentNullException(nameof(peerAuthorizer));
+        _listenAsync = listenAsync ?? ListenAsync;
     }
 
     public bool IsRunning
     {
-        get { lock (_gate) return _listenTask is not null; }
+        get { lock (_gate) return _listenTask is { IsCompleted: false }; }
     }
 
-    // 幂等启动。可重启:每次运行用独立 CTS + 新 nonce,以便 StopAsync 后能再次 Start(浏览器集成开关运行时切换,S5)。
+    // Idempotent and restartable. A completed or faulted listener is reclaimed so a later Start can
+    // recover with an independent cancellation source and a freshly rotated session nonce.
     public void Start()
     {
+        CancellationTokenSource? completedShutdown = null;
         lock (_gate)
         {
-            if (_listenTask is not null)
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            if (_listenTask is { IsCompleted: false })
                 return;
-            _sessionNonce = PasskeyBridgeHandshake.CreateServerNonce();
+
+            if (_listenTask is { } completed)
+            {
+                if (completed.IsFaulted)
+                    _ = completed.Exception;
+                completedShutdown = _shutdown;
+            }
+
+            var sessionNonce = PasskeyBridgeHandshake.CreateServerNonce();
             _shutdown = new CancellationTokenSource();
             var token = _shutdown.Token;
-            var nonce = _sessionNonce;
-            _listenTask = Task.Run(() => ListenAsync(nonce, token));
+            _listenTask = Task.Run(() => _listenAsync(sessionNonce, token));
         }
+
+        completedShutdown?.Dispose();
     }
 
-    // 停止监听并等待排空,复位为可再次 Start 的状态。幂等。取消 listener 和所有连接会话,
-    // 并等待每个连接的 handler tasks 排空后才返回(ListenAsync 的 finally 负责 join)。
+    // Stop listening, cancel every connection, and drain all request handlers before returning.
+    // Fields are cleared under the lifecycle lock so StopAsync remains idempotent and restartable.
     public async Task StopAsync()
     {
-        Task? listen;
-        CancellationTokenSource? cts;
+        Task stopTask;
         lock (_gate)
         {
             if (_listenTask is null)
-                return;
-            listen = _listenTask;
-            cts = _shutdown;
-            _listenTask = null;
-            _shutdown = null;
+            {
+                stopTask = _stopTask;
+            }
+            else
+            {
+                var listen = _listenTask;
+                var cts = _shutdown!;
+                _listenTask = null;
+                _shutdown = null;
+
+                // Retain every in-progress drain. This lets a concurrent StopAsync or DisposeAsync
+                // wait for an earlier listener generation instead of returning while its connections
+                // can still release slots.
+                var priorStop = _stopTask.IsCompletedSuccessfully ? Task.CompletedTask : _stopTask;
+                _stopTask = Task.WhenAll(priorStop, DrainListenerAsync(listen, cts));
+                stopTask = _stopTask;
+            }
         }
 
-        cts!.Cancel();
+        await stopTask.ConfigureAwait(false);
+    }
+
+    private static async Task DrainListenerAsync(Task listen, CancellationTokenSource cts)
+    {
         try
         {
-            await listen!;
+            try
+            {
+                cts.Cancel();
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // Cancellation callback failures must not prevent the listener itself from draining.
+            }
+
+            try
+            {
+                await listen.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // Await observes the historical listener fault. Cleanup converges without surfacing
+                // it a second time; an out-of-memory failure remains fatal and propagates.
+            }
         }
-        catch (OperationCanceledException)
+        finally
         {
-        }
-        cts.Dispose();
-        // 连接取消排空后再清 nonce:任何仍在途的 handshake 已随 CTS 结束,重启必生成新值。
-        lock (_gate)
-        {
-            _sessionNonce = null;
+            cts.Dispose();
         }
     }
 
     private async Task ListenAsync(string sessionNonce, CancellationToken ct)
     {
-        // 追踪每个已接受连接的处理任务,在关机时 join 全部(连接会话内部再 join 自己的并发 handlers)。
+        // Track every accepted connection and join them on shutdown. Each connection in turn drains
+        // its own request handlers before its task completes.
         var connections = new HashSet<Task>();
         var connectionsGate = new object();
         try
@@ -102,8 +166,16 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
                     continue;
                 }
 
-                // 先双向鉴别再交换 nonce/PID,全部在 HandleConnectionAsync 内完成(身份先于任何 hello 字节)。
-                var connection = HandleConnectionAsync(pipe, sessionNonce, ct);
+                // No authenticated response can be sent before the handshake, so an excess connection
+                // is closed immediately. The slot wrapper releases on every exit path, including
+                // handshake rejection, peer disconnect, listener cancellation, and handler failure.
+                if (!_connectionSlots.Wait(0))
+                {
+                    await pipe.DisposeAsync();
+                    continue;
+                }
+
+                var connection = HandleConnectionWithSlotAsync(pipe, sessionNonce, ct);
                 lock (connectionsGate)
                     connections.Add(connection);
                 _ = connection.ContinueWith(
@@ -123,6 +195,21 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
             lock (connectionsGate)
                 pending = [.. connections];
             await Task.WhenAll(pending).ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleConnectionWithSlotAsync(
+        NamedPipeServerStream pipe,
+        string sessionNonce,
+        CancellationToken ct)
+    {
+        try
+        {
+            await HandleConnectionAsync(pipe, sessionNonce, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _connectionSlots.Release();
         }
     }
 
@@ -157,14 +244,15 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
 
     private async Task HandleConnectionAsync(NamedPipeServerStream pipe, string sessionNonce, CancellationToken ct)
     {
-        // 本方法为 fire-and-forget(ListenAsync 里追踪并 join),必须**永不外抛**,否则 join 时成为
-        // 未观察/上抛异常。握手前的一切失败静默 fail-closed;握手后交给可并发的连接会话循环。
+        // This task is tracked but not awaited inline by ListenAsync. It must never throw: every
+        // pre-handshake failure closes silently, while an authenticated peer proceeds to its session.
         await using (pipe)
         {
             PasskeyBridgeSession session;
             try
             {
-                // 身份先验证再 hello:CompleteServerAsync 内先 await 授权,再写 server.hello、读 client.hello。
+                // CompleteServerAsync authorizes the kernel-reported peer before writing or reading
+                // any hello bytes.
                 session = await PasskeyBridgeHandshake.CompleteServerAsync(
                     pipe,
                     sessionNonce,
@@ -175,28 +263,30 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
             }
             catch (OperationCanceledException)
             {
-                return; // 关机/取消:正常路径。
+                return;
             }
             catch (UnauthorizedAccessException)
             {
-                return; // 身份/握手被拒:静默断开(fail-closed)。
+                return;
             }
             catch
             {
-                return; // 握手前的任何失败都没有 session,不回内容。
+                return;
             }
 
             await RunConnectionAsync(pipe, session.Nonce, ct);
         }
     }
 
-    // 单个已认证连接内的并发分发:一个读循环解析 request/cancel,不等待业务任务;每个在途 id
-    // 拥有独立 CTS,响应共用一把写锁;重复 id 拒绝;EOF/nonce 错误取消该连接全部 active 并排空。
-    private async Task RunConnectionAsync(NamedPipeServerStream pipe, string nonce, CancellationToken ct)
+    // One authenticated connection has a non-blocking read loop, per-request cancellation, and a
+    // single response writer. The Stream signature permits transport-level tests without bypassing
+    // the production handshake, which remains exclusively in HandleConnectionAsync.
+    internal async Task RunConnectionAsync(Stream pipe, string nonce, CancellationToken ct)
     {
         using var connectionCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var token = connectionCts.Token;
         var active = new ConcurrentDictionary<string, CancellationTokenSource>(StringComparer.Ordinal);
+        var activeSlots = new SemaphoreSlim(MaxActiveRequestsPerConnection, MaxActiveRequestsPerConnection);
         var writeGate = new SemaphoreSlim(1, 1);
         var handlers = new HashSet<Task>();
         var handlersGate = new object();
@@ -218,13 +308,13 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
                 catch (Exception ex) when (
                     ex is IOException or InvalidDataException or EndOfStreamException or JsonException)
                 {
-                    break; // 管道断开/坏帧(含 JSON 解析失败):结束该连接,finally 取消并排空全部 active。
+                    break; // A disconnect or malformed frame terminates only this connection.
                 }
 
                 if (envelope is null)
-                    break; // EOF
+                    break;
 
-                // 每条消息绑定 nonce:错/重放(含重启后旧 nonce)直接 fail-closed 断开整个连接。
+                // Every envelope is nonce-bound. A mismatch or replay closes the entire connection.
                 if (!PasskeyBridgeHandshake.NonceMatches(envelope.Nonce, nonce))
                     break;
 
@@ -239,12 +329,10 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
                 }
 
                 if (envelope.Id is null)
-                    continue; // 无 id 的业务请求无法路由/取消,忽略。
+                    continue;
 
-                var requestCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-                if (!active.TryAdd(envelope.Id, requestCts))
+                if (active.ContainsKey(envelope.Id))
                 {
-                    requestCts.Dispose();
                     await WriteResponseAsync(
                         pipe,
                         writeGate,
@@ -252,7 +340,29 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
                     continue;
                 }
 
-                var handler = HandleRequestAsync(pipe, writeGate, active, envelope, requestCts, nonce);
+                if (!activeSlots.Wait(0))
+                {
+                    await WriteResponseAsync(
+                        pipe,
+                        writeGate,
+                        BrowserPasskeyResponse.Failure(envelope.Id, PasskeyErrorCodes.RateLimited) with { Nonce = nonce });
+                    continue;
+                }
+
+                var requestCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                if (!active.TryAdd(envelope.Id, requestCts))
+                {
+                    requestCts.Dispose();
+                    activeSlots.Release();
+                    await WriteResponseAsync(
+                        pipe,
+                        writeGate,
+                        BrowserPasskeyResponse.Failure(envelope.Id, PasskeyErrorCodes.RequestInProgress) with { Nonce = nonce });
+                    continue;
+                }
+
+                var handler = HandleRequestAsync(
+                    pipe, writeGate, activeSlots, active, envelope, requestCts, nonce);
                 lock (handlersGate)
                     handlers.Add(handler);
                 _ = handler.ContinueWith(
@@ -268,7 +378,8 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
         }
         finally
         {
-            // 断线/停止:取消每个在途请求让其 handler 观察到取消,然后等全部排空再释放写锁。
+            // Disconnect and shutdown cancel every request, then drain handlers before releasing
+            // connection-scoped synchronization primitives.
             foreach (var requestCts in active.Values)
             {
                 try { requestCts.Cancel(); }
@@ -279,13 +390,15 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
             lock (handlersGate)
                 pending = [.. handlers];
             await Task.WhenAll(pending).ConfigureAwait(false);
+            activeSlots.Dispose();
             writeGate.Dispose();
         }
     }
 
     private async Task HandleRequestAsync(
-        NamedPipeServerStream pipe,
+        Stream pipe,
         SemaphoreSlim writeGate,
+        SemaphoreSlim activeSlots,
         ConcurrentDictionary<string, CancellationTokenSource> active,
         BrowserPasskeyRequest envelope,
         CancellationTokenSource requestCts,
@@ -293,18 +406,18 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
     {
         try
         {
-            var response = await _handler.HandleAsync(envelope, requestCts.Token).ConfigureAwait(false);
-            // 只有请求未被取消才回写:显式 cancel/连接停止都不写迟到响应。
+            var response = await _handleRequestAsync(envelope, requestCts.Token).ConfigureAwait(false);
+            // Explicit cancellation and connection shutdown suppress late responses.
             if (!requestCts.IsCancellationRequested)
                 await WriteResponseAsync(pipe, writeGate, response with { Nonce = nonce }).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            // 取消(客户端 cancel 或连接停止):不回任何内容。
+            // Cancellation is terminal and produces no response.
         }
         catch
         {
-            // 握手已完成后处理请求失败:尽力回一个绑定 nonce 的 code-only 错误(不外泄内部消息)。
+            // After authentication, report a best-effort nonce-bound code-only error.
             try
             {
                 if (!requestCts.IsCancellationRequested)
@@ -316,33 +429,36 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
             }
             catch
             {
-                // 回错误也失败(管道已断开等):吞掉,绝不外抛。
+                // The peer disconnected while the error was being written.
             }
         }
         finally
         {
             if (envelope.Id is not null && active.TryRemove(envelope.Id, out var removed))
+            {
                 removed.Dispose();
+                activeSlots.Release();
+            }
         }
     }
 
-    // 单连接内所有响应共用一把写锁,避免并发帧交错;帧本身用 None 写以保证不会写半帧撕裂协议。
+    // One connection serializes every response. Once the gate is held, CancellationToken.None keeps
+    // a cancellation from tearing a length-prefixed frame in half.
     private static async Task WriteResponseAsync(
-        NamedPipeServerStream pipe,
+        Stream pipe,
         SemaphoreSlim writeGate,
         BrowserPasskeyResponse response)
     {
         await writeGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (pipe.IsConnected)
-                await BrowserPasskeyMessageProtocol.WriteAsync(
-                    pipe, response, PasskeyJsonContext.Default.BrowserPasskeyResponse, CancellationToken.None)
-                    .ConfigureAwait(false);
+            await BrowserPasskeyMessageProtocol.WriteAsync(
+                pipe, response, PasskeyJsonContext.Default.BrowserPasskeyResponse, CancellationToken.None)
+                .ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
-            // 对端已断开:该连接无法再投递,忽略。
+            // The peer disconnected; this connection cannot deliver another frame.
         }
         finally
         {
@@ -350,5 +466,29 @@ public sealed class PasskeyBridgeServer : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync() => await StopAsync();
+    public ValueTask DisposeAsync()
+    {
+        lock (_gate)
+        {
+            if (_disposeTask is null)
+            {
+                _disposed = true;
+                _disposeTask = DisposeCoreAsync();
+            }
+
+            return new ValueTask(_disposeTask);
+        }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        try
+        {
+            await StopAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _connectionSlots.Dispose();
+        }
+    }
 }

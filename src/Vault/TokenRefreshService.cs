@@ -15,21 +15,47 @@ public sealed class TokenRefreshService : ITokenRefresher
     private readonly IVaultApiClientProvider _clients;
     private readonly VaultSession _session;
     private readonly ITokenStore _tokenStore;
+    private readonly ISessionTerminationSink? _termination;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public TokenRefreshService(
         IVaultApiClientProvider clients,
         VaultSession session,
-        ITokenStore tokenStore)
+        ITokenStore tokenStore,
+        ISessionTerminationSink? termination = null)
     {
         _clients = clients;
         _session = session;
         _tokenStore = tokenStore;
+        _termination = termination;
     }
 
     public async Task<bool> TryRefreshAsync(
         VaultSessionLease lease,
+        CancellationToken ct = default) =>
+        await TryRefreshCoreAsync(lease, null, ct).ConfigureAwait(false);
+
+    public async Task<bool> TryRefreshAsync(
+        VaultSessionLease lease,
+        AccessTokenBinding failedAuthorization,
         CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(failedAuthorization);
+        if (failedAuthorization.AccountId != lease.AccountId
+            || failedAuthorization.Endpoints != lease.Endpoints
+            || failedAuthorization.Generation != lease.Generation)
+            return false;
+
+        return await TryRefreshCoreAsync(
+            lease,
+            failedAuthorization,
+            ct).ConfigureAwait(false);
+    }
+
+    private async Task<bool> TryRefreshCoreAsync(
+        VaultSessionLease lease,
+        AccessTokenBinding? failedAuthorization,
+        CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(lease);
 
@@ -47,16 +73,18 @@ public sealed class TokenRefreshService : ITokenRefresher
             if (!_session.TryGetTokenSnapshot(
                     lease, out var currentAccess, out refreshToken))
                 return false;
-            if (!string.Equals(currentAccess, beforeAccess, StringComparison.Ordinal))
+            var failedToken = failedAuthorization?.Token ?? beforeAccess;
+            if (!string.Equals(currentAccess, failedToken, StringComparison.Ordinal))
                 return true;
             if (string.IsNullOrWhiteSpace(refreshToken)
                 || !_tokenStore.TryLoad(out var persisted)
+                || !persisted.HasValidBinding
                 || persisted.AccountId != lease.AccountId
-                || persisted.Origin != lease.Origin
+                || persisted.Endpoints != lease.Endpoints
                 || persisted.Generation != lease.Generation)
                 return false;
 
-            var api = _clients.GetAnonymous<IIdentityApiClient>(lease.Origin);
+            var api = _clients.GetAnonymous<IIdentityApiClient>(lease.Endpoints);
             var result = await api.ConnectTokenAsync(
                 ConnectTokenRequest.Refresh(
                     refreshToken!,
@@ -82,8 +110,13 @@ public sealed class TokenRefreshService : ITokenRefresher
             // B1：仅当服务端明确判定 refresh token 失效（invalid_grant，见 vaultwarden identity.rs）
             // 且原始 lease 仍 current 时，rotation-first 锁定当前会话并清敏感状态。
             // 陈旧 lease 的响应（stale A）绝不锁定已切换的新会话（B）。
-            if (result is ConnectTokenResult.Error { ErrorCode: "invalid_grant" })
-                _session.TryCommit(lease, () => _session.Lock());
+            if (result is ConnectTokenResult.Error { ErrorCode: "invalid_grant" }
+                && _session.TryLockIfCurrent(lease, out var invalidatedLease))
+            {
+                _termination?.Request(new SessionTerminationNotice(
+                    SessionTerminationReason.InvalidRefreshToken,
+                    invalidatedLease!));
+            }
             return false;
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)

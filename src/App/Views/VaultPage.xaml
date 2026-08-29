@@ -143,16 +143,37 @@
                 </VisualState>
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="VaultListColumn" Width="360" />
             <ColumnDefinition x:Name="VaultDetailColumn" Width="*" />
         </Grid.ColumnDefinitions>
 
+        <StackPanel x:Name="VaultBusyPanel"
+                    Grid.Row="0"
+                    Grid.ColumnSpan="2"
+                    Margin="12,8,12,0"
+                    HorizontalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <ProgressRing x:Name="VaultBusyRing"
+                          Width="20"
+                          Height="20"
+                          AutomationProperties.AutomationId="VaultBusyRing"
+                          IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
+            <TextBlock Text="{x:Bind ViewModel.BusyMessage, Mode=OneWay}"
+                       VerticalAlignment="Center"
+                       AutomationProperties.LiveSetting="Polite" />
+        </StackPanel>
+
         <!-- 列表 -->
-        <Grid x:Name="VaultListPane" Grid.Column="0" Padding="12" RowSpacing="10"
+        <Grid x:Name="VaultListPane" Grid.Row="1" Grid.Column="0" Padding="12" RowSpacing="10"
               BorderThickness="0,0,1,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -181,23 +202,7 @@
                 </Button>
             </Grid>
 
-            <!-- 页面级 busy live region:任意 Vault 操作(同步/保存/删除/文件夹/批量/附件)在途时统一显示。 -->
-            <StackPanel x:Name="VaultBusyPanel"
-                        Grid.Row="1"
-                        Orientation="Horizontal"
-                        Spacing="8"
-                        Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <ProgressRing x:Name="VaultBusyRing"
-                              Width="20"
-                              Height="20"
-                              AutomationProperties.AutomationId="VaultBusyRing"
-                              IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
-                <TextBlock Text="{x:Bind ViewModel.BusyMessage, Mode=OneWay}"
-                           VerticalAlignment="Center"
-                           AutomationProperties.LiveSetting="Polite" />
-            </StackPanel>
-
-            <CommandBar Grid.Row="2" DefaultLabelPosition="Right" HorizontalAlignment="Left"
+            <CommandBar Grid.Row="1" DefaultLabelPosition="Right" HorizontalAlignment="Left"
                         Background="Transparent">
                 <AppBarButton x:Name="AddCipherButton" Icon="Add" Label="新增"
                               IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}">
@@ -269,7 +274,7 @@
                               IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.HasSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                               Visibility="{x:Bind ViewModel.IsTrashFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
             </CommandBar>
-            <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="12" Margin="0,4,0,0"
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="12" Margin="0,4,0,0"
                         Visibility="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                 <TextBlock VerticalAlignment="Center"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -277,7 +282,7 @@
                 <TextBlock VerticalAlignment="Center" Text="项已选" />
                 <Button Content="完成" Command="{x:Bind ViewModel.ToggleSelectionModeCommand}" />
             </StackPanel>
-            <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="8"
+            <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8"
                         Visibility="{x:Bind ViewModel.IsFolderFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                 <Button x:Name="RenameFolderButton" Content="重命名文件夹" Click="OnRenameFolderClick"
                         IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}" />
@@ -286,13 +291,20 @@
             </StackPanel>
 
             <!-- 筛选栏:分面 ToggleButton + 排序 + 保存视图 + 保存/清除 -->
-            <StackPanel Grid.Row="3" Spacing="8" Margin="0,4,0,0">
+            <StackPanel Grid.Row="2" Spacing="8" Margin="0,4,0,0">
                 <InfoBar x:Name="VaultOfflineInfoBar"
                          Severity="Warning"
-                         IsOpen="{x:Bind ViewModel.DataStale, Mode=OneWay}"
+                         IsOpen="{x:Bind ViewModel.ShowDataStaleInfo, Mode=OneWay}"
                          IsClosable="False"
                          Title="离线"
                          Message="显示的是上次同步的数据,可能已过期。" />
+                <InfoBar x:Name="VaultCommittedWarningInfoBar"
+                         Severity="Warning"
+                         IsOpen="{x:Bind ViewModel.HasOperationWarning, Mode=OneWay}"
+                         IsClosable="False"
+                         Title="已保存，需要同步"
+                         Message="{x:Bind ViewModel.OperationWarning, Mode=OneWay}"
+                         AutomationProperties.LiveSetting="Polite" />
                 <InfoBar x:Name="VaultSkippedInfoBar"
                          Severity="Informational"
                          IsClosable="True"
@@ -405,7 +417,7 @@
                 </Grid>
             </StackPanel>
 
-            <ListView Grid.Row="6"
+            <ListView Grid.Row="5"
                       x:Name="CipherList"
                       ItemsSource="{x:Bind ViewModel.FilteredItems, Mode=OneWay}"
                       SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
@@ -419,7 +431,8 @@
                               PointerEntered="OnRowPointerEntered"
                               PointerExited="OnRowPointerExited"
                               GotFocus="OnRowGotFocus"
-                              LostFocus="OnRowLostFocus">
+                              LostFocus="OnRowLostFocus"
+                              Unloaded="OnRowUnloaded">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
@@ -449,6 +462,7 @@
                                         Orientation="Horizontal"
                                         Spacing="2"
                                         Opacity="0"
+                                        IsHitTestVisible="False"
                                         VerticalAlignment="Center">
                                 <Button Style="{StaticResource IconButtonStyle}"
                                         AutomationProperties.Name="复制"
@@ -499,7 +513,7 @@
             </ListView>
 
             <InfoBar x:Name="VaultErrorInfoBar"
-                     Grid.Row="6"
+                     Grid.Row="5"
                      VerticalAlignment="Top"
                      IsClosable="True"
                      Severity="Error"
@@ -507,7 +521,7 @@
                      Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" />
 
             <StackPanel x:Name="VaultEmptyPanel"
-                        Grid.Row="6"
+                        Grid.Row="5"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Center"
                         Spacing="{StaticResource SpacingMedium}"
@@ -525,7 +539,7 @@
             </StackPanel>
 
             <StackPanel x:Name="VaultNoResultsPanel"
-                        Grid.Row="6"
+                        Grid.Row="5"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Center"
                         Spacing="{StaticResource SpacingMedium}"
@@ -542,13 +556,13 @@
                            HorizontalAlignment="Center" />
             </StackPanel>
 
-            <TextBlock Grid.Row="6" Text="回收站为空" Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+            <TextBlock Grid.Row="5" Text="回收站为空" Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                        Margin="0,8" HorizontalAlignment="Center"
                        Visibility="{x:Bind ViewModel.IsTrashEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
         </Grid>
 
         <!-- 详情 -->
-        <Grid x:Name="VaultDetailPane" Grid.Column="1">
+        <Grid x:Name="VaultDetailPane" Grid.Row="1" Grid.Column="1">
         <ScrollViewer Padding="16">
             <StackPanel Spacing="12" MaxWidth="720" HorizontalAlignment="Stretch">
                 <!-- 窄屏详情态返回列表入口:仅 NarrowDetail 可见,由 code-behind 切换。 -->
@@ -646,9 +660,10 @@
                                 <PasswordBox Header="密码"
                                              HorizontalAlignment="Stretch"
                                              Password="{x:Bind ViewModel.EditorDraft.Login.Password, Mode=TwoWay}" />
-                                <TextBox Header="验证器密钥"
-                                         HorizontalAlignment="Stretch"
-                                         Text="{x:Bind ViewModel.EditorDraft.Login.Totp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <PasswordBox x:Name="TotpSecretEditor"
+                                             Header="验证器密钥"
+                                             HorizontalAlignment="Stretch"
+                                             Password="{x:Bind ViewModel.EditorDraft.Login.Totp, Mode=TwoWay}" />
                                 <TextBox Header="网站（URI）"
                                          HorizontalAlignment="Stretch"
                                          Text="{x:Bind ViewModel.EditorDraft.Login.PrimaryUri, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -790,9 +805,28 @@
                                                     <TextBox Header="名称"
                                                              HorizontalAlignment="Stretch"
                                                              Text="{x:Bind Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                    <TextBox Header="值"
+                                                    <ComboBox x:Name="CustomFieldTypeBox"
+                                                              Header="类型"
+                                                              HorizontalAlignment="Stretch"
+                                                              SelectedIndex="{x:Bind TypeIndex, Mode=TwoWay}">
+                                                        <ComboBoxItem Content="文本" Tag="Text" />
+                                                        <ComboBoxItem Content="隐藏" Tag="Hidden" />
+                                                        <ComboBoxItem Content="布尔值" Tag="Boolean" />
+                                                    </ComboBox>
+                                                    <TextBox x:Name="CustomFieldTextValueBox"
+                                                             Header="值"
                                                              HorizontalAlignment="Stretch"
-                                                             Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                             Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                             x:Load="{x:Bind IsText, Mode=OneWay}" />
+                                                    <PasswordBox x:Name="CustomFieldHiddenValueBox"
+                                                                 Header="值"
+                                                                 HorizontalAlignment="Stretch"
+                                                                 Password="{x:Bind Value, Mode=TwoWay}"
+                                                                 x:Load="{x:Bind IsHidden, Mode=OneWay}" />
+                                                    <CheckBox x:Name="CustomFieldBooleanValueCheckBox"
+                                                              Content="已启用"
+                                                              IsChecked="{x:Bind BooleanValue, Mode=TwoWay}"
+                                                              x:Load="{x:Bind IsBoolean, Mode=OneWay}" />
                                                 </StackPanel>
                                                 <Button x:Name="RemoveCustomFieldButton"
                                                         Grid.Column="1"

@@ -1,3 +1,4 @@
+using Api;
 using App.Services;
 using Core.Enums;
 using Core.Models;
@@ -113,6 +114,28 @@ public sealed class ItemRepromptGateTests
         Assert.False(gate.IsAuthorized(policy));
     }
 
+    [Fact]
+    public async Task RequestTimeout_ReturnsFailureInsteadOfCancelled()
+    {
+        var session = new VaultSession();
+        session.BeginAccountSession(
+            "account-a",
+            "a@example.com",
+            new ServerOrigin("https://vault.example"));
+        var gate = new ItemRepromptGate(new TimeoutAccountVerifier(), session);
+        var policy = new CipherAccessPolicy("a", true);
+
+        var result = await gate.AuthorizeAsync(
+            policy,
+            SensitiveItemAction.Edit,
+            _ => Task.FromResult<string?>("correct"),
+            CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, result.Error);
+        Assert.False(gate.IsAuthorized(policy));
+    }
+
     private sealed class AccountVerifier(string accepted) : IAccountService
     {
         public Task<bool> VerifyMasterPasswordAsync(string password, CancellationToken ct = default) =>
@@ -120,5 +143,29 @@ public sealed class ItemRepromptGateTests
         public Task UpdateNameAsync(string name, CancellationToken ct = default) => throw new NotSupportedException();
         public Task ChangePasswordAsync(string currentPassword, string newPassword, string? hint, CancellationToken ct = default) => throw new NotSupportedException();
         public Task ChangeKdfAsync(string currentPassword, int newIterations, CancellationToken ct = default) => throw new NotSupportedException();
+    }
+
+    private sealed class TimeoutAccountVerifier : IAccountService
+    {
+        public Task<bool> VerifyMasterPasswordAsync(
+            string password,
+            CancellationToken ct = default) => Task.FromException<bool>(new TaskCanceledException(
+                "request timed out",
+                new RequestTimeoutException(
+                    RequestTimeoutPhase.ControlPlane,
+                    TimeSpan.FromSeconds(30)),
+                CancellationToken.None));
+
+        public Task UpdateNameAsync(string name, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task ChangePasswordAsync(
+            string currentPassword,
+            string newPassword,
+            string? hint,
+            CancellationToken ct = default) => throw new NotSupportedException();
+        public Task ChangeKdfAsync(
+            string currentPassword,
+            int newIterations,
+            CancellationToken ct = default) => throw new NotSupportedException();
     }
 }

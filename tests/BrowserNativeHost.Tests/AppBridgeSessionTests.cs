@@ -61,6 +61,42 @@ public class AppBridgeSessionTests
     }
 
     [Fact]
+    public async Task PendingLimit_RejectsNinthAndReusesReleasedSlot()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var ct = cts.Token;
+        await using var duplex = new Duplex();
+        await using var session = NewSession(duplex);
+        var ids = Enumerable.Range(1, AppBridgeSession.MaxPendingRequests + 2)
+            .Select(value => value.ToString("x32"))
+            .ToArray();
+        var pending = new List<Task<BrowserPasskeyResponse>>();
+
+        foreach (var id in ids.Take(AppBridgeSession.MaxPendingRequests))
+        {
+            pending.Add(session.SendAsync(Request(id), ct));
+            Assert.Equal(id, (await ReadInboundAsync(duplex.Server, ct)).Id);
+        }
+
+        var rejected = await session.SendAsync(Request(ids[AppBridgeSession.MaxPendingRequests]), ct);
+        Assert.False(rejected.Ok);
+        Assert.Equal(PasskeyErrorCodes.RateLimited, rejected.Error?.Code);
+
+        await WriteResponseAsync(duplex.Server, Response(ids[0]), ct);
+        Assert.True((await pending[0]).Ok);
+
+        var replacement = session.SendAsync(Request(ids[^1]), ct);
+        Assert.Equal(ids[^1], (await ReadInboundAsync(duplex.Server, ct)).Id);
+
+        foreach (var id in ids.Skip(1).Take(AppBridgeSession.MaxPendingRequests - 1))
+            await WriteResponseAsync(duplex.Server, Response(id), ct);
+        await WriteResponseAsync(duplex.Server, Response(ids[^1]), ct);
+
+        var completed = await Task.WhenAll(pending.Skip(1).Append(replacement));
+        Assert.All(completed, response => Assert.True(response.Ok));
+    }
+
+    [Fact]
     public async Task Cancellation_RemovesPendingAndWritesCancelFrame()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -97,24 +133,113 @@ public class AppBridgeSessionTests
         await Assert.ThrowsAsync<IOException>(() => task);
     }
 
-    // Browser-task-7 remediation (review L1): a failure raised by the connect FACTORY itself — this
-    // request never reached a connected App at all (no listener yet, handshake failure, etc.) — must
-    // be told apart from Disconnect_FailsPendingWithIoException above, where the connection WAS
-    // established and only lost later. EnsureConnectedAsync wraps the former as
-    // AppBridgeConnectFailedException so NativeMessagingSession can map only this case to
-    // client_not_handled (the sole fallback trigger) while the latter stays a plain IOException and
-    // maps to operation_aborted (never falls back).
     [Fact]
-    public async Task ConnectFactoryFailure_WrapsAsAppBridgeConnectFailedException()
+    public async Task TeardownRace_DoesNotFailRequestReservedForReplacementConnection()
+    {
+        const string replacementNonce = "replacement-nonce-BBBBBBBBBBBBBBBBBBBBBBBBBB";
+        const string firstId = "00000000000000000000000000000031";
+        const string replacementId = "00000000000000000000000000000032";
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var ct = cts.Token;
+        await using var first = new Duplex();
+        await using var replacement = new Duplex();
+        var teardownEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseTeardown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var replacementSlotReserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var teardownCount = 0;
+        var connectCount = 0;
+        var hooks = new AppBridgeSessionTestHooks
+        {
+            PendingSlotReserved = id =>
+            {
+                if (id == replacementId)
+                    replacementSlotReserved.TrySetResult();
+            },
+            ConnectionFaultedBeforePendingFailureAsync = () =>
+            {
+                if (Interlocked.Increment(ref teardownCount) != 1)
+                    return Task.CompletedTask;
+
+                teardownEntered.TrySetResult();
+                return releaseTeardown.Task;
+            },
+        };
+        await using var session = new AppBridgeSession(
+            _ => Interlocked.Increment(ref connectCount) switch
+            {
+                1 => Task.FromResult(new AppBridgeConnection(first.Client, Nonce, NoopAsyncDisposable.Instance)),
+                2 => Task.FromResult(new AppBridgeConnection(
+                    replacement.Client,
+                    replacementNonce,
+                    NoopAsyncDisposable.Instance)),
+                _ => throw new InvalidOperationException("Unexpected App bridge reconnect."),
+            },
+            hooks);
+
+        var disconnected = session.SendAsync(Request(firstId), ct);
+        Assert.Equal(firstId, (await ReadInboundAsync(first.Server, ct)).Id);
+        first.CompleteServerToClient();
+        await teardownEntered.Task.WaitAsync(ct);
+
+        // Reserve a second request while the old read loop is paused after publishing Faulted but
+        // before it fails its own pending entries. A global id-only sweep would steal this request's
+        // completion before it can be written to the replacement connection.
+        var survivesReconnect = session.SendAsync(Request(replacementId), ct);
+        await replacementSlotReserved.Task.WaitAsync(ct);
+        Assert.False(survivesReconnect.IsCompleted);
+
+        releaseTeardown.TrySetResult();
+        await Assert.ThrowsAsync<IOException>(() => disconnected);
+
+        var inbound = await ReadInboundAsync(replacement.Server, ct);
+        Assert.Equal(replacementId, inbound.Id);
+        Assert.Equal(replacementNonce, inbound.Nonce);
+        await WriteResponseAsync(
+            replacement.Server,
+            Response(replacementId) with { Nonce = replacementNonce },
+            ct);
+
+        var response = await survivesReconnect;
+        Assert.True(response.Ok);
+        Assert.Equal(replacementId, response.Id);
+        Assert.Equal(2, Volatile.Read(ref connectCount));
+    }
+
+    // A generic session cannot prove which connect phase produced a timeout. Only the production
+    // named-pipe client's explicit AppBridgeConnectFailedException marker may enable fallback.
+    [Fact]
+    public async Task UnclassifiedConnectFactoryTimeout_IsNotWrappedForFallback()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var ct = cts.Token;
         var inner = new TimeoutException("Timed out connecting to the WinVaultWarden passkey bridge.");
         await using var session = new AppBridgeSession(_ => throw inner);
 
-        var wrapped = await Assert.ThrowsAsync<AppBridgeConnectFailedException>(
+        var thrown = await Assert.ThrowsAsync<TimeoutException>(
             () => session.SendAsync(Request("00000000000000000000000000000f0"), ct));
-        Assert.Same(inner, wrapped.InnerException);
+        Assert.Same(inner, thrown);
+    }
+
+    public static IEnumerable<object[]> IntegrityFailures()
+    {
+        yield return [new UnauthorizedAccessException("Peer identity rejected.")];
+        yield return [new InvalidDataException("Handshake frame was malformed.")];
+        yield return [new IOException("Handshake transport failed.")];
+    }
+
+    [Theory]
+    [MemberData(nameof(IntegrityFailures))]
+    public async Task ConnectFactoryIntegrityFailure_IsNotWrappedForFallback(Exception failure)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var session = new AppBridgeSession(
+            _ => Task.FromException<AppBridgeConnection>(failure));
+
+        var thrown = await Record.ExceptionAsync(
+            () => session.SendAsync(Request("00000000000000000000000000000f2"), cts.Token));
+
+        Assert.Same(failure, thrown);
+        Assert.IsNotType<AppBridgeConnectFailedException>(thrown);
     }
 
     [Fact]

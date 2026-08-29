@@ -22,7 +22,7 @@ public interface IAppPasskeyBridgeClient : IAsyncDisposable
 /// </summary>
 public sealed class NamedPipeAppPasskeyBridgeClient : IAppPasskeyBridgeClient
 {
-    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan BridgePhaseTimeout = TimeSpan.FromSeconds(2);
 
     // The App entry point ships next to the host (portable root), so its expected path is stable.
     private static readonly string AppExecutablePath =
@@ -52,9 +52,6 @@ public sealed class NamedPipeAppPasskeyBridgeClient : IAppPasskeyBridgeClient
 
     private async Task<AppBridgeConnection> ConnectAsync(CancellationToken ct)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(ConnectTimeout);
-
         var pipe = new NamedPipeClientStream(
             ".",
             BrowserPasskeyBridge.PipeName,
@@ -63,20 +60,45 @@ public sealed class NamedPipeAppPasskeyBridgeClient : IAppPasskeyBridgeClient
 
         try
         {
-            await pipe.ConnectAsync(timeout.Token);
+            using (var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                connectTimeout.CancelAfter(BridgePhaseTimeout);
+                try
+                {
+                    await pipe.ConnectAsync(connectTimeout.Token);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    // This is the only fallback-enabling classification point: the pipe was never
+                    // connected, so no App listener could have started this request.
+                    throw new AppBridgeConnectFailedException(
+                        new TimeoutException("Timed out connecting to the WinVaultWarden passkey bridge."));
+                }
+            }
+
             // Verify the server identity from the pipe kernel object, then exchange nonces — never
             // trust a self-reported PID, and never send anything before identity is established.
-            var session = await PasskeyBridgeHandshake.CompleteClientAsync(
-                pipe,
-                (uint)Environment.ProcessId,
-                innerCt => _peerAuthorizer.AuthorizeServerAsync(pipe, AppExecutablePath, innerCt),
-                timeout.Token);
+            PasskeyBridgeSession session;
+            using (var handshakeTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                handshakeTimeout.CancelAfter(BridgePhaseTimeout);
+                try
+                {
+                    session = await PasskeyBridgeHandshake.CompleteClientAsync(
+                        pipe,
+                        (uint)Environment.ProcessId,
+                        innerCt => _peerAuthorizer.AuthorizeServerAsync(pipe, AppExecutablePath, innerCt),
+                        handshakeTimeout.Token);
+                }
+                catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+                {
+                    // A peer accepted the connection but did not complete the authenticated handshake.
+                    // Treat that as an aborted/integrity failure, never as permission to fall back.
+                    throw new IOException("Timed out completing the App passkey bridge handshake.", ex);
+                }
+            }
+
             return new AppBridgeConnection(pipe, session.Nonce, pipe);
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            await pipe.DisposeAsync();
-            throw new TimeoutException("Timed out connecting to the WinVaultWarden passkey bridge.");
         }
         catch
         {

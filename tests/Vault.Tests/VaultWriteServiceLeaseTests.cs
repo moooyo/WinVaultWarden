@@ -57,7 +57,7 @@ public class VaultWriteServiceLeaseTests
         public Task BulkHardDeleteCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) => throw new NotSupportedException();
         public Task BulkRestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) => throw new NotSupportedException();
         public Task BulkMoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task CreateFolderAsync(FolderRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task CreateFolderAsync(FolderRequest request, CancellationToken ct = default) => BlockAsync("create-folder");
         public Task UpdateFolderAsync(string folderId, FolderRequest request, CancellationToken ct = default) => throw new NotSupportedException();
         public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => throw new NotSupportedException();
         public Task ImportCiphersAsync(ImportRequest request, CancellationToken ct = default) => throw new NotSupportedException();
@@ -68,6 +68,7 @@ public class VaultWriteServiceLeaseTests
     {
         public List<VaultSessionLease?> Leases { get; } = new();
         public int Calls => Leases.Count;
+        public Exception? Failure { get; init; }
 
         public Task<IReadOnlyList<Cipher>> SyncAsync(CancellationToken ct = default)
         {
@@ -78,7 +79,29 @@ public class VaultWriteServiceLeaseTests
         public Task<IReadOnlyList<Cipher>> SyncAsync(VaultSessionLease lease, CancellationToken ct = default)
         {
             Leases.Add(lease);
+            if (Failure is not null)
+                throw Failure;
             return Task.FromResult<IReadOnlyList<Cipher>>(Array.Empty<Cipher>());
+        }
+    }
+
+    private sealed class SwitchingProvider(
+        VaultSession session,
+        IVaultWriteApiClient api) : IVaultApiClientProvider
+    {
+        public TClient GetAnonymous<TClient>(ServerOrigin origin)
+            where TClient : class, IAnonymousApiRole =>
+            throw new NotSupportedException();
+
+        public TClient GetAuthenticated<TClient>(VaultSessionLease lease)
+            where TClient : class, IAuthenticatedApiRole
+        {
+            var next = session.BeginAccountSession(
+                "account-b",
+                "b@example.com",
+                new ServerOrigin("https://b.example"));
+            session.TryCommit(next, () => session.SetUnlockedKey(NewKey()));
+            return (TClient)(object)api;
         }
     }
 
@@ -183,5 +206,52 @@ public class VaultWriteServiceLeaseTests
         Assert.Equal("create", Assert.Single(api.Calls));
         // 同步走 lease 重载,且携带的正是请求的原始 lease。
         Assert.Same(lease, Assert.Single(sync.Leases));
+    }
+
+    [Fact]
+    public async Task SaveCipher_ResyncOutOfMemory_IsNotWrappedAsCommittedWarning()
+    {
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession("account-a", "a@test.com", new ServerOrigin("https://vault.example"));
+        session.SetUnlockedKey(NewKey());
+
+        var api = new BlockingWriteApi();
+        api.Release();
+        var sync = new RecordingSync { Failure = new OutOfMemoryException() };
+        var service = NewService(session, api, sync);
+
+        await Assert.ThrowsAsync<OutOfMemoryException>(() =>
+            service.SaveCipherAsync(NewLogin(), lease, TestContext.Current.CancellationToken));
+
+        Assert.Equal("create", Assert.Single(api.Calls));
+        Assert.Same(lease, Assert.Single(sync.Leases));
+    }
+
+    [Fact]
+    public async Task SaveFolder_AccountSwitchAfterEncryption_DoesNotWriteOrResync()
+    {
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession(
+            "account-a",
+            "a@example.com",
+            new ServerOrigin("https://a.example"));
+        session.TryCommit(lease, () => session.SetUnlockedKey(NewKey()));
+        var api = new BlockingWriteApi();
+        api.Release();
+        var sync = new RecordingSync();
+        var service = new VaultWriteService(
+            new SwitchingProvider(session, api),
+            new CipherEncryptor(new CryptoService()),
+            sync,
+            session);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            service.SaveFolderAsync(
+                null,
+                "Folder A",
+                TestContext.Current.CancellationToken));
+
+        Assert.Empty(api.Calls);
+        Assert.Equal(0, sync.Calls);
     }
 }

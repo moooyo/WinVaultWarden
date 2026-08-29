@@ -12,7 +12,8 @@ namespace App.Tests;
 /// <summary>
 /// SettingsViewModel 在 browserIntegrationSupported=false 时的门控行为。
 /// </summary>
-public class SettingsViewModelBrowserGateTests
+[Collection(TestCollectionNames.AppPreferences)]
+public class SettingsViewModelBrowserGateTests : AppPreferencesTestBase
 {
     [Fact]
     public void BrowserIntegrationSupported_TrueByDefault()

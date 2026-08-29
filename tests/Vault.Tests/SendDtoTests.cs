@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Api;
 using Api.Dtos;
+using Core.Enums;
 using Xunit;
 
 namespace Vault.Tests;
@@ -168,7 +169,7 @@ public class SendDtoTests
 
         var upload = JsonSerializer.Deserialize(json, ApiJsonContext.Default.SendFileUploadV2Response)!;
 
-        Assert.Equal(0, upload.FileUploadType);
+        Assert.Equal(FileUploadType.Direct, upload.FileUploadType);
         Assert.Equal("/sends/s-file/file/file-1", upload.Url);
         Assert.Equal("s-file", upload.SendResponse.Id);
         Assert.Equal("file-1", upload.SendResponse.File!.Id);

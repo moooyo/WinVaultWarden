@@ -8,6 +8,8 @@ namespace App.Services;
 public sealed class DpapiTokenStore : ITokenStore
 {
     private readonly string _path;
+    private readonly Action<PersistedSession>? _migrationWriter;
+    private readonly Func<string, byte[]>? _reader;
 
     public DpapiTokenStore()
         : this(Path.Combine(
@@ -18,6 +20,24 @@ public sealed class DpapiTokenStore : ITokenStore
     }
 
     public DpapiTokenStore(string path) => _path = path;
+
+    internal DpapiTokenStore(
+        string path,
+        Action<PersistedSession> migrationWriter)
+    {
+        ArgumentNullException.ThrowIfNull(migrationWriter);
+        _path = path;
+        _migrationWriter = migrationWriter;
+    }
+
+    internal DpapiTokenStore(
+        string path,
+        Func<string, byte[]> reader)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+        _path = path;
+        _reader = reader;
+    }
 
     public bool TryLoad(out PersistedSession session)
     {
@@ -31,15 +51,17 @@ public sealed class DpapiTokenStore : ITokenStore
             if (!File.Exists(_path))
                 return false;
 
-            var protectedBytes = File.ReadAllBytes(_path);
+            var protectedBytes = _reader is null
+                ? File.ReadAllBytes(_path)
+                : _reader(_path);
             jsonBytes = ProtectedData.Unprotect(protectedBytes, null, DataProtectionScope.CurrentUser);
             var loaded = JsonSerializer.Deserialize(jsonBytes, AppJsonContext.Default.PersistedSession);
-            // fail-closed:缺失 account/origin/generation 绑定的旧记录一律拒绝返回,迫使用户
-            // 用下一次正常登录创建 schema 2 记录,而不是把未绑定身份的 session 当作当前账户使用。
-            if (loaded is null || !loaded.HasValidBinding)
+            if (loaded is null || !loaded.TryMigrate(out var normalized))
                 return false;
 
-            session = loaded;
+            session = normalized;
+            if (!ReferenceEquals(loaded, normalized))
+                TryPersistMigration(normalized);
             return true;
         }
         catch (PlatformNotSupportedException)
@@ -54,6 +76,14 @@ public sealed class DpapiTokenStore : ITokenStore
         {
             return false;
         }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
         finally
         {
             if (jsonBytes is not null)
@@ -61,10 +91,31 @@ public sealed class DpapiTokenStore : ITokenStore
         }
     }
 
+    private void TryPersistMigration(PersistedSession session)
+    {
+        try
+        {
+            if (_migrationWriter is null)
+                Save(session);
+            else
+                _migrationWriter(session);
+        }
+        catch (Exception ex) when (
+            ex is IOException
+                or UnauthorizedAccessException
+                or CryptographicException)
+        {
+            // A validated migrated session remains usable when its best-effort
+            // schema write-back cannot be persisted.
+        }
+    }
+
     public void Save(PersistedSession session)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("DPAPI token storage is only supported on Windows.");
+        if (!session.HasValidBinding)
+            throw new InvalidDataException("Persisted session binding is invalid.");
 
         var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(session, AppJsonContext.Default.PersistedSession);
         try

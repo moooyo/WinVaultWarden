@@ -20,12 +20,12 @@ public class RealAttachmentUiServiceTests
         };
         var svc = new AttachmentUiService(fake);
         var bytes = new byte[] { 1, 2, 3, 4 };
+        var source = Source("report.pdf", bytes);
 
-        var items = await svc.AddAttachmentAsync("cipher-1", bytes, "report.pdf", CancellationToken.None);
+        var items = await svc.AddAttachmentAsync("cipher-1", source, CancellationToken.None);
 
         Assert.Equal("cipher-1", fake.LastCipherId);
-        Assert.Equal("report.pdf", fake.LastFileName);
-        Assert.Same(bytes, fake.LastPlaintext);
+        Assert.Same(source, fake.LastSource);
         var item = Assert.Single(items);
         Assert.Equal("a1", item.Id);
         Assert.Equal("report.pdf", item.FileName);
@@ -33,16 +33,22 @@ public class RealAttachmentUiServiceTests
     }
 
     [Fact]
-    public async Task DownloadAttachmentAsync_DelegatesToServiceAndReturnsBytes()
+    public async Task DownloadAttachmentAsync_DelegatesToServiceAndWritesDestination()
     {
         var fake = new FakeAttachmentService { DownloadResult = new byte[] { 9, 8, 7 } };
         var svc = new AttachmentUiService(fake);
 
-        var bytes = await svc.DownloadAttachmentAsync("cipher-1", "a1", CancellationToken.None);
+        await using var destination = new MemoryStream();
+        var written = await svc.DownloadAttachmentAsync(
+            "cipher-1",
+            "a1",
+            destination,
+            CancellationToken.None);
 
         Assert.Equal("cipher-1", fake.LastCipherId);
         Assert.Equal("a1", fake.LastAttachmentId);
-        Assert.Equal(new byte[] { 9, 8, 7 }, bytes);
+        Assert.Equal(3, written);
+        Assert.Equal(new byte[] { 9, 8, 7 }, destination.ToArray());
     }
 
     [Fact]
@@ -67,27 +73,33 @@ public class RealAttachmentUiServiceTests
     private sealed class FakeAttachmentService : IAttachmentService
     {
         public string? LastCipherId { get; private set; }
-        public string? LastFileName { get; private set; }
-        public byte[]? LastPlaintext { get; private set; }
+        public ReopenableFileSource? LastSource { get; private set; }
         public string? LastAttachmentId { get; private set; }
 
         public IReadOnlyList<CipherAttachment> UploadResult { get; set; } = Array.Empty<CipherAttachment>();
         public byte[] DownloadResult { get; set; } = Array.Empty<byte>();
         public IReadOnlyList<CipherAttachment> DeleteResult { get; set; } = Array.Empty<CipherAttachment>();
 
-        public Task<IReadOnlyList<CipherAttachment>> UploadAsync(string cipherId, string fileName, byte[] plaintext, CancellationToken ct = default)
+        public Task<IReadOnlyList<CipherAttachment>> UploadAsync(
+            string cipherId,
+            ReopenableFileSource file,
+            CancellationToken ct = default)
         {
             LastCipherId = cipherId;
-            LastFileName = fileName;
-            LastPlaintext = plaintext;
+            LastSource = file;
             return Task.FromResult(UploadResult);
         }
 
-        public Task<byte[]> DownloadAsync(string cipherId, string attachmentId, CancellationToken ct = default)
+        public async Task<long> DownloadAsync(
+            string cipherId,
+            string attachmentId,
+            Stream plaintextDestination,
+            CancellationToken ct = default)
         {
             LastCipherId = cipherId;
             LastAttachmentId = attachmentId;
-            return Task.FromResult(DownloadResult);
+            await plaintextDestination.WriteAsync(DownloadResult, ct);
+            return DownloadResult.LongLength;
         }
 
         public Task<IReadOnlyList<CipherAttachment>> DeleteAsync(string cipherId, string attachmentId, CancellationToken ct = default)
@@ -97,4 +109,10 @@ public class RealAttachmentUiServiceTests
             return Task.FromResult(DeleteResult);
         }
     }
+
+    private static ReopenableFileSource Source(string fileName, byte[] bytes) =>
+        new(
+            fileName,
+            bytes.LongLength,
+            _ => ValueTask.FromResult<Stream>(new MemoryStream(bytes, writable: false)));
 }

@@ -3,11 +3,28 @@ using Core.Models;
 namespace Core.Session;
 
 /// <summary>
-/// 从 <see cref="VaultSessionLease"/> 派生的 access token 绑定快照,用于把外发请求的令牌
-/// 与账户/服务端来源/generation 三元组绑定,防止跨账户/跨服务端/跨代际误用令牌。
+/// Captures the account, complete server environment, generation, and token used by one request.
+/// The API audience is the exact API endpoint, including its base-path boundary.
 /// </summary>
 public sealed record AccessTokenBinding(
     string AccountId,
-    ServerOrigin Origin,
+    ServerEndpoints Endpoints,
     long Generation,
-    string Token);
+    string Token)
+{
+    public AccessTokenBinding(
+        string accountId,
+        ServerOrigin origin,
+        long generation,
+        string token)
+        : this(
+            accountId,
+            ServerEndpoints.ForSelfHosted(origin.Value),
+            generation,
+            token)
+    {
+    }
+
+    public ServerEndpoint ApiAudience => Endpoints.Api;
+    public ServerOrigin Origin => Endpoints.WebVault.Origin;
+}

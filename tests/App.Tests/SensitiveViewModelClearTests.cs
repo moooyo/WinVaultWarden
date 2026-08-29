@@ -83,7 +83,10 @@ public sealed class SensitiveViewModelClearTests
             throw new NotSupportedException();
         public Task<SendListItem> UpdateSendAsync(string id, SendEditorDraft draft, Core.Models.SendFileSource? file, CancellationToken ct = default) =>
             throw new NotSupportedException();
-        public Task DeleteSendAsync(string id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task DeleteSendAsync(
+            string id,
+            Core.Session.VaultSessionLease originatingSession,
+            CancellationToken ct = default) => Task.CompletedTask;
         public string? CopyShareLink(SendListItem item) => item.Link;
         public Task<SendReceivedResult> OpenReceivedLinkAsync(string url, string? password, CancellationToken ct = default) =>
             throw new NotSupportedException();
@@ -93,6 +96,15 @@ public sealed class SensitiveViewModelClearTests
 
     private sealed class NoopAuth : Core.Services.IAuthService
     {
+        private readonly Vault.VaultSession _attempts = new();
+        public Core.Session.AuthenticationAttemptLease BeginAuthenticationAttempt() => _attempts.BeginAuthenticationAttempt();
+        public void AbandonAuthenticationAttempt(Core.Session.AuthenticationAttemptLease attempt) => _attempts.AbandonAuthenticationAttempt(attempt);
+        public Task<Core.Services.AuthResult> LoginAsync(Core.Session.AuthenticationAttemptLease attempt, string serverUrl, string email, string masterPassword, CancellationToken ct = default) => LoginAsync(serverUrl, email, masterPassword, ct);
+        public Task<Core.Services.AuthResult> SubmitTwoFactorAsync(Core.Session.AuthenticationAttemptLease attempt, string code, int provider, CancellationToken ct = default, bool rememberDevice = true) => SubmitTwoFactorAsync(code, provider, ct, rememberDevice);
+        public Task<bool> ResendTwoFactorEmailAsync(Core.Session.AuthenticationAttemptLease attempt, CancellationToken ct = default) => ResendTwoFactorEmailAsync(ct);
+        public Task<Core.Services.AuthResult> UnlockAsync(Core.Session.AuthenticationAttemptLease attempt, string masterPassword, CancellationToken ct = default) => UnlockAsync(masterPassword, ct);
+        public Task<Core.Services.AuthResult> UnlockWithPinAsync(Core.Session.AuthenticationAttemptLease attempt, string pin, CancellationToken ct = default) => UnlockWithPinAsync(pin, ct);
+        public Task<Core.Services.AuthResult> UnlockWithHelloAsync(Core.Session.AuthenticationAttemptLease attempt, byte[] signature, CancellationToken ct = default) => UnlockWithHelloAsync(signature, ct);
         public Task<Core.Services.AuthResult> LoginAsync(string serverUrl, string email, string masterPassword, CancellationToken ct = default) =>
             Task.FromResult<Core.Services.AuthResult>(new Core.Services.AuthResult.Failure(""));
         public Task<Core.Services.AuthResult> SubmitTwoFactorAsync(string code, int provider, CancellationToken ct = default, bool rememberDevice = true) =>
@@ -105,6 +117,8 @@ public sealed class SensitiveViewModelClearTests
         public Task<Core.Services.AuthResult> UnlockWithHelloAsync(byte[] signature, CancellationToken ct = default) =>
             Task.FromResult<Core.Services.AuthResult>(new Core.Services.AuthResult.Failure(""));
         public Task LockAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task LockAsync(Core.Session.VaultSessionLease expectedSession, CancellationToken ct = default) => Task.CompletedTask;
         public Task LogoutAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task<bool> LogoutAsync(Core.Session.VaultSessionLease expectedSession, CancellationToken ct = default) => Task.FromResult(true);
     }
 }

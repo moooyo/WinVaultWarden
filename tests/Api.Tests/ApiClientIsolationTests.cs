@@ -9,6 +9,22 @@ namespace Api.Tests;
 public sealed class ApiClientIsolationTests
 {
     [Fact]
+    public void DefaultTransport_DisablesAutomaticRedirectsForEveryRole()
+    {
+        var field = typeof(ApiClientFactory).GetField(
+            "_transportFactory",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var factory = Assert.IsType<Func<bool, HttpMessageHandler>>(
+            field!.GetValue(new ApiClientFactory()));
+
+        using var anonymous = Assert.IsType<HttpClientHandler>(factory(false));
+        using var authenticated = Assert.IsType<HttpClientHandler>(factory(true));
+
+        Assert.False(anonymous.AllowAutoRedirect);
+        Assert.False(authenticated.AllowAutoRedirect);
+    }
+
+    [Fact]
     public async Task AnonymousIdentityClient_NeverCarriesExistingBearer()
     {
         var transport = new RecordingHandler(_ => Json(HttpStatusCode.OK,

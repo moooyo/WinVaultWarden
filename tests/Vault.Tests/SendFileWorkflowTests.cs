@@ -2,8 +2,10 @@ using Api;
 using Api.Dtos;
 using Core.Enums;
 using Core.Models;
+using Core.Services;
 using Core.Session;
 using Crypto;
+using System.Net;
 using Vault;
 using Xunit;
 
@@ -18,12 +20,16 @@ namespace Vault.Tests;
 //   - 元数据更新只发 PUT，绝不开流/上传。
 public class SendFileWorkflowTests
 {
+    private static readonly ITransferIdleTimeoutPolicy NoIdleTimeout =
+        new TransferIdleTimeoutPolicy(Timeout.InfiniteTimeSpan);
+
     private sealed record FileFixture(
         SendWriteService Service,
         FakeSendApiClient Api,
         FakeSendCompensationClient Compensation,
         VaultSession Session,
-        AccessTokenBinding ExpectedBinding);
+        AccessTokenBinding ExpectedBinding,
+        VaultSessionLease Lease);
 
     private static FileFixture NewFileFixture()
     {
@@ -41,29 +47,30 @@ public class SendFileWorkflowTests
         var expectedBinding = session.GetAccessTokenBinding(lease)!;
         var api = new FakeSendApiClient
         {
+            CreateFileV2Authorization = expectedBinding,
             CreateFileV2Result = new SendFileUploadV2Response(
-                0,
+                FileUploadType.Direct,
                 "send-fileUpload",
                 "/sends/new-send/file/file-1",
                 new SendResponseDto(
-                    "new-send",
-                    "access-new",
-                    (int)SendType.File,
-                    "2.name",
-                    null,
-                    null,
-                    null,
-                    "2.key",
-                    null,
-                    0,
-                    null,
-                    0,
-                    false,
-                    false,
-                    null,
-                    null,
-                    DateTimeOffset.UtcNow.AddDays(7),
-                    "send")),
+                    Id: "new-send",
+                    AccessId: "access-new",
+                    Type: (int)SendType.File,
+                    Name: "2.name",
+                    Notes: null,
+                    Text: null,
+                    File: new SendFileDto("file-1", "2.file", null, null),
+                    Key: "2.key",
+                    MaxAccessCount: null,
+                    AccessCount: 0,
+                    Password: null,
+                    AuthType: (int)SendAuthType.None,
+                    Disabled: false,
+                    HideEmail: false,
+                    RevisionDate: null,
+                    ExpirationDate: null,
+                    DeletionDate: DateTimeOffset.UtcNow.AddDays(7),
+                    Object: "send")),
         };
         var compensation = new FakeSendCompensationClient();
         return new FileFixture(
@@ -71,11 +78,13 @@ public class SendFileWorkflowTests
                 FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(api),
                 new SendCryptoService(new CryptoService()),
                 session,
-                compensation),
+                compensation,
+                NoIdleTimeout),
             api,
             compensation,
             session,
-            expectedBinding);
+            expectedBinding,
+            lease);
     }
 
     private static SendFileSource MemorySource(string fileName, byte[] bytes) => new(
@@ -92,20 +101,30 @@ public class SendFileWorkflowTests
         PasswordChange = new SendPasswordChange.Keep(),
     };
 
-    private static SendDraftModel ExistingFileDraft()
+    private static SendDraftModel ExistingFileDraft(
+        SendPasswordChange? passwordChange = null,
+        bool existingHasPassword = false,
+        SendAuthType? existingAuthType = null,
+        int? existingRawAuthType = null,
+        string? id = "old-send")
     {
         var crypto = new SendCryptoService(new CryptoService());
         using var userKey = new SymmetricCryptoKey(
             Enumerable.Range(0, 64).Select(i => (byte)(i + 3)).ToArray());
+        var authType = existingAuthType
+            ?? (existingHasPassword ? SendAuthType.Password : SendAuthType.None);
         return new SendDraftModel
         {
-            Id = "old-send",
+            Id = id,
             Key = crypto.WrapSeed(crypto.GenerateSeed(), userKey),
             Type = SendType.File,
             Name = "File",
             FileName = "a.bin",
             DeletionDate = DateTimeOffset.UtcNow.AddDays(7),
-            PasswordChange = new SendPasswordChange.Keep(),
+            ExistingHasPassword = existingHasPassword,
+            ExistingAuthType = authType,
+            ExistingRawAuthType = existingRawAuthType ?? (int)authType,
+            PasswordChange = passwordChange ?? new SendPasswordChange.Keep(),
         };
     }
 
@@ -124,10 +143,71 @@ public class SendFileWorkflowTests
             });
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            fixture.Service.CreateFileSendAsync(FileDraft(), source, CancellationToken.None));
+            fixture.Service.CreateFileSendAsync(
+                FileDraft(), source, fixture.Lease, CancellationToken.None));
 
         Assert.Equal(0, opens);
         Assert.Empty(fixture.Api.Calls);
+    }
+
+    [Fact]
+    public async Task CreateFile_StaleExpectedSession_CancelsBeforeApiOrFileOpen()
+    {
+        var fixture = NewFileFixture();
+        var opens = 0;
+        var source = new SendFileSource(
+            "file.bin",
+            1,
+            _ =>
+            {
+                opens++;
+                return ValueTask.FromResult<Stream>(new MemoryStream([1], writable: false));
+            });
+        fixture.Session.BeginAccountSession(
+            "account-b",
+            "b@example.test",
+            ServerEndpoints.ForSelfHosted("https://b.example"));
+        fixture.Session.SetUnlockedKey(new SymmetricCryptoKey(new byte[64]));
+
+        var error = await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            fixture.Service.CreateFileSendAsync(
+                FileDraft(),
+                source,
+                fixture.Lease,
+                TestContext.Current.CancellationToken));
+
+        Assert.True(error.CancellationToken.IsCancellationRequested);
+        Assert.Equal(0, opens);
+        Assert.Empty(fixture.Api.Calls);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("different-send")]
+    public async Task Replace_DraftIdMustExactlyMatchExistingId_BeforeAnySideEffect(string? draftId)
+    {
+        var fixture = NewFileFixture();
+        var opens = 0;
+        var source = new SendFileSource(
+            "file.bin",
+            1,
+            _ =>
+            {
+                opens++;
+                return ValueTask.FromResult<Stream>(new MemoryStream([1], writable: false));
+            });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            fixture.Service.ReplaceFileSendAsync(
+                "old-send",
+                ExistingFileDraft(id: draftId),
+                source,
+                fixture.Lease,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(0, opens);
+        Assert.Empty(fixture.Api.Calls);
+        Assert.Empty(fixture.Compensation.DeletedSendIds);
     }
 
     [Fact]
@@ -136,12 +216,15 @@ public class SendFileWorkflowTests
         var fixture = NewFileFixture();
 
         var result = await fixture.Service.CreateFileSendAsync(
-            FileDraft(), MemorySource("a.bin", [10, 20, 30, 40, 50]), CancellationToken.None);
+            FileDraft(),
+            MemorySource("a.bin", [10, 20, 30, 40, 50]),
+            fixture.Lease,
+            CancellationToken.None);
 
         Assert.Equal(["create-file-v2", "upload"], fixture.Api.Calls);
         Assert.Equal("new-send", result.SendId);
         Assert.Equal("access-new", result.AccessId);
-        Assert.False(result.ReplacedExisting);
+        Assert.Equal(SendMutationKind.Create, result.Kind);
         var req = fixture.Api.LastCreateFileV2!;
         Assert.Equal((int)SendType.File, req.Type);
         // 文件名是用 seed 派生 cryptoKey 加密的 EncString（type-2 密文，非明文）。
@@ -151,7 +234,10 @@ public class SendFileWorkflowTests
         // fileLength 必须精确等于实际流式上传的 EncArrayBuffer 字节数，供服务端逐字节比对。
         Assert.Equal(fixture.Api.LastUploadBuffer!.Length, req.FileLength);
         Assert.Equal((byte)2, fixture.Api.LastUploadBuffer![0]);
+        Assert.Equal(FileUploadType.Direct, fixture.Api.LastUploadType);
         Assert.Equal("/sends/new-send/file/file-1", fixture.Api.LastUploadUrl);
+        Assert.Equal("new-send", fixture.Api.LastUploadSendId);
+        Assert.Equal("file-1", fixture.Api.LastUploadFileId);
     }
 
     [Fact]
@@ -171,11 +257,34 @@ public class SendFileWorkflowTests
         });
 
         await Assert.ThrowsAsync<InvalidDataException>(() =>
-            fixture.Service.CreateFileSendAsync(FileDraft(), source, CancellationToken.None));
+            fixture.Service.CreateFileSendAsync(
+                FileDraft(), source, fixture.Lease, CancellationToken.None));
 
         Assert.Equal(["create-file-v2", "upload"], fixture.Api.Calls);
         // 补偿删除走独立补偿客户端(冻结 binding + 独立令牌),不再经普通 ISendApiClient 的无鉴权 delete。
         Assert.Equal(["new-send"], fixture.Compensation.DeletedSendIds);
+    }
+
+    [Fact]
+    public async Task CreateFile_UnknownTransport_CompensatesCreatedSendWithoutReadingBody()
+    {
+        var fixture = NewFileFixture();
+        fixture.Api.CreateFileV2Result = fixture.Api.CreateFileV2Result with
+        {
+            FileUploadType = (FileUploadType)42,
+        };
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            fixture.Service.CreateFileSendAsync(
+                FileDraft(),
+                MemorySource("unknown.bin", [1, 2, 3]),
+                fixture.Lease,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(["create-file-v2", "upload"], fixture.Api.Calls);
+        Assert.Null(fixture.Api.LastUploadBuffer);
+        Assert.Equal(["new-send"], fixture.Compensation.DeletedSendIds);
+        Assert.Equal(fixture.ExpectedBinding, fixture.Compensation.LastBinding);
     }
 
     [Fact]
@@ -190,6 +299,7 @@ public class SendFileWorkflowTests
             fixture.Service.CreateFileSendAsync(
                 FileDraft(),
                 MemorySource("a.bin", [1, 2, 3]),
+                fixture.Lease,
                 caller.Token));
 
         Assert.Equal(["create-file-v2", "upload"], fixture.Api.Calls);
@@ -210,6 +320,7 @@ public class SendFileWorkflowTests
             fixture.Service.CreateFileSendAsync(
                 FileDraft(),
                 MemorySource("a.bin", [1, 2, 3]),
+                fixture.Lease,
                 CancellationToken.None));
 
         Assert.Equal("new-send", ex.OrphanedSendId);
@@ -225,6 +336,7 @@ public class SendFileWorkflowTests
             "old-send",
             ExistingFileDraft(),
             MemorySource("new.bin", [4, 5, 6]),
+            fixture.Lease,
             CancellationToken.None);
 
         Assert.Equal(
@@ -232,7 +344,58 @@ public class SendFileWorkflowTests
             fixture.Api.Calls);
         // 删旧走普通 ISendApiClient(正常业务删除);替换成功不触发任何补偿。
         Assert.Empty(fixture.Compensation.DeletedSendIds);
-        Assert.True(result.ReplacedExisting);
+        Assert.Equal(SendMutationKind.Replace, result.Kind);
+        Assert.Equal("old-send", result.ReplacedSendId);
+        Assert.Null(fixture.Api.LastCreateFileV2!.Password);
+    }
+
+    [Fact]
+    public async Task Replace_ProtectedKeep_FailsBeforeApiOrFileOpen()
+    {
+        var fixture = NewFileFixture();
+        var opens = 0;
+        var source = new SendFileSource(
+            "new.bin",
+            3,
+            _ =>
+            {
+                opens++;
+                return ValueTask.FromResult<Stream>(new MemoryStream([1, 2, 3], writable: false));
+            });
+
+        await Assert.ThrowsAsync<SendPasswordRequiredForReplacementException>(() =>
+            fixture.Service.ReplaceFileSendAsync(
+                "old-send",
+                ExistingFileDraft(existingHasPassword: true),
+                source,
+                fixture.Lease,
+                CancellationToken.None));
+
+        Assert.Equal(0, opens);
+        Assert.Empty(fixture.Api.Calls);
+        Assert.Empty(fixture.Compensation.DeletedSendIds);
+    }
+
+    [Fact]
+    public async Task Replace_ProtectedSet_CreatesPasswordProtectedReplacement()
+    {
+        var fixture = NewFileFixture();
+        const string plaintextPassword = "replacement-password";
+
+        await fixture.Service.ReplaceFileSendAsync(
+            "old-send",
+            ExistingFileDraft(
+                new SendPasswordChange.Set(plaintextPassword),
+                existingHasPassword: true),
+            MemorySource("new.bin", [4, 5, 6]),
+            fixture.Lease,
+            CancellationToken.None);
+
+        var proof = fixture.Api.LastCreateFileV2!.Password;
+        Assert.NotNull(proof);
+        Assert.NotEqual(plaintextPassword, proof);
+        Assert.Equal(32, Convert.FromBase64String(proof!).Length);
+        Assert.Equal(["create-file-v2", "upload", "delete:old-send"], fixture.Api.Calls);
     }
 
     [Fact]
@@ -241,24 +404,78 @@ public class SendFileWorkflowTests
         var fixture = NewFileFixture();
 
         await fixture.Service.UpdateFileSendMetadataAsync(
-            ExistingFileDraft(),
+            ExistingFileDraft(existingHasPassword: true),
+            fixture.Lease,
             CancellationToken.None);
 
         Assert.Equal(["update"], fixture.Api.Calls);
+        Assert.Null(fixture.Api.LastUpdate!.Password);
+    }
+
+    [Theory]
+    [InlineData(SendAuthType.Email, 0)]
+    [InlineData(SendAuthType.Unknown, 99)]
+    [InlineData(SendAuthType.Unknown, int.MinValue)]
+    public async Task UnsupportedAuthentication_BlocksMetadataAndReplacementWithoutSideEffects(
+        SendAuthType authType,
+        int rawAuthType)
+    {
+        var metadataFixture = NewFileFixture();
+        var metadataDraft = ExistingFileDraft(
+            existingHasPassword: authType == SendAuthType.Unknown,
+            existingAuthType: authType,
+            existingRawAuthType: rawAuthType);
+
+        var metadataError = await Assert.ThrowsAsync<SendUnsupportedAuthenticationException>(() =>
+            metadataFixture.Service.UpdateFileSendMetadataAsync(
+                metadataDraft,
+                metadataFixture.Lease,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(authType, metadataError.AuthType);
+        Assert.Empty(metadataFixture.Api.Calls);
+
+        var replacementFixture = NewFileFixture();
+        var opens = 0;
+        var source = new SendFileSource(
+            "new.bin",
+            1,
+            _ =>
+            {
+                opens++;
+                return ValueTask.FromResult<Stream>(new MemoryStream([1], writable: false));
+            });
+
+        var replacementError = await Assert.ThrowsAsync<SendUnsupportedAuthenticationException>(() =>
+            replacementFixture.Service.ReplaceFileSendAsync(
+                "old-send",
+                metadataDraft,
+                source,
+                replacementFixture.Lease,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(authType, replacementError.AuthType);
+        Assert.Equal(0, opens);
+        Assert.Empty(replacementFixture.Api.Calls);
+        Assert.Empty(replacementFixture.Compensation.DeletedSendIds);
     }
 
     [Fact]
-    public async Task Replace_OldDeleteFailure_RollsBackNewSend()
+    public async Task Replace_OldDeleteDefinitelyRejected_RollsBackNewSend()
     {
         var fixture = NewFileFixture();
         fixture.Api.DeleteFailures["old-send"] =
-            new HttpRequestException("old delete failed");
+            new SendDeleteDefinitelyNotAppliedException(
+                "old-send",
+                HttpStatusCode.Forbidden,
+                "Delete denied");
 
-        await Assert.ThrowsAsync<HttpRequestException>(() =>
+        await Assert.ThrowsAsync<SendDeleteDefinitelyNotAppliedException>(() =>
             fixture.Service.ReplaceFileSendAsync(
                 "old-send",
                 ExistingFileDraft(),
                 MemorySource("new.bin", [7, 8, 9]),
+                fixture.Lease,
                 CancellationToken.None));
 
         Assert.Equal(
@@ -268,6 +485,70 @@ public class SendFileWorkflowTests
         Assert.Equal(["new-send"], fixture.Compensation.DeletedSendIds);
         Assert.False(fixture.Compensation.LastTokenWasCanceled);
         Assert.Equal(fixture.ExpectedBinding, fixture.Compensation.LastBinding);
+    }
+
+    [Fact]
+    public async Task Replace_OldDeleteTransportFailure_PreservesNewAndReportsUncertainOutcome()
+    {
+        var fixture = NewFileFixture();
+        fixture.Api.DeleteFailures["old-send"] =
+            new SendDeleteOutcomeUncertainException(
+                "old-send",
+                new HttpRequestException("Connection closed after dispatch."));
+
+        var error = await Assert.ThrowsAsync<SendReplacementUncertainException>(() =>
+            fixture.Service.ReplaceFileSendAsync(
+                "old-send",
+                ExistingFileDraft(),
+                MemorySource("new.bin", [7, 8, 9]),
+                fixture.Lease,
+                CancellationToken.None));
+
+        Assert.Equal("old-send", error.ExistingSendId);
+        Assert.Equal("new-send", error.Replacement.SendId);
+        Assert.Equal(
+            ["create-file-v2", "upload", "delete:old-send"],
+            fixture.Api.Calls);
+        Assert.Empty(fixture.Compensation.DeletedSendIds);
+    }
+
+    [Fact]
+    public async Task Replace_CancellationBeforeOldDeleteDispatch_RollsBackNewSend()
+    {
+        var fixture = NewFileFixture();
+        using var caller = new CancellationTokenSource();
+        fixture.Api.AfterUploadSuccess = caller.Cancel;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            fixture.Service.ReplaceFileSendAsync(
+                "old-send",
+                ExistingFileDraft(),
+                MemorySource("new.bin", [7, 8, 9]),
+                fixture.Lease,
+                caller.Token));
+
+        Assert.Equal(["create-file-v2", "upload"], fixture.Api.Calls);
+        Assert.Equal(["new-send"], fixture.Compensation.DeletedSendIds);
+        Assert.False(fixture.Compensation.LastTokenWasCanceled);
+    }
+
+    [Fact]
+    public async Task UploadFailure_CompensatesWithBindingUsedBySuccessfulMetadataCreate()
+    {
+        var fixture = NewFileFixture();
+        var refreshedBinding = fixture.ExpectedBinding with { Token = "refreshed-access" };
+        fixture.Api.CreateFileV2Authorization = refreshedBinding;
+        fixture.Api.UploadThrows = new IOException("upload failed");
+
+        await Assert.ThrowsAsync<IOException>(() =>
+            fixture.Service.CreateFileSendAsync(
+                FileDraft(),
+                MemorySource("a.bin", [1, 2, 3]),
+                fixture.Lease,
+                CancellationToken.None));
+
+        Assert.Equal(refreshedBinding, fixture.Compensation.LastBinding);
+        Assert.NotEqual(fixture.ExpectedBinding.Token, fixture.Compensation.LastBinding!.Token);
     }
 
     // 竞态 A(创建):上传成功后、方法返回前 lease 失效(vault 被 Lock)。post-upload 的 ThrowIfExpired
@@ -282,7 +563,10 @@ public class SendFileWorkflowTests
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             fixture.Service.CreateFileSendAsync(
-                FileDraft(), MemorySource("a.bin", [1, 2, 3]), CancellationToken.None));
+                FileDraft(),
+                MemorySource("a.bin", [1, 2, 3]),
+                fixture.Lease,
+                CancellationToken.None));
 
         Assert.Equal(["create-file-v2", "upload"], fixture.Api.Calls);
         // post-upload lease 失效 → 用【冻结 binding + 未取消独立令牌】补偿删新件(经补偿客户端)。
@@ -302,7 +586,11 @@ public class SendFileWorkflowTests
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             fixture.Service.ReplaceFileSendAsync(
-                "old-send", ExistingFileDraft(), MemorySource("new.bin", [4, 5, 6]), CancellationToken.None));
+                "old-send",
+                ExistingFileDraft(),
+                MemorySource("new.bin", [4, 5, 6]),
+                fixture.Lease,
+                CancellationToken.None));
 
         Assert.Equal(["create-file-v2", "upload", "delete:old-send"], fixture.Api.Calls);
         // 删旧【成功】后 lease 失效:replacement 已提交,绝不回删新件。补偿客户端一无所记。
@@ -319,7 +607,11 @@ public class SendFileWorkflowTests
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             fixture.Service.ReplaceFileSendAsync(
-                "old-send", ExistingFileDraft(), MemorySource("new.bin", [7, 8, 9]), CancellationToken.None));
+                "old-send",
+                ExistingFileDraft(),
+                MemorySource("new.bin", [7, 8, 9]),
+                fixture.Lease,
+                CancellationToken.None));
 
         Assert.Equal(["create-file-v2", "upload"], fixture.Api.Calls);
         Assert.DoesNotContain("delete:old-send", fixture.Api.Calls);
@@ -352,7 +644,11 @@ public class SendFileWorkflowTests
             // 以 pump 为当前上下文启动:phase 1 同步跑到 upload 并阻塞在 gate(所有前置 await 均已完成 → 无排队)。
             SynchronizationContext.SetSynchronizationContext(pump);
             replaceTask = fixture.Service.ReplaceFileSendAsync(
-                "old-send", ExistingFileDraft(), MemorySource("new.bin", [4, 5, 6]), CancellationToken.None);
+                "old-send",
+                ExistingFileDraft(),
+                MemorySource("new.bin", [4, 5, 6]),
+                fixture.Lease,
+                CancellationToken.None);
             Assert.Equal(["create-file-v2", "upload"], fixture.Api.Calls);
             Assert.False(replaceTask.IsCompleted);
             Assert.Equal(0, pump.PendingCount);

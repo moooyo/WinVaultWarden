@@ -9,14 +9,40 @@ namespace App.ViewModels;
 /// </summary>
 public partial class SettingsViewModel
 {
-    [ObservableProperty]
-    public partial int SelectedThemeIndex { get; set; } = AppPreferences.Current.ThemeIndex;
+    private int _selectedThemeIndex = LoadThemeIndex();
 
-    partial void OnSelectedThemeIndexChanged(int value)
+    public int SelectedThemeIndex
     {
+        get => _selectedThemeIndex;
+        set
+        {
+            if (AppPreferenceIndexPolicy.IsTransientNoSelection(value))
+            {
+                OnPropertyChanged(nameof(SelectedThemeIndex));
+                return;
+            }
+            var normalized = AppPreferenceIndexPolicy.NormalizeThemeIndex(value);
+            var changed = SetProperty(ref _selectedThemeIndex, normalized);
+            SaveThemeIndex(normalized);
+            if (changed)
+                ThemeManager.Apply(normalized);
+        }
+    }
+
+    private static int LoadThemeIndex()
+    {
+        var normalized = AppPreferenceIndexPolicy.NormalizeThemeIndex(
+            AppPreferences.Current.ThemeIndex);
+        SaveThemeIndex(normalized);
+        return normalized;
+    }
+
+    private static void SaveThemeIndex(int value)
+    {
+        if (AppPreferences.Current.ThemeIndex == value)
+            return;
         AppPreferences.Current.ThemeIndex = value;
         AppPreferences.Save();
-        ThemeManager.Apply(value);
     }
 
     [ObservableProperty]

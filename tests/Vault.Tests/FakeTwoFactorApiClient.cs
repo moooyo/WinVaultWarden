@@ -28,6 +28,14 @@ public sealed class FakeTwoFactorApiClient : ITwoFactorApiClient
 
     public RecoverResponse RecoverResponse { get; set; } = new(Code: "recover-code-abc");
 
+    public Exception? EnableAuthenticatorException { get; set; }
+
+    public Exception? GetRecoverException { get; set; }
+
+    public int EnableAuthenticatorCalls { get; private set; }
+
+    public int GetRecoverCalls { get; private set; }
+
     // 若设置则所有调用都抛出此异常（模拟网络/服务端错误）
     public Exception? Throw;
 
@@ -49,6 +57,8 @@ public sealed class FakeTwoFactorApiClient : ITwoFactorApiClient
     public Task<AuthenticatorResponse> EnableAuthenticatorAsync(EnableAuthenticatorRequest request, CancellationToken ct = default)
     {
         if (Throw is not null) throw Throw;
+        EnableAuthenticatorCalls++;
+        if (EnableAuthenticatorException is not null) throw EnableAuthenticatorException;
         LastEnableAuthenticator = request;
         // 模拟服务端启用成功后返回 enabled=true
         return Task.FromResult(new AuthenticatorResponse(Enabled: true, Key: request.Key));
@@ -85,6 +95,8 @@ public sealed class FakeTwoFactorApiClient : ITwoFactorApiClient
     public Task<RecoverResponse> GetRecoverAsync(PasswordVerifyRequest request, CancellationToken ct = default)
     {
         if (Throw is not null) throw Throw;
+        GetRecoverCalls++;
+        if (GetRecoverException is not null) throw GetRecoverException;
         LastPasswordVerify = request;
         return Task.FromResult(RecoverResponse);
     }

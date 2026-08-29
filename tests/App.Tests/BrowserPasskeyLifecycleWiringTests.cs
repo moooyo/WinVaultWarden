@@ -28,11 +28,24 @@ public sealed class BrowserPasskeyLifecycleWiringTests
     }
 
     [Fact]
+    public void UiDispatchCompletion_IsRaceSafeWhenCancellationWins()
+    {
+        var source = Read("src", "App", "Services", "PasskeyApprovalDialogService.cs");
+        var method = ExtractMethodBody(source, "private static async Task<T> InvokeOnUiAsync<T>(");
+
+        Assert.Contains("result.TrySetResult", method);
+        Assert.Contains("result.TrySetException", method);
+        Assert.DoesNotContain("result.SetResult", method);
+        Assert.DoesNotContain("result.SetException", method);
+    }
+
+    [Fact]
     public void ShowVault_StartsBridge_AfterSessionReady_PerSetting()
     {
         var source = Read("src", "App", "MainWindow.xaml.cs");
-        var showVault = ExtractMethodBody(source, "public void ShowVault()");
-        Assert.Contains("MarkSessionReady()", showVault);
+        var showVault = ExtractMethodBody(source, "public bool ShowVault(VaultSessionLease lease)");
+        Assert.Contains("TryActivateSession", showVault);
+        Assert.Contains("TryRunIfUnlocked", showVault);
         Assert.Contains("AllowBrowserIntegration", showVault);
         Assert.Contains("PasskeyBridgeServer", showVault);
         Assert.Contains(".Start()", showVault);

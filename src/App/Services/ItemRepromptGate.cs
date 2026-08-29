@@ -1,3 +1,4 @@
+using Api;
 using Core.Services;
 using Vault;
 
@@ -111,10 +112,15 @@ public sealed class ItemRepromptGate(
                 _authorized[policy.CipherId] = lease;
             return UiOperationResult<bool>.Success(true);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, linked.Token))
         {
             // 验证期间会话被锁/取消 → 绝不缓存授权。
             return UiOperationResult<bool>.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            return UiOperationResult<bool>.Failure(UiExceptionPolicy.RequestTimeoutMessage);
         }
     }
 

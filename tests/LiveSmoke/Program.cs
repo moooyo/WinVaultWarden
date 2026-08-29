@@ -10,27 +10,36 @@ using Crypto;
 using Vault;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WinVaultWarden 实时冒烟测试：针对真实 Vaultwarden 服务端跑通
-// 注册 → 登录 → 同步 → 建文件夹/条目 → 往返解密校验 → 更新 → 删除清理。
-// 用我们自己的 Crypto/Api/Vault 代码完成全部步骤，验证协议与加密互通。
+// WinVaultWarden live smoke test against the official Bitwarden Lite server.
+// Start the required tunnel first:
+// ssh -N -L 127.0.0.1:18082:127.0.0.1:18082 test-env
+// The client-facing endpoint is then http://127.0.0.1:18082.
+// Bare 127.0.0.1 and the legacy http://10.0.1.20:8080 endpoint are incorrect.
 //
-// 用法: dotnet run --project tests/LiveSmoke -- [serverUrl] [email] [password]
-// 默认: http://10.0.1.20:8080  test@winvaultwarden.local  Test-Master-Password-1!
+// Usage: dotnet run --project tests/LiveSmoke -- [serverUrl] [email] [password]
+// Default: http://127.0.0.1:18082  test@winvaultwarden.local  Test-Master-Password-1!
 // ─────────────────────────────────────────────────────────────────────────────
 
 string serverUrl = args.Length > 0 ? args[0]
-    : Environment.GetEnvironmentVariable("WVW_LIVE_SERVER") ?? "http://10.0.1.20:8080";
+    : Environment.GetEnvironmentVariable("WVW_LIVE_SERVER") ?? "http://127.0.0.1:18082";
 string email = args.Length > 1 ? args[1] : "test@winvaultwarden.local";
 string password = args.Length > 2 ? args[2] : "Test-Master-Password-1!";
 
 var run = "S" + DateTime.UtcNow.ToString("HHmmss");
-int passed = 0, failed = 0;
+int passed = 0, failed = 0, skippedSteps = 0;
 var failures = new List<string>();
+var isOfficialBitwarden = false;
 
 void Step(string name, bool ok, string? detail = null)
 {
     if (ok) { passed++; Console.WriteLine($"  [PASS] {name}{(detail is null ? "" : $" — {detail}")}"); }
     else { failed++; failures.Add(name); Console.WriteLine($"  [FAIL] {name}{(detail is null ? "" : $" — {detail}")}"); }
+}
+
+void Skip(string name, string detail)
+{
+    skippedSteps++;
+    Console.WriteLine($"  [SKIP] {name} — {detail}");
 }
 
 Console.WriteLine($"=== WinVaultWarden Live Smoke ===");
@@ -42,7 +51,7 @@ var session = new VaultSession();
 var crypto = new CryptoService();
 var tokenStore = new MemoryTokenStore();
 
-var origin = new Core.Models.ServerOrigin(serverUrl);
+var endpoints = ServerEndpoints.FromWebVault(serverUrl);
 var apiFactory = new ApiClientFactory();
 ITokenRefresher? refresher = null;
 var clients = new VaultApiClientProvider(
@@ -62,11 +71,25 @@ var writeService = new VaultWriteService(clients, encryptor, sync, session);
 var sendCrypto = new SendCryptoService(crypto);
 var sendService = new SendService(clients, sendCrypto, session);
 var sendCompensation = new SendCompensationClient(apiFactory);
-var sendWriteService = new SendWriteService(clients, sendCrypto, session, sendCompensation);
-var sendAccessService = new SendAccessService(clients, sendCrypto);
+var transferTimeout = new TransferIdleTimeoutPolicy(TransferIdleTimeoutPolicy.DefaultIdleTimeout);
+var sendWriteService = new SendWriteService(
+    clients,
+    sendCrypto,
+    session,
+    sendCompensation,
+    transferTimeout);
+var sendAccessService = new SendAccessService(clients, sendCrypto, transferTimeout);
 
 var attachmentCrypto = new AttachmentCryptoService(crypto);
-var attachmentService = new AttachmentService(clients, attachmentCrypto, decryptor, session, sync);
+var attachmentCompensation = new AttachmentCompensationClient(apiFactory);
+var attachmentService = new AttachmentService(
+    clients,
+    attachmentCrypto,
+    decryptor,
+    session,
+    sync,
+    attachmentCompensation,
+    transferTimeout);
 
 var accountService = new AccountService(crypto, clients, session, tokenStore, auth, cache);
 
@@ -81,7 +104,8 @@ try
     Console.WriteLine("[1] GET /api/config");
     try
     {
-        var cfg = await clients.GetAnonymous<IIdentityApiClient>(origin).GetConfigAsync();
+        var cfg = await clients.GetAnonymous<IIdentityApiClient>(endpoints).GetConfigAsync();
+        isOfficialBitwarden = cfg?.Server is null;
         Step("config fetched", cfg is not null, $"version={cfg?.Version}");
     }
     catch (Exception ex) { Step("config fetched", false, ex.Message); }
@@ -393,6 +417,7 @@ try
     var sendBody = $"send-secret-text-{run}";
     var sendPassword = $"send-pw-{run}!";
     var sendDeletion = DateTimeOffset.UtcNow.AddDays(7);
+    var sendWriteLease = session.CaptureLease();
 
     var textDraft = new SendDraftModel
     {
@@ -409,7 +434,7 @@ try
         HideEmail = false,
         PasswordChange = new SendPasswordChange.Set(sendPassword),
     };
-    await sendWriteService.SaveTextSendAsync(textDraft);
+    await sendWriteService.SaveTextSendAsync(textDraft, sendWriteLease);
 
     var sendsAfterCreate = await sendService.GetSendsAsync();
     var createdSend = sendsAfterCreate.FirstOrDefault(s => s.Name == sendName);
@@ -421,6 +446,8 @@ try
         Step("send: name round-trip", createdSend.Name == sendName, createdSend.Name);
         Step("send: notes round-trip", createdSend.Notes == sendNotes, createdSend.Notes);
         Step("send: has password flag", createdSend.HasPassword, $"hasPassword={createdSend.HasPassword}");
+        Step("send: password auth type", createdSend.AuthType == SendAuthType.Password,
+            $"authType={createdSend.AuthType}, raw={createdSend.RawAuthType}");
 
         // Access through the access service using a canonical share URL built from the
         // Send's accessId + its wrapped seed (see BuildShareUrlFromSession at end of file).
@@ -449,9 +476,12 @@ try
             DeletionDate = sendDeletion,
             Disabled = false,
             HideEmail = false,
+            ExistingHasPassword = createdSend.HasPassword,
+            ExistingAuthType = createdSend.AuthType,
+            ExistingRawAuthType = createdSend.RawAuthType,
             PasswordChange = new SendPasswordChange.Keep(), // keep existing password
         };
-        await sendWriteService.SaveTextSendAsync(updateDraft);
+        await sendWriteService.SaveTextSendAsync(updateDraft, sendWriteLease);
         var afterUpdate = (await sendService.GetSendsAsync()).FirstOrDefault(s => s.Id == createdSend.Id);
         Step("send: name updated round-trip", afterUpdate?.Name == newName, afterUpdate?.Name);
         // Prove Keep did not rotate the seed: the still-valid password proves the link/seed is unchanged.
@@ -471,9 +501,12 @@ try
             TextContent = sendBody,
             TextHidden = false,
             DeletionDate = sendDeletion,
+            ExistingHasPassword = afterUpdate.HasPassword,
+            ExistingAuthType = afterUpdate.AuthType,
+            ExistingRawAuthType = afterUpdate.RawAuthType,
             PasswordChange = new SendPasswordChange.Remove(),
         };
-        await sendWriteService.SaveTextSendAsync(removePasswordDraft);
+        await sendWriteService.SaveTextSendAsync(removePasswordDraft, sendWriteLease);
         var depassed = (await sendService.GetSendsAsync()).Single(send => send.Id == createdSend.Id);
         Step("send: password removed flag", !depassed.HasPassword, $"hasPassword={depassed.HasPassword}");
         var reaccessed = await sendAccessService.AccessAsync(
@@ -507,7 +540,10 @@ try
         fileDraft.FileName!,
         filePayload.LongLength,
         _ => ValueTask.FromResult<Stream>(new MemoryStream(filePayload, writable: false)));
-    var fileResult = await sendWriteService.CreateFileSendAsync(fileDraft, fileSource);
+    var fileResult = await sendWriteService.CreateFileSendAsync(
+        fileDraft,
+        fileSource,
+        sendWriteLease);
     Step(
         "send: file Send create returned ids",
         !string.IsNullOrWhiteSpace(fileResult.SendId) && !string.IsNullOrWhiteSpace(fileResult.AccessId),
@@ -519,10 +555,13 @@ try
     if (fileSend is not null)
     {
         Step("send: file type is File", fileSend.Type == SendType.File, fileSend.Type.ToString());
-        var accessedFile = await sendAccessService.AccessAsync(
+        using var accessedFile = await sendAccessService.AccessAsync(
             BuildShareUrlFromSession(fileSend, serverForShare, sendCrypto, sendService, session),
             password: null);
-        var downloaded = await sendAccessService.DownloadFileAsync(accessedFile);
+        await using var downloadedStream = new MemoryStream();
+        using (var download = accessedFile.AcquireDownloadLease())
+            await sendAccessService.DownloadFileAsync(download, downloadedStream);
+        var downloaded = downloadedStream.ToArray();
         Step("send: file bytes round-trip", downloaded.AsSpan().SequenceEqual(filePayload),
             $"{downloaded.Length} bytes vs {filePayload.Length}");
 
@@ -537,15 +576,21 @@ try
             Name = fileSendName + "-renamed",
             FileName = fileName,
             DeletionDate = sendDeletion,
+            ExistingHasPassword = fileSend.HasPassword,
+            ExistingAuthType = fileSend.AuthType,
+            ExistingRawAuthType = fileSend.RawAuthType,
             PasswordChange = new SendPasswordChange.Keep(),
         };
-        await sendWriteService.UpdateFileSendMetadataAsync(fileRenameDraft);
+        await sendWriteService.UpdateFileSendMetadataAsync(fileRenameDraft, sendWriteLease);
         var fileAfterRename = (await sendService.GetSendsAsync()).FirstOrDefault(s => s.Id == fileSend.Id);
         Step("send: file metadata rename round-trip", fileAfterRename?.Name == fileRenameDraft.Name, fileAfterRename?.Name);
-        var accessedAfterRename = await sendAccessService.AccessAsync(
+        using var accessedAfterRename = await sendAccessService.AccessAsync(
             BuildShareUrlFromSession(fileAfterRename!, serverForShare, sendCrypto, sendService, session),
             password: null);
-        var downloadedAfterRename = await sendAccessService.DownloadFileAsync(accessedAfterRename);
+        await using var renamedDownloadStream = new MemoryStream();
+        using (var download = accessedAfterRename.AcquireDownloadLease())
+            await sendAccessService.DownloadFileAsync(download, renamedDownloadStream);
+        var downloadedAfterRename = renamedDownloadStream.ToArray();
         Step("send: file bytes still decryptable after metadata update", downloadedAfterRename.AsSpan().SequenceEqual(filePayload),
             $"{downloadedAfterRename.Length} bytes vs {filePayload.Length}");
     }
@@ -554,13 +599,13 @@ try
     Console.WriteLine("[13] Send cleanup");
     if (createdSend is not null)
     {
-        await sendWriteService.DeleteSendAsync(createdSend.Id);
+        await sendWriteService.DeleteSendAsync(createdSend.Id, sendWriteLease);
         var textGone = (await sendService.GetSendsAsync()).All(s => s.Id != createdSend.Id);
         Step("send: text deleted", textGone);
     }
     if (fileSend is not null)
     {
-        await sendWriteService.DeleteSendAsync(fileSend.Id);
+        await sendWriteService.DeleteSendAsync(fileSend.Id, sendWriteLease);
         var fileGone = (await sendService.GetSendsAsync()).All(s => s.Id != fileSend.Id);
         Step("send: file deleted", fileGone);
     }
@@ -586,7 +631,11 @@ try
         var attFileName = $"附件-测试-{run}.bin";
         var attPayload = RandomNumberGenerator.GetBytes(4096);
 
-        var afterUpload = await attachmentService.UploadAsync(attHost.Id, attFileName, attPayload);
+        var attachmentSource = new ReopenableFileSource(
+            attFileName,
+            attPayload.LongLength,
+            _ => ValueTask.FromResult<Stream>(new MemoryStream(attPayload, writable: false)));
+        var afterUpload = await attachmentService.UploadAsync(attHost.Id, attachmentSource);
         var uploaded = afterUpload.FirstOrDefault(a => a.FileName == attFileName);
         Step("attachment: upload + list shows it", uploaded is not null,
             $"{afterUpload.Count} attachment(s), id={uploaded?.Id}");
@@ -603,7 +652,9 @@ try
         if (uploaded is not null)
         {
             // Download → must equal the original plaintext byte-for-byte.
-            var downloaded = await attachmentService.DownloadAsync(attHost.Id, uploaded.Id);
+            await using var attachmentDownloadStream = new MemoryStream();
+            await attachmentService.DownloadAsync(attHost.Id, uploaded.Id, attachmentDownloadStream);
+            var downloaded = attachmentDownloadStream.ToArray();
             Step("attachment: download byte-for-byte equal",
                 downloaded.AsSpan().SequenceEqual(attPayload),
                 $"{downloaded.Length} bytes vs {attPayload.Length}");
@@ -634,7 +685,9 @@ try
                 var attAfterEdit = afterEdit?.Attachments.FirstOrDefault(a => a.Id == uploaded.Id);
                 Step("attachment/edit: filename still decrypts after edit",
                     attAfterEdit?.FileName == attFileName, attAfterEdit?.FileName);
-                var reDownloaded = await attachmentService.DownloadAsync(attHost.Id, uploaded.Id);
+                await using var attachmentRedownloadStream = new MemoryStream();
+                await attachmentService.DownloadAsync(attHost.Id, uploaded.Id, attachmentRedownloadStream);
+                var reDownloaded = attachmentRedownloadStream.ToArray();
                 Step("attachment/edit: still downloadable byte-for-byte after edit (R1)",
                     reDownloaded.AsSpan().SequenceEqual(attPayload),
                     $"{reDownloaded.Length} bytes vs {attPayload.Length}");
@@ -734,7 +787,7 @@ try
 
         await sync.SyncAsync();
         var report = health.AnalyzeOffline();
-        Step("health: AnalyzeOffline ran", report is not null,
+        Step("health: AnalyzeOffline ran", true,
             $"reused={report.Reused.Count} weak={report.Weak.Count} unsecured={report.Unsecured.Count}");
 
         var leaked = await pwned.GetBreachCountAsync("password");
@@ -767,26 +820,39 @@ try
         var ioLoginName = $"WVW-IO-Login-{run}";
         var ioJson = "{\"encrypted\":false,\"folders\":[{\"id\":\"f0\",\"name\":\"" + ioFolderName + "\"}],\"items\":[" +
                    "{\"type\":1,\"name\":\"" + ioLoginName + "\",\"folderId\":\"f0\",\"login\":{\"username\":\"u\",\"password\":\"io-pass\",\"uris\":[]}}]}";
+        int? ioImportedCount;
+        try
+        {
+            ioImportedCount = await importSvc.ImportAsync(Core.Services.ImportFormat.Json, ioJson);
+        }
+        catch (VaultWriteException ex)
+            when (isOfficialBitwarden && ex.StatusCode == System.Net.HttpStatusCode.PaymentRequired)
+        {
+            ioImportedCount = null;
+            Skip(
+                "io: bulk import",
+                "official Bitwarden Lite SQLite rejects non-empty bulk imports with HTTP 402");
+        }
 
-        var ioImportedCount = await importSvc.ImportAsync(Core.Services.ImportFormat.Json, ioJson);
-        Step("io: import returned 1", ioImportedCount == 1, $"n={ioImportedCount}");
+        if (ioImportedCount is int importedCount)
+        {
+            Step("io: import returned 1", importedCount == 1, $"n={importedCount}");
+            var ioAfter = await sync.SyncAsync();
+            var ioImported = ioAfter.FirstOrDefault(c => c.Name == ioLoginName);
+            var ioFolder = session.Folders.FirstOrDefault(f => f.Name == ioFolderName);
+            Step("io: imported login decrypts + in folder",
+                ioImported is not null && ioImported.Login?.Password == "io-pass"
+                && ioFolder is not null && ioImported.FolderId == ioFolder.Id,
+                ioImported?.Login?.Password);
 
-        var ioAfter = await sync.SyncAsync();
-        var ioImported = ioAfter.FirstOrDefault(c => c.Name == ioLoginName);
-        var ioFolder = session.Folders.FirstOrDefault(f => f.Name == ioFolderName);
-        Step("io: imported login decrypts + in folder",
-            ioImported is not null && ioImported.Login?.Password == "io-pass"
-            && ioFolder is not null && ioImported.FolderId == ioFolder.Id,
-            ioImported?.Login?.Password);
+            var ioExport = exportSvc.Export(Core.Services.ExportFormat.Json);
+            var ioReparsed = Vault.Porting.BitwardenJsonCodec.Parse(ioExport);
+            Step("io: export round-trips through codec", ioReparsed.Ciphers.Any(c => c.Name == ioLoginName));
 
-        var ioExport = exportSvc.Export(Core.Services.ExportFormat.Json);
-        var ioReparsed = Vault.Porting.BitwardenJsonCodec.Parse(ioExport);
-        Step("io: export round-trips through codec", ioReparsed.Ciphers.Any(c => c.Name == ioLoginName));
-
-        // cleanup: hard-delete imported cipher + delete folder
-        if (ioImported is not null) await writeService.DeleteCipherAsync(ioImported.Id, permanent: true);
-        if (ioFolder is not null) await writeService.DeleteFolderAsync(ioFolder.Id);
-        Step("io: cleanup", true);
+            if (ioImported is not null) await writeService.DeleteCipherAsync(ioImported.Id, permanent: true);
+            if (ioFolder is not null) await writeService.DeleteFolderAsync(ioFolder.Id);
+            Step("io: cleanup", true);
+        }
     }
 
     // ── 25. PIN unlock: set PIN → lock → unlock with PIN → wrong PIN fails ────
@@ -829,7 +895,7 @@ catch (Exception ex)
 }
 
 Console.WriteLine();
-Console.WriteLine($"=== Summary: {passed} passed, {failed} failed ===");
+Console.WriteLine($"=== Summary: {passed} passed, {failed} failed, {skippedSteps} skipped ===");
 if (failures.Count > 0)
     Console.WriteLine("Failed: " + string.Join("; ", failures));
 return failed == 0 ? 0 : 1;
@@ -851,14 +917,41 @@ async Task RegisterAsync()
     var registerService = new Vault.RegisterService(crypto, clients);
     try
     {
-        await registerService.RegisterAsync(serverUrl, email, "WVW Smoke", password, null);
-        Step("account registered", true);
+        var outcome = await registerService.RegisterAsync(
+            serverUrl,
+            email,
+            "WVW Smoke",
+            password,
+            null);
+        switch (outcome)
+        {
+            case Core.Services.RegistrationOutcome.Registered:
+                Step("account registered", true);
+                break;
+            case Core.Services.RegistrationOutcome.EmailVerificationRequired:
+                Skip(
+                    "account registered",
+                    "anti-enumeration response requires the following login to prove account availability");
+                break;
+            case Core.Services.RegistrationOutcome.OutcomeUncertain:
+                Skip(
+                    "account registered",
+                    "registration result is uncertain; the following login verifies availability without retrying");
+                break;
+        }
     }
     catch (Core.Services.RegistrationException ex)
         when (ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase)
-           || ex.Message.Contains("not allowed", StringComparison.OrdinalIgnoreCase))
+           || ex.Message.Contains("already taken", StringComparison.OrdinalIgnoreCase))
     {
         Step("account already exists (reuse)", true);
+    }
+    catch (Core.Services.RegistrationException ex)
+        when (ex.Message.Contains("not allowed", StringComparison.OrdinalIgnoreCase))
+    {
+        Skip(
+            "account registration",
+            "server registration policy is disabled; the following login verifies the seeded account");
     }
     catch (Core.Services.RegistrationException ex)
     {
@@ -1019,7 +1112,20 @@ async Task TwoFactorTotpRoundTripAsync()
     try
     {
         // Step 1: Begin TOTP setup — get secret from server
-        var (secret, otpauth) = await twoFactorService.BeginTotpSetupAsync(password);
+        (string secret, string otpauth) setup;
+        try
+        {
+            setup = await twoFactorService.BeginTotpSetupAsync(password);
+        }
+        catch (VaultWriteException ex)
+            when (isOfficialBitwarden && ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            Skip(
+                "2fa: TOTP management",
+                "official Bitwarden restricts this controller to client_id=web");
+            return;
+        }
+        var (secret, otpauth) = setup;
         Step("2fa: begin TOTP setup returns secret", !string.IsNullOrEmpty(secret),
             $"secret len={secret.Length}");
         Step("2fa: otpauth URI contains secret", otpauth.Contains(secret, StringComparison.Ordinal),
@@ -1032,9 +1138,10 @@ async Task TwoFactorTotpRoundTripAsync()
             code.Length == 6 && code.All(char.IsDigit), code);
 
         // Step 3: Enable TOTP — sends secret + code + masterPasswordHash to server
-        var recoveryCode = await twoFactorService.EnableTotpAsync(password, secret, code);
+        var activation = await twoFactorService.EnableTotpAsync(password, secret, code);
+        var recoveryCode = activation.RecoveryCode ?? string.Empty;
         totpEnabled = true;
-        Step("2fa: enable TOTP succeeds", true);
+        Step("2fa: enable TOTP succeeds", activation.IsEnabled);
         Step("2fa: recovery code non-empty", !string.IsNullOrEmpty(recoveryCode),
             recoveryCode.Length > 0 ? recoveryCode[..Math.Min(8, recoveryCode.Length)] + "…" : "(empty)");
 
@@ -1097,14 +1204,15 @@ async Task AuthRequestRoundTripAsync()
     {
         using var rsa = RSA.Create(2048);
         var pub = Convert.ToBase64String(rsa.ExportSubjectPublicKeyInfo());
-        var accessCode = Convert.ToBase64String(RandomNumberGenerator.GetBytes(25));
+        var accessCode = Convert.ToBase64String(RandomNumberGenerator.GetBytes(18));
 
         // 1. 创建 auth-request
-        var resp = await clients.GetAnonymous<IPublicAuthRequestApiClient>(origin).CreateAsync(new Api.Dtos.AuthRequestRequest(
+        var resp = await clients.GetAnonymous<IPublicAuthRequestApiClient>(endpoints).CreateAsync(new Api.Dtos.AuthRequestRequest(
             AccessCode: accessCode,
             DeviceIdentifier: persisted.DeviceIdentifier,
             Email: email,
-            PublicKey: pub));
+            PublicKey: pub,
+            Type: 0));
         createdId = resp.Id;
         Step("auth-request: create", !string.IsNullOrEmpty(createdId), createdId);
 
@@ -1118,7 +1226,7 @@ async Task AuthRequestRoundTripAsync()
         Step("auth-request: ApproveAsync succeeded", true);
 
         // 4. 发起方轮询响应，解密 Key，与会话 UserKey 比对
-        var getResp = await clients.GetAnonymous<IPublicAuthRequestApiClient>(origin).GetResponseAsync(createdId, accessCode);
+        var getResp = await clients.GetAnonymous<IPublicAuthRequestApiClient>(endpoints).GetResponseAsync(createdId, accessCode);
         Step("auth-request: GetResponse key non-null", getResp.Key is not null, getResp.Key?[..Math.Min(20, getResp.Key?.Length ?? 0)]);
         if (getResp.Key is not null)
         {
@@ -1164,7 +1272,10 @@ async Task NotificationsPushRoundTripAsync()
         // Step 1: 连接并断言握手（非空洞式：捕获异常并 Step false）
         try
         {
-            await conn.ConnectAsync(serverUrl, session.AccessToken!, CancellationToken.None);
+            await conn.ConnectAsync(
+                endpoints.Notifications.Value,
+                session.AccessToken!,
+                CancellationToken.None);
             handshakeOk = true;
         }
         catch (Exception ex)
@@ -1289,7 +1400,7 @@ async Task NotificationsPushRoundTripAsync()
 // Returns an anonymous-record-style tuple of the pieces needed for the EA test.
 (IVaultApiClientProvider clients, VaultSession session, CryptoService crypto, AuthService auth,
  SyncService sync, VaultWriteService write, AccountService account,
- EmergencyAccessService ea)
+ EmergencyAccessService ea, MemoryTokenStore tokenStore)
 BuildStack(string url)
 {
     var s = new VaultSession();
@@ -1308,7 +1419,7 @@ BuildStack(string url)
     var write2 = new VaultWriteService(localClients, enc2, sync2, s);
     var acct2 = new AccountService(c, localClients, s, ts, auth2, cache2);
     var ea2 = new EmergencyAccessService(localClients, c, dec, s);
-    return (localClients, s, c, auth2, sync2, write2, acct2, ea2);
+    return (localClients, s, c, auth2, sync2, write2, acct2, ea2, tokenStore: ts);
 }
 
 // ── Emergency Access: two throwaway accounts (grantor A, grantee B) ──────────
@@ -1329,8 +1440,26 @@ async Task EmergencyAccessRoundTripAsync()
         {
             try
             {
-                await regSvc.RegisterAsync(serverUrl, em, $"EA {label}", eaPassword, null);
-                Step($"ea: registered {label}", true, em);
+                var outcome = await regSvc.RegisterAsync(
+                    serverUrl,
+                    em,
+                    $"EA {label}",
+                    eaPassword,
+                    null);
+                if (outcome is Core.Services.RegistrationOutcome.Registered)
+                {
+                    Step($"ea: registered {label}", true, em);
+                }
+                else
+                {
+                    Step(
+                        $"ea: register {label}",
+                        false,
+                        outcome is Core.Services.RegistrationOutcome.EmailVerificationRequired
+                            ? "server requires completing email verification in Web Vault"
+                            : "registration POST result is uncertain; refusing automatic retry");
+                    return;
+                }
             }
             catch (Core.Services.RegistrationException ex)
                 when (ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase)
@@ -1384,7 +1513,7 @@ async Task EmergencyAccessRoundTripAsync()
         // B's (grantee) perspective. Step-asserts the key transitions along the way.
         async Task<string> RunGrantToRecoveryApprovedAsync(EmergencyAccessType type, string label)
         {
-            await stackA.ea.InviteAsync(emailB, type, 0);
+            await stackA.ea.InviteAsync(emailB, type, 1);
             await Task.Delay(500); // small pause for server processing (mail off → auto-accept)
 
             var trusted = await stackA.ea.GetTrustedAsync();
@@ -1504,10 +1633,10 @@ async Task EmergencyAccessRoundTripAsync()
             if (loginCleanA is AuthResult.Success && cleanA.session.UserKey is not null)
             {
                 // Compute master password hash with NEW password
-                var masterKeyA = cleanA.crypto.DeriveMasterKey(
-                    newEaPassword, emailA, Core.Enums.KdfType.Pbkdf2, 600_000, null, null);
-                var hashA = cleanA.crypto.ComputeMasterPasswordHash(masterKeyA, newEaPassword);
-                System.Security.Cryptography.CryptographicOperations.ZeroMemory(masterKeyA);
+                var hashA = ComputePersistedMasterPasswordHash(
+                    cleanA.crypto,
+                    cleanA.tokenStore,
+                    newEaPassword);
                 IEmergencyAccessApiClient eaApiA = cleanA.clients.GetAuthenticated<IEmergencyAccessApiClient>(cleanA.session.CaptureLease());
                 await eaApiA.DeleteAccountAsync(new Api.Dtos.DeleteAccountRequest { MasterPasswordHash = hashA });
                 Step("ea: cleanup delete account A (best-effort)", true, emailA);
@@ -1519,10 +1648,10 @@ async Task EmergencyAccessRoundTripAsync()
                 var loginCleanA2 = await cleanA2.auth.LoginAsync(serverUrl, emailA, eaPassword);
                 if (loginCleanA2 is AuthResult.Success && cleanA2.session.UserKey is not null)
                 {
-                    var masterKeyA2 = cleanA2.crypto.DeriveMasterKey(
-                        eaPassword, emailA, Core.Enums.KdfType.Pbkdf2, 600_000, null, null);
-                    var hashA2 = cleanA2.crypto.ComputeMasterPasswordHash(masterKeyA2, eaPassword);
-                    System.Security.Cryptography.CryptographicOperations.ZeroMemory(masterKeyA2);
+                    var hashA2 = ComputePersistedMasterPasswordHash(
+                        cleanA2.crypto,
+                        cleanA2.tokenStore,
+                        eaPassword);
                     IEmergencyAccessApiClient eaApiA2 = cleanA2.clients.GetAuthenticated<IEmergencyAccessApiClient>(cleanA2.session.CaptureLease());
                     await eaApiA2.DeleteAccountAsync(new Api.Dtos.DeleteAccountRequest { MasterPasswordHash = hashA2 });
                     Step("ea: cleanup delete account A (best-effort)", true, emailA + " (orig pw)");
@@ -1536,7 +1665,7 @@ async Task EmergencyAccessRoundTripAsync()
         catch (Exception ex)
         {
             Step("ea: cleanup delete account A (best-effort)", false,
-                $"{ex.GetType().Name}: {ex.Message}");
+                DescribeWriteError(ex));
         }
 
         // Delete account B (using original password)
@@ -1546,10 +1675,10 @@ async Task EmergencyAccessRoundTripAsync()
             var loginCleanB = await cleanB.auth.LoginAsync(serverUrl, emailB, eaPassword);
             if (loginCleanB is AuthResult.Success && cleanB.session.UserKey is not null)
             {
-                var masterKeyB = cleanB.crypto.DeriveMasterKey(
-                    eaPassword, emailB, Core.Enums.KdfType.Pbkdf2, 600_000, null, null);
-                var hashB = cleanB.crypto.ComputeMasterPasswordHash(masterKeyB, eaPassword);
-                System.Security.Cryptography.CryptographicOperations.ZeroMemory(masterKeyB);
+                var hashB = ComputePersistedMasterPasswordHash(
+                    cleanB.crypto,
+                    cleanB.tokenStore,
+                    eaPassword);
                 IEmergencyAccessApiClient eaApiB = cleanB.clients.GetAuthenticated<IEmergencyAccessApiClient>(cleanB.session.CaptureLease());
                 await eaApiB.DeleteAccountAsync(new Api.Dtos.DeleteAccountRequest { MasterPasswordHash = hashB });
                 Step("ea: cleanup delete account B (best-effort)", true, emailB);
@@ -1561,10 +1690,44 @@ async Task EmergencyAccessRoundTripAsync()
         }
         catch (Exception ex)
         {
-            Step("ea: cleanup delete account B (best-effort)", false,
-                $"{ex.GetType().Name}: {ex.Message}");
+            Step("ea: cleanup delete account B (best-effort)", false, DescribeWriteError(ex));
         }
     }
+}
+
+static string ComputePersistedMasterPasswordHash(
+    CryptoService crypto,
+    MemoryTokenStore tokenStore,
+    string password)
+{
+    if (!tokenStore.TryLoad(out var persisted))
+        throw new InvalidOperationException("The authenticated session was not persisted.");
+
+    var masterKey = crypto.DeriveMasterKey(
+        password,
+        persisted.EffectiveMasterPasswordSalt,
+        persisted.KdfType,
+        persisted.KdfIterations,
+        persisted.KdfMemory,
+        persisted.KdfParallelism);
+    try
+    {
+        return crypto.ComputeMasterPasswordHash(masterKey, password);
+    }
+    finally
+    {
+        System.Security.Cryptography.CryptographicOperations.ZeroMemory(masterKey);
+    }
+}
+
+static string DescribeWriteError(Exception exception)
+{
+    if (exception is not VaultWriteException { ValidationErrors: { Count: > 0 } errors })
+        return $"{exception.GetType().Name}: {exception.Message}";
+
+    var fields = errors.SelectMany(pair =>
+        pair.Value.Select(message => $"{pair.Key}: {message}"));
+    return $"{exception.GetType().Name}: {exception.Message} ({string.Join("; ", fields)})";
 }
 
 // P1-1 占位:LiveSmoke 尚未接入 DPAPI 落盘缓存(Task 6 才引入 DpapiVaultCacheStore)。

@@ -1,13 +1,14 @@
 using Core.Enums;
 using Core.Models;
 using Crypto;
+using Core.Session;
 using Vault;
 
 namespace App.Services;
 
 public interface IDemoVaultSessionService
 {
-    Task OpenDemoVaultAsync(CancellationToken ct = default);
+    Task<VaultSessionLease> OpenDemoVaultAsync(CancellationToken ct = default);
 }
 
 public sealed class DemoVaultSessionService : IDemoVaultSessionService
@@ -21,7 +22,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
 
     public DemoVaultSessionService(VaultSession session) => _session = session;
 
-    public Task OpenDemoVaultAsync(CancellationToken ct = default)
+    public Task<VaultSessionLease> OpenDemoVaultAsync(CancellationToken ct = default)
     {
         var lease = _session.BeginAccountSession(
             "demo-account",
@@ -46,7 +47,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             key.Dispose();
             throw new OperationCanceledException(lease.CancellationToken);
         }
-        return Task.CompletedTask;
+        return Task.FromResult(lease);
     }
 
     private static DecryptedVault BuildVault()

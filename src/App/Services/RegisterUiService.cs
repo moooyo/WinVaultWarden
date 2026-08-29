@@ -4,7 +4,7 @@ namespace App.Services;
 
 public interface IRegisterUiService
 {
-    Task RegisterAsync(
+    Task<RegistrationOutcome> RegisterAsync(
         string serverUrl,
         string email,
         string? name,
@@ -28,7 +28,7 @@ public sealed class RegisterUiService : IRegisterUiService
         _service = service;
     }
 
-    public Task RegisterAsync(
+    public Task<RegistrationOutcome> RegisterAsync(
         string serverUrl,
         string email,
         string? name,

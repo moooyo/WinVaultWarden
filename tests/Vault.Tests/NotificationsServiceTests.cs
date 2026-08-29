@@ -36,9 +36,10 @@ public class NotificationsServiceTests
         string accessToken = "test-access-token")
     {
         var session = new VaultSession();
-        var origin = new ServerOrigin(serverUrl);
         var lease = session.BeginAccountSession(
-            "account-a", "test@example.com", origin);
+            "account-a",
+            "test@example.com",
+            ServerEndpoints.FromWebVault(serverUrl));
         session.TryCommit(lease, () =>
         {
             session.SetTokens(accessToken, "refresh-token");
@@ -347,5 +348,54 @@ public class NotificationsServiceTests
 
         Assert.Equal(1, connection.ConnectCallCount);
         Assert.Empty(dispatcher.Dispatched);
+    }
+
+    [Theory]
+    [InlineData("https://vault.example/warden", "https://vault.example/warden/notifications")]
+    [InlineData("https://vault.bitwarden.com", "https://notifications.bitwarden.com")]
+    public async Task StartAsync_UsesNotificationsEndpointFromLease(
+        string webVault,
+        string expectedNotificationsEndpoint)
+    {
+        var connection = new CapturingNotificationsConnection();
+        var service = MakeService(
+            () => connection,
+            new FakeNotificationDispatcher(),
+            MakeSession(webVault));
+
+        await service.StartAsync();
+        await WaitUntilAsync(
+            () => connection.ServerUrl is not null,
+            TimeSpan.FromSeconds(5));
+        await service.StopAsync();
+
+        Assert.Equal(expectedNotificationsEndpoint, connection.ServerUrl);
+    }
+
+    private sealed class CapturingNotificationsConnection : INotificationsConnection
+    {
+        public string? ServerUrl { get; private set; }
+
+        public Task ConnectAsync(string serverUrl, string accessToken, CancellationToken ct)
+        {
+            ServerUrl = serverUrl;
+            return Task.CompletedTask;
+        }
+
+        public async IAsyncEnumerable<NotificationMessage> ReadAsync(
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            yield break;
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

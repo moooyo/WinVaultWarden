@@ -77,6 +77,49 @@ public class SecurityReportPageXamlTests
     }
 
     [Fact]
+    public void PageTitle_IsOutsideConditionalContentPanel()
+    {
+        var doc = LoadXaml();
+        var contentPanel = doc.Descendants().Single(e =>
+            e.Attributes().Any(a => a.Name.LocalName == "Name" && a.Value == "OfflineContentPanel"));
+
+        Assert.DoesNotContain(contentPanel.Descendants(), e =>
+            e.Name.LocalName == "TextBlock" && (string?)e.Attribute("Text") == "安全报告");
+        Assert.Single(doc.Descendants().Where(e =>
+            e.Name.LocalName == "TextBlock" && (string?)e.Attribute("Text") == "安全报告"));
+    }
+
+    [Fact]
+    public void ExposureMetric_ShowsStatusUntilCountIsConfirmed()
+    {
+        var xaml = XamlText();
+
+        Assert.Contains("ViewModel.ShowExposedCount", xaml);
+        Assert.Contains("ViewModel.ExposureStatusLabel", xaml);
+        Assert.Contains("ViewModel.ExposureMetricAccessibleName", xaml);
+    }
+
+    [Fact]
+    public void AsyncStatus_IsAccessible()
+    {
+        var xaml = XamlText();
+
+        Assert.Contains("AutomationProperties.LiveSetting=\"Polite\"", xaml);
+        Assert.Contains("AutomationProperties.Name=\"安全报告分析进度\"", xaml);
+        Assert.Contains("AutomationProperties.Name=\"正在检查暴露密码\"", xaml);
+    }
+
+    [Fact]
+    public void HeroCard_HasNarrowWindowLayout()
+    {
+        var xaml = XamlText();
+
+        Assert.Contains("AdaptiveTrigger MinWindowWidth=\"0\"", xaml);
+        Assert.Contains("HealthMetricsPanel.(Grid.Row)", xaml);
+        Assert.Contains("HealthMetricsPanel.(Grid.ColumnSpan)", xaml);
+    }
+
+    [Fact]
     public void RunExposedCheckButton_UsesAccentButtonStyle()
     {
         var doc = LoadXaml();

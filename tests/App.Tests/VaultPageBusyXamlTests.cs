@@ -49,6 +49,37 @@ public sealed class VaultPageBusyXamlTests
         Assert.Contains("ViewModel.BusyMessage", text.Attribute("Text")?.Value);
     }
 
+    [Fact]
+    public void BusyLiveRegion_RemainsOutsideResponsivePanes()
+    {
+        var document = Load();
+        var panel = document.Descendants().Single(node =>
+            node.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Name"
+                && attribute.Value == "VaultBusyPanel"));
+        var layoutRoot = document.Descendants().Single(node =>
+            node.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Name"
+                && attribute.Value == "VaultLayoutRoot"));
+
+        Assert.Same(layoutRoot, panel.Parent);
+        Assert.Equal("0", panel.Attribute("Grid.Row")?.Value);
+        Assert.Equal("2", panel.Attribute("Grid.ColumnSpan")?.Value);
+        Assert.DoesNotContain(panel.Ancestors(), node =>
+            node.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Name"
+                && attribute.Value is "VaultListPane" or "VaultDetailPane"));
+
+        foreach (var paneName in new[] { "VaultListPane", "VaultDetailPane" })
+        {
+            var pane = document.Descendants().Single(node =>
+                node.Attributes().Any(attribute =>
+                    attribute.Name.LocalName == "Name"
+                    && attribute.Value == paneName));
+            Assert.Equal("1", pane.Attribute("Grid.Row")?.Value);
+        }
+    }
+
     private static XDocument Load()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory);

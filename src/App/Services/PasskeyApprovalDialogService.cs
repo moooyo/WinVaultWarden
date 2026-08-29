@@ -358,7 +358,7 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         }
     }
 
-    // 在 UI 线程上执行 action;已在 UI 线程则直接 await,否则经 DispatcherQueue 派发并回传结果。
+    // Run the action on the UI thread and propagate its result back to the caller.
     private static async Task<T> InvokeOnUiAsync<T>(
         MainWindow window,
         Func<Task<T>> action,
@@ -374,11 +374,11 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
             {
                 try
                 {
-                    result.SetResult(await action());
+                    result.TrySetResult(await action());
                 }
                 catch (Exception ex)
                 {
-                    result.SetException(ex);
+                    result.TrySetException(ex);
                 }
             }))
         {
@@ -390,7 +390,8 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         {
             return await result.Task;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
         {
             return fallback;
         }

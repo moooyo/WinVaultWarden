@@ -2,7 +2,9 @@ using App.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Core.Abstractions;
+using Core.Models;
 using Core.Services;
+using Core.Session;
 
 namespace App.ViewModels;
 
@@ -24,6 +26,13 @@ public enum LoginFocusTarget
     Pin,
 }
 
+public enum LoginStatusKind
+{
+    Info,
+    Success,
+    Error,
+}
+
 public partial class LoginViewModel : ObservableObject, ISensitiveState
 {
     private const string BitwardenUsUrl = "https://vault.bitwarden.com";
@@ -37,7 +46,8 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     private readonly IWindowsHelloAuthenticator? _hello;
     private readonly IHelloUnlockService? _helloUnlock;
     private readonly IAppLifecycleCoordinator? _lifecycle;
-    private Action? _onSuccess;
+    private Action<VaultSessionLease>? _onSuccess;
+    private AuthenticationAttemptLease? _authenticationAttempt;
     private IReadOnlyList<int> _twoFactorProviders = Array.Empty<int>();
 
     [ObservableProperty]
@@ -63,6 +73,9 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     [ObservableProperty]
     public partial string Status { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial LoginStatusKind StatusKind { get; set; } = LoginStatusKind.Info;
 
     [ObservableProperty]
     public partial int SelectedServerOptionIndex { get; set; }
@@ -209,7 +222,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     public string AccountSummary => string.IsNullOrWhiteSpace(Email) ? "邮箱地址" : Email.Trim();
 
-    public string ServerSummary => ShortServer(ResolveServerUrl());
+    public string ServerSummary => FormatServerSummary(ResolveServerUrl());
 
     public string AccountInitial
     {
@@ -220,31 +233,35 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         }
     }
 
-    public void SetSuccessCallback(Action callback) => _onSuccess = callback;
+    public void SetSuccessCallback(Action<VaultSessionLease> callback) =>
+        _onSuccess = callback;
 
     public void PrepareUnlock(string serverUrl, string email)
     {
+        AbandonCurrentAuthenticationAttempt();
         ServerUrl = serverUrl;
         Email = email;
         MasterPassword = string.Empty;
         TwoFactorCode = string.Empty;
         Pin = string.Empty;
         Stage = (_pin?.IsPinSet ?? false) ? LoginStage.PinUnlock : LoginStage.Unlock;
-        Status = IsPinUnlockStage ? "请输入 PIN 解锁。" : "请输入主密码解锁。";
+        SetStatus(
+            IsPinUnlockStage ? "请输入 PIN 解锁。" : "请输入主密码解锁。",
+            LoginStatusKind.Info);
     }
 
     public void PrepareAccount(string serverUrl, string email)
     {
+        AbandonCurrentAuthenticationAttempt();
         SelectedServerOptionIndex = serverUrl == BitwardenUsUrl ? 0
             : serverUrl == BitwardenEuUrl ? 1
             : 2;
         Email = email;
         MasterPassword = string.Empty;
         TwoFactorCode = string.Empty;
-        Status = string.Empty;
+        ClearStatus();
         Stage = LoginStage.Account;
-        // Set ServerUrl last so it wins over any placeholder written by
-        // OnSelectedServerOptionIndexChanged (e.g. "https://vault.example.com").
+        // Assign the supplied endpoint after the option change clears any prior official endpoint.
         ServerUrl = serverUrl;
     }
 
@@ -263,32 +280,50 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         if (!ValidateSecretInput())
             return;
 
+        var attempt = IsTwoFactorStage
+            ? _authenticationAttempt
+            : BeginAuthenticationAttempt();
+        if (attempt is null)
+        {
+            if (IsTwoFactorStage)
+                ReturnToPasswordStage();
+            SetStatus("认证会话已失效，请重试。", LoginStatusKind.Error);
+            RequestFocus(CurrentSecretFocusTarget());
+            return;
+        }
+
         try
         {
             IsBusy = true;
             var result = IsPinUnlockStage
-                ? await _auth.UnlockWithPinAsync(Pin, ct)
+                ? await _auth.UnlockWithPinAsync(attempt, Pin, ct)
                 : IsUnlockStage
-                    ? await _auth.UnlockAsync(MasterPassword, ct)
+                    ? await _auth.UnlockAsync(attempt, MasterPassword, ct)
                     : IsTwoFactorStage
-                        ? await _auth.SubmitTwoFactorAsync(TwoFactorCode.Trim(), ResolveSelectedTwoFactorProvider(), ct, rememberDevice: RememberDevice)
-                        : await _auth.LoginAsync(ResolveServerUrl(), Email.Trim(), MasterPassword, ct);
+                        ? await _auth.SubmitTwoFactorAsync(attempt, TwoFactorCode.Trim(), ResolveSelectedTwoFactorProvider(), ct, rememberDevice: RememberDevice)
+                        : await _auth.LoginAsync(attempt, ResolveServerUrl(), Email.Trim(), MasterPassword, ct);
 
-            HandleResult(result);
+            HandleResult(attempt, result);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
         {
-            Status = string.Empty;
+            AbandonAuthenticationAttempt(attempt);
+            if (IsTwoFactorStage)
+                ReturnToPasswordStage();
+            ClearStatus();
         }
         catch (HttpRequestException)
         {
-            Status = "无法连接服务器，请检查网络后重试。";
-            RequestFocus(CurrentSecretFocusTarget());
+            HandleFailure(attempt, new AuthResult.Failure(
+                "The authentication server could not be reached.",
+                AuthFailureKind.Network));
         }
         catch (TaskCanceledException)
         {
-            Status = "连接服务器超时，请稍后重试。";
-            RequestFocus(CurrentSecretFocusTarget());
+            HandleFailure(attempt, new AuthResult.Failure(
+                "The authentication request timed out.",
+                AuthFailureKind.Timeout));
         }
         finally
         {
@@ -309,6 +344,8 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         if (challenge is null)
             return;
 
+        var attempt = BeginAuthenticationAttempt();
+
         try
         {
             IsBusy = true;
@@ -316,26 +353,31 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             var signature = await _hello.GetProtectorAsync(challenge, ct);
             if (signature is null)
             {
-                Status = "Windows Hello 未完成。";
+                AbandonAuthenticationAttempt(attempt);
+                SetStatus("Windows Hello 未完成。", LoginStatusKind.Info);
                 return;
             }
 
-            var result = await _auth.UnlockWithHelloAsync(signature, ct);
-            HandleResult(result); // 复用现有解锁结果处理(导航/提示),与 LoginAsync 一致
+            var result = await _auth.UnlockWithHelloAsync(attempt, signature, ct);
+            HandleResult(attempt, result); // Reuse the same navigation and status handling as login.
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
         {
-            Status = string.Empty;
+            AbandonAuthenticationAttempt(attempt);
+            ClearStatus();
         }
         catch (HttpRequestException)
         {
-            Status = "无法连接服务器，请检查网络后重试。";
-            RequestFocus(CurrentSecretFocusTarget());
+            HandleFailure(attempt, new AuthResult.Failure(
+                "The authentication server could not be reached.",
+                AuthFailureKind.Network));
         }
         catch (TaskCanceledException)
         {
-            Status = "连接服务器超时，请稍后重试。";
-            RequestFocus(CurrentSecretFocusTarget());
+            HandleFailure(attempt, new AuthResult.Failure(
+                "The authentication request timed out.",
+                AuthFailureKind.Timeout));
         }
         finally
         {
@@ -349,12 +391,13 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         if (_demoVault is null)
             return;
 
-        await _demoVault.OpenDemoVaultAsync();
-        Status = string.Empty;
+        AbandonCurrentAuthenticationAttempt();
+        var lease = await _demoVault.OpenDemoVaultAsync();
+        ClearStatus();
         MasterPassword = string.Empty;
         TwoFactorCode = string.Empty;
         Stage = LoginStage.Account;
-        _onSuccess?.Invoke();
+        _onSuccess?.Invoke(lease);
     }
 
     [RelayCommand]
@@ -363,9 +406,10 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         if (IsBusy)
             return;
 
-        Status = string.Empty;
+        ClearStatus();
         if (IsTwoFactorStage)
         {
+            AbandonCurrentAuthenticationAttempt();
             TwoFactorCode = string.Empty;
             Stage = LoginStage.Password;
         }
@@ -379,8 +423,12 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     [RelayCommand(CanExecute = nameof(CanResendEmailCode))]
     private async Task ResendEmailCodeAsync()
     {
-        var sent = await _auth.ResendTwoFactorEmailAsync();
-        Status = sent ? "验证码已重新发送，请查收邮箱。" : "验证码发送失败，请稍后重试。";
+        var attempt = _authenticationAttempt;
+        var sent = attempt is not null
+            && await _auth.ResendTwoFactorEmailAsync(attempt);
+        SetStatus(
+            sent ? "验证码已重新发送，请查收邮箱。" : "验证码发送失败，请稍后重试。",
+            sent ? LoginStatusKind.Success : LoginStatusKind.Error);
     }
 
     [RelayCommand]
@@ -388,7 +436,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     {
         Stage = LoginStage.Unlock;
         Pin = string.Empty;
-        Status = "请输入主密码解锁。";
+        SetStatus("请输入主密码解锁。", LoginStatusKind.Info);
     }
 
     [RelayCommand]
@@ -404,6 +452,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     // 锁屏/登出时清空登录页所有机密输入:主密码、PIN、2FA 验证码与其可选项。幂等。
     public void ClearSensitive()
     {
+        AbandonCurrentAuthenticationAttempt();
         MasterPassword = string.Empty;
         Pin = string.Empty;
         TwoFactorCode = string.Empty;
@@ -412,19 +461,19 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     private void ContinueToPassword()
     {
-        Status = string.Empty;
+        ClearStatus();
 
         var serverUrl = ResolveServerUrl();
         if (!IsValidServerUrl(serverUrl))
         {
-            Status = "请输入有效的服务器地址。";
+            SetStatus("请输入有效的服务器地址。", LoginStatusKind.Error);
             RequestFocus(LoginFocusTarget.ServerUrl);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(Email))
         {
-            Status = "请输入邮箱地址。";
+            SetStatus("请输入邮箱地址。", LoginStatusKind.Error);
             RequestFocus(LoginFocusTarget.Email);
             return;
         }
@@ -438,25 +487,25 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     private bool ValidateSecretInput()
     {
-        Status = string.Empty;
+        ClearStatus();
 
         if ((IsPasswordStage || IsUnlockStage) && string.IsNullOrWhiteSpace(MasterPassword))
         {
-            Status = "请输入主密码。";
+            SetStatus("请输入主密码。", LoginStatusKind.Error);
             RequestFocus(LoginFocusTarget.MasterPassword);
             return false;
         }
 
         if (IsPinUnlockStage && string.IsNullOrWhiteSpace(Pin))
         {
-            Status = "请输入 PIN。";
+            SetStatus("请输入 PIN。", LoginStatusKind.Error);
             RequestFocus(LoginFocusTarget.Pin);
             return false;
         }
 
         if (IsTwoFactorStage && string.IsNullOrWhiteSpace(TwoFactorCode))
         {
-            Status = "请输入两步验证码。";
+            SetStatus("请输入两步验证码。", LoginStatusKind.Error);
             RequestFocus(LoginFocusTarget.TwoFactorCode);
             return false;
         }
@@ -495,27 +544,37 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         _ => LoginFocusTarget.MasterPassword,
     };
 
-    private void HandleResult(AuthResult result)
+    private void HandleResult(
+        AuthenticationAttemptLease attempt,
+        AuthResult result)
     {
+        if (!ReferenceEquals(_authenticationAttempt, attempt))
+            return;
+
         switch (result)
         {
-            case AuthResult.Success:
+            case AuthResult.Success success:
                 var wasTwoFactor = IsTwoFactorStage;
-                Status = string.Empty;
+                _authenticationAttempt = null;
+                ClearStatus();
                 MasterPassword = string.Empty;
                 TwoFactorCode = string.Empty;
                 Pin = string.Empty;
                 if (wasTwoFactor)
                     Stage = LoginStage.Password;
-                _onSuccess?.Invoke();
+                _onSuccess?.Invoke(success.Lease);
                 break;
             case AuthResult.TwoFactorRequired twoFactor:
                 _twoFactorProviders = twoFactor.Providers;
                 var typed = twoFactor.Providers.Where(IsTypedCodeProvider).ToList();
                 if (typed.Count == 0)
                 {
+                    AbandonAuthenticationAttempt(attempt);
                     // WebAuthn(7)/Duo(2,6) 等断言/重定向流程留待 P2;此处明确提示而非静默失败(停留在密码阶段)。
-                    Status = "暂不支持该两步验证方式（如 WebAuthn / Duo），请使用官方客户端完成两步验证。";
+                    SetStatus(
+                        "暂不支持该两步验证方式（如 WebAuthn / Duo），请使用官方客户端完成两步验证。",
+                        LoginStatusKind.Error);
+                    RequestFocus(LoginFocusTarget.MasterPassword);
                     break;
                 }
                 TwoFactorProviderOptions = typed
@@ -525,44 +584,139 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 Stage = LoginStage.TwoFactor;
                 MasterPassword = string.Empty;
                 TwoFactorCode = string.Empty;
-                Status = "请输入两步验证码。";
+                SetStatus("请输入两步验证码。", LoginStatusKind.Info);
                 OnPropertyChanged(nameof(ShowResendEmailCode));
                 OnPropertyChanged(nameof(CanResendEmailCode));
                 OnPropertyChanged(nameof(ShowTwoFactorProviderPicker));
                 ResendEmailCodeCommand.NotifyCanExecuteChanged();
                 break;
             case AuthResult.PinCleared pinCleared:
-                Status = pinCleared.Message;
+                AbandonAuthenticationAttempt(attempt);
+                SetStatus(pinCleared.Message, LoginStatusKind.Error);
                 Stage = LoginStage.Unlock;
                 Pin = string.Empty;
                 break;
             case AuthResult.Failure failure:
-                Status = LocalizeAuthMessage(failure.Message);
-                if (IsPinUnlockStage)
-                    Pin = string.Empty;
+                HandleFailure(attempt, failure);
                 break;
         }
     }
 
-    // 把认证失败消息本地化为中文(R20):AuthService/服务端多为英文,且限流时消息为空会让登录页
-    // 毫无提示(疑似卡死)。空 → 中文兜底;已知英文 → 中文;其余(含服务端自定义)原样显示(总比空白好)。
-    private static string LocalizeAuthMessage(string? message)
+    private AuthenticationAttemptLease BeginAuthenticationAttempt()
+    {
+        AbandonCurrentAuthenticationAttempt();
+        var attempt = _auth.BeginAuthenticationAttempt();
+        _authenticationAttempt = attempt;
+        return attempt;
+    }
+
+    private void AbandonAuthenticationAttempt(AuthenticationAttemptLease attempt)
+    {
+        _auth.AbandonAuthenticationAttempt(attempt);
+        if (ReferenceEquals(_authenticationAttempt, attempt))
+            _authenticationAttempt = null;
+    }
+
+    private void AbandonCurrentAuthenticationAttempt()
+    {
+        if (_authenticationAttempt is { } attempt)
+            AbandonAuthenticationAttempt(attempt);
+    }
+
+    private void HandleFailure(
+        AuthenticationAttemptLease attempt,
+        AuthResult.Failure failure)
+    {
+        var wasTwoFactor = IsTwoFactorStage;
+        var message = FailureMessage(failure, wasTwoFactor);
+        var canRetryTwoFactor = wasTwoFactor
+            && failure.Kind is AuthFailureKind.Unspecified
+                or AuthFailureKind.InvalidCredentials
+                or AuthFailureKind.Network
+                or AuthFailureKind.Timeout;
+
+        if (!canRetryTwoFactor)
+        {
+            AbandonAuthenticationAttempt(attempt);
+            if (wasTwoFactor)
+                ReturnToPasswordStage();
+        }
+
+        if (IsPinUnlockStage)
+            Pin = string.Empty;
+
+        SetStatus(message, LoginStatusKind.Error);
+        RequestFocus(CurrentSecretFocusTarget());
+    }
+
+    private string FailureMessage(AuthResult.Failure failure, bool wasTwoFactor) =>
+        failure.Kind switch
+        {
+            AuthFailureKind.InvalidCredentials when wasTwoFactor =>
+                "验证码无效或已过期，请重试。",
+            AuthFailureKind.InvalidCredentials when IsUnlockStage =>
+                "主密码错误，请重试。",
+            AuthFailureKind.InvalidCredentials =>
+                "用户名或主密码错误，请重试。",
+            AuthFailureKind.Network =>
+                "无法连接服务器，请检查网络后重试。",
+            AuthFailureKind.Timeout =>
+                "连接服务器超时，请稍后重试。",
+            AuthFailureKind.InvalidResponse =>
+                "服务器响应无效，无法完成认证。",
+            AuthFailureKind.SessionExpired =>
+                "认证会话已失效，请重试。",
+            AuthFailureKind.NoSavedSession =>
+                "没有已保存的会话，请重新登录。",
+            AuthFailureKind.SafeMessage when !string.IsNullOrWhiteSpace(failure.Message) =>
+                failure.Message,
+            _ => LocalizeLegacyAuthMessage(failure.Message),
+        };
+
+    private string LocalizeLegacyAuthMessage(string? message)
     {
         if (string.IsNullOrWhiteSpace(message))
-            return "登录失败,请稍后重试。";
+            return GenericFailureMessage();
 
         if (message.Contains("Username or password is incorrect", StringComparison.OrdinalIgnoreCase))
-            return "用户名或主密码错误,请重试。";
+            return "用户名或主密码错误，请重试。";
 
         return message switch
         {
-            "No saved session." => "没有已保存的会话,请重新登录。",
-            "Authentication failed." => "认证失败,请检查凭据。",
+            "No saved session." => "没有已保存的会话，请重新登录。",
+            "Authentication failed." => "认证失败，请检查凭据。",
             "Two-factor authentication is still required." => "仍需完成两步验证。",
             "No two-factor challenge is pending." => "没有待处理的两步验证请求。",
-            "Token response did not include a protected user key." => "服务器响应缺少用户密钥,登录失败。",
-            _ => message,
+            "Token response did not include a protected user key." => "服务器响应缺少用户密钥，登录失败。",
+            _ => GenericFailureMessage(),
         };
+    }
+
+    private string GenericFailureMessage() => Stage switch
+    {
+        LoginStage.TwoFactor => "验证失败，请稍后重试。",
+        LoginStage.Unlock or LoginStage.PinUnlock => "解锁失败，请稍后重试。",
+        _ => "登录失败，请稍后重试。",
+    };
+
+    private void ReturnToPasswordStage()
+    {
+        _twoFactorProviders = Array.Empty<int>();
+        TwoFactorProviderOptions = Array.Empty<TwoFactorProviderOption>();
+        TwoFactorCode = string.Empty;
+        Stage = LoginStage.Password;
+    }
+
+    private void SetStatus(string message, LoginStatusKind kind)
+    {
+        StatusKind = kind;
+        Status = message;
+    }
+
+    private void ClearStatus()
+    {
+        StatusKind = LoginStatusKind.Info;
+        Status = string.Empty;
     }
 
     private string ResolveServerUrl()
@@ -579,15 +733,29 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     }
 
     private static bool IsValidServerUrl(string serverUrl) =>
-        Uri.TryCreate(serverUrl, UriKind.Absolute, out var uri)
-        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+        TryParseServerEndpoint(serverUrl, out _);
 
-    private static string ShortServer(string serverUrl)
+    private static string FormatServerSummary(string serverUrl)
     {
-        if (Uri.TryCreate(serverUrl, UriKind.Absolute, out var uri) && !string.IsNullOrWhiteSpace(uri.Host))
-            return uri.Host;
+        if (TryParseServerEndpoint(serverUrl, out var endpoint))
+            return endpoint.Value;
 
-        return serverUrl;
+        return serverUrl.Trim();
+    }
+
+    private static bool TryParseServerEndpoint(
+        string serverUrl,
+        out ServerEndpoint endpoint)
+    {
+        try
+        {
+            return ServerEndpoint.TryParse(serverUrl, out endpoint);
+        }
+        catch (Exception ex) when (ex is ArgumentException or UriFormatException)
+        {
+            endpoint = default;
+            return false;
+        }
     }
 
     partial void OnSelectedServerOptionIndexChanged(int value)
@@ -597,9 +765,11 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         else if (value == 1)
             ServerUrl = BitwardenEuUrl;
         else if (ServerUrl is BitwardenUsUrl or BitwardenEuUrl)
-            ServerUrl = "https://vault.example.com";
+            ServerUrl = string.Empty;
 
         NotifyServerProperties();
+        if (value == 2 && IsAccountStage)
+            RequestFocus(LoginFocusTarget.ServerUrl);
     }
 
     partial void OnServerUrlChanged(string value) => NotifyServerProperties();

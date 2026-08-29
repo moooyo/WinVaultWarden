@@ -19,18 +19,22 @@ namespace BrowserNativeHost;
 /// stable <c>invalid_request</c> error and the read loop keeps serving subsequent messages — it must
 /// never fault the whole persistent session (see <see cref="ComputeDeadlineDelay"/>, which is
 /// deliberately integer-only for the same reason: an out-of-range deadline must clamp, not throw).
+/// At most <see cref="MaxActiveRequests"/> business requests may be active in one browser session;
+/// additional requests fail immediately with a code-only <see cref="PasskeyErrorCodes.RateLimited"/>.
 /// </summary>
 public sealed class NativeMessagingSession : IAsyncDisposable
 {
     // Fallback deadline when the extension omits one, and the hard cap that no request may exceed.
     public static readonly TimeSpan DefaultDeadline = TimeSpan.FromSeconds(60);
     public static readonly TimeSpan MaximumDeadline = TimeSpan.FromSeconds(120);
+    public const int MaxActiveRequests = 8;
 
     private readonly Stream _input;
     private readonly Stream _output;
     private readonly IAppPasskeyBridgeClient _appBridge;
     private readonly TimeProvider _timeProvider;
     private readonly ConcurrentDictionary<string, ActiveRequest> _active = new(StringComparer.Ordinal);
+    private readonly SemaphoreSlim _activeSlots = new(MaxActiveRequests, MaxActiveRequests);
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly HashSet<Task> _workers = [];
     private readonly object _workersGate = new();
@@ -183,12 +187,31 @@ public sealed class NativeMessagingSession : IAsyncDisposable
             return;
         }
 
+        // Preserve duplicate-id semantics even when all capacity is occupied. The read loop is the
+        // only producer, while workers only remove entries, so this check cannot admit a ninth item.
+        if (_active.ContainsKey(message.Id!))
+        {
+            await WriteResponseAsync(Error(
+                message.Id, PasskeyErrorCodes.RequestInProgress, "A passkey request with this id is already in progress."))
+                .ConfigureAwait(false);
+            return;
+        }
+
+        if (!_activeSlots.Wait(0))
+        {
+            await WriteResponseAsync(Error(
+                message.Id, PasskeyErrorCodes.RateLimited, "Too many passkey requests are in progress."))
+                .ConfigureAwait(false);
+            return;
+        }
+
         var deadlineCts = new CancellationTokenSource(delay, _timeProvider);
         var requestCts = CancellationTokenSource.CreateLinkedTokenSource(sessionToken, deadlineCts.Token);
         var active = new ActiveRequest(deadlineCts, requestCts);
         if (!_active.TryAdd(message.Id!, active))
         {
             active.Dispose();
+            _activeSlots.Release();
             await WriteResponseAsync(Error(
                 message.Id, PasskeyErrorCodes.RequestInProgress, "A passkey request with this id is already in progress."))
                 .ConfigureAwait(false);
@@ -240,11 +263,8 @@ public sealed class NativeMessagingSession : IAsyncDisposable
             }
             catch (AppBridgeConnectFailedException) when (!sessionToken.IsCancellationRequested)
             {
-                // This request's own attempt to reach a connected App never succeeded — no listener
-                // yet (typical NamedPipe connect timeout while the vault is locked and the bridge
-                // isn't running), a failed handshake, or any other connect-time fault. The request was
-                // never handed off to App: client_not_handled is the sole, correct fallback trigger so
-                // the extension retries the platform authenticator.
+                // The named pipe was never accepted, so the request could not have reached the App.
+                // This explicit marker is the sole fallback trigger.
                 if (active.TryClaimResponded())
                     await WriteResponseAsync(Error(
                         request.Id,
@@ -257,11 +277,9 @@ public sealed class NativeMessagingSession : IAsyncDisposable
                 (ex is IOException or TimeoutException or InvalidDataException or UnauthorizedAccessException)
                 && !sessionToken.IsCancellationRequested)
             {
-                // Unlike AppBridgeConnectFailedException above, this is a connection that WAS
-                // established for a prior request and is now lost (EOF/IOException) or failed
-                // integrity (nonce mismatch) while THIS request was in flight: the App may already be
-                // mid-ceremony, so this must abort (never fall back) rather than retry the platform
-                // authenticator behind the App's back.
+                // The peer either accepted the connection and failed authorization/handshake, or an
+                // established connection was lost or failed integrity. Abort without fallback because
+                // listener absence has not been proven and the App may already be mid-ceremony.
                 if (active.TryClaimResponded())
                     await WriteResponseAsync(Error(
                         request.Id, PasskeyErrorCodes.OperationAborted, "The App passkey bridge connection was lost."))
@@ -291,7 +309,8 @@ public sealed class NativeMessagingSession : IAsyncDisposable
         }
         finally
         {
-            _active.TryRemove(request.Id!, out _);
+            if (_active.TryRemove(request.Id!, out _))
+                _activeSlots.Release();
             active.Dispose();
         }
     }
@@ -403,6 +422,7 @@ public sealed class NativeMessagingSession : IAsyncDisposable
 
         await StopAsync().ConfigureAwait(false);
         _sessionCts.Dispose();
+        _activeSlots.Dispose();
         _writeGate.Dispose();
     }
 

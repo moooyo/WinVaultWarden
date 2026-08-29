@@ -3,6 +3,7 @@ using Core.Abstractions;
 using Core.BrowserIntegration;
 using Core.Passkeys;
 using Core.Services;
+using Core.Session;
 using Crypto;
 using Crypto.PasswordStrength;
 using Vault;
@@ -19,6 +20,11 @@ public static class ServiceConfiguration
         var services = new ServiceCollection();
 
         services.AddSingleton<VaultSession>();
+        services.AddSingleton<SessionTerminationSignal>();
+        services.AddSingleton<ISessionTerminationSource>(sp =>
+            sp.GetRequiredService<SessionTerminationSignal>());
+        services.AddSingleton<ISessionTerminationSink>(sp =>
+            sp.GetRequiredService<SessionTerminationSignal>());
         services.AddSingleton<CryptoService>();
         services.AddSingleton<FingerprintService>();
         services.AddSingleton<ITokenStore, DpapiTokenStore>();
@@ -30,7 +36,8 @@ public static class ServiceConfiguration
             new VaultApiClientProvider(
                 sp.GetRequiredService<IApiClientFactory>(),
                 sp.GetRequiredService<VaultSession>(),
-                (lease, ct) => sp.GetRequiredService<ITokenRefresher>().TryRefreshAsync(lease, ct)));
+                (lease, failed, ct) => sp.GetRequiredService<ITokenRefresher>()
+                    .TryRefreshAsync(lease, failed, ct)));
         services.AddSingleton<CipherEncryptor>();
         services.AddSingleton<IVaultWriteService, Vault.VaultWriteService>();
         services.AddSingleton<VaultDecryptor>();
@@ -49,12 +56,15 @@ public static class ServiceConfiguration
         services.AddSingleton<ISyncService>(sp => sp.GetRequiredService<Vault.SyncService>());
         services.AddSingleton<IVaultService, Vault.VaultService>();
         services.AddSingleton<SendCryptoService>();
+        services.AddSingleton<ITransferIdleTimeoutPolicy>(
+            new TransferIdleTimeoutPolicy(TransferIdleTimeoutPolicy.DefaultIdleTimeout));
         services.AddSingleton<ISendService, Vault.SendService>();
         // 孤儿 Send 补偿删除的窄客户端(冻结 binding + 一次性认证客户端):见 Vault/SendCompensationClient.cs。
         // 独立于 IVaultApiClientProvider,绝不暴露通用 stale-token 旁路。
         services.AddSingleton<ISendCompensationClient, SendCompensationClient>();
         services.AddSingleton<ISendWriteService, Vault.SendWriteService>();
         services.AddSingleton<ISendAccessService, Vault.SendAccessService>();
+        services.AddSingleton<IAttachmentCompensationClient, AttachmentCompensationClient>();
         services.AddSingleton<IAttachmentService, Vault.AttachmentService>();
         services.AddSingleton<IAccountService, Vault.AccountService>();
         // 条目级主密码重提示门禁(Task 4):依赖 IAccountService + VaultSession,二者均已单例注册。
@@ -131,8 +141,11 @@ public static class ServiceConfiguration
             sp.GetRequiredService<IAppLifecycleCoordinator>())));
         services.AddTransient<VaultViewModel>(sp =>
             TrackSensitive(sp, ActivatorUtilities.CreateInstance<VaultViewModel>(sp)));
-        services.AddTransient<SendViewModel>(sp =>
-            TrackSensitive(sp, ActivatorUtilities.CreateInstance<SendViewModel>(sp)));
+        services.AddTransient<SendViewModel>(sp => TrackSensitive(sp, new SendViewModel(
+            sp.GetRequiredService<ISendUiService>(),
+            sp.GetRequiredService<IClipboardService>(),
+            sp.GetRequiredService<VaultSession>(),
+            sp.GetRequiredService<IAppLifecycleCoordinator>())));
         services.AddTransient<GeneratorViewModel>(sp =>
             TrackSensitive(sp, ActivatorUtilities.CreateInstance<GeneratorViewModel>(sp)));
         services.AddTransient<SettingsViewModel>(sp =>
@@ -178,7 +191,8 @@ public static class ServiceConfiguration
                 sp.GetRequiredService<IVaultApiClientProvider>(),
                 sp.GetRequiredService<VaultDecryptor>(),
                 sp.GetRequiredService<VaultSession>(),
-                sp.GetRequiredService<ISyncService>()));
+                sp.GetRequiredService<ISyncService>(),
+                sp.GetRequiredService<ISessionTerminationSink>()));
         services.AddSingleton<INotificationsService>(sp =>
             new NotificationsService(
                 () => new NotificationsConnection(),
@@ -209,10 +223,19 @@ public static class ServiceConfiguration
                     global::App.App.MainWindow?.RefreshSendList()),
                 onAuthRequestsChanged: () => Dispatch(() =>
                     global::App.App.MainWindow?.RefreshRequestsList()),
-                onLoggedOut: () => Dispatch(async () =>
-                    await sp.GetRequiredService<IAppLifecycleCoordinator>()
-                        .RequestAsync(AppLifecycleIntent.RemoteLogout)));
+                onLoggedOut: () => { });
         });
+
+        services.AddSingleton<SessionTerminationHost>(sp =>
+            new SessionTerminationHost(
+                sp.GetRequiredService<ISessionTerminationSource>(),
+                notice => sp.GetRequiredService<IUiDispatcher>().Enqueue(() =>
+                {
+                    _ = sp.GetRequiredService<IAppLifecycleCoordinator>()
+                        .RequestAsync(
+                            AppLifecycleIntent.RemoteLogout,
+                            notice.InvalidatedSession);
+                })));
 
         // ── 生命周期协调:唯一注册点 ──────────────────────────────────────────
         // 先注册两个 registry(弱引用敏感状态 / 强引用瞬态操作),再注册全项目唯一的协调器。
@@ -257,7 +280,9 @@ public static class ServiceConfiguration
                 ExitProcess: () => global::App.App.MainWindow?.ExitAfterLifecycle(),
                 FailClosedSession: () => session.Lock(),
                 ReportFailure: (step, ex) =>
-                    CrashLogger.WriteRedacted($"Lifecycle:{step}", ex)));
+                    CrashLogger.WriteRedacted($"Lifecycle:{step}", ex),
+                TryLogoutExpectedSessionAsync: lease =>
+                    auth.LogoutAsync(lease, CancellationToken.None)));
         });
 
         return services.BuildServiceProvider();

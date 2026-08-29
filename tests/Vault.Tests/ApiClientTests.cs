@@ -47,7 +47,10 @@ public class ApiClientTests
         Assert.Equal("/identity/connect/token", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Contains("grant_type=password", handler.Bodies[0]);
         Assert.Contains("client_id=desktop", handler.Bodies[0]);
-        Assert.Contains("device_type=6", handler.Bodies[0]);
+        Assert.Contains("deviceType=6", handler.Bodies[0]);
+        Assert.Contains("deviceIdentifier=device-id", handler.Bodies[0]);
+        Assert.Contains("deviceName=WinVaultWarden", handler.Bodies[0]);
+        Assert.DoesNotContain("device_type", handler.Bodies[0]);
         Assert.Contains("username=me%40example.com", handler.Bodies[0]);
     }
 

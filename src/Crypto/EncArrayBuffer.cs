@@ -3,30 +3,45 @@ using Core.Enums;
 
 namespace Crypto;
 
-// Bitwarden EncArrayBuffer 二进制封装:concat[ (byte)2, iv(16), mac(32), ct ]。
-// 仅支持带 MAC 的 AesCbc256_HmacSha256_B64(type 2)。Send 与附件文件体共用此格式。
+/// <summary>
+/// Bitwarden EncArrayBuffer framing: <c>type(1) || IV(16) || MAC(32) || ciphertext</c>.
+/// Send files and attachments use authenticated AES-256-CBC, encryption type 2.
+/// </summary>
 public static class EncArrayBuffer
 {
-    private const int HeaderLength = 1;
-    private const int IvLength = 16;
-    private const int MacLength = 32;
-    private const int MinLength = HeaderLength + IvLength + MacLength; // 49
+    public const byte EncryptionTypeByte = (byte)EncryptionType.AesCbc256_HmacSha256_B64;
+    public const int TypeLength = 1;
+    public const int IvLength = 16;
+    public const int MacLength = 32;
+    public const int CipherBlockLength = 16;
+    public const int MetadataLength = TypeLength + IvLength + MacLength;
+    public const int MinimumCiphertextLength = CipherBlockLength;
+    public const int MinimumEncodedLength = MetadataLength + MinimumCiphertextLength;
 
-    // 打包:要求 enc.Mac != null 且 type=AesCbc256_HmacSha256_B64,输出 [(byte)2, iv(16), mac(32), ct]。
+    public static long GetEncodedLength(long plaintextLength)
+    {
+        if (plaintextLength < 0)
+            throw new ArgumentOutOfRangeException(nameof(plaintextLength));
+
+        var blockCount = checked((plaintextLength / CipherBlockLength) + 1L);
+        return checked(MetadataLength + (blockCount * CipherBlockLength));
+    }
+
     public static byte[] Pack(EncString enc)
     {
         if (enc.Type != EncryptionType.AesCbc256_HmacSha256_B64)
-            throw new CryptographicException($"EncArrayBuffer 仅支持 encType 2,实际 {(int)enc.Type}");
+            throw new CryptographicException($"EncArrayBuffer only supports encryption type 2, not {(int)enc.Type}.");
         if (enc.Mac is null)
-            throw new CryptographicException("EncArrayBuffer 需要带 MAC 的密钥");
+            throw new CryptographicException("EncArrayBuffer requires a MAC.");
         if (enc.Iv.Length != IvLength)
-            throw new CryptographicException($"EncArrayBuffer iv 长度须为 {IvLength},实际 {enc.Iv.Length}");
+            throw new CryptographicException($"EncArrayBuffer IV must contain {IvLength} bytes.");
         if (enc.Mac.Length != MacLength)
-            throw new CryptographicException($"EncArrayBuffer mac 长度须为 {MacLength},实际 {enc.Mac.Length}");
+            throw new CryptographicException($"EncArrayBuffer MAC must contain {MacLength} bytes.");
+        ValidateCiphertextLength(enc.Ct.LongLength);
 
-        var buffer = new byte[HeaderLength + IvLength + MacLength + enc.Ct.Length];
-        buffer[0] = (byte)EncryptionType.AesCbc256_HmacSha256_B64; // 2
-        var offset = HeaderLength;
+        var buffer = new byte[MetadataLength + enc.Ct.Length];
+        buffer[0] = EncryptionTypeByte;
+        var offset = TypeLength;
         Buffer.BlockCopy(enc.Iv, 0, buffer, offset, enc.Iv.Length);
         offset += enc.Iv.Length;
         Buffer.BlockCopy(enc.Mac, 0, buffer, offset, enc.Mac.Length);
@@ -35,17 +50,28 @@ public static class EncArrayBuffer
         return buffer;
     }
 
-    // 解包:校验 length>=49 且 buffer[0]==2;iv=[1..17],mac=[17..49],ct=[49..]。
     public static EncString Unpack(byte[] buffer)
     {
-        if (buffer.Length < MinLength)
-            throw new CryptographicException("EncArrayBuffer 长度不足");
-        if (buffer[0] != (byte)EncryptionType.AesCbc256_HmacSha256_B64)
-            throw new CryptographicException($"非预期 EncArrayBuffer encType: {buffer[0]}");
+        ArgumentNullException.ThrowIfNull(buffer);
+        if (buffer.Length < MinimumEncodedLength)
+            throw new CryptographicException("EncArrayBuffer does not contain a complete ciphertext block.");
+        if (buffer[0] != EncryptionTypeByte)
+            throw new CryptographicException($"Unexpected EncArrayBuffer encryption type: {buffer[0]}.");
 
-        var iv = buffer[1..17];
-        var mac = buffer[17..49];
-        var ct = buffer[49..];
+        ValidateCiphertextLength(buffer.LongLength - MetadataLength);
+
+        var iv = buffer[TypeLength..(TypeLength + IvLength)];
+        var mac = buffer[(TypeLength + IvLength)..MetadataLength];
+        var ct = buffer[MetadataLength..];
         return new EncString(EncryptionType.AesCbc256_HmacSha256_B64, iv, ct, mac);
+    }
+
+    public static void ValidateCiphertextLength(long ciphertextLength)
+    {
+        if (ciphertextLength < MinimumCiphertextLength || ciphertextLength % CipherBlockLength != 0)
+        {
+            throw new CryptographicException(
+                $"EncArrayBuffer ciphertext must contain at least one complete {CipherBlockLength}-byte block.");
+        }
     }
 }

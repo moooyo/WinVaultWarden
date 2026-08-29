@@ -3,6 +3,7 @@ using Api.Dtos;
 using Core.Abstractions;
 using Core.Models;
 using Core.Services;
+using Core.Session;
 using Crypto;
 
 namespace Vault;
@@ -39,16 +40,16 @@ public sealed class AuthRequestService : IAuthRequestService
     public async Task<IReadOnlyList<PendingAuthRequest>> ListPendingAsync(CancellationToken ct = default)
     {
         var lease = _session.CaptureLease();
+        var persisted = LoadPersisted(lease);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var api = _clients.GetAuthenticated<IAuthRequestApiClient>(lease);
+        _session.ThrowIfExpired(lease);
         var resp = await api.GetPendingAsync(linked.Token);
         _session.ThrowIfExpired(lease);
 
         // D1: 为每个请求派生指纹短语(账户邮箱 + 请求方公钥),供审批前人工核对。
         // 邮箱取自持久化会话 = 登录邮箱,与请求设备使用的 loginEmail 一致,使两端短语相同。
-        var email = _tokenStore.TryLoad(out var persisted) ? persisted.Email : string.Empty;
-
-        return resp.Data
+        var pending = resp.Data
             .Select(r => new PendingAuthRequest(
                 Id: r.Id,
                 DeviceTypeName: r.RequestDeviceType,
@@ -56,10 +57,12 @@ public sealed class AuthRequestService : IAuthRequestService
                 CreationDate: r.CreationDate,
                 PublicKey: r.PublicKey)
             {
-                FingerprintPhrase = DeriveFingerprint(r.PublicKey, email),
+                FingerprintPhrase = DeriveFingerprint(r.PublicKey, persisted.Email),
             })
             .ToList()
             .AsReadOnly();
+        _session.ThrowIfExpired(lease);
+        return pending;
     }
 
     // 尽力派生;邮箱缺失或公钥非法 base64 时返回空串(UI 显示为空 → 阻止盲目批准)。
@@ -79,21 +82,23 @@ public sealed class AuthRequestService : IAuthRequestService
     /// <inheritdoc />
     public async Task ApproveAsync(string id, string publicKey, CancellationToken ct = default)
     {
-        // 必须已解锁密码库
-        var userKey = _session.UserKey
-            ?? throw new AuthRequestOperationException("请先解锁密码库。");
-
-        // 加载持久化会话以取得当前设备标识符
-        if (!_tokenStore.TryLoad(out var persisted))
-            throw new AuthRequestOperationException("无法读取会话信息，请重新登录。");
+        var lease = CaptureLeaseForApproval();
+        var persisted = LoadPersisted(lease);
+        if (!_session.TryCopyUserKey(lease, out var copiedKey) || copiedKey is null)
+            throw new AuthRequestOperationException("请先解锁密码库。");
 
         // 用发起方公钥（SPKI DER）加密完整 UserKey（64 字节），得到 encType=4 的 EncString
-        var publicKeyDer = Convert.FromBase64String(publicKey);
-        var encKey = _crypto.EncryptRsa(userKey.FullKey, publicKeyDer).ToString();
+        string encKey;
+        using (copiedKey)
+        {
+            var publicKeyDer = Convert.FromBase64String(publicKey);
+            encKey = _crypto.EncryptRsa(copiedKey.FullKey, publicKeyDer).ToString();
+        }
 
-        var lease = _session.CaptureLease();
+        _session.ThrowIfExpired(lease);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var api = _clients.GetAuthenticated<IAuthRequestApiClient>(lease);
+        _session.ThrowIfExpired(lease);
         await api.ApproveAsync(
             id,
             new AuthResponseRequest(
@@ -108,12 +113,11 @@ public sealed class AuthRequestService : IAuthRequestService
     /// <inheritdoc />
     public async Task DenyAsync(string id, CancellationToken ct = default)
     {
-        if (!_tokenStore.TryLoad(out var persisted))
-            throw new AuthRequestOperationException("无法读取会话信息，请重新登录。");
-
         var lease = _session.CaptureLease();
+        var persisted = LoadPersisted(lease);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var api = _clients.GetAuthenticated<IAuthRequestApiClient>(lease);
+        _session.ThrowIfExpired(lease);
         await api.ApproveAsync(
             id,
             new AuthResponseRequest(
@@ -123,5 +127,25 @@ public sealed class AuthRequestService : IAuthRequestService
                 RequestApproved: false),
             linked.Token);
         _session.ThrowIfExpired(lease);
+    }
+
+    private VaultSessionLease CaptureLeaseForApproval()
+    {
+        try
+        {
+            return _session.CaptureLease();
+        }
+        catch (InvalidOperationException)
+        {
+            throw new AuthRequestOperationException("请先解锁密码库。");
+        }
+    }
+
+    private PersistedSession LoadPersisted(VaultSessionLease lease)
+    {
+        if (!_tokenStore.TryLoad(out var persisted)
+            || !_session.IsCurrent(lease, persisted))
+            throw new AuthRequestOperationException("持久化会话与当前账户不匹配，请重新登录。");
+        return persisted;
     }
 }

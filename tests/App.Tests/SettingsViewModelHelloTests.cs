@@ -8,7 +8,8 @@ namespace App.Tests;
 // Windows Hello 解锁开关 SettingsViewModel 测试（Task H6 TDD RED 先写）
 // ============================================================================
 
-public class SettingsViewModelHelloTests
+[Collection(TestCollectionNames.AppPreferences)]
+public class SettingsViewModelHelloTests : AppPreferencesTestBase
 {
     private sealed class FakeHello : Core.Abstractions.IWindowsHelloAuthenticator
     {
@@ -66,5 +67,33 @@ public class SettingsViewModelHelloTests
         vm.DisableWindowsHello();
 
         Assert.False(unlock.Set);
+    }
+
+    [Fact]
+    public void CanToggleWindowsHello_WhenUnavailableButConfigured_AllowsDisable()
+    {
+        var unlock = new FakeHelloUnlock { Set = true };
+        var vm = new SettingsViewModel(
+            new FakeHello { Available = false },
+            unlock);
+
+        Assert.True(vm.CanToggleWindowsHello);
+
+        vm.DisableWindowsHello();
+
+        Assert.False(vm.CanToggleWindowsHello);
+    }
+
+    [Fact]
+    public async Task CanToggleWindowsHello_WhenAvailabilityRefreshes_TracksAvailability()
+    {
+        var hello = new FakeHello { Available = true };
+        var vm = new SettingsViewModel(hello, new FakeHelloUnlock());
+
+        Assert.False(vm.CanToggleWindowsHello);
+
+        await vm.RefreshWindowsHelloAvailabilityAsync();
+
+        Assert.True(vm.CanToggleWindowsHello);
     }
 }

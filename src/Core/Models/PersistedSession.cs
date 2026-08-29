@@ -3,61 +3,221 @@ using Core.Enums;
 
 namespace Core.Models;
 
-[method: JsonConstructor]
-public sealed record PersistedSession(
-    int SchemaVersion,
-    string AccountId,
-    ServerOrigin Origin,
-    long Generation,
-    string Email,
-    string DeviceIdentifier,
-    string RefreshToken,
-    string ProtectedUserKey,
-    KdfType KdfType,
-    int KdfIterations,
-    int? KdfMemory,
-    int? KdfParallelism)
+public sealed record PersistedSession
 {
-    public const int CurrentSchemaVersion = 2;
-
-    /// <summary>
-    /// 持久化 Generation 的安全上界。任何等于或超过此值的持久化记录将被 HasValidBinding 拒绝
-    /// （fail-closed）。防止恶意/损坏记录将 _generation 恢复到 long.MaxValue，导致下一次
-    /// Lock/Logout 在 RotateLeaseNoLock 内立即溢出（或即便采用饱和计数后仍无法继续递增）。
-    /// 具体值为 long.MaxValue - 1：允许正常会话最多递增到 long.MaxValue（饱和），
-    /// 而 long.MaxValue 本身则无法通过绑定校验被持久化恢复进来。
-    /// </summary>
+    public const int LegacySchemaVersion = 2;
+    private const int EndpointSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
     public const long MaxPersistedGeneration = long.MaxValue - 1;
 
-    /// <summary>
-    /// fail-closed 门禁:任何缺失 account/origin/generation 绑定的持久化记录一律视为不可信,
-    /// TryLoad 必须拒绝返回它(见 DpapiTokenStore/MemoryTokenStore),迫使用户重新登录以获得
-    /// schema 2 记录,而不是把旧的、未绑定身份的 session 静默当作当前账户使用。
-    /// Generation 额外受 MaxPersistedGeneration 上界约束，防止恢复后下一次 Lock/Logout 溢出。
-    /// </summary>
+    [JsonConstructor]
+    public PersistedSession(
+        int schemaVersion,
+        string accountId,
+        ServerOrigin origin,
+        ServerEndpoints? endpoints,
+        long generation,
+        string email,
+        string deviceIdentifier,
+        string refreshToken,
+        string protectedUserKey,
+        KdfType kdfType,
+        int kdfIterations,
+        int? kdfMemory,
+        int? kdfParallelism,
+        string? masterPasswordSalt = null)
+    {
+        SchemaVersion = schemaVersion;
+        AccountId = accountId;
+        Origin = origin;
+        Endpoints = endpoints;
+        Generation = generation;
+        Email = email;
+        DeviceIdentifier = deviceIdentifier;
+        RefreshToken = refreshToken;
+        ProtectedUserKey = protectedUserKey;
+        KdfType = kdfType;
+        KdfIterations = kdfIterations;
+        KdfMemory = kdfMemory;
+        KdfParallelism = kdfParallelism;
+        MasterPasswordSalt = masterPasswordSalt;
+    }
+
+    public PersistedSession(
+        int schemaVersion,
+        string accountId,
+        ServerEndpoints endpoints,
+        long generation,
+        string email,
+        string deviceIdentifier,
+        string refreshToken,
+        string protectedUserKey,
+        KdfType kdfType,
+        int kdfIterations,
+        int? kdfMemory,
+        int? kdfParallelism,
+        string? masterPasswordSalt = null)
+        : this(
+            schemaVersion,
+            accountId,
+            endpoints?.WebVault.Origin ?? default,
+            endpoints,
+            generation,
+            email,
+            deviceIdentifier,
+            refreshToken,
+            protectedUserKey,
+            kdfType,
+            kdfIterations,
+            kdfMemory,
+            kdfParallelism,
+            ResolveTrustedConstructorSalt(schemaVersion, email, masterPasswordSalt))
+    {
+    }
+
+    public PersistedSession(
+        int SchemaVersion,
+        string AccountId,
+        ServerOrigin Origin,
+        long Generation,
+        string Email,
+        string DeviceIdentifier,
+        string RefreshToken,
+        string ProtectedUserKey,
+        KdfType KdfType,
+        int KdfIterations,
+        int? KdfMemory,
+        int? KdfParallelism,
+        string? MasterPasswordSalt = null)
+        : this(
+            SchemaVersion,
+            AccountId,
+            Origin,
+            CreateCompatibilityEndpoints(SchemaVersion, Origin),
+            Generation,
+            Email,
+            DeviceIdentifier,
+            RefreshToken,
+            ProtectedUserKey,
+            KdfType,
+            KdfIterations,
+            KdfMemory,
+            KdfParallelism,
+            ResolveTrustedConstructorSalt(SchemaVersion, Email, MasterPasswordSalt))
+    {
+    }
+
+    public int SchemaVersion { get; init; }
+    public string AccountId { get; init; }
+    public ServerOrigin Origin { get; init; }
+    public ServerEndpoints? Endpoints { get; init; }
+    public long Generation { get; init; }
+    public string Email { get; init; }
+    public string DeviceIdentifier { get; init; }
+    public string RefreshToken { get; init; }
+    public string ProtectedUserKey { get; init; }
+    public KdfType KdfType { get; init; }
+    public int KdfIterations { get; init; }
+    public int? KdfMemory { get; init; }
+    public int? KdfParallelism { get; init; }
+    public string? MasterPasswordSalt { get; init; }
+
+    [JsonIgnore]
+    public string EffectiveMasterPasswordSalt =>
+        MasterPasswordSalt
+        ?? throw new InvalidOperationException("Persisted session has no master-password salt.");
+
     public bool HasValidBinding =>
         SchemaVersion == CurrentSchemaVersion
-        && !string.IsNullOrWhiteSpace(AccountId)
+        && HasValidLegacyIdentity()
+        && HasValidEndpointBinding()
+        && MasterPasswordSaltPolicy.IsValid(MasterPasswordSalt);
+
+    public string ServerUrl => Endpoints?.WebVault.Value ?? string.Empty;
+
+    public string? PinProtectedUserKey { get; init; }
+    public int PinFailedAttempts { get; init; }
+    public string? TwoFactorToken { get; init; }
+    public string? HelloProtectedUserKey { get; init; }
+    public string? HelloChallenge { get; init; }
+
+    public bool TryMigrate(out PersistedSession migrated)
+    {
+        if (HasValidBinding)
+        {
+            migrated = this;
+            return true;
+        }
+
+        if (!HasValidLegacyIdentity())
+        {
+            migrated = null!;
+            return false;
+        }
+
+        try
+        {
+            if (SchemaVersion == LegacySchemaVersion && Endpoints is null)
+            {
+                migrated = this with
+                {
+                    SchemaVersion = CurrentSchemaVersion,
+                    Endpoints = ServerEndpoints.FromWebVault(Origin.Value),
+                    MasterPasswordSalt = MasterPasswordSaltPolicy.NormalizeEmail(Email),
+                };
+                return migrated.HasValidBinding;
+            }
+
+            if (SchemaVersion == EndpointSchemaVersion && HasValidEndpointBinding())
+            {
+                migrated = this with
+                {
+                    SchemaVersion = CurrentSchemaVersion,
+                    MasterPasswordSalt = MasterPasswordSaltPolicy.NormalizeEmail(Email),
+                };
+                return migrated.HasValidBinding;
+            }
+
+            migrated = null!;
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            migrated = null!;
+            return false;
+        }
+    }
+
+    private bool HasValidLegacyIdentity() =>
+        !string.IsNullOrWhiteSpace(AccountId)
         && !string.IsNullOrWhiteSpace(Email)
         && Generation > 0
         && Generation <= MaxPersistedGeneration
         && Origin.IsInitialized;
 
-    /// <summary>
-    /// 兼容性只读视图:非 Task 2 范围内的调用点(AuthService/TokenRefreshService/NotificationsService 等)
-    /// 仍以字符串形式使用服务端地址。与 AccountInfo.ServerUrl 同一约定,值等于 Origin 的规范化字符串。
-    /// </summary>
-    public string ServerUrl => Origin.Value;
+    private bool HasValidEndpointBinding() =>
+        Endpoints is not null
+        && Endpoints.WebVault.IsInitialized
+        && Endpoints.Api.IsInitialized
+        && Endpoints.Identity.IsInitialized
+        && Endpoints.Notifications.IsInitialized
+        && Endpoints.Icons.IsInitialized
+        && Endpoints.SendWeb.IsInitialized
+        && Origin == Endpoints.WebVault.Origin;
 
-    /// <summary>PIN 派生密钥包住的 UserKey(EncString 文本)。null = 未设 PIN。</summary>
-    public string? PinProtectedUserKey { get; init; }
-    /// <summary>连续 PIN 解锁失败次数。达 5 清 PIN。</summary>
-    public int PinFailedAttempts { get; init; }
-    /// <summary>服务端"记住此设备"令牌(identity.rs:563 TwoFactorToken)。null = 未记住/未返回。
-    /// 二次登录以 provider=Remember(5) 回传,免交互 2FA。</summary>
-    public string? TwoFactorToken { get; init; }
-    /// <summary>Windows Hello 派生密钥包住的 UserKey(EncString 文本)。null = 未启用 Hello。</summary>
-    public string? HelloProtectedUserKey { get; init; }
-    /// <summary>启用 Hello 时生成的随机挑战(base64)。解锁时对同一挑战重新签名。非机密。</summary>
-    public string? HelloChallenge { get; init; }
+    private static string? ResolveTrustedConstructorSalt(
+        int schemaVersion,
+        string email,
+        string? masterPasswordSalt) =>
+        schemaVersion == CurrentSchemaVersion && masterPasswordSalt is null
+            ? MasterPasswordSaltPolicy.NormalizeEmail(email)
+            : masterPasswordSalt;
+
+    private static ServerEndpoints? CreateCompatibilityEndpoints(
+        int schemaVersion,
+        ServerOrigin origin) =>
+        schemaVersion is EndpointSchemaVersion or CurrentSchemaVersion
+            && origin.IsInitialized
+            ? ServerEndpoints.FromWebVault(origin.Value)
+            : null;
 }

@@ -213,18 +213,30 @@ test("pagehide cancels every active id exactly once and disconnects", async () =
 let nativePortVersion = 0;
 
 function makeNativeEnv() {
-  const posts = [];
-  const listeners = { message: [], disconnect: [] };
-  const port = {
-    postMessage: (m) => posts.push(m),
-    onMessage: { addListener: (fn) => listeners.message.push(fn) },
-    onDisconnect: { addListener: (fn) => listeners.disconnect.push(fn) },
-  };
+  const connections = [];
+  function connectNative() {
+    const posts = [];
+    const listeners = { message: [], disconnect: [] };
+    const state = { disconnectCalled: false };
+    const port = {
+      postMessage: (m) => posts.push(m),
+      disconnect: () => { state.disconnectCalled = true; },
+      onMessage: { addListener: (fn) => listeners.message.push(fn) },
+      onDisconnect: { addListener: (fn) => listeners.disconnect.push(fn) },
+    };
+    const handle = {
+      posts,
+      state,
+      emitMessage: (m) => listeners.message.slice().forEach((fn) => fn(m)),
+      emitDisconnect: () => listeners.disconnect.slice().forEach((fn) => fn()),
+    };
+    connections.push(handle);
+    return port;
+  }
   return {
-    posts,
-    chrome: { runtime: { id: "ext-id", lastError: null, connectNative: () => port } },
-    emitMessage: (m) => listeners.message.slice().forEach((fn) => fn(m)),
-    emitDisconnect: () => listeners.disconnect.slice().forEach((fn) => fn()),
+    connections,
+    chrome: { runtime: { id: "ext-id", lastError: null, connectNative } },
+    latest: () => connections.at(-1),
   };
 }
 
@@ -236,24 +248,162 @@ async function loadNativePort(env) {
 test("disconnect after ready completes in-flight requests as operation_aborted", async () => {
   const env = makeNativeEnv();
   const np = await loadNativePort(env);
-  const pending = np.sendNative({ v: 1, id: "req-ready", type: "passkey.get" });
+  const operation = np.startNativeRequest({ v: 1, id: "page-ready", type: "passkey.get" });
 
-  const ping = env.posts.find((m) => m.type === "ping");
-  env.emitMessage({ v: 1, id: ping.id, type: "pong" });
-  await flush(); // let readyPromise resolve and the request post
+  const native = env.latest();
+  const ping = native.posts.find((m) => m.type === "ping");
+  native.emitMessage({ v: 1, id: ping.id, type: "pong" });
+  await flush(); // Let the pong dispatch the queued request.
 
-  env.emitDisconnect();
-  const response = await pending;
+  native.emitDisconnect();
+  const response = await operation.result;
   assert.equal(response.error.code, "operation_aborted");
 });
 
 test("disconnect before the first pong collapses to client_not_handled", async () => {
   const env = makeNativeEnv();
   const np = await loadNativePort(env);
-  const pending = np.sendNative({ v: 1, id: "req-preready", type: "passkey.get" });
+  const operation = np.startNativeRequest({ v: 1, id: "page-preready", type: "passkey.get" });
   await flush();
 
-  env.emitDisconnect(); // host never came up
-  const response = await pending;
+  env.latest().emitDisconnect(); // host never came up
+  const response = await operation.result;
   assert.equal(response.error.code, "client_not_handled");
+});
+
+test("a never-pong generation expires queued work as fallback and cannot revive it", async () => {
+  const env = makeNativeEnv();
+  const np = await loadNativePort(env);
+  const operation = np.startNativeRequest({
+    v: 1,
+    id: "page-never-pong",
+    type: "passkey.get",
+    deadlineUnixMs: Date.now() + 20,
+  });
+  const staleNative = env.latest();
+  const stalePing = staleNative.posts.find((m) => m.type === "ping");
+
+  const response = await operation.result;
+  assert.equal(response.error.code, "client_not_handled");
+  assert.equal(staleNative.posts.filter((m) => m.type === "passkey.get").length, 0);
+  assert.equal(staleNative.state.disconnectCalled, true);
+
+  staleNative.emitMessage({ v: 1, id: stalePing.id, type: "pong" });
+  await flush();
+  assert.equal(staleNative.posts.filter((m) => m.type === "passkey.get").length, 0);
+
+  const replacement = np.startNativeRequest({
+    v: 1,
+    id: "page-after-never-pong",
+    type: "passkey.get",
+    deadlineUnixMs: Date.now() + 1_000,
+  });
+  const currentNative = env.latest();
+  assert.notEqual(currentNative, staleNative);
+  const currentPing = currentNative.posts.find((m) => m.type === "ping");
+  currentNative.emitMessage({ v: 1, id: currentPing.id, type: "pong" });
+  await flush();
+  assert.equal(currentNative.posts.filter((m) => m.type === "passkey.get").length, 1);
+  replacement.cancel();
+  await replacement.result;
+});
+
+test("a deadline after native dispatch cancels and terminates without fallback", async () => {
+  const env = makeNativeEnv();
+  const np = await loadNativePort(env);
+  const operation = np.startNativeRequest({
+    v: 1,
+    id: "page-sent-deadline",
+    type: "passkey.get",
+    deadlineUnixMs: Date.now() + 25,
+  });
+  const native = env.latest();
+  const ping = native.posts.find((m) => m.type === "ping");
+  native.emitMessage({ v: 1, id: ping.id, type: "pong" });
+  await flush();
+  const request = native.posts.find((m) => m.type === "passkey.get");
+  assert.ok(request);
+
+  const response = await operation.result;
+  assert.equal(response.error.code, "operation_aborted");
+  const cancels = native.posts.filter((m) => m.type === "cancel" && m.id === request.id);
+  assert.equal(cancels.length, 1);
+
+  native.emitMessage({ v: 1, id: request.id, type: "ok", ok: true, payload: { late: true } });
+  await flush();
+  assert.equal(operation.cancel(), false);
+  assert.equal(native.posts.filter((m) => m.type === "cancel" && m.id === request.id).length, 1);
+});
+
+test("cancel before pong settles locally and the queued request is never sent", async () => {
+  const env = makeNativeEnv();
+  const np = await loadNativePort(env);
+  const operation = np.startNativeRequest({ v: 1, id: "page-queued", type: "passkey.get" });
+  const native = env.latest();
+
+  assert.equal(operation.cancel(), true);
+  assert.equal(operation.cancel(), false);
+  assert.equal((await operation.result).error.code, "operation_aborted");
+
+  const ping = native.posts.find((m) => m.type === "ping");
+  native.emitMessage({ v: 1, id: ping.id, type: "pong" });
+  await flush();
+  assert.equal(native.posts.filter((m) => m.type === "passkey.get").length, 0);
+  assert.equal(native.posts.filter((m) => m.type === "cancel").length, 0);
+});
+
+test("cancel after send settles immediately and emits at most one wire cancel", async () => {
+  const env = makeNativeEnv();
+  const np = await loadNativePort(env);
+  const operation = np.startNativeRequest({ v: 1, id: "page-sent", type: "passkey.get" });
+  const native = env.latest();
+  const ping = native.posts.find((m) => m.type === "ping");
+  native.emitMessage({ v: 1, id: ping.id, type: "pong" });
+  await flush();
+
+  const request = native.posts.find((m) => m.type === "passkey.get");
+  assert.match(request.id, /^[0-9a-f]{32}$/u);
+  assert.notEqual(request.id, "page-sent");
+  assert.equal(operation.cancel(), true);
+  assert.equal(operation.cancel(), false);
+  assert.equal((await operation.result).error.code, "operation_aborted");
+
+  const cancels = native.posts.filter((m) => m.type === "cancel");
+  assert.equal(cancels.length, 1);
+  assert.equal(cancels[0].id, request.id);
+
+  native.emitMessage({ v: 1, id: request.id, type: "ok", ok: true, payload: {} });
+  await flush();
+  assert.equal(native.posts.filter((m) => m.type === "cancel").length, 1);
+});
+
+test("an old connection generation cannot settle a request on the replacement connection", async () => {
+  const env = makeNativeEnv();
+  const np = await loadNativePort(env);
+
+  const first = np.startNativeRequest({ v: 1, id: "page-first", type: "passkey.get" });
+  const oldNative = env.latest();
+  const oldPing = oldNative.posts.find((m) => m.type === "ping");
+  oldNative.emitMessage({ v: 1, id: oldPing.id, type: "pong" });
+  await flush();
+  oldNative.emitDisconnect();
+  assert.equal((await first.result).error.code, "operation_aborted");
+
+  const second = np.startNativeRequest({ v: 1, id: "page-second", type: "passkey.get" });
+  const newNative = env.latest();
+  const newPing = newNative.posts.find((m) => m.type === "ping");
+  newNative.emitMessage({ v: 1, id: newPing.id, type: "pong" });
+  await flush();
+  const secondRequest = newNative.posts.find((m) => m.type === "passkey.get");
+
+  oldNative.emitMessage({ v: 1, id: secondRequest.id, type: "ok", ok: true, payload: { stale: true } });
+  const race = await Promise.race([
+    second.result.then(() => "settled"),
+    flush().then(() => "pending"),
+  ]);
+  assert.equal(race, "pending");
+
+  newNative.emitMessage({ v: 1, id: secondRequest.id, type: "ok", ok: true, payload: { stale: false } });
+  const response = await second.result;
+  assert.equal(response.payload.stale, false);
 });

@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
+using Api;
 using App.Services;
 using App.ViewModels.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Core.Models;
+using Core.Session;
 
 namespace App.ViewModels;
 
@@ -11,14 +13,21 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
 {
     private readonly ISendUiService _service;
     private readonly IClipboardService? _clipboard;
+    private readonly Vault.VaultSession? _session;
+    private readonly IAppLifecycleCoordinator? _lifecycle;
     // 写操作(创建/更新)单持有者闸门:避免重入并发写。加载状态(LoadState)独立于写 busy(IsBusy)。
     private readonly AsyncOperationGate _writeGate = new();
     // latest-wins 加载:每次 LoadAsync 递增 requestId 并取消上一个 CTS;只有最新请求能提交集合与四态。
     private CancellationTokenSource? _loadCts;
     private long _loadRequestId;
+    private readonly object _receiveGate = new();
+    private CancellationTokenSource? _receiveCts;
+    private long _receiveRequestId;
+    private long _stateEpoch;
 
     public ObservableCollection<SendListItem> Items { get; } = new();
     public ObservableCollection<SendListItem> FilteredItems { get; } = new();
+    public VaultSessionLease? LoadedSession { get; private set; }
 
     [ObservableProperty]
     public partial string SelectedFilterTag { get; set; } = "send:all";
@@ -41,6 +50,10 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     public partial string? Error { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowNotice))]
+    public partial string? Notice { get; set; }
+
+    [ObservableProperty]
     public partial string ReceivedLinkUrl { get; set; } = string.Empty;
 
     [ObservableProperty]
@@ -60,7 +73,14 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     [ObservableProperty]
     public partial SendReceivedResult? LastReceived { get; set; }
 
+    partial void OnLastReceivedChanging(SendReceivedResult? value)
+    {
+        if (!ReferenceEquals(LastReceived, value))
+            LastReceived?.Dispose();
+    }
+
     public bool HasError => !string.IsNullOrEmpty(Error);
+    public bool ShowNotice => !string.IsNullOrEmpty(Notice);
     public bool HasItems => FilteredItems.Count > 0;
     public bool NoItems => !HasItems;
     public bool ShowLoading => LoadState == DataPageState.Loading;
@@ -70,46 +90,120 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     public bool HasReceivedText => !string.IsNullOrEmpty(ReceivedText);
     public bool HasReceivedFile => !string.IsNullOrEmpty(ReceivedFileName);
 
-    public SendViewModel(ISendUiService service, IClipboardService? clipboard = null)
+    internal SendViewModel(
+        ISendUiService service,
+        IClipboardService? clipboard = null)
     {
         _service = service;
         _clipboard = clipboard;
+    }
+
+    public SendViewModel(
+        ISendUiService service,
+        IClipboardService? clipboard,
+        Vault.VaultSession session,
+        IAppLifecycleCoordinator lifecycle)
+    {
+        _service = service ?? throw new ArgumentNullException(nameof(service));
+        _clipboard = clipboard;
+        _session = session ?? throw new ArgumentNullException(nameof(session));
+        _lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
     }
 
     // latest-wins 四态加载:先取消上一个进行中的加载,只有最新 requestId 能提交集合与 LoadState;
     // 离页(OnNavigatedFrom)或锁屏(ClearSensitive)调用 CancelLoad 使迟到结果被丢弃。加载不占用写 busy(IsBusy)。
     public async Task<UiOperationResult<IReadOnlyList<SendListItem>>> LoadAsync(CancellationToken ct = default)
     {
+        if (!TryCaptureExpectedSession(out var expectedSession))
+            return UiOperationResult<IReadOnlyList<SendListItem>>.Cancelled();
+
         CancelLoad();
         var requestId = Interlocked.Increment(ref _loadRequestId);
         _loadCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var token = _loadCts.Token;
-        LoadState = DataPageState.Loading;
-        Error = null;
-        try
-        {
-            var sends = await _service.GetSendsAsync(token);
-            if (requestId != Volatile.Read(ref _loadRequestId))
-                return UiOperationResult<IReadOnlyList<SendListItem>>.Cancelled();
-            Items.Clear();
-            foreach (var send in sends)
-                Items.Add(send);
-            ApplyFilter();
-            LoadState = Items.Count == 0 ? DataPageState.Empty : DataPageState.Content;
-            return UiOperationResult<IReadOnlyList<SendListItem>>.Success(sends);
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        var previousLoadState = LoadState;
+        var previousError = Error;
+        if (!TryCommitForExpectedSession(expectedSession, () =>
+            {
+                if (requestId != Volatile.Read(ref _loadRequestId))
+                    return false;
+                LoadState = DataPageState.Loading;
+                Error = null;
+                return true;
+            }))
         {
             return UiOperationResult<IReadOnlyList<SendListItem>>.Cancelled();
         }
+        try
+        {
+            var sends = await LoadSnapshotWithOneRetryAsync(token);
+            if (!TryCommitForExpectedSession(expectedSession, () =>
+                {
+                    if (requestId != Volatile.Read(ref _loadRequestId)
+                        || token.IsCancellationRequested)
+                        return false;
+                    Items.Clear();
+                    foreach (var send in sends)
+                        Items.Add(send);
+                    ApplyFilter();
+                    UpdateReconciliationNotice();
+                    LoadState = Items.Count == 0 ? DataPageState.Empty : DataPageState.Content;
+                    LoadedSession = expectedSession;
+                    return true;
+                }))
+            {
+                return UiOperationResult<IReadOnlyList<SendListItem>>.Cancelled();
+            }
+            return UiOperationResult<IReadOnlyList<SendListItem>>.Success(sends);
+        }
+        catch (SendSnapshotSupersededException)
+        {
+            TryCommitForExpectedSession(expectedSession, () =>
+            {
+                if (requestId != Volatile.Read(ref _loadRequestId))
+                    return false;
+                LoadState = previousLoadState;
+                Error = previousError;
+                return true;
+            });
+            return UiOperationResult<IReadOnlyList<SendListItem>>.Cancelled();
+        }
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, token))
+        {
+            return UiOperationResult<IReadOnlyList<SendListItem>>.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            var message = UiExceptionPolicy.RequestTimeoutMessage;
+            if (!TryCommitForExpectedSession(expectedSession, () =>
+                {
+                    if (requestId != Volatile.Read(ref _loadRequestId))
+                        return false;
+                    Error = message;
+                    LoadState = DataPageState.Error;
+                    return true;
+                }))
+            {
+                return UiOperationResult<IReadOnlyList<SendListItem>>.Cancelled();
+            }
+            return UiOperationResult<IReadOnlyList<SendListItem>>.Failure(message);
+        }
         catch (HttpRequestException)
         {
-            // 旧 load 的失败不得覆盖新 load 的状态。
-            if (requestId != Volatile.Read(ref _loadRequestId))
+            const string message = "无法加载 Send，请检查网络后重试。";
+            if (!TryCommitForExpectedSession(expectedSession, () =>
+                {
+                    if (requestId != Volatile.Read(ref _loadRequestId))
+                        return false;
+                    Error = message;
+                    LoadState = DataPageState.Error;
+                    return true;
+                }))
+            {
                 return UiOperationResult<IReadOnlyList<SendListItem>>.Cancelled();
-            Error = "无法加载 Send，请检查网络后重试。";
-            LoadState = DataPageState.Error;
-            return UiOperationResult<IReadOnlyList<SendListItem>>.Failure(Error);
+            }
+            return UiOperationResult<IReadOnlyList<SendListItem>>.Failure(message);
         }
     }
 
@@ -128,8 +222,82 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     }
 
     // 编辑打开路径:取完整 Send 水合 draft(F1)。找不到返回 null。
-    public Task<SendEditorDraft?> GetEditDraftAsync(string id, CancellationToken ct = default) =>
-        _service.GetEditDraftAsync(id, ct);
+    public async Task<SendEditorDraft?> GetEditDraftAsync(string id, CancellationToken ct = default)
+    {
+        if (!TryCaptureExpectedSession(out var expectedSession))
+            return null;
+
+        SendEditorDraft? draft;
+        try
+        {
+            draft = await _service.GetEditDraftAsync(id, ct);
+        }
+        catch (SendSnapshotSupersededException)
+        {
+            return null;
+        }
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
+        {
+            return null;
+        }
+        if (draft is null)
+            return null;
+
+        if (!TryCommitForExpectedSession(expectedSession, () =>
+            {
+                draft.OriginatingSession = expectedSession;
+                return true;
+            }))
+        {
+            draft.ClearSensitive();
+            return null;
+        }
+        return draft;
+    }
+
+    private bool TryCaptureExpectedSession(out VaultSessionLease? expectedSession)
+    {
+        if (_session is null)
+        {
+            expectedSession = null;
+            return true;
+        }
+
+        try
+        {
+            var captured = _session.CaptureLease();
+            if (!_session.IsUnlocked(captured))
+            {
+                expectedSession = null;
+                return false;
+            }
+            expectedSession = captured;
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            expectedSession = null;
+            return false;
+        }
+    }
+
+    private bool TryCommitForExpectedSession(
+        VaultSessionLease? expectedSession,
+        Func<bool> commit)
+    {
+        if (_session is null)
+            return commit();
+        if (expectedSession is null)
+            return false;
+
+        var committed = false;
+        var accepted = _lifecycle!.TryRunSensitive(
+            () => _session.TryRunIfUnlocked(
+                expectedSession,
+                () => committed = commit()));
+        return accepted && committed;
+    }
 
     partial void OnSelectedFilterTagChanged(string value) => ApplyFilter();
 
@@ -151,6 +319,9 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     // 只映射为安全错误文案、不泄露底层异常细节;未知异常不 catch,交由上层/Task 12 统一处理。
     public async Task<UiOperationResult> CreateSendAsync(SendEditorDraft draft, SendFileSource? file, CancellationToken ct = default)
     {
+        var expectedSession = draft.OriginatingSession;
+        if (!TryCommitForExpectedSession(expectedSession, static () => true))
+            return UiOperationResult.Cancelled();
         if (!draft.HasRequiredData())
             return UiOperationResult.Failure("请填写 Send 必填项。");
         if (!_writeGate.TryEnter(out var operation))
@@ -158,28 +329,61 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
 
         using (operation)
         {
-            IsBusy = true;
-            Error = null;
-            try
-            {
-                var item = await _service.CreateSendAsync(draft, file, ct);
-                Items.Add(item);
-                ApplyFilter();
-                return UiOperationResult.Success();
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            var stateEpoch = Volatile.Read(ref _stateEpoch);
+            if (!TryCommitForExpectedSession(expectedSession, () =>
+                {
+                    if (stateEpoch != Volatile.Read(ref _stateEpoch))
+                        return false;
+                    IsBusy = true;
+                    Error = null;
+                    Notice = null;
+                    return true;
+                }))
             {
                 return UiOperationResult.Cancelled();
             }
-            catch (Exception ex) when (ex is ArgumentOutOfRangeException
-                or UnauthorizedAccessException
-                or IOException
-                or InvalidDataException
-                or Vault.SendUploadCompensationException
-                or HttpRequestException)
+            try
             {
-                Error = SafeSendError(ex);
-                return UiOperationResult.Failure(Error);
+                var item = await _service.CreateSendAsync(draft, file, ct);
+                if (!TryCommitForExpectedSession(expectedSession, () =>
+                {
+                    if (stateEpoch != Volatile.Read(ref _stateEpoch) || ct.IsCancellationRequested)
+                        return false;
+                    UpsertCommittedItem(item, replacedId: null);
+                    UpdateReconciliationNotice();
+                    return true;
+                }))
+                {
+                    return UiOperationResult.Cancelled();
+                }
+                return UiOperationResult.Success();
+            }
+            catch (OperationCanceledException ex)
+                when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
+            {
+                return UiOperationResult.Cancelled();
+            }
+            catch (Exception ex) when (
+                ex is ArgumentOutOfRangeException
+                    or UnauthorizedAccessException
+                    or IOException
+                    or InvalidDataException
+                    or Vault.SendUploadCompensationException
+                    or HttpRequestException
+                || RequestTimeoutClassifier.IsTimeout(ex, ct))
+            {
+                var error = SafeSendError(ex);
+                if (!TryCommitForExpectedSession(expectedSession, () =>
+                    {
+                        if (stateEpoch != Volatile.Read(ref _stateEpoch))
+                            return false;
+                        Error = error;
+                        return true;
+                    }))
+                {
+                    return UiOperationResult.Cancelled();
+                }
+                return UiOperationResult.Failure(error);
             }
             finally
             {
@@ -195,38 +399,103 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         SendFileSource? file,
         CancellationToken ct = default)
     {
+        var expectedSession = draft.OriginatingSession;
+        if (!TryCommitForExpectedSession(expectedSession, static () => true))
+            return UiOperationResult.Cancelled();
         if (!draft.HasRequiredData())
             return UiOperationResult.Failure("请填写 Send 必填项。");
+        if (Items.All(existing => existing.Id != item.Id))
+            return UiOperationResult.Failure("要更新的 Send 已不存在。");
+        if (!item.CanModify)
+            return UiOperationResult.Failure("该 Send 正在等待服务器对账，暂时不能修改。");
         if (!_writeGate.TryEnter(out var operation))
             return UiOperationResult.Busy();
 
         using (operation)
         {
-            IsBusy = true;
-            Error = null;
-            try
-            {
-                var updated = await _service.UpdateSendAsync(item.Id, draft, file, ct);
-                var existing = Items.FirstOrDefault(value => value.Id == item.Id);
-                if (existing is null)
-                    return UiOperationResult.Failure("要更新的 Send 已不存在。");
-                Items[Items.IndexOf(existing)] = updated;
-                ApplyFilter();
-                return UiOperationResult.Success();
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            var stateEpoch = Volatile.Read(ref _stateEpoch);
+            if (!TryCommitForExpectedSession(expectedSession, () =>
+                {
+                    if (stateEpoch != Volatile.Read(ref _stateEpoch))
+                        return false;
+                    IsBusy = true;
+                    Error = null;
+                    Notice = null;
+                    return true;
+                }))
             {
                 return UiOperationResult.Cancelled();
             }
-            catch (Exception ex) when (ex is ArgumentOutOfRangeException
-                or UnauthorizedAccessException
-                or IOException
-                or InvalidDataException
-                or Vault.SendUploadCompensationException
-                or HttpRequestException)
+            try
             {
-                Error = SafeSendError(ex);
-                return UiOperationResult.Failure(Error);
+                var updated = await _service.UpdateSendAsync(item.Id, draft, file, ct);
+                if (!TryCommitForExpectedSession(expectedSession, () =>
+                {
+                    if (stateEpoch != Volatile.Read(ref _stateEpoch) || ct.IsCancellationRequested)
+                        return false;
+                    UpsertCommittedItem(updated, item.Id);
+                    UpdateReconciliationNotice();
+                    return true;
+                }))
+                {
+                    return UiOperationResult.Cancelled();
+                }
+                return UiOperationResult.Success();
+            }
+            catch (Vault.SendReplacementUncertainException uncertain)
+            {
+                if (!TryCommitForExpectedSession(expectedSession, () =>
+                {
+                    if (stateEpoch != Volatile.Read(ref _stateEpoch) || ct.IsCancellationRequested)
+                        return false;
+                    var replacement = new SendListItem(
+                        uncertain.Replacement.SendId,
+                        "已提交的 Send",
+                        item.Type,
+                        "待服务器确认",
+                        null,
+                        SendReconciliationState.ReplacementNewPending);
+                    MarkReplacementPending(uncertain.ExistingSendId, replacement);
+                    UpdateReconciliationNotice();
+                    return true;
+                }))
+                {
+                    return UiOperationResult.Cancelled();
+                }
+                return UiOperationResult.Success();
+            }
+            catch (SendMutationInProgressException)
+            {
+                return UiOperationResult.Busy();
+            }
+            catch (OperationCanceledException ex)
+                when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
+            {
+                return UiOperationResult.Cancelled();
+            }
+            catch (Exception ex) when (
+                ex is ArgumentOutOfRangeException
+                    or UnauthorizedAccessException
+                    or IOException
+                    or InvalidDataException
+                    or Vault.SendUploadCompensationException
+                    or Vault.SendPasswordRequiredForReplacementException
+                    or Vault.SendUnsupportedAuthenticationException
+                    or HttpRequestException
+                || RequestTimeoutClassifier.IsTimeout(ex, ct))
+            {
+                var error = SafeSendError(ex);
+                if (!TryCommitForExpectedSession(expectedSession, () =>
+                    {
+                        if (stateEpoch != Volatile.Read(ref _stateEpoch))
+                            return false;
+                        Error = error;
+                        return true;
+                    }))
+                {
+                    return UiOperationResult.Cancelled();
+                }
+                return UiOperationResult.Failure(error);
             }
             finally
             {
@@ -235,40 +504,199 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         }
     }
 
-    // 安全错误映射:把已知写入异常翻译成用户可读、不泄露细节的中文文案。
-    private static string SafeSendError(Exception exception) => exception switch
+    // Maps known write failures to stable, actionable messages without exposing diagnostics.
+    private static string SafeSendError(Exception exception)
     {
-        ArgumentOutOfRangeException => "文件超过 500 MiB 上限。",
-        UnauthorizedAccessException => "没有读取所选文件的权限。",
-        IOException => "读取或上传文件失败，请确认文件仍可访问后重试。",
-        InvalidDataException => "文件在读取或上传过程中已被修改，请重新选择文件后重试。",
-        Vault.SendUploadCompensationException compensation => compensation.Message,
-        HttpRequestException => "网络请求失败，请检查连接后重试。",
-        _ => "保存 Send 失败。",
-    };
+        if (exception is Vault.SendUploadCompensationException)
+        {
+            return "文件上传未完成，服务器可能保留了未完成的 Send。请刷新列表，确认并删除该条目后再重试。";
+        }
+        if (RequestTimeoutClassifier.IsTimeout(exception))
+            return "文件传输长时间没有进展，请检查连接后重试。";
+
+        return exception switch
+        {
+            ArgumentOutOfRangeException => "文件超过 500 MiB 上限。",
+            UnauthorizedAccessException => "没有读取所选文件的权限。",
+            IOException => "读取或上传文件失败，请确认文件仍可访问后重试。",
+            InvalidDataException => "文件在读取或上传过程中已被修改，请重新选择文件后重试。",
+            Vault.SendPasswordRequiredForReplacementException =>
+                "此 Send 已设置密码。替换文件时请重新输入原密码或设置新密码。",
+            Vault.SendUnsupportedAuthenticationException =>
+                "此 Send 使用当前版本尚不支持的验证方式，暂时不能修改。",
+            HttpRequestException => "网络请求失败，请检查连接后重试。",
+            _ => "保存 Send 失败。",
+        };
+    }
+
+    private static bool IsRecoverableDeleteError(Exception exception) =>
+        RequestTimeoutClassifier.IsTimeout(exception)
+        || exception is HttpRequestException
+            or IOException
+            or UnauthorizedAccessException
+            or SendMutationInProgressException;
+
+    private static string SafeDeleteError(Exception exception)
+    {
+        if (RequestTimeoutClassifier.IsTimeout(exception)
+            || exception is HttpRequestException or IOException)
+        {
+            return "无法确认删除结果，请刷新列表检查该 Send 是否仍存在后再操作。";
+        }
+
+        return exception switch
+        {
+            UnauthorizedAccessException => "没有删除此 Send 的权限，请重新登录或联系管理员后重试。",
+            SendMutationInProgressException => "另一项 Send 操作仍在进行，请稍后重试。",
+            _ => "删除 Send 失败，请刷新列表后重试。",
+        };
+    }
 
     [RelayCommand]
-    private async Task DeleteSendAsync(SendListItem? item)
+    private async Task DeleteSendAsync(SendDeleteRequest? request)
     {
+        var item = request?.Item;
         if (item is null)
             return;
-        IsBusy = true;
-        Error = null;
+        var expectedSession = request!.OriginatingSession;
+        if (!TryCommitForExpectedSession(expectedSession, static () => true))
+            return;
+        if (!item.CanModify)
+        {
+            TryCommitForExpectedSession(expectedSession, () =>
+            {
+                Notice = "该 Send 正在等待服务器对账，暂时不能编辑或删除。";
+                return true;
+            });
+            return;
+        }
+        if (!_writeGate.TryEnter(out var operation))
+            return;
+
+        using (operation)
+        {
+            var stateEpoch = Volatile.Read(ref _stateEpoch);
+            if (!TryCommitForExpectedSession(expectedSession, () =>
+                {
+                    if (stateEpoch != Volatile.Read(ref _stateEpoch))
+                        return false;
+                    IsBusy = true;
+                    Error = null;
+                    return true;
+                }))
+            {
+                return;
+            }
+            try
+            {
+                await _service.DeleteSendAsync(item.Id, expectedSession);
+                TryCommitForExpectedSession(expectedSession, () =>
+                {
+                    if (stateEpoch != Volatile.Read(ref _stateEpoch))
+                        return false;
+                    var existing = Items.FirstOrDefault(send => send.Id == item.Id);
+                    if (existing is not null)
+                        Items.Remove(existing);
+                    ApplyFilter();
+                    return true;
+                });
+            }
+            catch (OperationCanceledException ex)
+                when (UiExceptionPolicy.IsGenuineCancellation(ex))
+            {
+            }
+            catch (Exception ex) when (IsRecoverableDeleteError(ex))
+            {
+                TryCommitForExpectedSession(expectedSession, () =>
+                {
+                    if (stateEpoch != Volatile.Read(ref _stateEpoch))
+                        return false;
+                    Error = SafeDeleteError(ex);
+                    return true;
+                });
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+    }
+
+    private async Task<IReadOnlyList<SendListItem>> LoadSnapshotWithOneRetryAsync(
+        CancellationToken ct)
+    {
         try
         {
-            await _service.DeleteSendAsync(item.Id);
-            var existing = Items.FirstOrDefault(s => s.Id == item.Id);
-            if (existing is not null) Items.Remove(existing);
-            ApplyFilter();
+            return await _service.GetSendsAsync(ct);
         }
-        catch (Exception ex)
+        catch (SendSnapshotSupersededException)
         {
-            Error = ex.Message;
+            await Task.Yield();
+            return await _service.GetSendsAsync(ct);
         }
-        finally
+    }
+
+    public bool CanModifySend(SendListItem? item) => item?.CanModify == true;
+
+    private void UpsertCommittedItem(SendListItem committed, string? replacedId)
+    {
+        if (!string.IsNullOrEmpty(replacedId)
+            && replacedId != committed.Id
+            && committed.ReconciliationState != SendReconciliationState.ReplacementNewPending)
         {
-            IsBusy = false;
+            var replaced = Items.FirstOrDefault(item => item.Id == replacedId);
+            if (replaced is not null)
+                Items.Remove(replaced);
         }
+
+        var existing = Items.FirstOrDefault(item => item.Id == committed.Id);
+        if (existing is null)
+            Items.Add(committed);
+        else
+            Items[Items.IndexOf(existing)] = committed;
+
+        if (committed.ReconciliationState == SendReconciliationState.ReplacementNewPending
+            && !string.IsNullOrEmpty(replacedId))
+        {
+            MarkReplacementPending(replacedId, committed);
+            return;
+        }
+
+        ApplyFilter();
+    }
+
+    private void MarkReplacementPending(string existingSendId, SendListItem replacement)
+    {
+        var existing = Items.FirstOrDefault(item => item.Id == existingSendId);
+        if (existing is not null)
+        {
+            Items[Items.IndexOf(existing)] = existing with
+            {
+                ReconciliationState = SendReconciliationState.ReplacementOriginalPending,
+            };
+        }
+
+        var currentReplacement = Items.FirstOrDefault(item => item.Id == replacement.Id);
+        if (currentReplacement is null)
+            Items.Add(replacement);
+        else
+            Items[Items.IndexOf(currentReplacement)] = replacement;
+        ApplyFilter();
+    }
+
+    private void UpdateReconciliationNotice()
+    {
+        if (Items.Any(item => item.ReconciliationState is
+                SendReconciliationState.ReplacementOriginalPending or
+                SendReconciliationState.ReplacementNewPending))
+        {
+            Notice = "文件替换已上传，但旧 Send 的删除结果尚未确认。相关条目已锁定，请刷新并等待服务器完成对账。";
+            return;
+        }
+
+        Notice = Items.Any(item => item.ReconciliationState == SendReconciliationState.CommittedPendingRefresh)
+            ? "更改已保存到服务器，但列表尚未刷新。该条目已锁定，请稍后重新加载。"
+            : null;
     }
 
     public void MarkMoreMenuOpened(SendListItem? item) => SelectedMenuItem = item;
@@ -286,6 +714,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     [RelayCommand]
     private async Task OpenReceivedLinkAsync(CancellationToken ct = default)
     {
+        var (requestId, operationCts) = BeginReceiveOperation(ct);
         ReceivedText = null;
         ReceivedFileName = null;
         ReceivedWrongPassword = false;
@@ -293,36 +722,152 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         Error = null;
 
         if (string.IsNullOrWhiteSpace(ReceivedLinkUrl))
+        {
+            CompleteReceiveOperation(requestId, operationCts);
             return;
+        }
 
         IsBusy = true;
         try
         {
             var password = string.IsNullOrEmpty(ReceivedLinkPassword) ? null : ReceivedLinkPassword;
-            var result = await _service.OpenReceivedLinkAsync(ReceivedLinkUrl.Trim(), password, ct);
-            LastReceived = result;
-            if (result.WrongPassword)
+            var result = await _service.OpenReceivedLinkAsync(
+                ReceivedLinkUrl.Trim(),
+                password,
+                operationCts.Token);
+            if (!TryCommitReceiveOperation(requestId, operationCts, () => ApplyReceivedResult(result)))
             {
-                ReceivedWrongPassword = true;
-                return;
+                result.Dispose();
             }
-            if (!result.Ok)
-            {
-                Error = result.Error ?? "无法打开该 Send 链接。";
-                return;
-            }
-            if (result.Type == SendType.File)
-                ReceivedFileName = result.FileName;
-            else
-                ReceivedText = result.TextContent;
         }
-        catch (Exception ex)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, operationCts.Token))
         {
-            Error = ex.Message;
+        }
+        catch (Exception ex) when (SendUiErrorMessages.IsRecoverableAccessFailure(ex))
+        {
+            var message = SendUiErrorMessages.ForAccessFailure(ex);
+            TryCommitReceiveOperation(requestId, operationCts, () => Error = message);
         }
         finally
         {
+            CompleteReceiveOperation(requestId, operationCts);
+        }
+    }
+
+    private void ApplyReceivedResult(SendReceivedResult result)
+    {
+        LastReceived = result;
+        if (result.WrongPassword)
+        {
+            ReceivedWrongPassword = true;
+            return;
+        }
+        if (!result.Ok)
+        {
+            Error = SendUiErrorMessages.SanitizeAccessResultError(result.Error);
+            return;
+        }
+        ReceivedLinkPassword = string.Empty;
+        ReceivedLinkUrl = string.Empty;
+        if (result.Type == SendType.File)
+            ReceivedFileName = result.FileName;
+        else
+            ReceivedText = result.TextContent;
+    }
+
+    private (long RequestId, CancellationTokenSource Cts) BeginReceiveOperation(CancellationToken ct)
+    {
+        CancellationTokenSource? previous;
+        CancellationTokenSource current;
+        long requestId;
+        lock (_receiveGate)
+        {
+            previous = _receiveCts;
+            current = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            _receiveCts = current;
+            requestId = ++_receiveRequestId;
+        }
+
+        SafeCancelAndDispose(previous);
+        return (requestId, current);
+    }
+
+    private bool TryCommitReceiveOperation(
+        long requestId,
+        CancellationTokenSource operationCts,
+        Action commit)
+    {
+        lock (_receiveGate)
+        {
+            if (requestId != _receiveRequestId
+                || !ReferenceEquals(_receiveCts, operationCts)
+                || operationCts.IsCancellationRequested)
+                return false;
+
+            commit();
+            return true;
+        }
+    }
+
+    private void CompleteReceiveOperation(long requestId, CancellationTokenSource operationCts)
+    {
+        lock (_receiveGate)
+        {
+            if (requestId == _receiveRequestId && ReferenceEquals(_receiveCts, operationCts))
+            {
+                _receiveCts = null;
+                IsBusy = false;
+            }
+        }
+
+        SafeDispose(operationCts);
+    }
+
+    public void CancelReceive()
+    {
+        CancellationTokenSource? operation;
+        lock (_receiveGate)
+        {
+            _receiveRequestId++;
+            operation = _receiveCts;
+            _receiveCts = null;
             IsBusy = false;
+        }
+
+        SafeCancelAndDispose(operation);
+    }
+
+    private static void SafeCancelAndDispose(CancellationTokenSource? source)
+    {
+        if (source is null)
+            return;
+
+        try
+        {
+            source.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (AggregateException)
+        {
+            // Cancellation callbacks cannot preserve a superseded receive operation.
+        }
+        finally
+        {
+            SafeDispose(source);
+        }
+    }
+
+    private static void SafeDispose(CancellationTokenSource source)
+    {
+        try
+        {
+            source.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
         }
     }
 
@@ -338,7 +883,9 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     // 经 DI TrackSensitive 弱登记后由生命周期协调器统一调用。
     public void ClearSensitive()
     {
+        Interlocked.Increment(ref _stateEpoch);
         CancelLoad();
+        CancelReceive();
         SelectedMenuItem = null;
         ReceivedLinkUrl = string.Empty;
         ReceivedLinkPassword = string.Empty;
@@ -347,8 +894,10 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         ReceivedWrongPassword = false;
         LastReceived = null;
         Error = null;
+        Notice = null;
         Items.Clear();
         FilteredItems.Clear();
+        LoadedSession = null;
         LoadState = DataPageState.Loading;
     }
 }

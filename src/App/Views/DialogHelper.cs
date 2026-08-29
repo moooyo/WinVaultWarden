@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Runtime.InteropServices.WindowsRuntime;
+using Core.Session;
+using App.Services;
 
 namespace App.Views;
 
@@ -28,7 +30,50 @@ public static class DialogHelper
         try
         {
             linked.Token.ThrowIfCancellationRequested();
-            return await dialog.ShowAsync().AsTask(linked.Token);
+            var result = await dialog.ShowAsync().AsTask(linked.Token);
+            linked.Token.ThrowIfCancellationRequested();
+            return result;
+        }
+        catch (OperationCanceledException) when (linked.IsCancellationRequested)
+        {
+            return ContentDialogResult.None;
+        }
+    }
+
+    public static async Task<ContentDialogResult> ShowTrackedAsync(
+        ContentDialog dialog,
+        VaultSessionLease expectedSession,
+        Action? clearSensitive = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(dialog);
+        ArgumentNullException.ThrowIfNull(expectedSession);
+        var services = global::App.App.Services;
+        var registry = services.GetRequiredService<ITransientOperationRegistry>();
+        var lifecycle = services.GetRequiredService<IAppLifecycleCoordinator>();
+        var session = services.GetRequiredService<Vault.VaultSession>();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var started = SessionBoundOperationStarter.TryStart(
+            lifecycle,
+            session,
+            expectedSession,
+            () => registry.Register(
+                linked.Cancel,
+                () => dialog.DispatcherQueue.TryEnqueue(dialog.Hide),
+                clearSensitive ?? (() => { })),
+            () =>
+            {
+                linked.Token.ThrowIfCancellationRequested();
+                return dialog.ShowAsync();
+            });
+        if (started is null)
+            return ContentDialogResult.None;
+
+        try
+        {
+            var result = await started.Operation.AsTask(linked.Token);
+            linked.Token.ThrowIfCancellationRequested();
+            return result;
         }
         catch (OperationCanceledException) when (linked.IsCancellationRequested)
         {
@@ -55,5 +100,27 @@ public static class DialogHelper
             XamlRoot = root,
         };
         return await ShowTrackedAsync(dialog, ct: ct) == ContentDialogResult.Primary;
+    }
+
+    public static async Task<bool> ConfirmAsync(
+        XamlRoot root,
+        VaultSessionLease expectedSession,
+        string title,
+        string message,
+        string primaryText,
+        string closeText = "取消",
+        CancellationToken ct = default)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = message,
+            PrimaryButtonText = primaryText,
+            CloseButtonText = closeText,
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = root,
+        };
+        return await ShowTrackedAsync(dialog, expectedSession, ct: ct)
+            == ContentDialogResult.Primary;
     }
 }

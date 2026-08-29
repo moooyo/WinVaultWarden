@@ -45,7 +45,7 @@ public sealed class SyncService : ISyncService
         if (!string.Equals(sync.Profile?.Id, lease.AccountId, StringComparison.Ordinal))
             throw new InvalidDataException("Sync profile does not match the active account.");
 
-        var vault = _decryptor.Decrypt(sync, userKey!, lease.Origin.Value);
+        var vault = _decryptor.Decrypt(sync, userKey!, lease.Endpoints);
 
         // 缓存、快照、私钥在同一 TryCommit 原子门禁内提交:要么全落地、要么全不落地。
         // 写缓存(可能触发 DPAPI/磁盘 IO)排在不会抛出的内存赋值之前——若持久化失败,

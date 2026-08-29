@@ -43,7 +43,7 @@ public sealed class PeerIdentityPolicyTests
         Assert.False(PeerIdentityPolicy.IsAuthorized(local, peer, Host));
     }
 
-    [Fact]
+    [WindowsFact]
     public void NonNormalizedButEquivalentPeerPath_IsAllowed()
     {
         var local = Identity(10, App, package: null, signer: Signer);

@@ -141,6 +141,20 @@ public class EmergencyAccessPageXamlTests
     }
 
     [Fact]
+    public void RecoveredVaultDialog_UsesSafePresentationItems_InsteadOfRawCiphers()
+    {
+        var xaml = Xaml();
+        var cs = CodeBehind();
+
+        Assert.Contains("x:DataType=\"viewModels:RecoveredCipherListItem\"", xaml);
+        Assert.Contains("Text=\"{x:Bind Name}\"", xaml);
+        Assert.Contains("Text=\"{x:Bind Subtitle}\"", xaml);
+        Assert.Contains("Select(RecoveredCipherListItem.FromCipher)", cs);
+        Assert.Contains("ItemTemplate = (DataTemplate)Resources[\"RecoveredCipherItemTemplate\"]", cs);
+        Assert.DoesNotContain("ItemsSource = recovered.Ciphers", cs);
+    }
+
+    [Fact]
     public void CodeBehind_RemoveAndReject_RequireConfirmationDialog()
     {
         var cs = CodeBehind();

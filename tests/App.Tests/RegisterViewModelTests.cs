@@ -1,3 +1,4 @@
+using Api;
 using App.Services;
 using App.ViewModels;
 using Core.Services;
@@ -20,6 +21,8 @@ public class RegisterViewModelTests
     {
         public bool Throw { get; set; }
         public string? ThrowMessage { get; set; }
+        public RegistrationOutcome Outcome { get; set; } =
+            new RegistrationOutcome.Registered();
 
         public string? LastServerUrl { get; private set; }
         public string? LastEmail { get; private set; }
@@ -28,7 +31,13 @@ public class RegisterViewModelTests
         public string? LastHint { get; private set; }
         public int CallCount { get; private set; }
 
-        public Task RegisterAsync(string serverUrl, string email, string? name, string password, string? hint, CancellationToken ct = default)
+        public Task<RegistrationOutcome> RegisterAsync(
+            string serverUrl,
+            string email,
+            string? name,
+            string password,
+            string? hint,
+            CancellationToken ct = default)
         {
             CallCount++;
             if (Throw)
@@ -38,7 +47,7 @@ public class RegisterViewModelTests
             LastName = name;
             LastPassword = password;
             LastHint = hint;
-            return Task.CompletedTask;
+            return Task.FromResult(Outcome);
         }
     }
 
@@ -66,6 +75,8 @@ public class RegisterViewModelTests
         Assert.Equal(string.Empty, vm.OperationError);
         Assert.False(vm.HasOperationError);
         Assert.False(vm.Registered);
+        Assert.Equal(RegisterState.Editing, vm.State);
+        Assert.True(vm.IsEditing);
     }
 
     [Fact]
@@ -145,6 +156,41 @@ public class RegisterViewModelTests
         Assert.Equal(0, svc.CallCount);
     }
 
+    [Theory]
+    [InlineData("https://user@vault.example")]
+    [InlineData("https://vault.example/path?query=1")]
+    [InlineData("https://vault.example/path#fragment")]
+    public async Task RegisterAsync_UnsafeServerUrl_SetsValidationError(string serverUrl)
+    {
+        var (vm, svc) = Build();
+        vm.SelectedServerOptionIndex = 2;
+        vm.ServerUrl = serverUrl;
+        vm.Email = "user@example.com";
+        vm.MasterPassword = "Password1!";
+        vm.ConfirmPassword = "Password1!";
+
+        await vm.RegisterAsync();
+
+        Assert.NotEmpty(vm.OperationError);
+        Assert.Equal(RegisterFocusTarget.ServerUrl, vm.FocusTarget);
+        Assert.Equal(0, svc.CallCount);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_OverlongEmail_SetsValidationError()
+    {
+        var (vm, svc) = Build();
+        vm.Email = new string('a', 245) + "@example.com";
+        vm.MasterPassword = "Password1!";
+        vm.ConfirmPassword = "Password1!";
+
+        await vm.RegisterAsync();
+
+        Assert.NotEmpty(vm.OperationError);
+        Assert.Equal(RegisterFocusTarget.Email, vm.FocusTarget);
+        Assert.Equal(0, svc.CallCount);
+    }
+
     // -----------------------------------------------------------------------
     // 校验失败：密码为空 → OperationError
     // -----------------------------------------------------------------------
@@ -206,6 +252,76 @@ public class RegisterViewModelTests
         Assert.Equal("https://vault.bitwarden.com", svc.LastServerUrl);
         Assert.Equal("user@example.com", svc.LastEmail);
         Assert.Equal("my hint", svc.LastHint);
+        Assert.Equal(string.Empty, vm.MasterPassword);
+        Assert.Equal(string.Empty, vm.ConfirmPassword);
+        Assert.Null(vm.MasterPasswordHint);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_EmailVerificationRequired_EntersNonErrorPendingStateAndClearsSecrets()
+    {
+        var (vm, service) = Build();
+        service.Outcome = new RegistrationOutcome.EmailVerificationRequired();
+        vm.Email = "  user@example.com  ";
+        vm.MasterPassword = "Password1!";
+        vm.ConfirmPassword = "Password1!";
+        vm.MasterPasswordHint = "hint";
+
+        await vm.RegisterAsync();
+
+        Assert.Equal(RegisterState.AwaitingEmailVerification, vm.State);
+        Assert.True(vm.IsAwaitingEmailVerification);
+        Assert.False(vm.Registered);
+        Assert.False(vm.HasOperationError);
+        Assert.Equal("user@example.com", vm.RegisteredEmail);
+        Assert.Equal("https://vault.bitwarden.com", vm.RegisteredServerUrl);
+        Assert.Equal(string.Empty, vm.MasterPassword);
+        Assert.Equal(string.Empty, vm.ConfirmPassword);
+        Assert.Null(vm.MasterPasswordHint);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_OutcomeUncertain_PromptsLoginWithoutAutomaticRetryAndClearsSecrets()
+    {
+        var (vm, service) = Build();
+        service.Outcome = new RegistrationOutcome.OutcomeUncertain();
+        vm.Email = "user@example.com";
+        vm.MasterPassword = "Password1!";
+        vm.ConfirmPassword = "Password1!";
+        vm.MasterPasswordHint = "hint";
+
+        await vm.RegisterAsync();
+
+        Assert.Equal(RegisterState.OutcomeUncertain, vm.State);
+        Assert.True(vm.IsOutcomeUncertain);
+        Assert.False(vm.Registered);
+        Assert.False(vm.HasOperationError);
+        Assert.Equal(1, service.CallCount);
+        Assert.Equal(string.Empty, vm.MasterPassword);
+        Assert.Equal(string.Empty, vm.ConfirmPassword);
+        Assert.Null(vm.MasterPasswordHint);
+    }
+
+    [Fact]
+    public async Task ResumeEditing_FromEmailVerificationState_PreservesAddressButRequiresSecretsAgain()
+    {
+        var (vm, service) = Build();
+        service.Outcome = new RegistrationOutcome.EmailVerificationRequired();
+        vm.Email = "user@example.com";
+        vm.MasterPassword = "Password1!";
+        vm.ConfirmPassword = "Password1!";
+
+        await vm.RegisterAsync();
+        vm.ResumeEditing();
+
+        Assert.Equal(RegisterState.Editing, vm.State);
+        Assert.True(vm.IsEditing);
+        Assert.Equal("user@example.com", vm.Email);
+        Assert.Equal(string.Empty, vm.RegisteredEmail);
+        Assert.Equal(string.Empty, vm.RegisteredServerUrl);
+        Assert.Equal(string.Empty, vm.MasterPassword);
+        Assert.Equal(string.Empty, vm.ConfirmPassword);
+        Assert.Equal(RegisterFocusTarget.Email, vm.FocusTarget);
     }
 
     // -----------------------------------------------------------------------
@@ -310,6 +426,37 @@ public class RegisterViewModelTests
         await firstTask;
     }
 
+    [Fact]
+    public async Task ClearSensitive_CancelsGenerationAndIgnoresLateRegistrationResult()
+    {
+        var completion = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new HangingRegisterService(completion.Task);
+        var vm = new RegisterViewModel(new RegisterUiService(service))
+        {
+            Email = "user@example.com",
+            MasterPassword = "Password1!",
+            ConfirmPassword = "Password1!",
+            MasterPasswordHint = "hint",
+        };
+
+        var registration = vm.RegisterAsync();
+        Assert.True(vm.IsBusy);
+
+        vm.ClearSensitive();
+        completion.SetResult(true);
+        await registration;
+
+        Assert.False(vm.IsBusy);
+        Assert.Equal(RegisterState.Editing, vm.State);
+        Assert.False(vm.Registered);
+        Assert.Equal(string.Empty, vm.RegisteredEmail);
+        Assert.Equal(string.Empty, vm.RegisteredServerUrl);
+        Assert.Equal(string.Empty, vm.MasterPassword);
+        Assert.Equal(string.Empty, vm.ConfirmPassword);
+        Assert.Null(vm.MasterPasswordHint);
+    }
+
     // -----------------------------------------------------------------------
     // 未知异常（非 RegistrationException）不得被吞：继续向外抛出，IsBusy 复位
     // -----------------------------------------------------------------------
@@ -324,6 +471,25 @@ public class RegisterViewModelTests
         Assert.False(vm.IsBusy);
     }
 
+    [Fact]
+    public async Task RequestTimeout_SetsSafeErrorInsteadOfEscaping()
+    {
+        var vm = ValidVm(new ThrowingRegisterUi(new TaskCanceledException(
+            "request timed out",
+            new RequestTimeoutException(
+                RequestTimeoutPhase.ControlPlane,
+                TimeSpan.FromSeconds(30)),
+            CancellationToken.None)));
+
+        await vm.RegisterAsync(CancellationToken.None);
+
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, vm.OperationError);
+        Assert.False(vm.Registered);
+        Assert.False(vm.IsBusy);
+        Assert.Equal(RegisterState.Editing, vm.State);
+        Assert.Equal("Password1!", vm.MasterPassword);
+    }
+
     private static RegisterViewModel ValidVm(IRegisterUiService service) =>
         new(service)
         {
@@ -335,7 +501,7 @@ public class RegisterViewModelTests
     private sealed class ThrowingRegisterUi(Exception exception)
         : IRegisterUiService
     {
-        public Task RegisterAsync(
+        public Task<RegistrationOutcome> RegisterAsync(
             string serverUrl,
             string email,
             string? name,
@@ -343,7 +509,7 @@ public class RegisterViewModelTests
             string confirm,
             string? hint,
             CancellationToken ct = default) =>
-            Task.FromException(exception);
+            Task.FromException<RegistrationOutcome>(exception);
     }
 
     private sealed class HangingRegisterService : IRegisterService
@@ -351,9 +517,16 @@ public class RegisterViewModelTests
         private readonly Task _hang;
         public HangingRegisterService(Task hang) => _hang = hang;
 
-        public async Task RegisterAsync(string serverUrl, string email, string? name, string password, string? hint, CancellationToken ct = default)
+        public async Task<RegistrationOutcome> RegisterAsync(
+            string serverUrl,
+            string email,
+            string? name,
+            string password,
+            string? hint,
+            CancellationToken ct = default)
         {
             await _hang;
+            return new RegistrationOutcome.Registered();
         }
     }
 }

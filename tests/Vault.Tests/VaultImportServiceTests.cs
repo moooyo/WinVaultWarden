@@ -2,6 +2,7 @@ using Api;
 using Api.Dtos;
 using Core.Models;
 using Core.Services;
+using Core.Session;
 using Crypto;
 using Vault;
 using Xunit;
@@ -37,6 +38,7 @@ public class VaultImportServiceTests
     private sealed class FakeSync : ISyncService
     {
         public int Calls { get; private set; }
+        public VaultSessionLease? LastLease { get; private set; }
 
         public Task<IReadOnlyList<Cipher>> SyncAsync(CancellationToken ct = default)
         {
@@ -45,7 +47,11 @@ public class VaultImportServiceTests
         }
 
         public Task<IReadOnlyList<Cipher>> SyncAsync(
-            Core.Session.VaultSessionLease lease, CancellationToken ct = default) => SyncAsync(ct);
+            VaultSessionLease lease, CancellationToken ct = default)
+        {
+            LastLease = lease;
+            return SyncAsync(ct);
+        }
     }
 
     private sealed class ThrowingSync : ISyncService
@@ -57,6 +63,45 @@ public class VaultImportServiceTests
             Core.Session.VaultSessionLease lease, CancellationToken ct = default) => SyncAsync(ct);
     }
 
+    private sealed class SwitchingProvider(
+        VaultSession session,
+        IVaultWriteApiClient api) : IVaultApiClientProvider
+    {
+        public TClient GetAnonymous<TClient>(ServerOrigin origin)
+            where TClient : class, IAnonymousApiRole =>
+            throw new NotSupportedException();
+
+        public TClient GetAuthenticated<TClient>(VaultSessionLease lease)
+            where TClient : class, IAuthenticatedApiRole
+        {
+            var next = session.BeginAccountSession(
+                "account-b",
+                "b@example.com",
+                new ServerOrigin("https://b.example"));
+            session.TryCommit(next, () => session.SetUnlockedKey(
+                new SymmetricCryptoKey(
+                    Enumerable.Range(64, 64).Select(i => (byte)i).ToArray())));
+            return (TClient)(object)api;
+        }
+    }
+
+    private sealed class RecordingProvider(
+        IVaultWriteApiClient api) : IVaultApiClientProvider
+    {
+        public VaultSessionLease? LastLease { get; private set; }
+
+        public TClient GetAnonymous<TClient>(ServerOrigin origin)
+            where TClient : class, IAnonymousApiRole =>
+            throw new NotSupportedException();
+
+        public TClient GetAuthenticated<TClient>(VaultSessionLease lease)
+            where TClient : class, IAuthenticatedApiRole
+        {
+            LastLease = lease;
+            return (TClient)(object)api;
+        }
+    }
+
     [Fact]
     public async Task ImportAsync_EncryptsAndSendsImport_WithRelations_ThenResyncs()
     {
@@ -65,7 +110,8 @@ public class VaultImportServiceTests
         var session = new VaultSession();
         session.BeginAccountSession("test-account", "test@test.com", new Core.Models.ServerOrigin("https://vault.example"));
         session.SetUnlockedKey(new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray()));
-        var svc = new VaultImportService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(api), new CipherEncryptor(new CryptoService()), sync, session);
+        var provider = new RecordingProvider(api);
+        var svc = new VaultImportService(provider, new CipherEncryptor(new CryptoService()), sync, session);
 
         // 1 folder + 1 login in that folder
         var json = "{\"encrypted\":false,\"folders\":[{\"id\":\"f0\",\"name\":\"Work\"}]," +
@@ -77,11 +123,14 @@ public class VaultImportServiceTests
         Assert.Single(api.Last.Folders);
         Assert.Equal(0, api.Last.FolderRelationships[0].Key);   // cipher0
         Assert.Equal(0, api.Last.FolderRelationships[0].Value); // folder0
+        Assert.Null(api.Last.Ciphers[0].FolderId);
         // 名称必须真正加密成 EncString(AES-256-CBC-HMAC,"2." 前缀)而非明文——仅断言非空会让明文回归漏网(R22)。
         var encName = api.Last.Ciphers[0].Name;
         Assert.StartsWith("2.", encName);
         Assert.NotEqual("A", encName);
         Assert.Equal(1, sync.Calls);
+        Assert.Equal("test-account", sync.LastLease!.AccountId);
+        Assert.Same(provider.LastLease, sync.LastLease);
     }
 
     [Fact]
@@ -197,4 +246,35 @@ public class VaultImportServiceTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             new VaultImportService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(new CapturingImportApi()), new CipherEncryptor(new CryptoService()), new FakeSync(), new VaultSession())
                 .ImportAsync(ImportFormat.Json, "{\"items\":[]}", TestContext.Current.CancellationToken));
+
+    [Fact]
+    public async Task ImportAsync_AccountSwitchAfterEncryption_DoesNotUploadOrResync()
+    {
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession(
+            "account-a",
+            "a@example.com",
+            new ServerOrigin("https://a.example"));
+        session.TryCommit(lease, () => session.SetUnlockedKey(
+            new SymmetricCryptoKey(
+                Enumerable.Range(0, 64).Select(i => (byte)i).ToArray())));
+        var api = new CapturingImportApi();
+        var sync = new FakeSync();
+        var service = new VaultImportService(
+            new SwitchingProvider(session, api),
+            new CipherEncryptor(new CryptoService()),
+            sync,
+            session);
+        const string json =
+            "{\"encrypted\":false,\"folders\":[],\"items\":[{\"type\":1,\"name\":\"A\",\"login\":{\"uris\":[]}}]}";
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            service.ImportAsync(
+                ImportFormat.Json,
+                json,
+                TestContext.Current.CancellationToken));
+
+        Assert.Null(api.Last);
+        Assert.Equal(0, sync.Calls);
+    }
 }

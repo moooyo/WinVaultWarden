@@ -1,5 +1,6 @@
 using App.Services;
 using App.ViewModels;
+using Core.Models;
 using Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -43,7 +44,7 @@ public sealed partial class SettingsPage : Page
         await ViewModel.RefreshWindowsHelloAvailabilityAsync();
 
         _suppressHelloToggle = true;
-        HelloToggle.IsEnabled = ViewModel.IsWindowsHelloAvailable;
+        HelloToggle.IsEnabled = ViewModel.CanToggleWindowsHello;
         HelloCard.Description = ViewModel.IsWindowsHelloAvailable
             ? "使用 Windows Hello 快速解锁密码库"
             : "此设备未启用 Windows Hello";
@@ -100,12 +101,14 @@ public sealed partial class SettingsPage : Page
             if (result != ContentDialogResult.Primary)
                 return;
 
-            await ViewModel.RenameAsync(nameBox.Text.Trim());
+            var operation = await ViewModel.RenameAsync(nameBox.Text.Trim());
 
-            if (string.IsNullOrEmpty(ViewModel.OperationError))
+            if (operation.IsSuccess)
+                return;
+            if (operation.Status != UiOperationStatus.Failed)
                 return;
 
-            errorText.Text = ViewModel.OperationError;
+            errorText.Text = operation.Error ?? "操作失败，请稍后重试";
             errorText.Visibility = Visibility.Visible;
         }
     }
@@ -166,13 +169,19 @@ public sealed partial class SettingsPage : Page
                     return;
 
                 var hint = string.IsNullOrWhiteSpace(hintBox.Text) ? null : hintBox.Text.Trim();
-                await ViewModel.ChangePasswordAsync(currentBox.Password, newBox.Password, confirmBox.Password, hint);
+                var operation = await ViewModel.ChangePasswordAsync(
+                    currentBox.Password,
+                    newBox.Password,
+                    confirmBox.Password,
+                    hint);
 
                 // 成功由 App 层协调器统一登出并回登录页(SettingsViewModel 发 CredentialChanged intent)。
-                if (string.IsNullOrEmpty(ViewModel.OperationError))
+                if (operation.IsSuccess)
+                    return;
+                if (operation.Status != UiOperationStatus.Failed)
                     return;
 
-                errorText.Text = ViewModel.OperationError;
+                errorText.Text = operation.Error ?? "操作失败，请稍后重试";
                 errorText.Visibility = Visibility.Visible;
             }
         }
@@ -194,9 +203,9 @@ public sealed partial class SettingsPage : Page
         var iterationsBox = new NumberBox
         {
             Header = "PBKDF2 迭代次数",
-            Minimum = 100000,
-            Maximum = 10000000,
-            Value = 600000,
+            Minimum = KdfParameterPolicy.MinimumPbkdf2WriteIterations,
+            Maximum = KdfParameterPolicy.MaximumPbkdf2WriteIterations,
+            Value = KdfParameterPolicy.MinimumPbkdf2WriteIterations,
             SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline,
             SmallChange = 100000,
             LargeChange = 500000,
@@ -236,13 +245,15 @@ public sealed partial class SettingsPage : Page
                     return;
 
                 var iterations = double.IsNaN(iterationsBox.Value) ? 600000 : (int)iterationsBox.Value;
-                await ViewModel.ChangeIterationsAsync(currentBox.Password, iterations);
+                var operation = await ViewModel.ChangeIterationsAsync(currentBox.Password, iterations);
 
                 // 成功由 App 层协调器统一登出并回登录页(SettingsViewModel 发 CredentialChanged intent)。
-                if (string.IsNullOrEmpty(ViewModel.OperationError))
+                if (operation.IsSuccess)
+                    return;
+                if (operation.Status != UiOperationStatus.Failed)
                     return;
 
-                errorText.Text = ViewModel.OperationError;
+                errorText.Text = operation.Error ?? "操作失败，请稍后重试";
                 errorText.Visibility = Visibility.Visible;
             }
         }
@@ -501,9 +512,14 @@ public sealed partial class SettingsPage : Page
                     break;
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex))
         {
             // 生命周期取消，正常退出
+        }
+        catch (Exception ex) when (Api.RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            ViewModel.OperationError = UiExceptionPolicy.RequestTimeoutMessage;
         }
         catch (Exception)
         {
@@ -553,12 +569,17 @@ public sealed partial class SettingsPage : Page
                     () => pwBox.Password = string.Empty);
                 if (r1 != ContentDialogResult.Primary) return;
 
-                (secret, otpauth) = await ViewModel.BeginTotpSetupAsync(pwBox.Password);
+                var operation = await ViewModel.BeginTotpSetupAsync(pwBox.Password);
 
-                if (string.IsNullOrEmpty(ViewModel.OperationError))
+                if (operation.IsSuccess)
+                {
+                    (secret, otpauth) = operation.Value;
                     break;
+                }
+                if (operation.Status != UiOperationStatus.Failed)
+                    return;
 
-                step1Error.Text = ViewModel.OperationError;
+                step1Error.Text = operation.Error ?? "操作失败，请稍后重试";
                 step1Error.Visibility = Visibility.Visible;
             }
 
@@ -611,7 +632,7 @@ public sealed partial class SettingsPage : Page
             XamlRoot = XamlRoot,
         };
 
-        string recoveryCode = string.Empty;
+        Core.Models.TotpActivationResult? activation = null;
         ViewModel.OperationError = string.Empty;
 
         while (true)
@@ -627,37 +648,121 @@ public sealed partial class SettingsPage : Page
                 });
             if (r2 != ContentDialogResult.Primary) return;
 
-            recoveryCode = await ViewModel.EnableTotpAsync(pwBox.Password, secret, codeBox.Text.Trim());
+            var operation = await ViewModel.EnableTotpAsync(
+                pwBox.Password,
+                secret,
+                codeBox.Text.Trim());
 
-            if (string.IsNullOrEmpty(ViewModel.OperationError))
+            if (operation.IsSuccess)
+            {
+                activation = operation.Value!;
+                pwBox.Password = string.Empty;
+                codeBox.Text = string.Empty;
+                secretText.Text = string.Empty;
+                otpauthText.Text = string.Empty;
+                secret = string.Empty;
+                otpauth = string.Empty;
                 break;
+            }
+            if (operation.Status != UiOperationStatus.Failed)
+                return;
 
-            step2Error.Text = ViewModel.OperationError;
+            step2Error.Text = operation.Error ?? "操作失败，请稍后重试";
             step2Error.Visibility = Visibility.Visible;
         }
 
+        if (activation is null)
+            return;
+
         // 步骤 3：显示恢复码
+        var recoveryCode = activation.RecoveryCode ?? string.Empty;
         var rcText = new TextBlock
         {
             Text = recoveryCode,
+            Visibility = activation.HasRecoveryCode ? Visibility.Visible : Visibility.Collapsed,
             IsTextSelectionEnabled = true,
             TextWrapping = TextWrapping.Wrap,
             FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
         };
         AutomationProperties.SetAutomationId(rcText, "TotpSetupRecoveryCodeText");
 
+        var recoveryWarning = new InfoBar
+        {
+            IsOpen = !activation.HasRecoveryCode,
+            IsClosable = false,
+            Severity = InfoBarSeverity.Warning,
+            Title = "TOTP 已启用",
+            Message = "恢复码暂时无法获取。您可以稍后重试；重试不会再次启用 TOTP。",
+        };
+        AutomationProperties.SetAutomationId(recoveryWarning, "TotpSetupRecoveryWarning");
+        AutomationProperties.SetName(recoveryWarning, "TOTP 已启用，恢复码暂时无法获取");
+
+        var recoveryPasswordBox = new PasswordBox
+        {
+            PlaceholderText = "当前主密码",
+            Visibility = activation.HasRecoveryCode ? Visibility.Collapsed : Visibility.Visible,
+        };
+        AutomationProperties.SetAutomationId(recoveryPasswordBox, "TotpRecoveryPasswordBox");
+        AutomationProperties.SetName(recoveryPasswordBox, "用于获取恢复码的当前主密码");
+
         var step3Panel = new StackPanel { Spacing = 8, MinWidth = 360 };
-        step3Panel.Children.Add(new TextBlock { Text = "TOTP 验证器已启用！请保存以下恢复码，账户锁定时可凭此找回：", TextWrapping = TextWrapping.Wrap });
+        step3Panel.Children.Add(new TextBlock { Text = "TOTP 验证器已启用。请妥善保存恢复码，账户锁定时可凭此找回。", TextWrapping = TextWrapping.Wrap });
+        step3Panel.Children.Add(recoveryWarning);
         step3Panel.Children.Add(rcText);
+        step3Panel.Children.Add(recoveryPasswordBox);
 
         var step3Dialog = new ContentDialog
         {
             Title = "TOTP 启用成功",
             Content = step3Panel,
+            PrimaryButtonText = activation.HasRecoveryCode ? string.Empty : "重新获取恢复码",
             CloseButtonText = "完成",
+            DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
         };
-        await DialogHelper.ShowTrackedAsync(step3Dialog, () => rcText.Text = string.Empty);
+
+        while (true)
+        {
+            var r3 = await DialogHelper.ShowTrackedAsync(
+                step3Dialog,
+                () =>
+                {
+                    rcText.Text = string.Empty;
+                    recoveryPasswordBox.Password = string.Empty;
+                });
+            if (r3 != ContentDialogResult.Primary)
+            {
+                recoveryPasswordBox.Password = string.Empty;
+                break;
+            }
+
+            UiOperationResult<string> recoveryOperation;
+            try
+            {
+                recoveryOperation = await ViewModel.GetRecoveryCodeAsync(recoveryPasswordBox.Password);
+            }
+            finally
+            {
+                recoveryPasswordBox.Password = string.Empty;
+            }
+
+            if (recoveryOperation.IsSuccess)
+            {
+                rcText.Text = recoveryOperation.Value!;
+                rcText.Visibility = Visibility.Visible;
+                recoveryWarning.IsOpen = false;
+                recoveryPasswordBox.Visibility = Visibility.Collapsed;
+                step3Dialog.PrimaryButtonText = string.Empty;
+                continue;
+            }
+            if (recoveryOperation.Status != UiOperationStatus.Failed)
+                break;
+
+            recoveryWarning.Message = recoveryOperation.Error ?? "恢复码暂时无法获取，请稍后重试";
+            recoveryWarning.IsOpen = true;
+        }
+        rcText.Text = string.Empty;
+        recoveryPasswordBox.Password = string.Empty;
         }
         finally
         {
@@ -708,12 +813,16 @@ public sealed partial class SettingsPage : Page
                     () => emailPwBox.Password = string.Empty);
                 if (r1 != ContentDialogResult.Primary) return;
 
-                await ViewModel.SendEmailAsync(emailPwBox.Password, emailAddressBox.Text.Trim());
+                var operation = await ViewModel.SendEmailAsync(
+                    emailPwBox.Password,
+                    emailAddressBox.Text.Trim());
 
-                if (string.IsNullOrEmpty(ViewModel.OperationError))
+                if (operation.IsSuccess)
                     break;
+                if (operation.Status != UiOperationStatus.Failed)
+                    return;
 
-                step1Error.Text = ViewModel.OperationError;
+                step1Error.Text = operation.Error ?? "操作失败，请稍后重试";
                 step1Error.Visibility = Visibility.Visible;
             }
 
@@ -754,12 +863,17 @@ public sealed partial class SettingsPage : Page
                 });
             if (r2 != ContentDialogResult.Primary) return;
 
-            await ViewModel.EnableEmailAsync(emailPwBox.Password, emailAddressBox.Text.Trim(), tokenBox.Text.Trim());
+            var operation = await ViewModel.EnableEmailAsync(
+                emailPwBox.Password,
+                emailAddressBox.Text.Trim(),
+                tokenBox.Text.Trim());
 
-            if (string.IsNullOrEmpty(ViewModel.OperationError))
+            if (operation.IsSuccess)
                 break;
+            if (operation.Status != UiOperationStatus.Failed)
+                return;
 
-            step2Error.Text = ViewModel.OperationError;
+            step2Error.Text = operation.Error ?? "操作失败，请稍后重试";
             step2Error.Visibility = Visibility.Visible;
         }
 
@@ -836,7 +950,7 @@ public sealed partial class SettingsPage : Page
             Content = disablePanel,
             PrimaryButtonText = "禁用",
             CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Primary,
+            DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
         };
 
@@ -859,12 +973,16 @@ public sealed partial class SettingsPage : Page
                 }
 
                 int providerType = (int)selectedItem.Tag;
-                await ViewModel.DisableTwoFactorAsync(disablePwBox.Password, providerType);
+                var operation = await ViewModel.DisableTwoFactorAsync(
+                    disablePwBox.Password,
+                    providerType);
 
-                if (string.IsNullOrEmpty(ViewModel.OperationError))
+                if (operation.IsSuccess)
                     break;
+                if (operation.Status != UiOperationStatus.Failed)
+                    return;
 
-                disableError.Text = ViewModel.OperationError;
+                disableError.Text = operation.Error ?? "操作失败，请稍后重试";
                 disableError.Visibility = Visibility.Visible;
             }
 

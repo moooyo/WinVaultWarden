@@ -1,4 +1,5 @@
 using App.ViewModels;
+using App.ViewModels.Models;
 using Core.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -269,9 +270,13 @@ public sealed partial class EmergencyAccessPage : Page
 
     private async Task ShowViewResultDialogAsync(RecoveredVault recovered)
     {
+        var recoveredItems = recovered.Ciphers
+            .Select(RecoveredCipherListItem.FromCipher)
+            .ToArray();
         var list = new ListView
         {
-            ItemsSource = recovered.Ciphers,
+            ItemsSource = recoveredItems,
+            ItemTemplate = (DataTemplate)Resources["RecoveredCipherItemTemplate"],
             SelectionMode = ListViewSelectionMode.None,
             MaxHeight = 400,
         };

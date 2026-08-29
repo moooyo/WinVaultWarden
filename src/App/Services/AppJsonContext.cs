@@ -10,6 +10,7 @@ namespace App.Services;
     PropertyNameCaseInsensitive = true,
     WriteIndented = true)]
 [JsonSerializable(typeof(PersistedSession))]
+[JsonSerializable(typeof(ServerEndpoints))]
 [JsonSerializable(typeof(AppPreferencesData))]
 [JsonSerializable(typeof(SavedSearchViewData))]
 [JsonSerializable(typeof(List<SavedSearchViewData>))]

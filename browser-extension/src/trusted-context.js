@@ -1,9 +1,11 @@
 // Rebuilds the trusted request context from the browser-supplied `port.sender` alone. The page can
 // put anything it likes in the wire payload; none of it is read here. sender.id proves the message
-// came from this extension's own content script, and sender.url / sender.tab.url are the browser's
-// authoritative frame and top-level document URLs. An opaque ("null") origin, a spoofed extension
-// id, or a missing tab/frame/document id is refused with a stable security_sender code. The returned
-// context is frozen and matches Core.Passkeys.BrowserRequestContext (camelCase) on the wire.
+// came from this extension's own content script. sender.origin is the browser's authoritative frame
+// origin, while sender.url / sender.tab.url identify the frame and top-level document. Requiring the
+// independently supplied frame origin and URL to agree prevents an opaque sandbox from inheriting
+// trust from its non-opaque document URL. An opaque origin, a spoofed extension id, or a missing
+// tab/frame/document id is refused with a stable security_sender code. The returned context is
+// frozen and matches Core.Passkeys.BrowserRequestContext (camelCase) on the wire.
 export function buildTrustedContext(sender, runtimeId, policyAllowed) {
   if (
     sender?.id !== runtimeId ||
@@ -14,7 +16,11 @@ export function buildTrustedContext(sender, runtimeId, policyAllowed) {
     throw new Error("security_sender");
   }
 
-  const frameOrigin = canonicalOrigin(sender.url);
+  const frameOrigin = canonicalOrigin(sender.origin);
+  const frameUrlOrigin = canonicalOrigin(sender.url);
+  if (frameOrigin !== frameUrlOrigin) {
+    throw new Error("security_sender");
+  }
   const topOrigin = canonicalOrigin(sender.tab.url);
   return Object.freeze({
     frameOrigin,

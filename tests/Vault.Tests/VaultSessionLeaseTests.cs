@@ -92,6 +92,38 @@ public sealed class VaultSessionLeaseTests
     }
 
     [Fact]
+    public void IsCurrent_WithPersistedSession_RequiresCompleteEndpointBinding()
+    {
+        var session = new VaultSession();
+        var endpoints = ServerEndpoints.ForSelfHosted("https://same.example/account-a");
+        var lease = session.BeginAccountSession(
+            "same-account",
+            "same@example.com",
+            endpoints);
+        var matching = new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            lease.AccountId,
+            lease.Endpoints,
+            lease.Generation,
+            "same@example.com",
+            "device-id",
+            "refresh-token",
+            "2.protected",
+            Core.Enums.KdfType.Pbkdf2,
+            600_000,
+            null,
+            null);
+        var differentPath = matching with
+        {
+            Origin = new ServerOrigin("https://same.example"),
+            Endpoints = ServerEndpoints.ForSelfHosted("https://same.example/account-b"),
+        };
+
+        Assert.True(session.IsCurrent(lease, matching));
+        Assert.False(session.IsCurrent(lease, differentPath));
+    }
+
+    [Fact]
     public void TryCopyUserKey_StaleLease_ReturnsFalseAndNullKey()
     {
         var session = new VaultSession();
@@ -118,6 +150,26 @@ public sealed class VaultSessionLeaseTests
         Assert.NotNull(copy);
         Assert.NotSame(original, copy);
         Assert.Equal(original.FullKey.ToArray(), copy!.FullKey.ToArray());
+    }
+
+    [Fact]
+    public void TryGetEncryptedPrivateKey_StaleLease_ReturnsFalseAndNoSnapshot()
+    {
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession("account-a", "a@example.com", A);
+        session.TryCommit(lease, () =>
+        {
+            session.SetUnlockedKey(new Crypto.SymmetricCryptoKey(new byte[64]));
+            session.SetEncryptedPrivateKey("2.private");
+        });
+        session.Lock();
+
+        var result = session.TryGetEncryptedPrivateKey(
+            lease,
+            out var encryptedPrivateKey);
+
+        Assert.False(result);
+        Assert.Null(encryptedPrivateKey);
     }
 
     [Fact]

@@ -24,6 +24,22 @@ public sealed class LifecycleWiringSourceTests
     }
 
     [Fact]
+    public void SensitiveUiGate_DisablesVaultNavigationWithoutBlockingLogin()
+    {
+        var source = Read("src", "App", "MainWindow.xaml.cs");
+        Assert.Contains("Nav.IsEnabled = enabled", source);
+        Assert.DoesNotContain("LoginHost.IsEnabled", source);
+        Assert.DoesNotContain("LoginFrame.IsEnabled", source);
+    }
+
+    [Fact]
+    public void MainWindow_UsesProductTitle()
+    {
+        var xaml = Read("src", "App", "MainWindow.xaml");
+        Assert.Contains("Title=\"WinVaultWarden\"", xaml);
+    }
+
+    [Fact]
     public void RemoteLogoutAndCredentialChanges_UseCoordinator()
     {
         var services = Read("src", "App", "Services", "ServiceConfiguration.cs");

@@ -59,4 +59,20 @@ public class TokensXamlTests
         Assert.Equal("Thickness", pad.Name.LocalName);
         Assert.Equal("12", pad.Value);
     }
+
+    [Fact]
+    public void IconButtonStyle_HasMinimumHitTargetWithoutFixedDimensions()
+    {
+        var style = RequireKey(Load(), "IconButtonStyle");
+        var setters = style.Elements()
+            .Where(e => e.Name.LocalName == "Setter")
+            .ToDictionary(
+                e => e.Attribute("Property")?.Value ?? string.Empty,
+                e => e.Attribute("Value")?.Value);
+
+        Assert.Equal("32", setters["MinWidth"]);
+        Assert.Equal("32", setters["MinHeight"]);
+        Assert.DoesNotContain("Width", setters.Keys);
+        Assert.DoesNotContain("Height", setters.Keys);
+    }
 }

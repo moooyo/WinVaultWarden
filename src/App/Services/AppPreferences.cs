@@ -2,6 +2,49 @@ using System.Text.Json;
 
 namespace App.Services;
 
+public static class AppPreferenceIndexPolicy
+{
+    public const int NoSelectionIndex = -1;
+    public const int DefaultThemeIndex = 0;
+    public const int DefaultSessionTimeoutIndex = 3;
+    public const int DefaultTimeoutActionIndex = 0;
+    public const int DefaultClearClipboardIndex = 3;
+
+    public static int NormalizeThemeIndex(int value) =>
+        value is >= 0 and <= 2 ? value : DefaultThemeIndex;
+
+    public static int NormalizeSessionTimeoutIndex(int value) =>
+        value is >= 0 and <= 7 ? value : DefaultSessionTimeoutIndex;
+
+    public static int NormalizeTimeoutActionIndex(int value) =>
+        value is >= 0 and <= 1 ? value : DefaultTimeoutActionIndex;
+
+    public static int NormalizeClearClipboardIndex(int value) =>
+        value is >= 0 and <= 6 ? value : DefaultClearClipboardIndex;
+
+    public static bool IsTransientNoSelection(int value) => value == NoSelectionIndex;
+
+    public static bool Normalize(AppPreferencesData preferences)
+    {
+        ArgumentNullException.ThrowIfNull(preferences);
+
+        var themeIndex = NormalizeThemeIndex(preferences.ThemeIndex);
+        var sessionTimeoutIndex = NormalizeSessionTimeoutIndex(preferences.SessionTimeoutIndex);
+        var timeoutActionIndex = NormalizeTimeoutActionIndex(preferences.TimeoutActionIndex);
+        var clearClipboardIndex = NormalizeClearClipboardIndex(preferences.ClearClipboardIndex);
+        var changed = themeIndex != preferences.ThemeIndex
+            || sessionTimeoutIndex != preferences.SessionTimeoutIndex
+            || timeoutActionIndex != preferences.TimeoutActionIndex
+            || clearClipboardIndex != preferences.ClearClipboardIndex;
+
+        preferences.ThemeIndex = themeIndex;
+        preferences.SessionTimeoutIndex = sessionTimeoutIndex;
+        preferences.TimeoutActionIndex = timeoutActionIndex;
+        preferences.ClearClipboardIndex = clearClipboardIndex;
+        return changed;
+    }
+}
+
 /// <summary>
 /// 非敏感的应用偏好(如主题)持久化到本地 JSON 文件。
 /// 与 <see cref="DpapiTokenStore"/> 共用 LocalApplicationData/WinVaultWarden 目录,
@@ -15,12 +58,17 @@ public static class AppPreferences
         "preferences.json");
 
     private static readonly Lock InitLock = new();
+    private static readonly Lock PersistenceLock = new();
     private static volatile AppPreferencesData? _data;
+    private static AppPreferencesData? _inMemoryTestData;
 
     public static AppPreferencesData Current
     {
         get
         {
+            var testData = Volatile.Read(ref _inMemoryTestData);
+            if (testData is not null)
+                return testData;
             if (_data is not null)
                 return _data;
             lock (InitLock)
@@ -30,16 +78,22 @@ public static class AppPreferences
         }
     }
 
-    private static AppPreferencesData Load()
+    private static AppPreferencesData Load() => Load(FilePath);
+
+    private static AppPreferencesData Load(string filePath)
     {
         try
         {
-            if (File.Exists(FilePath))
+            if (File.Exists(filePath))
             {
-                var json = File.ReadAllText(FilePath);
+                var json = File.ReadAllText(filePath);
                 var loaded = JsonSerializer.Deserialize(json, AppJsonContext.Default.AppPreferencesData);
                 if (loaded is not null)
+                {
+                    if (AppPreferenceIndexPolicy.Normalize(loaded))
+                        TrySaveToDisk(loaded, filePath);
                     return loaded;
+                }
             }
         }
         catch (IOException) { }
@@ -51,20 +105,77 @@ public static class AppPreferences
 
     public static void Save()
     {
-        try
+        if (Volatile.Read(ref _inMemoryTestData) is not null)
+            return;
+
+        TrySaveToDisk(Current, FilePath);
+    }
+
+    private static void TrySaveToDisk(AppPreferencesData data, string filePath)
+    {
+        lock (PersistenceLock)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(Current, AppJsonContext.Default.AppPreferencesData));
+            string? temporaryPath = null;
+            try
+            {
+                var directory = Path.GetDirectoryName(filePath)!;
+                Directory.CreateDirectory(directory);
+                temporaryPath = Path.Combine(
+                    directory,
+                    $".{Path.GetFileName(filePath)}.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp");
+                File.WriteAllText(
+                    temporaryPath,
+                    JsonSerializer.Serialize(data, AppJsonContext.Default.AppPreferencesData));
+                File.Move(temporaryPath, filePath, overwrite: true);
+                temporaryPath = null;
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            finally
+            {
+                if (temporaryPath is not null)
+                {
+                    try { File.Delete(temporaryPath); }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                }
+            }
         }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+    }
+
+    internal static AppPreferencesData LoadFromPathForTesting(string filePath) => Load(filePath);
+
+    internal static IDisposable UseInMemoryForTesting(AppPreferencesData? data = null)
+    {
+        lock (InitLock)
+        {
+            var previous = _inMemoryTestData;
+            Volatile.Write(ref _inMemoryTestData, data ?? new AppPreferencesData());
+            return new InMemoryTestScope(previous);
+        }
+    }
+
+    private sealed class InMemoryTestScope(AppPreferencesData? previous) : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            lock (InitLock)
+            {
+                if (_disposed)
+                    return;
+                Volatile.Write(ref _inMemoryTestData, previous);
+                _disposed = true;
+            }
+        }
     }
 }
 
 public sealed class AppPreferencesData
 {
     /// <summary>主题:0=跟随系统,1=浅色,2=深色。与设置页 ComboBox 索引一致。</summary>
-    public int ThemeIndex { get; set; }
+    public int ThemeIndex { get; set; } = AppPreferenceIndexPolicy.DefaultThemeIndex;
 
     /// <summary>是否显示网站 favicon。默认开。</summary>
     public bool ShowWebsiteIcons { get; set; } = true;
@@ -73,13 +184,13 @@ public sealed class AppPreferencesData
     public List<SavedSearchViewData> SavedSearchViews { get; set; } = new();
 
     /// <summary>会话超时 ComboBox 索引(0重启时..7永不)。默认 3=15分钟。</summary>
-    public int SessionTimeoutIndex { get; set; } = 3;
+    public int SessionTimeoutIndex { get; set; } = AppPreferenceIndexPolicy.DefaultSessionTimeoutIndex;
 
     /// <summary>超时动作:0=锁定(默认),1=登出。</summary>
-    public int TimeoutActionIndex { get; set; }
+    public int TimeoutActionIndex { get; set; } = AppPreferenceIndexPolicy.DefaultTimeoutActionIndex;
 
     /// <summary>清空剪贴板 ComboBox 索引(0永不..6=5分)。默认 3=30秒。</summary>
-    public int ClearClipboardIndex { get; set; } = 3;
+    public int ClearClipboardIndex { get; set; } = AppPreferenceIndexPolicy.DefaultClearClipboardIndex;
 
     /// <summary>是否显示系统托盘图标。默认开。</summary>
     public bool ShowTrayIcon { get; set; } = true;

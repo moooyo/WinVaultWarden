@@ -22,41 +22,34 @@ public sealed class NotificationsConnection : INotificationsConnection
     // ----------------------------------------------------------------
 
     /// <summary>
-    /// Converts a Vaultwarden base URL to the SignalR hub WebSocket URL.
+    /// Converts a Web Vault URL to the SignalR hub WebSocket URL.
     ///
     /// Rules:
-    ///   • http  → ws   (https → wss)
-    ///   • path  = /notifications/hub
-    ///   • query = access_token=&lt;percent-encoded token&gt;
-    ///   • Non-default ports are always preserved in the output string.
-    ///
-    /// UriBuilder normalises default ports (80/443) away and may reorder query.
-    /// To avoid those quirks we build the string manually after extracting host
-    /// and port from the input URI.
+    /// The string overload is retained for callers that only have a Web Vault URL.
+    /// New code should pass the resolved notifications endpoint to the typed overload.
     /// </summary>
     public static string ToHubUrl(string serverUrl, string accessToken)
-    {
-        var uri = new Uri(serverUrl);
+        => ToHubUrl(ServerEndpoints.FromWebVault(serverUrl).Notifications, accessToken);
 
-        // Determine the WebSocket scheme.
-        var wsScheme = uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase)
+    /// <summary>
+    /// Appends the SignalR hub path to an already resolved notifications endpoint,
+    /// converts HTTP(S) to WS(S), and adds the percent-encoded access token.
+    /// </summary>
+    public static string ToHubUrl(ServerEndpoint notificationsEndpoint, string accessToken)
+    {
+        ArgumentNullException.ThrowIfNull(accessToken);
+
+        var hub = notificationsEndpoint.Resolve("hub");
+        var wsScheme = hub.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase)
             ? "wss"
             : "ws";
-
-        // Always include the port explicitly when it differs from the scheme default,
-        // but also preserve it when the caller supplies a non-standard port.
-        // uri.Port already returns the effective port (e.g. 80 for http when omitted).
-        bool isDefaultPort =
-            (wsScheme == "ws"  && uri.Port == 80)  ||
-            (wsScheme == "wss" && uri.Port == 443);
-
-        var hostPart = isDefaultPort
-            ? uri.Host
-            : $"{uri.Host}:{uri.Port}";
-
-        var encodedToken = Uri.EscapeDataString(accessToken);
-
-        return $"{wsScheme}://{hostPart}/notifications/hub?access_token={encodedToken}";
+        var builder = new UriBuilder(hub)
+        {
+            Scheme = wsScheme,
+            Port = hub.IsDefaultPort ? -1 : hub.Port,
+            Query = $"access_token={Uri.EscapeDataString(accessToken)}",
+        };
+        return builder.Uri.AbsoluteUri;
     }
 
     // ----------------------------------------------------------------
@@ -64,7 +57,7 @@ public sealed class NotificationsConnection : INotificationsConnection
     // ----------------------------------------------------------------
 
     /// <inheritdoc />
-    public async Task ConnectAsync(string serverUrl, string accessToken, CancellationToken ct)
+    public async Task ConnectAsync(string notificationsEndpoint, string accessToken, CancellationToken ct)
     {
         _ws?.Dispose();
         _ws = new ClientWebSocket();
@@ -73,7 +66,8 @@ public sealed class NotificationsConnection : INotificationsConnection
         _ws.Options.SetRequestHeader("Bitwarden-Client-Name", "desktop");
         _ws.Options.SetRequestHeader("Bitwarden-Client-Version", "2026.6.0");
 
-        await _ws.ConnectAsync(new Uri(ToHubUrl(serverUrl, accessToken)), ct)
+        var endpoint = new ServerEndpoint(notificationsEndpoint);
+        await _ws.ConnectAsync(new Uri(ToHubUrl(endpoint, accessToken)), ct)
             .ConfigureAwait(false);
 
         // ---- SignalR handshake ----
@@ -120,8 +114,8 @@ public sealed class NotificationsConnection : INotificationsConnection
         if (_ws is null)
             throw new InvalidOperationException("Call ConnectAsync before ReadAsync.");
 
-        // 单条通知帧累积上限:防止恶意/中间人服务端发超大或无尽分片帧累积耗尽内存(DoS)。
-        // 合法 SignalR 通知远小于此。对齐仓库既有 native host / 命名管道的 1 MiB 约定。
+        // Bound each logical notification frame so a malicious or faulty peer cannot
+        // exhaust memory with an oversized or endless fragmented message.
         const int MaxFrameBytes = 1 * 1024 * 1024;
 
         // We grow this buffer on demand.
@@ -147,7 +141,7 @@ public sealed class NotificationsConnection : INotificationsConnection
                     accumulated.Write(buf, 0, result.Count);
 
                     if (accumulated.Length > MaxFrameBytes)
-                        yield break; // 超大/无尽分片 → 断开枚举,防内存耗尽
+                        yield break;
                 }
                 while (!result.EndOfMessage);
             }

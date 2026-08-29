@@ -36,4 +36,42 @@ public class DpapiVaultCacheStoreTests
         store.ClearVaultCache();
         Assert.False(store.TryLoadVaultCache(out _));
     }
+
+    [Fact]
+    public void TryLoad_WhenReadThrowsIOException_ReturnsFalse()
+    {
+        AssertReadFailureReturnsFalse(new IOException("read failed"));
+    }
+
+    [Fact]
+    public void TryLoad_WhenReadThrowsUnauthorizedAccess_ReturnsFalse()
+    {
+        AssertReadFailureReturnsFalse(
+            new UnauthorizedAccessException("read denied"));
+    }
+
+    private static void AssertReadFailureReturnsFalse(Exception readFailure)
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "WinVaultWarden.Tests",
+            Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(directory, "vault-cache.bin");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            File.WriteAllBytes(path, [0]);
+            Func<string, byte[]> reader = _ => throw readFailure;
+            var store = new DpapiVaultCacheStore(path, reader);
+
+            Assert.False(store.TryLoadVaultCache(out _));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
 }

@@ -23,10 +23,11 @@ public sealed partial class MainWindow : Window
     private const double LoginWindowMaxWidthDip = 520;
     private const double LoginWindowMinHeightDip = 500;
     private const double LoginWindowMaxHeightDip = 820;
-    private const double LoginWindowWorkAreaMarginDip = 80;
+    private const double LoginWindowWorkAreaMarginPerEdgeDip = 40;
     private const double LoginWindowVerticalBreathingRoomDip = 2;
     private const double DefaultVaultWindowWidthDip = 1180;
     private const double DefaultVaultWindowHeightDip = 760;
+    private const double VaultWindowWorkAreaMarginDip = 24;
 
     private SizeInt32? _lastVaultWindowSize;
     private bool _hasShownVault;
@@ -55,6 +56,7 @@ public sealed partial class MainWindow : Window
         _nav.Initialize(ContentFrame, LoginFrame);
         // 窗口 DispatcherQueue 就绪后注入 UI 派发器(须在任何后台线程派发到 UI 之前)。
         global::App.App.Services.GetRequiredService<UiDispatcher>().Initialize(DispatcherQueue);
+        _ = global::App.App.Services.GetRequiredService<SessionTerminationHost>();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop();
@@ -254,26 +256,27 @@ public sealed partial class MainWindow : Window
     }
 
     // 登录成功:显示主导航壳。
-    public void ShowVault()
+    public bool ShowVault(VaultSessionLease lease)
     {
-        // 会话就绪:重新开放先前被生命周期过渡禁用的敏感 UI(仅当当前无过渡在途)。
-        _lifecycle.MarkSessionReady();
-        ApplyVaultWindowLayout();
-        PopulateFolderNavigation();
-        LoginHost.Visibility = Visibility.Collapsed;
-        Nav.Visibility = Visibility.Visible;
-        Nav.SelectedItem = AllItemsNavItem;
-        _nav.GoToVault("vault:allitems");
-        // 保险库已就绪，启动 WebSocket 推送（最佳努力）。
-        _ = global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StartAsync();
+        ArgumentNullException.ThrowIfNull(lease);
+        var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+        return _lifecycle.TryActivateSession(() =>
+            session.TryRunIfUnlocked(lease, () =>
+        {
+            ApplyVaultWindowLayout();
+            PopulateFolderNavigation();
+            LoginHost.Visibility = Visibility.Collapsed;
+            Nav.Visibility = Visibility.Visible;
+            Nav.SelectedItem = AllItemsNavItem;
+            _nav.GoToVault("vault:allitems");
+            _ = global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StartAsync();
 
-        // 会话就绪后按设置启动 passkey 桥接(便携版 only)。锁定/登出会经生命周期协调器
-        // (StopBackgroundAsync)停止它,重新登录时再由此恢复——锁定登录页绝不监听。
-        if (AppPreferences.Current.AllowBrowserIntegration && !AboutInfo.IsPackaged)
-            global::App.App.Services.GetRequiredService<Services.PasskeyBridgeServer>().Start();
+            if (AppPreferences.Current.AllowBrowserIntegration && !AboutInfo.IsPackaged)
+                global::App.App.Services.GetRequiredService<Services.PasskeyBridgeServer>().Start();
 
-        _timeout.Start();
-        _idleTimer?.Start();
+            _timeout.Start();
+            _idleTimer?.Start();
+        }));
     }
 
     private void ApplyLoginWindowLayout()
@@ -282,7 +285,7 @@ public sealed partial class MainWindow : Window
             _lastVaultWindowSize = AppWindow.Size;
 
         _isLoginWindow = true;
-        ResizeClientDip(LoginWindowInitialWidthDip, LoginWindowInitialHeightDip);
+        ResizeLoginClientDip(LoginWindowInitialWidthDip, LoginWindowInitialHeightDip);
     }
 
     public void RequestLoginWindowFit()
@@ -298,32 +301,43 @@ public sealed partial class MainWindow : Window
 
         var horizontalPadding = contentPadding.Left + contentPadding.Right;
         var verticalPadding = contentPadding.Top + contentPadding.Bottom;
-        var contentMeasureWidth = Math.Max(1, LoginWindowMeasureWidthDip - horizontalPadding);
+        var measureWindowSize = ClampLoginWindowSizeToWorkArea(
+            LoginWindowMeasureWidthDip,
+            LoginWindowMaxHeightDip);
+        var contentMeasureWidth = Math.Max(1, measureWindowSize.Width - horizontalPadding);
 
         loginContent.Measure(new Size(contentMeasureWidth, double.PositiveInfinity));
 
         var titleBarHeight = AppTitleBar.ActualHeight > 0 ? AppTitleBar.ActualHeight : AppTitleBar.Height;
-        var desiredWidth = Math.Clamp(
-            Math.Ceiling(loginContent.DesiredSize.Width + horizontalPadding),
-            LoginWindowMinWidthDip,
-            LoginWindowMaxWidthDip);
-        var desiredHeight = Math.Clamp(
-            Math.Ceiling(titleBarHeight + loginContent.DesiredSize.Height + verticalPadding + LoginWindowVerticalBreathingRoomDip),
-            LoginWindowMinHeightDip,
-            GetLoginWindowMaxHeightDip());
+        var desiredWidth = Math.Ceiling(loginContent.DesiredSize.Width + horizontalPadding);
+        var desiredHeight = Math.Ceiling(
+            titleBarHeight
+            + loginContent.DesiredSize.Height
+            + verticalPadding
+            + LoginWindowVerticalBreathingRoomDip);
 
-        ResizeClientDip(desiredWidth, desiredHeight);
+        ResizeLoginClientDip(desiredWidth, desiredHeight);
     }
 
-    private double GetLoginWindowMaxHeightDip()
+    private void ResizeLoginClientDip(double desiredWidth, double desiredHeight)
+    {
+        var size = ClampLoginWindowSizeToWorkArea(desiredWidth, desiredHeight);
+        ResizeClientDip(size.Width, size.Height);
+    }
+
+    private WindowSizeDip ClampLoginWindowSizeToWorkArea(double desiredWidth, double desiredHeight)
     {
         var scale = AppTitleBar.XamlRoot?.RasterizationScale ?? 1.0;
-        var workArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
-        var workAreaHeightDip = workArea.Height / scale;
+        if (!double.IsFinite(scale) || scale <= 0)
+            scale = 1.0;
 
-        return Math.Max(
-            LoginWindowMinHeightDip,
-            Math.Min(LoginWindowMaxHeightDip, workAreaHeightDip - LoginWindowWorkAreaMarginDip));
+        var workArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+        return LoginWindowSizing.ClampToWorkArea(
+            new WindowSizeDip(desiredWidth, desiredHeight),
+            new WindowSizeDip(workArea.Width / scale, workArea.Height / scale),
+            new WindowSizeDip(LoginWindowMinWidthDip, LoginWindowMinHeightDip),
+            new WindowSizeDip(LoginWindowMaxWidthDip, LoginWindowMaxHeightDip),
+            LoginWindowWorkAreaMarginPerEdgeDip);
     }
 
     private void ApplyVaultWindowLayout()
@@ -332,7 +346,7 @@ public sealed partial class MainWindow : Window
         _hasShownVault = true;
 
         if (_lastVaultWindowSize is { Width: > 0, Height: > 0 } size)
-            AppWindow.Resize(size);
+            AppWindow.Resize(ClampVaultWindowSizeToWorkArea(size));
         else
             ResizeWindowDip(DefaultVaultWindowWidthDip, DefaultVaultWindowHeightDip);
     }
@@ -340,9 +354,23 @@ public sealed partial class MainWindow : Window
     private void ResizeWindowDip(double width, double height)
     {
         var scale = AppTitleBar.XamlRoot?.RasterizationScale ?? 1.0;
-        AppWindow.Resize(new SizeInt32(
+        var requestedSize = new SizeInt32(
             Math.Max(1, (int)Math.Round(width * scale)),
-            Math.Max(1, (int)Math.Round(height * scale))));
+            Math.Max(1, (int)Math.Round(height * scale)));
+        AppWindow.Resize(ClampVaultWindowSizeToWorkArea(requestedSize));
+    }
+
+    private SizeInt32 ClampVaultWindowSizeToWorkArea(SizeInt32 requestedSize)
+    {
+        var scale = AppTitleBar.XamlRoot?.RasterizationScale ?? 1.0;
+        var workArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+        var marginPixels = Math.Max(0, (int)Math.Round(VaultWindowWorkAreaMarginDip * scale));
+        var maxWidth = Math.Max(1, workArea.Width - (2 * marginPixels));
+        var maxHeight = Math.Max(1, workArea.Height - (2 * marginPixels));
+
+        return new SizeInt32(
+            Math.Clamp(requestedSize.Width, 1, maxWidth),
+            Math.Clamp(requestedSize.Height, 1, maxHeight));
     }
 
     private void ResizeClientDip(double width, double height)

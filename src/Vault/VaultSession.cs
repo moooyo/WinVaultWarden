@@ -15,9 +15,12 @@ public sealed class VaultSession : IVaultSnapshot
     // Generation/stamp/CTS 是本会话身份轮换的唯一真源(见类尾 lease 相关方法)。
     private long _generation;
     private string? _accountId;
-    private ServerOrigin? _origin;
+    private ServerEndpoints? _endpoints;
     private Guid _stamp;
     private CancellationTokenSource? _leaseCts;
+    private long _authenticationGeneration;
+    private Guid _authenticationStamp;
+    private CancellationTokenSource? _authenticationCts;
 
     public VaultState State { get; private set; } = VaultState.LoggedOut;
     public string? AccessToken { get; private set; }
@@ -286,24 +289,115 @@ public sealed class VaultSession : IVaultSnapshot
             Account = account;
     }
 
+    public AuthenticationAttemptLease BeginAuthenticationAttempt()
+    {
+        lock (_gate)
+        {
+            RotateAuthenticationAttemptNoLock(createCurrent: true);
+            return CurrentAuthenticationAttemptNoLock();
+        }
+    }
+
+    public bool IsCurrent(AuthenticationAttemptLease attempt)
+    {
+        ArgumentNullException.ThrowIfNull(attempt);
+        lock (_gate) return IsCurrentNoLock(attempt);
+    }
+
+    public void AbandonAuthenticationAttempt(AuthenticationAttemptLease attempt)
+    {
+        ArgumentNullException.ThrowIfNull(attempt);
+        lock (_gate)
+        {
+            if (IsCurrentNoLock(attempt))
+                RotateAuthenticationAttemptNoLock(createCurrent: false);
+        }
+    }
+
+    public bool TryBeginAccountSession(
+        AuthenticationAttemptLease attempt,
+        string accountId,
+        string email,
+        ServerOrigin origin,
+        out VaultSessionLease? lease) =>
+        TryBeginAccountSession(
+            attempt,
+            accountId,
+            email,
+            ServerEndpoints.ForSelfHosted(origin.Value),
+            out lease);
+
+    public bool TryBeginAccountSession(
+        AuthenticationAttemptLease attempt,
+        string accountId,
+        string email,
+        ServerEndpoints endpoints,
+        out VaultSessionLease? lease)
+    {
+        ArgumentNullException.ThrowIfNull(attempt);
+        ArgumentNullException.ThrowIfNull(endpoints);
+        ArgumentException.ThrowIfNullOrWhiteSpace(accountId);
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(attempt))
+            {
+                lease = null;
+                return false;
+            }
+
+            RotateAuthenticationAttemptNoLock(createCurrent: false);
+            BeginAccountSessionNoLock(accountId, email, endpoints);
+            lease = CurrentLeaseNoLock();
+            return true;
+        }
+    }
+
+    public bool TryRestorePersistedSession(
+        AuthenticationAttemptLease attempt,
+        PersistedSession persisted,
+        out VaultSessionLease? lease)
+    {
+        ArgumentNullException.ThrowIfNull(attempt);
+        ArgumentNullException.ThrowIfNull(persisted);
+        if (!persisted.HasValidBinding)
+            throw new InvalidDataException("Persisted session binding is invalid.");
+
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(attempt))
+            {
+                lease = null;
+                return false;
+            }
+
+            RotateAuthenticationAttemptNoLock(createCurrent: false);
+            RestorePersistedSessionNoLock(persisted);
+            lease = CurrentLeaseNoLock();
+            return true;
+        }
+    }
+
     /// <summary>
     /// 以给定账户身份开启一个新会话:轮换 generation、取消旧租约、清空敏感状态,
     /// 并返回绑定新 generation 的租约供调用方随后 TryCommit 写入解密后的数据。
     /// </summary>
     public VaultSessionLease BeginAccountSession(string accountId, string email, ServerOrigin origin)
+        => BeginAccountSession(
+            accountId,
+            email,
+            ServerEndpoints.ForSelfHosted(origin.Value));
+
+    public VaultSessionLease BeginAccountSession(
+        string accountId,
+        string email,
+        ServerEndpoints endpoints)
     {
+        ArgumentNullException.ThrowIfNull(endpoints);
         ArgumentException.ThrowIfNullOrWhiteSpace(accountId);
         lock (_gate)
         {
-            RotateLeaseNoLock(accountId, origin, persistedGeneration: null);
-            ClearSensitiveState();
-            Account = new AccountInfo(
-                accountId,
-                email,
-                origin,
-                string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim()[..1].ToUpperInvariant(),
-                string.Empty);
-            State = VaultState.Unlocking;
+            RotateAuthenticationAttemptNoLock(createCurrent: false);
+            BeginAccountSessionNoLock(accountId, email, endpoints);
             return CurrentLeaseNoLock();
         }
     }
@@ -320,21 +414,8 @@ public sealed class VaultSession : IVaultSnapshot
 
         lock (_gate)
         {
-            if (_accountId == persisted.AccountId
-                && _origin == persisted.Origin
-                && _generation == persisted.Generation
-                && _leaseCts is { IsCancellationRequested: false })
-                return CurrentLeaseNoLock();
-
-            RotateLeaseNoLock(persisted.AccountId, persisted.Origin, persisted.Generation);
-            ClearSensitiveState();
-            Account = new AccountInfo(
-                persisted.AccountId,
-                persisted.Email,
-                persisted.Origin,
-                persisted.Email.Trim()[..1].ToUpperInvariant(),
-                string.Empty);
-            State = VaultState.Locked;
+            RotateAuthenticationAttemptNoLock(createCurrent: false);
+            RestorePersistedSessionNoLock(persisted);
             return CurrentLeaseNoLock();
         }
     }
@@ -344,7 +425,7 @@ public sealed class VaultSession : IVaultSnapshot
     {
         lock (_gate)
         {
-            if (_accountId is null || _origin is null || _leaseCts is null)
+            if (_accountId is null || _endpoints is null || _leaseCts is null)
                 throw new InvalidOperationException("No account session is active.");
             return CurrentLeaseNoLock();
         }
@@ -355,6 +436,47 @@ public sealed class VaultSession : IVaultSnapshot
     {
         ArgumentNullException.ThrowIfNull(lease);
         lock (_gate) return IsCurrentNoLock(lease);
+    }
+
+    /// <summary>
+    /// Verifies that a persisted session and a live lease describe the same current session.
+    /// </summary>
+    public bool IsCurrent(VaultSessionLease lease, PersistedSession persisted)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(persisted);
+        lock (_gate)
+        {
+            return IsCurrentNoLock(lease)
+                && persisted.HasValidBinding
+                && persisted.AccountId == lease.AccountId
+                && persisted.Endpoints == lease.Endpoints
+                && persisted.Generation == lease.Generation;
+        }
+    }
+
+    public bool IsUnlocked(VaultSessionLease lease)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        lock (_gate)
+            return IsCurrentNoLock(lease)
+                && State == VaultState.Unlocked
+                && UserKey is not null;
+    }
+
+    public bool TryRunIfUnlocked(VaultSessionLease lease, Action action)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(action);
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease)
+                || State != VaultState.Unlocked
+                || UserKey is null)
+                return false;
+            action();
+            return true;
+        }
     }
 
     /// <summary>租约已失效时抛出 <see cref="OperationCanceledException"/>,携带该租约的取消令牌。</summary>
@@ -396,13 +518,36 @@ public sealed class VaultSession : IVaultSnapshot
         }
     }
 
+    /// <summary>
+    /// Returns the encrypted private-key snapshot only while the lease remains current and unlocked.
+    /// </summary>
+    public bool TryGetEncryptedPrivateKey(
+        VaultSessionLease lease,
+        out string? encryptedPrivateKey)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease)
+                || State != VaultState.Unlocked
+                || UserKey is null)
+            {
+                encryptedPrivateKey = null;
+                return false;
+            }
+
+            encryptedPrivateKey = EncryptedPrivateKey;
+            return true;
+        }
+    }
+
     /// <summary>租约仍当前且已有 access token 时,返回绑定 account/origin/generation 的令牌快照。</summary>
     public AccessTokenBinding? GetAccessTokenBinding(VaultSessionLease lease)
     {
         lock (_gate)
         {
             return IsCurrentNoLock(lease) && !string.IsNullOrWhiteSpace(AccessToken)
-                ? new AccessTokenBinding(lease.AccountId, lease.Origin, lease.Generation, AccessToken)
+                ? new AccessTokenBinding(lease.AccountId, lease.Endpoints, lease.Generation, AccessToken)
                 : null;
         }
     }
@@ -451,11 +596,12 @@ public sealed class VaultSession : IVaultSnapshot
         lock (_gate)
         {
             var accountId = _accountId;
-            var origin = _origin;
+            var endpoints = _endpoints;
             try
             {
-                RotateLeaseNoLock(accountId, origin, persistedGeneration: null);
-                return accountId is null || origin is null ? null : CurrentLeaseNoLock();
+                RotateAuthenticationAttemptNoLock(createCurrent: false);
+                RotateLeaseNoLock(accountId, endpoints, persistedGeneration: null);
+                return accountId is null || endpoints is null ? null : CurrentLeaseNoLock();
             }
             finally
             {
@@ -470,18 +616,28 @@ public sealed class VaultSession : IVaultSnapshot
     /// 再清空敏感状态。用于 invalid_grant 场景——陈旧 lease 的刷新响应不会锁定已切换的新会话。
     /// 检查与锁定在同一 _gate 下，无 TOCTOU 窗口；try/finally 保证安全路径不得 fail-open。
     /// </summary>
-    public bool TryLockIfCurrent(VaultSessionLease lease)
+    public bool TryLockIfCurrent(VaultSessionLease lease) =>
+        TryLockIfCurrent(lease, out _);
+
+    public bool TryLockIfCurrent(
+        VaultSessionLease lease,
+        out VaultSessionLease? lockedLease)
     {
         ArgumentNullException.ThrowIfNull(lease);
         lock (_gate)
         {
             if (!IsCurrentNoLock(lease))
+            {
+                lockedLease = null;
                 return false;
+            }
             var accountId = _accountId;
-            var origin = _origin;
+            var endpoints = _endpoints;
             try
             {
-                RotateLeaseNoLock(accountId, origin, persistedGeneration: null);
+                RotateAuthenticationAttemptNoLock(createCurrent: false);
+                RotateLeaseNoLock(accountId, endpoints, persistedGeneration: null);
+                lockedLease = CurrentLeaseNoLock();
             }
             finally
             {
@@ -501,6 +657,7 @@ public sealed class VaultSession : IVaultSnapshot
         {
             try
             {
+                RotateAuthenticationAttemptNoLock(createCurrent: false);
                 RotateLeaseNoLock(null, null, persistedGeneration: null);
             }
             finally
@@ -511,6 +668,78 @@ public sealed class VaultSession : IVaultSnapshot
             }
         }
     }
+
+    private void BeginAccountSessionNoLock(
+        string accountId,
+        string email,
+        ServerEndpoints endpoints)
+    {
+        RotateLeaseNoLock(accountId, endpoints, persistedGeneration: null);
+        ClearSensitiveState();
+        Account = new AccountInfo(
+            accountId,
+            email,
+            endpoints,
+            string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim()[..1].ToUpperInvariant(),
+            string.Empty);
+        State = VaultState.Unlocking;
+    }
+
+    private void RestorePersistedSessionNoLock(PersistedSession persisted)
+    {
+        if (_accountId == persisted.AccountId
+            && _endpoints == persisted.Endpoints
+            && _generation == persisted.Generation
+            && _leaseCts is { IsCancellationRequested: false })
+            return;
+
+        RotateLeaseNoLock(persisted.AccountId, persisted.Endpoints!, persisted.Generation);
+        ClearSensitiveState();
+        Account = new AccountInfo(
+            persisted.AccountId,
+            persisted.Email,
+            persisted.Endpoints,
+            persisted.Email.Trim()[..1].ToUpperInvariant(),
+            string.Empty);
+        State = VaultState.Locked;
+    }
+
+    private void RotateAuthenticationAttemptNoLock(bool createCurrent)
+    {
+        var previous = _authenticationCts;
+        _authenticationGeneration = _authenticationGeneration == long.MaxValue
+            ? long.MaxValue
+            : _authenticationGeneration + 1;
+        _authenticationStamp = Guid.NewGuid();
+        _authenticationCts = createCurrent ? new CancellationTokenSource() : null;
+
+        if (previous is null)
+            return;
+
+        try
+        {
+            previous.Cancel();
+        }
+        catch (AggregateException)
+        {
+            // A cancellation callback cannot preserve a superseded attempt.
+        }
+        finally
+        {
+            previous.Dispose();
+        }
+    }
+
+    private bool IsCurrentNoLock(AuthenticationAttemptLease attempt) =>
+        _authenticationCts is { IsCancellationRequested: false }
+        && attempt.Generation == _authenticationGeneration
+        && attempt.Stamp == _authenticationStamp;
+
+    private AuthenticationAttemptLease CurrentAuthenticationAttemptNoLock() => new(
+        _authenticationGeneration,
+        _authenticationCts?.Token
+            ?? throw new InvalidOperationException("No authentication attempt is active."),
+        _authenticationStamp);
 
     /// <summary>
     /// 唯一的 generation/stamp/CTS 变更点。必须在 _gate 内调用。取消旧 CTS 在赋新值之后执行,
@@ -523,7 +752,7 @@ public sealed class VaultSession : IVaultSnapshot
     /// </summary>
     private void RotateLeaseNoLock(
         string? accountId,
-        ServerOrigin? origin,
+        ServerEndpoints? endpoints,
         long? persistedGeneration)
     {
         var previous = _leaseCts;
@@ -533,9 +762,9 @@ public sealed class VaultSession : IVaultSnapshot
             ? Math.Max(next, restored)
             : next;
         _accountId = accountId;
-        _origin = origin;
+        _endpoints = endpoints;
         _stamp = Guid.NewGuid();
-        _leaseCts = accountId is null || origin is null
+        _leaseCts = accountId is null || endpoints is null
             ? null
             : new CancellationTokenSource();
 
@@ -560,13 +789,13 @@ public sealed class VaultSession : IVaultSnapshot
         _leaseCts is { IsCancellationRequested: false }
         && lease.Generation == _generation
         && lease.AccountId == _accountId
-        && lease.Origin == _origin
+        && lease.Endpoints == _endpoints
         && lease.Stamp == _stamp;
 
     private VaultSessionLease CurrentLeaseNoLock() => new(
         _generation,
         _accountId ?? throw new InvalidOperationException("No account is active."),
-        _origin ?? throw new InvalidOperationException("No origin is active."),
+        _endpoints ?? throw new InvalidOperationException("No server endpoints are active."),
         _leaseCts?.Token ?? throw new InvalidOperationException("No lease token is active."),
         _stamp);
 

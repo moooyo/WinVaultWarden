@@ -129,7 +129,10 @@ public class SendEditorDraftTests
         Assert.Equal(5, draft.MaxAccessCount);
         Assert.True(draft.HideEmail);
         Assert.True(draft.Disabled);
+        Assert.True(draft.ExistingHasPassword);
         Assert.Equal(expiration, draft.ExpirationDate);
+        Assert.Equal("自定义", draft.ExpirationDateLabel);
+        Assert.True(draft.IsCustomExpiration);
         Assert.Equal(deletion, draft.DeletionDate);
         // 绝对删除日期 → 走"自定义",ToDeletionDate 使用 DeletionDate 而非相对天数默认。
         Assert.Equal("自定义", draft.DeletionDateLabel);

@@ -60,17 +60,20 @@ public sealed class NotificationDispatcher : INotificationDispatcher
     private readonly VaultDecryptor _decryptor;
     private readonly VaultSession _session;
     private readonly ISyncService _sync;
+    private readonly ISessionTerminationSink? _termination;
 
     public NotificationDispatcher(
         IVaultApiClientProvider clients,
         VaultDecryptor decryptor,
         VaultSession session,
-        ISyncService sync)
+        ISyncService sync,
+        ISessionTerminationSink? termination = null)
     {
         _clients = clients;
         _decryptor = decryptor;
         _session = session;
         _sync = sync;
+        _termination = termination;
     }
 
     /// <summary>任何密码库条目或文件夹被修改后触发（包含全量同步完成）。</summary>
@@ -109,7 +112,13 @@ public sealed class NotificationDispatcher : INotificationDispatcher
         // LogOut 是唯一即使已锁定也要处理的类型：只需租约仍 current，事件在 TryCommit 内触发。
         if (type == UpdateType.LogOut)
         {
-            _session.TryCommit(lease, () => LoggedOut?.Invoke());
+            if (_session.TryLockIfCurrent(lease, out var invalidatedLease))
+            {
+                _termination?.Request(new SessionTerminationNotice(
+                    SessionTerminationReason.RemoteLogout,
+                    invalidatedLease!));
+                LoggedOut?.Invoke();
+            }
             return;
         }
 

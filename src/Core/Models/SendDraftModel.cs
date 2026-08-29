@@ -21,6 +21,11 @@ public sealed class SendDraftModel
     public DateTimeOffset DeletionDate { get; init; }
     public bool Disabled { get; init; }
     public bool HideEmail { get; init; }
+    // A replacement creates a new server record, so Keep is unsafe when the old Send was protected:
+    // the server-returned verifier cannot be reused as a client password proof.
+    public bool ExistingHasPassword { get; init; }
+    public SendAuthType ExistingAuthType { get; init; } = SendAuthType.Unknown;
+    public int ExistingRawAuthType { get; init; } = int.MinValue;
     public SendPasswordChange PasswordChange { get; init; } = new SendPasswordChange.Keep();
 
     // 复制本草稿并替换 Id(替换语义:以 Id=null 让写入层把"新件"当作创建,同时保留其余字段与原 wrapped seed)。
@@ -39,6 +44,9 @@ public sealed class SendDraftModel
         DeletionDate = DeletionDate,
         Disabled = Disabled,
         HideEmail = HideEmail,
+        ExistingHasPassword = ExistingHasPassword,
+        ExistingAuthType = ExistingAuthType,
+        ExistingRawAuthType = ExistingRawAuthType,
         PasswordChange = PasswordChange,
     };
 }

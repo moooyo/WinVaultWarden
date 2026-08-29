@@ -21,8 +21,15 @@ public sealed class VaultDecryptor
     public VaultDecryptor(CryptoService crypto) => _crypto = crypto;
 
     public DecryptedVault Decrypt(SyncResponse sync, SymmetricCryptoKey userKey, string serverUrl)
+        => Decrypt(sync, userKey, ServerEndpoints.FromWebVault(serverUrl));
+
+    public DecryptedVault Decrypt(
+        SyncResponse sync,
+        SymmetricCryptoKey userKey,
+        ServerEndpoints endpoints)
     {
-        var account = BuildAccount(sync.Profile, serverUrl);
+        ArgumentNullException.ThrowIfNull(endpoints);
+        var account = BuildAccount(sync.Profile, endpoints);
         var folders = new List<Folder>();
         var skippedFolders = 0;
         foreach (var folder in sync.Folders ?? Array.Empty<FolderDto>())
@@ -226,7 +233,7 @@ public sealed class VaultDecryptor
 
     private string? Dec(string? value, SymmetricCryptoKey key) => _crypto.DecryptToString(value, key);
 
-    private static AccountInfo BuildAccount(ProfileDto? profile, string serverUrl)
+    private static AccountInfo BuildAccount(ProfileDto? profile, ServerEndpoints endpoints)
     {
         if (profile is null || string.IsNullOrWhiteSpace(profile.Id))
             throw new InvalidDataException("Sync profile is missing a valid account ID.");
@@ -236,8 +243,7 @@ public sealed class VaultDecryptor
         var initial = string.IsNullOrWhiteSpace(display)
             ? string.Empty
             : display.Trim()[0].ToString().ToUpperInvariant();
-        var origin = ServerOrigin.TryParse(serverUrl, out var o) ? (ServerOrigin?)o : null;
-        return new AccountInfo(profile.Id, email, origin, initial, string.Empty);
+        return new AccountInfo(profile.Id, email, endpoints, initial, string.Empty);
     }
 
     private static bool IsCipherDecryptException(Exception ex) =>

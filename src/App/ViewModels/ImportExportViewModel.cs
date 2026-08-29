@@ -6,59 +6,154 @@ using Core.Services;
 
 namespace App.ViewModels;
 
-/// <summary>预览快照：内容/格式/版本在拍摄时冻结，之后不可变更。</summary>
+public enum ImportExportOperationKind
+{
+    ChooseImportFile,
+    PreviewImport,
+    Import,
+    Export,
+}
+
 public sealed record ImportPreviewSnapshot(
     ImportFormat Format,
     long ContentVersion,
     string Content,
     ImportPreview Preview);
 
-// 导入/导出页 VM：导出侧只产出明文字符串交给 code-behind 落盘；导入侧解析预览 + 实际导入。
-// 不接触文件 I/O、picker、ContentDialog —— 这些留在 code-behind，保证本类可脱离 WinUI 单元测试。
+/// <summary>
+/// Owns one import/export operation and the formats selected when it began. A scope that is
+/// disposed without an explicit terminal result is treated as cancelled.
+/// </summary>
+public sealed class ImportExportOperationScope : IDisposable
+{
+    private ImportExportViewModel? _owner;
+    private IDisposable? _gateLease;
+    private readonly CancellationTokenSource _cancellation = new();
+    private int _completionClaimed;
+
+    internal ImportExportOperationScope(
+        ImportExportViewModel owner,
+        IDisposable gateLease,
+        ImportExportOperationKind kind,
+        ExportFormat exportFormat,
+        ImportFormat importFormat,
+        long generation)
+    {
+        _owner = owner;
+        _gateLease = gateLease;
+        Kind = kind;
+        ExportFormat = exportFormat;
+        ImportFormat = importFormat;
+        Generation = generation;
+    }
+
+    public ImportExportOperationKind Kind { get; }
+    public ExportFormat ExportFormat { get; }
+    public ImportFormat ImportFormat { get; }
+    public CancellationToken Token => _cancellation.Token;
+    internal long Generation { get; }
+
+    public void Complete(
+        UiOperationStatus status,
+        string? message = null,
+        bool isWarning = false)
+    {
+        if (status == UiOperationStatus.Busy)
+            throw new ArgumentOutOfRangeException(nameof(status));
+        if (Interlocked.CompareExchange(ref _completionClaimed, 1, 0) != 0)
+            return;
+
+        var owner = _owner;
+        var gateLease = _gateLease;
+        _owner = null;
+        _gateLease = null;
+        try
+        {
+            if (owner is null || gateLease is null)
+            {
+                gateLease?.Dispose();
+                return;
+            }
+
+            owner.EndOperation(this, gateLease, status, message, isWarning);
+        }
+        finally
+        {
+            _cancellation.Dispose();
+        }
+    }
+
+    public void Dispose() => Complete(UiOperationStatus.Cancelled);
+
+    internal void Cancel()
+    {
+        try
+        {
+            _cancellation.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (AggregateException)
+        {
+            // Lifecycle cleanup must still invalidate this operation if a callback misbehaves.
+        }
+    }
+}
+
 public partial class ImportExportViewModel : ObservableObject, ISensitiveState
 {
+    private const string ImportParseFailureMessage = "无法解析导入文件，请确认文件格式和内容正确。";
+    private const string UnsupportedImportFileMessage = "请选择 JSON 或 CSV 格式的导入文件。";
+    private const string MissingPreviewMessage = "请先为当前文件生成有效预览。";
+    private const string PreviewChangedMessage = "导入预览已变化，请重新预览后再导入。";
+    private const string ImportFailureMessage = "导入失败，请确认文件仍有效且密码库已解锁。";
+
     private readonly IVaultExportService _export;
     private readonly IVaultImportService _import;
     private readonly IAccountService _account;
+    private readonly AsyncOperationGate _operations = new();
+    private ImportExportOperationScope? _activeOperation;
+    private long _operationGeneration;
+    private long _contentVersion;
+    private ImportPreviewSnapshot? _previewSnapshot;
 
-    public ImportExportViewModel(IVaultExportService export, IVaultImportService import, IAccountService account)
+    public ImportExportViewModel(
+        IVaultExportService export,
+        IVaultImportService import,
+        IAccountService account)
     {
         _export = export;
         _import = import;
         _account = account;
     }
 
-    // ── 导出 ─────────────────────────────────────────────────────────────────
-
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ExportFormatIndex))]
     public partial ExportFormat SelectedExportFormat { get; set; } = ExportFormat.Json;
 
-    /// <summary>供 ComboBox.SelectedIndex 双向绑定使用（0=Json，1=Csv）。</summary>
     public int ExportFormatIndex
     {
         get => (int)SelectedExportFormat;
-        set => SelectedExportFormat = (ExportFormat)value;
+        set
+        {
+            if (Enum.IsDefined((ExportFormat)value))
+                SelectedExportFormat = (ExportFormat)value;
+        }
     }
-
-    public string ExportToText() => _export.Export(SelectedExportFormat);
-
-    public Task<bool> VerifyMasterPasswordAsync(string password) => _account.VerifyMasterPasswordAsync(password);
-
-    [ObservableProperty]
-    public partial string? ExportStatus { get; set; }
-
-    // ── 导入 ─────────────────────────────────────────────────────────────────
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ImportFormatIndex))]
     public partial ImportFormat SelectedImportFormat { get; set; } = ImportFormat.Json;
 
-    /// <summary>供 ComboBox.SelectedIndex 双向绑定使用（0=Json，1=Csv）。</summary>
     public int ImportFormatIndex
     {
         get => (int)SelectedImportFormat;
-        set => SelectedImportFormat = (ImportFormat)value;
+        set
+        {
+            if (Enum.IsDefined((ImportFormat)value))
+                SelectedImportFormat = (ImportFormat)value;
+        }
     }
 
     [ObservableProperty]
@@ -71,133 +166,401 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
     public partial int PreviewFolderCount { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasImportError))]
-    public partial string? ImportError { get; set; }
-
-    public bool HasImportError => !string.IsNullOrEmpty(ImportError);
+    [NotifyPropertyChangedFor(nameof(BusyMessage))]
+    public partial ImportExportOperationKind? CurrentOperation { get; private set; }
 
     [ObservableProperty]
-    public partial string? ResultMessage { get; set; }
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
+    [NotifyPropertyChangedFor(nameof(CanOperate))]
+    [NotifyPropertyChangedFor(nameof(CanImport))]
+    [NotifyPropertyChangedFor(nameof(HasSucceededStatus))]
+    [NotifyPropertyChangedFor(nameof(HasWarningStatus))]
+    [NotifyPropertyChangedFor(nameof(HasCancelledStatus))]
+    [NotifyPropertyChangedFor(nameof(HasFailedStatus))]
+    public partial UiOperationStatus? OperationStatus { get; private set; }
 
-    // ── 快照与版本控制 ────────────────────────────────────────────────────────
+    [ObservableProperty]
+    public partial string? OperationMessage { get; private set; }
 
-    private long _contentVersion;
-    private ImportPreviewSnapshot? _previewSnapshot;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSucceededStatus))]
+    [NotifyPropertyChangedFor(nameof(HasWarningStatus))]
+    public partial bool OperationHasWarning { get; private set; }
 
-    /// <summary>当前预览是否有效：快照不为空、格式与版本匹配且无解析错误。</summary>
+    public bool IsBusy => OperationStatus == UiOperationStatus.Busy;
+    public bool CanOperate => !IsBusy;
+    public bool HasSucceededStatus =>
+        OperationStatus == UiOperationStatus.Succeeded && !OperationHasWarning;
+    public bool HasWarningStatus =>
+        OperationStatus == UiOperationStatus.Succeeded && OperationHasWarning;
+    public bool HasCancelledStatus => OperationStatus == UiOperationStatus.Cancelled;
+    public bool HasFailedStatus => OperationStatus == UiOperationStatus.Failed;
+
+    public string BusyMessage => CurrentOperation switch
+    {
+        ImportExportOperationKind.ChooseImportFile => "正在读取并解析导入文件…",
+        ImportExportOperationKind.PreviewImport => "正在解析导入内容…",
+        ImportExportOperationKind.Import => "正在导入密码库…",
+        ImportExportOperationKind.Export => "正在导出密码库…",
+        _ => string.Empty,
+    };
+
     public bool HasValidPreview =>
         _previewSnapshot is { } snapshot
         && snapshot.Format == SelectedImportFormat
         && snapshot.ContentVersion == _contentVersion
         && snapshot.Preview.Error is null;
 
-    /// <summary>当且仅当有效预览存在且内容不为空时才允许导入。</summary>
-    public bool CanImport => HasValidPreview && !string.IsNullOrEmpty(ImportContent);
+    public bool CanImport =>
+        !IsBusy
+        && HasValidPreview
+        && !string.IsNullOrEmpty(ImportContent);
 
-    partial void OnImportContentChanged(string value)
+    public UiOperationResult<ImportExportOperationScope> BeginOperation(
+        ImportExportOperationKind kind)
     {
-        checked { _contentVersion++; }
-        ClearPreview();
+        if (!Enum.IsDefined(kind))
+            throw new ArgumentOutOfRangeException(nameof(kind));
+
+        if (!_operations.TryEnter(out var gateLease) || gateLease is null)
+            return UiOperationResult<ImportExportOperationScope>.Busy();
+
+        try
+        {
+            ClearOperationMessages();
+            if (kind == ImportExportOperationKind.ChooseImportFile)
+            {
+                ImportContent = string.Empty;
+                ClearPreview();
+            }
+            else if (kind == ImportExportOperationKind.PreviewImport)
+            {
+                ClearPreview();
+            }
+
+            var operation = new ImportExportOperationScope(
+                this,
+                gateLease,
+                kind,
+                SelectedExportFormat,
+                SelectedImportFormat,
+                Interlocked.Increment(ref _operationGeneration));
+            _activeOperation = operation;
+            CurrentOperation = kind;
+            OperationStatus = UiOperationStatus.Busy;
+            return UiOperationResult<ImportExportOperationScope>.Success(operation);
+        }
+        catch
+        {
+            gateLease.Dispose();
+            throw;
+        }
     }
 
-    partial void OnSelectedImportFormatChanged(ImportFormat value)
+    internal void EndOperation(
+        ImportExportOperationScope operation,
+        IDisposable gateLease,
+        UiOperationStatus status,
+        string? message,
+        bool isWarning)
     {
-        OnPropertyChanged(nameof(ImportFormatIndex));
-        ClearPreview();
+        try
+        {
+            if (!ReferenceEquals(_activeOperation, operation))
+                return;
+
+            _activeOperation = null;
+            if (operation.Generation != Volatile.Read(ref _operationGeneration))
+            {
+                CurrentOperation = null;
+                OperationMessage = null;
+                OperationHasWarning = false;
+                OperationStatus = null;
+                return;
+            }
+
+            var resolvedMessage = message ?? DefaultMessage(status);
+            CurrentOperation = null;
+            OperationMessage = resolvedMessage;
+            OperationHasWarning = isWarning;
+            OperationStatus = status;
+        }
+        finally
+        {
+            gateLease.Dispose();
+        }
     }
 
-    /// <summary>清空预览快照、计数和错误。格式/内容变更时自动调用。</summary>
+    public string ExportToText(ExportFormat format) => _export.Export(format);
+
+    public Task<bool> VerifyMasterPasswordAsync(
+        string password,
+        CancellationToken ct = default) =>
+        _account.VerifyMasterPasswordAsync(password, ct);
+
+    public static bool TryGetImportFormat(string? fileName, out ImportFormat format)
+    {
+        format = default;
+        if (string.IsNullOrWhiteSpace(fileName))
+            return false;
+
+        string extension;
+        try
+        {
+            extension = Path.GetExtension(fileName);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+
+        if (string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase))
+        {
+            format = ImportFormat.Json;
+            return true;
+        }
+
+        if (string.Equals(extension, ".csv", StringComparison.OrdinalIgnoreCase))
+        {
+            format = ImportFormat.Csv;
+            return true;
+        }
+
+        return false;
+    }
+
+    public UiOperationResult ApplySelectedImportFile(
+        ImportExportOperationScope operation,
+        string fileName,
+        string content)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        ArgumentNullException.ThrowIfNull(content);
+
+        if (!IsActive(operation, ImportExportOperationKind.ChooseImportFile))
+            return UiOperationResult.Cancelled();
+
+        if (!TryGetImportFormat(fileName, out var format))
+        {
+            operation.Complete(UiOperationStatus.Failed, UnsupportedImportFileMessage);
+            return UiOperationResult.Failure(UnsupportedImportFileMessage);
+        }
+
+        SelectedImportFormat = format;
+        ImportContent = content;
+        return ParsePreview(operation, format, _contentVersion, content);
+    }
+
+    [RelayCommand]
+    private void PreviewImport() => _ = PreviewCurrentImport();
+
+    public UiOperationResult PreviewCurrentImport()
+    {
+        var started = BeginOperation(ImportExportOperationKind.PreviewImport);
+        if (!started.IsSuccess || started.Value is not { } operation)
+            return UiOperationResult.Busy();
+
+        using (operation)
+        {
+            return ParsePreview(
+                operation,
+                operation.ImportFormat,
+                _contentVersion,
+                ImportContent);
+        }
+    }
+
+    [RelayCommand]
+    public async Task<UiOperationResult<int>> DoImportAsync(CancellationToken ct = default)
+    {
+        var started = BeginOperation(ImportExportOperationKind.Import);
+        if (!started.IsSuccess || started.Value is not { } operation)
+            return UiOperationResult<int>.Busy();
+
+        using (operation)
+        {
+            var snapshot = _previewSnapshot;
+            if (snapshot is null
+                || snapshot.Format != operation.ImportFormat
+                || snapshot.Format != SelectedImportFormat
+                || snapshot.ContentVersion != _contentVersion
+                || snapshot.Preview.Error is not null)
+            {
+                operation.Complete(UiOperationStatus.Failed, MissingPreviewMessage);
+                return UiOperationResult<int>.Failure(MissingPreviewMessage);
+            }
+
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                ct,
+                operation.Token);
+            try
+            {
+                linked.Token.ThrowIfCancellationRequested();
+                var reparsed = _import.Parse(snapshot.Format, snapshot.Content);
+                if (reparsed != snapshot.Preview)
+                {
+                    ClearPreview();
+                    operation.Complete(UiOperationStatus.Failed, PreviewChangedMessage);
+                    return UiOperationResult<int>.Failure(PreviewChangedMessage);
+                }
+
+                var count = await _import.ImportAsync(
+                    snapshot.Format,
+                    snapshot.Content,
+                    linked.Token);
+                linked.Token.ThrowIfCancellationRequested();
+                ConsumePreview(snapshot);
+                var message = $"已导入 {count} 个条目。";
+                operation.Complete(UiOperationStatus.Succeeded, message);
+                return UiOperationResult<int>.Success(count);
+            }
+            catch (OperationCanceledException ex)
+                when (UiExceptionPolicy.IsGenuineCancellation(ex, linked.Token))
+            {
+                operation.Complete(UiOperationStatus.Cancelled);
+                return UiOperationResult<int>.Cancelled();
+            }
+            catch (VaultRefreshException)
+            {
+                ConsumePreview(snapshot);
+                const string message = "导入已完成，但本地数据刷新失败，请手动同步。";
+                operation.Complete(
+                    UiOperationStatus.Succeeded,
+                    message,
+                    isWarning: true);
+                return UiOperationResult<int>.Success(snapshot.Preview.Ciphers);
+            }
+            catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+            {
+                operation.Complete(
+                    UiOperationStatus.Failed,
+                    UiExceptionPolicy.RequestTimeoutMessage);
+                return UiOperationResult<int>.Failure(UiExceptionPolicy.RequestTimeoutMessage);
+            }
+            catch (Exception ex) when (IsRecoverableImportException(ex))
+            {
+                operation.Complete(UiOperationStatus.Failed, ImportFailureMessage);
+                return UiOperationResult<int>.Failure(ImportFailureMessage);
+            }
+        }
+    }
+
     public void ClearPreview()
     {
         _previewSnapshot = null;
         PreviewCipherCount = 0;
         PreviewFolderCount = 0;
-        ImportError = null;
         OnPropertyChanged(nameof(HasValidPreview));
         OnPropertyChanged(nameof(CanImport));
     }
 
-    private void ClearSnapshotKeepError()
+    partial void OnImportContentChanged(string value)
     {
-        _previewSnapshot = null;
-        PreviewCipherCount = 0;
-        PreviewFolderCount = 0;
-        OnPropertyChanged(nameof(HasValidPreview));
-        OnPropertyChanged(nameof(CanImport));
+        checked
+        {
+            _contentVersion++;
+        }
+
+        ClearPreview();
     }
 
-    // ── 预览：冻结当前格式+版本+内容到不可变快照 ─────────────────────────────
+    partial void OnSelectedImportFormatChanged(ImportFormat value) => ClearPreview();
 
-    [RelayCommand]
-    private void PreviewImport()
+    private UiOperationResult ParsePreview(
+        ImportExportOperationScope operation,
+        ImportFormat format,
+        long contentVersion,
+        string content)
     {
-        var content = ImportContent;
-        var format = SelectedImportFormat;
-        var version = _contentVersion;
         var preview = _import.Parse(format, content);
+        if (preview.Error is not null)
+        {
+            _previewSnapshot = new ImportPreviewSnapshot(
+                format,
+                contentVersion,
+                content,
+                preview);
+            PreviewCipherCount = 0;
+            PreviewFolderCount = 0;
+            OnPropertyChanged(nameof(HasValidPreview));
+            OnPropertyChanged(nameof(CanImport));
+            operation.Complete(UiOperationStatus.Failed, ImportParseFailureMessage);
+            return UiOperationResult.Failure(ImportParseFailureMessage);
+        }
 
-        _previewSnapshot = new ImportPreviewSnapshot(format, version, content, preview);
+        _previewSnapshot = new ImportPreviewSnapshot(
+            format,
+            contentVersion,
+            content,
+            preview);
         PreviewCipherCount = preview.Ciphers;
         PreviewFolderCount = preview.Folders;
-        ImportError = preview.Error;
         OnPropertyChanged(nameof(HasValidPreview));
         OnPropertyChanged(nameof(CanImport));
+        var message = $"文件已就绪：{preview.Ciphers} 个条目，{preview.Folders} 个文件夹。";
+        operation.Complete(UiOperationStatus.Succeeded, message);
+        return UiOperationResult.Success();
     }
 
-    // ── 导入：对快照重解析以防漂移，再调用 ImportAsync ───────────────────────
+    private bool IsActive(
+        ImportExportOperationScope operation,
+        ImportExportOperationKind expectedKind) =>
+        ReferenceEquals(_activeOperation, operation)
+        && operation.Kind == expectedKind
+        && OperationStatus == UiOperationStatus.Busy;
 
-    [RelayCommand]
-    public async Task<UiOperationResult<int>> DoImportAsync(CancellationToken ct = default)
+    private void ConsumePreview(ImportPreviewSnapshot importedSnapshot)
     {
-        var snapshot = _previewSnapshot;
-        if (snapshot is null
-            || snapshot.Format != SelectedImportFormat
-            || snapshot.ContentVersion != _contentVersion
-            || snapshot.Preview.Error is not null)
+        if (!ReferenceEquals(_previewSnapshot, importedSnapshot)
+            || importedSnapshot.Format != SelectedImportFormat
+            || importedSnapshot.ContentVersion != _contentVersion)
         {
-            return UiOperationResult<int>.Failure("请先为当前文件生成预览");
+            return;
         }
 
-        // 重解析防漂移：确认 Parse 结果与拍摄时完全一致
-        var reparsed = _import.Parse(snapshot.Format, snapshot.Content);
-        if (reparsed != snapshot.Preview)
-        {
-            ImportError = "导入预览已变化，请重新预览后再导入";
-            ClearSnapshotKeepError();
-            return UiOperationResult<int>.Failure(ImportError);
-        }
+        ImportContent = string.Empty;
+    }
 
-        try
-        {
-            var count = await _import.ImportAsync(snapshot.Format, snapshot.Content, ct);
-            ResultMessage = $"已导入 {count} 个条目";
-            return UiOperationResult<int>.Success(count);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            return UiOperationResult<int>.Cancelled();
-        }
-        catch (Exception ex) when (ex is InvalidDataException
+    private void ClearOperationMessages()
+    {
+        OperationMessage = null;
+        OperationHasWarning = false;
+    }
+
+    private static bool IsRecoverableImportException(Exception exception) =>
+        exception is InvalidDataException
             or FormatException
             or InvalidOperationException
+            or HttpRequestException
             or VaultWriteException
-            or HttpRequestException)
-        {
-            ResultMessage = "导入失败，请确认文件仍有效且密码库已解锁。";
-            return UiOperationResult<int>.Failure(ResultMessage);
-        }
-    }
+            or System.Security.Cryptography.CryptographicException
+            or NotSupportedException;
 
-    // 锁屏/登出时清空导入/导出的机密足迹：导入内容（可能含明文条目）、快照、预览计数与状态消息。幂等。
+    private static string DefaultMessage(UiOperationStatus status) => status switch
+    {
+        UiOperationStatus.Succeeded => "操作已完成。",
+        UiOperationStatus.Cancelled => "操作已取消。",
+        UiOperationStatus.Failed => "操作失败，请重试。",
+        _ => string.Empty,
+    };
+
     public void ClearSensitive()
     {
+        Interlocked.Increment(ref _operationGeneration);
+        _activeOperation?.Cancel();
         ImportContent = string.Empty;
         _previewSnapshot = null;
         PreviewCipherCount = 0;
         PreviewFolderCount = 0;
-        ImportError = null;
-        ResultMessage = null;
-        ExportStatus = null;
+        OperationMessage = null;
+        OperationHasWarning = false;
+        if (_activeOperation is null)
+        {
+            CurrentOperation = null;
+            OperationStatus = null;
+            OperationMessage = null;
+        }
+
         OnPropertyChanged(nameof(HasValidPreview));
         OnPropertyChanged(nameof(CanImport));
     }

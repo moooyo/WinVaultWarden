@@ -6,10 +6,24 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:conv="using:App.Converters"
     xmlns:models="using:Core.Models"
+    xmlns:viewModels="using:App.ViewModels.Models"
     xmlns:local="using:App.Views"
     Loaded="OnPageLoaded">
     <Page.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <DataTemplate x:Key="RecoveredCipherItemTemplate"
+                      x:DataType="viewModels:RecoveredCipherListItem">
+            <StackPanel Spacing="2" Padding="0,6">
+                <TextBlock Text="{x:Bind Name}"
+                           FontWeight="SemiBold"
+                           MaxLines="1"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{x:Bind Subtitle}"
+                           Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                           MaxLines="1"
+                           TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+        </DataTemplate>
     </Page.Resources>
 
     <ScrollViewer Padding="{StaticResource PageContentPadding}">
@@ -120,33 +134,33 @@
                                                     Content="确认"
                                                     Tag="{x:Bind}"
                                                     Click="OnConfirmClick"
-                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowConfirm(Status), Mode=OneWay}" />
+                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowConfirm(Status), Mode=OneTime}" />
                                             <Button AutomationProperties.AutomationId="EmergencyReinviteButton"
                                                     Content="重新邀请"
                                                     Tag="{x:Bind}"
                                                     Click="OnReinviteClick"
-                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowReinvite(Status), Mode=OneWay}" />
+                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowReinvite(Status), Mode=OneTime}" />
                                             <Button AutomationProperties.AutomationId="EmergencyApproveButton"
                                                     Content="批准"
                                                     Tag="{x:Bind}"
                                                     Click="OnApproveClick"
                                                     Style="{ThemeResource AccentButtonStyle}"
-                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowApprove(Status), Mode=OneWay}" />
+                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowApprove(Status), Mode=OneTime}" />
                                             <Button AutomationProperties.AutomationId="EmergencyRejectButton"
                                                     Content="拒绝"
                                                     Tag="{x:Bind}"
                                                     Click="OnRejectClick"
-                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowReject(Status), Mode=OneWay}" />
+                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowReject(Status), Mode=OneTime}" />
                                             <Button AutomationProperties.AutomationId="EmergencyRemoveContactButton"
                                                     Content="移除"
                                                     Tag="{x:Bind}"
                                                     Click="OnRemoveContactClick"
-                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowRemove(Status), Mode=OneWay}" />
+                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowRemove(Status), Mode=OneTime}" />
                                             <Button AutomationProperties.AutomationId="EmergencyUpdateButton"
                                                     Content="修改"
                                                     Tag="{x:Bind}"
                                                     Click="OnUpdateClick"
-                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowUpdate(Status), Mode=OneWay}" />
+                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowUpdate(Status), Mode=OneTime}" />
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -208,17 +222,17 @@
                                                     Content="发起紧急访问"
                                                     Tag="{x:Bind}"
                                                     Click="OnInitiateClick"
-                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowInitiate(Status), Mode=OneWay}" />
+                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowInitiate(Status), Mode=OneTime}" />
                                             <Button AutomationProperties.AutomationId="EmergencyViewButton"
                                                     Content="查看密码库"
                                                     Tag="{x:Bind}"
                                                     Click="OnViewClick"
-                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowView(Status, Type), Mode=OneWay}" />
+                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowView(Status, Type), Mode=OneTime}" />
                                             <Button AutomationProperties.AutomationId="EmergencyTakeoverButton"
                                                     Content="接管账户"
                                                     Tag="{x:Bind}"
                                                     Click="OnTakeoverClick"
-                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowTakeover(Status, Type), Mode=OneWay}" />
+                                                    Visibility="{x:Bind local:EmergencyAccessPage.ShowTakeover(Status, Type), Mode=OneTime}" />
                                         </StackPanel>
                                     </Grid>
                                 </Border>

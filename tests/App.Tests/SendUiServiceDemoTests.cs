@@ -2,6 +2,7 @@ using App.Services;
 using App.ViewModels.Models;
 using Core.Models;
 using Core.Services;
+using Core.Session;
 using Vault;
 using Xunit;
 using AppSendType = App.ViewModels.Models.SendType;
@@ -118,7 +119,10 @@ public class SendUiServiceDemoTests
             CoreSend("s2", CoreSendType.Text, "删除"));
         var svc = DemoService(session);
 
-        await svc.DeleteSendAsync("s2", CancellationToken.None);
+        await svc.DeleteSendAsync(
+            "s2",
+            TestSessionLeases.CreateSessionLease(),
+            CancellationToken.None);
 
         var remaining = Assert.Single(session.Sends);
         Assert.Equal("s1", remaining.Id);
@@ -217,15 +221,15 @@ public class SendUiServiceDemoTests
 
     private sealed class ThrowingSendWriteService : ISendWriteService
     {
-        public Task SaveTextSendAsync(SendDraftModel draft, CancellationToken ct = default) =>
+        public Task<SendMutationReceipt> SaveTextSendAsync(SendDraftModel draft, VaultSessionLease expectedSession, CancellationToken ct = default) =>
             throw new InvalidOperationException("network write must not run in demo mode");
-        public Task<SendFileWriteResult> CreateFileSendAsync(SendDraftModel draft, SendFileSource file, CancellationToken ct = default) =>
+        public Task<SendMutationReceipt> CreateFileSendAsync(SendDraftModel draft, SendFileSource file, VaultSessionLease expectedSession, CancellationToken ct = default) =>
             throw new InvalidOperationException("network write must not run in demo mode");
-        public Task UpdateFileSendMetadataAsync(SendDraftModel draft, CancellationToken ct = default) =>
+        public Task<SendMutationReceipt> UpdateFileSendMetadataAsync(SendDraftModel draft, VaultSessionLease expectedSession, CancellationToken ct = default) =>
             throw new InvalidOperationException("network write must not run in demo mode");
-        public Task<SendFileWriteResult> ReplaceFileSendAsync(string existingSendId, SendDraftModel draft, SendFileSource file, CancellationToken ct = default) =>
+        public Task<SendMutationReceipt> ReplaceFileSendAsync(string existingSendId, SendDraftModel draft, SendFileSource file, VaultSessionLease expectedSession, CancellationToken ct = default) =>
             throw new InvalidOperationException("network write must not run in demo mode");
-        public Task DeleteSendAsync(string sendId, CancellationToken ct = default) =>
+        public Task<SendMutationReceipt> DeleteSendAsync(string sendId, VaultSessionLease expectedSession, CancellationToken ct = default) =>
             throw new InvalidOperationException("network delete must not run in demo mode");
     }
 
@@ -233,7 +237,10 @@ public class SendUiServiceDemoTests
     {
         public Task<SendAccessResult> AccessAsync(string shareUrl, string? password, CancellationToken ct = default) =>
             throw new InvalidOperationException("network access must not run in demo mode");
-        public Task<byte[]> DownloadFileAsync(SendAccessResult accessed, CancellationToken ct = default) =>
+        public Task<long> DownloadFileAsync(
+            SendDownloadLease download,
+            Stream plaintextDestination,
+            CancellationToken ct = default) =>
             throw new InvalidOperationException("network download must not run in demo mode");
     }
 }

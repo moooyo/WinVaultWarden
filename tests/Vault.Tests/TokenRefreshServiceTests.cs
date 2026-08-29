@@ -184,6 +184,27 @@ public class TokenRefreshServiceTests
     }
 
     [Fact]
+    public async Task TryRefreshAsync_FailedRequestUsedOldToken_DoesNotRefreshAgain()
+    {
+        var handler = new FakeHttpMessageHandler();
+        var session = ActiveSession();
+        var lease = session.CaptureLease();
+        session.SetTokens("old-access", "old-refresh");
+        var failedAuthorization = session.GetAccessTokenBinding(lease)!;
+        session.SetTokens("already-refreshed-access", "already-refreshed-refresh");
+        var service = Create(handler, session, StoreWithSession());
+
+        var ok = await service.TryRefreshAsync(
+            lease,
+            failedAuthorization,
+            TestContext.Current.CancellationToken);
+
+        Assert.True(ok);
+        Assert.Empty(handler.Requests);
+        Assert.Equal("already-refreshed-access", session.AccessToken);
+    }
+
+    [Fact]
     public async Task TryRefreshAsync_ServerError5xx_ReturnsFalseWithoutLocking()
     {
         var handler = new FakeHttpMessageHandler();

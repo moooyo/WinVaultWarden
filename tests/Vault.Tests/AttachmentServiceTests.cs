@@ -5,6 +5,7 @@ using Api.Dtos;
 using Core.Enums;
 using Core.Models;
 using Core.Services;
+using Core.Session;
 using Crypto;
 using Vault;
 using Xunit;
@@ -24,12 +25,55 @@ public class AttachmentServiceTests
         _decryptor = new VaultDecryptor(_crypto);
     }
 
+    private static readonly ITransferIdleTimeoutPolicy NoIdleTimeout =
+        new TransferIdleTimeoutPolicy(Timeout.InfiniteTimeSpan);
+
+    private sealed class FakeCompensationClient : IAttachmentCompensationClient
+    {
+        public List<(AccessTokenBinding Binding, string CipherId, string AttachmentId)> Deletes { get; } = [];
+        public Exception? DeleteThrows { get; set; }
+        public bool LastTokenWasCancelled { get; private set; }
+
+        public Task DeleteAsync(
+            AccessTokenBinding binding,
+            string cipherId,
+            string attachmentId,
+            CancellationToken ct = default)
+        {
+            LastTokenWasCancelled = ct.IsCancellationRequested;
+            Deletes.Add((binding, cipherId, attachmentId));
+            return DeleteThrows is null ? Task.CompletedTask : Task.FromException(DeleteThrows);
+        }
+    }
+
+    private AttachmentService CreateService(
+        IVaultApiClientProvider clients,
+        VaultSession session,
+        ISyncService sync,
+        IAttachmentCompensationClient? compensation = null) =>
+        new(
+            clients,
+            _attCrypto,
+            _decryptor,
+            session,
+            sync,
+            compensation ?? new FakeCompensationClient(),
+            NoIdleTimeout);
+
+    private static ReopenableFileSource Source(string fileName, byte[] bytes) =>
+        new(
+            fileName,
+            bytes.LongLength,
+            _ => ValueTask.FromResult<Stream>(new MemoryStream(bytes, writable: false)));
+
     // 把 sync 后的整库快照塞进真实 VaultSession,使 service 能从 session.Ciphers 读回附件。
     private sealed class FakeSync : ISyncService
     {
         private readonly VaultSession _session;
         private readonly DecryptedVault? _snapshot;
         public int Calls { get; private set; }
+        public Exception? Throws { get; set; }
+        public Action? BeforeResult { get; set; }
 
         public FakeSync(VaultSession session, DecryptedVault? snapshot)
         {
@@ -40,6 +84,9 @@ public class AttachmentServiceTests
         public Task<IReadOnlyList<Cipher>> SyncAsync(CancellationToken ct = default)
         {
             Calls++;
+            BeforeResult?.Invoke();
+            if (Throws is not null)
+                return Task.FromException<IReadOnlyList<Cipher>>(Throws);
             if (_snapshot is not null)
                 _session.SetSnapshot(_snapshot);
             return Task.FromResult(_snapshot?.Ciphers ?? (IReadOnlyList<Cipher>)Array.Empty<Cipher>());
@@ -108,15 +155,17 @@ public class AttachmentServiceTests
         {
             GetCipherResult = BuildCipherDto("c-1", cipherKeyEnc: null),
             CreateResult = new AttachmentUploadV2Response(
-                AttachmentId: "att-1", Url: "/ciphers/c-1/attachment/att-1", FileUploadType: 0),
+                AttachmentId: "att-1",
+                Url: "/ciphers/c-1/attachment/att-1",
+                FileUploadType: FileUploadType.Direct),
         };
         var snapshot = SnapshotWith(CipherWithAttachments("c-1",
             new CipherAttachment("att-1", "report.pdf", 12345, "12 KB")));
         var sync = new FakeSync(session, snapshot);
-        var service = new AttachmentService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), _attCrypto, _decryptor, session, sync);
+        var service = CreateService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), session, sync);
         var plaintext = Encoding.UTF8.GetBytes("hello attachment");
 
-        var result = await service.UploadAsync("c-1", "report.pdf", plaintext, TestContext.Current.CancellationToken);
+        var result = await service.UploadAsync("c-1", Source("report.pdf", plaintext), TestContext.Current.CancellationToken);
 
         Assert.Equal(new[] { "get-cipher", "create-v2", "upload" }, api.Calls);
         Assert.Equal(1, sync.Calls);
@@ -127,7 +176,10 @@ public class AttachmentServiceTests
         Assert.NotEqual("report.pdf", req.FileName);
         Assert.Equal(api.LastUploadBuffer!.LongLength, req.FileSize);
         // upload 到 create 返回的 Url,文件名是加密后的 fileName,缓冲首字节为 EncArrayBuffer 版本 2。
+        Assert.Equal(FileUploadType.Direct, api.LastUploadType);
         Assert.Equal("/ciphers/c-1/attachment/att-1", api.LastUploadUrl);
+        Assert.Equal("c-1", api.LastUploadCipherId);
+        Assert.Equal("att-1", api.LastUploadAttachmentId);
         Assert.Equal(req.FileName, api.LastUploadFileName);
         Assert.Equal((byte)2, api.LastUploadBuffer![0]);
         // 返回的是重同步后 session 里该 cipher 的附件列表。
@@ -147,9 +199,9 @@ public class AttachmentServiceTests
             GetCipherResult = BuildCipherDto("c-2", cipherKeyEnc),
         };
         var snapshot = SnapshotWith(CipherWithAttachments("c-2"));
-        var service = new AttachmentService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), _attCrypto, _decryptor, session, new FakeSync(session, snapshot));
+        var service = CreateService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), session, new FakeSync(session, snapshot));
 
-        await service.UploadAsync("c-2", "f.bin", new byte[] { 1, 2, 3 }, TestContext.Current.CancellationToken);
+        await service.UploadAsync("c-2", Source("f.bin", [1, 2, 3]), TestContext.Current.CancellationToken);
 
         // 包裹用 itemKey:用 itemKey 能 unwrap 出 attKey,用 userKey 则 MAC 失败。
         var wrapped = api.LastCreateRequest!.Key;
@@ -163,14 +215,16 @@ public class AttachmentServiceTests
     {
         var session = NewUnlockedSession();
         var api = new FakeAttachmentApiClient { GetCipherResult = BuildCipherDto("c-3", null) };
-        var service = new AttachmentService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), _attCrypto, _decryptor, session, new FakeSync(session, null));
-        // 比上限大 1 字节;不实际分配 100MiB+,用稀疏数组也会真实占内存,这里直接构造刚好超限。
-        var tooBig = new byte[AttachmentService.MaxPlaintextBytes + 1];
+        var service = CreateService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), session, new FakeSync(session, null));
+        var tooBig = new ReopenableFileSource(
+            "big.bin",
+            AttachmentService.MaxPlaintextBytes + 1,
+            _ => throw new InvalidOperationException("Oversized sources must not be opened."));
 
         var ex = await Assert.ThrowsAsync<AttachmentTooLargeException>(() =>
-            service.UploadAsync("c-3", "big.bin", tooBig, TestContext.Current.CancellationToken));
+            service.UploadAsync("c-3", tooBig, TestContext.Current.CancellationToken));
 
-        Assert.Equal(tooBig.LongLength, ex.ActualBytes);
+        Assert.Equal(tooBig.Length, ex.ActualBytes);
         Assert.Equal(AttachmentService.MaxPlaintextBytes, ex.MaxBytes);
         // 超限发生在加密/网络之前:不应有任何 API 调用。
         Assert.Empty(api.Calls);
@@ -189,13 +243,15 @@ public class AttachmentServiceTests
             GetCipherResult = dto,
             DownloadBytes = encryptedBuffer,
         };
-        var service = new AttachmentService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), _attCrypto, _decryptor, session, new FakeSync(session, null));
+        var service = CreateService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), session, new FakeSync(session, null));
 
-        var result = await service.DownloadAsync("c-4", "att-4", TestContext.Current.CancellationToken);
+        await using var destination = new MemoryStream();
+        var written = await service.DownloadAsync("c-4", "att-4", destination, TestContext.Current.CancellationToken);
 
         Assert.Equal(new[] { "get-cipher", "download" }, api.Calls);
         Assert.Equal("https://files.example/att-4", api.LastDownloadUrl);
-        Assert.Equal(plaintext, result);
+        Assert.Equal(plaintext.Length, written);
+        Assert.Equal(plaintext, destination.ToArray());
     }
 
     [Fact]
@@ -212,11 +268,12 @@ public class AttachmentServiceTests
             Url: "https://files.example/att-legacy");
         var dto = BuildCipherDto("c-5", cipherKeyEnc: null, att);
         var api = new FakeAttachmentApiClient { GetCipherResult = dto, DownloadBytes = encryptedBuffer };
-        var service = new AttachmentService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), _attCrypto, _decryptor, session, new FakeSync(session, null));
+        var service = CreateService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), session, new FakeSync(session, null));
 
-        var result = await service.DownloadAsync("c-5", "att-legacy", TestContext.Current.CancellationToken);
+        await using var destination = new MemoryStream();
+        await service.DownloadAsync("c-5", "att-legacy", destination, TestContext.Current.CancellationToken);
 
-        Assert.Equal(plaintext, result);
+        Assert.Equal(plaintext, destination.ToArray());
     }
 
     [Fact]
@@ -224,10 +281,11 @@ public class AttachmentServiceTests
     {
         var session = NewUnlockedSession();
         var api = new FakeAttachmentApiClient { GetCipherResult = BuildCipherDto("c-6", null) };
-        var service = new AttachmentService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), _attCrypto, _decryptor, session, new FakeSync(session, null));
+        var service = CreateService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), session, new FakeSync(session, null));
 
+        await using var destination = new MemoryStream();
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.DownloadAsync("c-6", "missing", TestContext.Current.CancellationToken));
+            service.DownloadAsync("c-6", "missing", destination, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -238,7 +296,7 @@ public class AttachmentServiceTests
         var snapshot = SnapshotWith(CipherWithAttachments("c-7",
             new CipherAttachment("att-keep", "keep.txt", 7, "7 B")));
         var sync = new FakeSync(session, snapshot);
-        var service = new AttachmentService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), _attCrypto, _decryptor, session, sync);
+        var service = CreateService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), session, sync);
 
         var result = await service.DeleteAsync("c-7", "att-gone", TestContext.Current.CancellationToken);
 
@@ -255,12 +313,13 @@ public class AttachmentServiceTests
     {
         var session = new VaultSession(); // 未解锁,UserKey 为 null
         var api = new FakeAttachmentApiClient { GetCipherResult = BuildCipherDto("c-8", null) };
-        var service = new AttachmentService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), _attCrypto, _decryptor, session, new FakeSync(session, null));
+        var service = CreateService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), session, new FakeSync(session, null));
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.UploadAsync("c-8", "f", new byte[] { 1 }, TestContext.Current.CancellationToken));
+            service.UploadAsync("c-8", Source("f", [1]), TestContext.Current.CancellationToken));
+        await using var destination = new MemoryStream();
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.DownloadAsync("c-8", "a", TestContext.Current.CancellationToken));
+            service.DownloadAsync("c-8", "a", destination, TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.DeleteAsync("c-8", "a", TestContext.Current.CancellationToken));
     }
@@ -281,52 +340,171 @@ public class AttachmentServiceTests
         {
             GetCipherResult = BuildCipherDto("c-1", cipherKeyEnc: null),
             CreateResult = new AttachmentUploadV2Response(
-                AttachmentId: "att-orphan", Url: "/ciphers/c-1/attachment/att-orphan", FileUploadType: 0),
+                AttachmentId: "att-orphan",
+                Url: "/ciphers/c-1/attachment/att-orphan",
+                FileUploadType: FileUploadType.Direct),
             UploadThrows = boom,
         };
         var sync = new FakeSync(session, null);
-        var service = new AttachmentService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), _attCrypto, _decryptor, session, sync);
+        var compensation = new FakeCompensationClient();
+        var service = CreateService(
+            FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api),
+            session,
+            sync,
+            compensation);
 
         // 第二步上传抛异常 → 原始异常按原样重抛(不被包成 VaultRefreshException)。
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.UploadAsync("c-1", "report.pdf", Encoding.UTF8.GetBytes("data"), TestContext.Current.CancellationToken));
+            service.UploadAsync("c-1", Source("report.pdf", Encoding.UTF8.GetBytes("data")), TestContext.Current.CancellationToken));
         Assert.Same(boom, ex);
 
         // 触发一次补偿删除,针对第一步 create 返回的 attachmentId。
-        Assert.Equal(new[] { "get-cipher", "create-v2", "upload", "delete" }, api.Calls);
-        Assert.Equal("c-1", api.LastDeleteCipherId);
-        Assert.Equal("att-orphan", api.LastDeleteAttachmentId);
+        Assert.Equal(new[] { "get-cipher", "create-v2", "upload" }, api.Calls);
+        var deleted = Assert.Single(compensation.Deletes);
+        Assert.Same(api.CreateAuthorization, deleted.Binding);
+        Assert.Equal("c-1", deleted.CipherId);
+        Assert.Equal("att-orphan", deleted.AttachmentId);
         // 上传失败后不应再重同步。
         Assert.Equal(0, sync.Calls);
     }
 
     [Fact]
-    public async Task Upload_WhenCancelledDuringDataUpload_StillDeletesOrphanWithNoneToken()
+    public async Task Upload_WhenCancelledDuringDataUpload_StillUsesIndependentCompensationToken()
     {
         var session = NewUnlockedSession();
         var api = new FakeAttachmentApiClient
         {
             GetCipherResult = BuildCipherDto("c-2", cipherKeyEnc: null),
             CreateResult = new AttachmentUploadV2Response(
-                AttachmentId: "att-2", Url: "/ciphers/c-2/attachment/att-2", FileUploadType: 0),
+                AttachmentId: "att-2",
+                Url: "/ciphers/c-2/attachment/att-2",
+                FileUploadType: FileUploadType.Direct),
             UploadThrows = new OperationCanceledException(),
         };
-        var service = new AttachmentService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), _attCrypto, _decryptor, session, new FakeSync(session, null));
-
-        // 用已取消的 token 调用:若补偿删除误用同一 token,fake 的 ThrowIfCancellationRequested 会先抛、
-        // "delete" 不会被记录。补偿删除必须用 CancellationToken.None,清理才会真正执行。
-        using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        var compensation = new FakeCompensationClient();
+        var service = CreateService(
+            FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api),
+            session,
+            new FakeSync(session, null),
+            compensation);
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            service.UploadAsync("c-2", "f.bin", new byte[] { 1, 2, 3 }, cts.Token));
+            service.UploadAsync("c-2", Source("f.bin", [1, 2, 3]), TestContext.Current.CancellationToken));
 
-        Assert.Contains("delete", api.Calls);
-        Assert.Equal("att-2", api.LastDeleteAttachmentId);
+        var deleted = Assert.Single(compensation.Deletes);
+        Assert.Equal("att-2", deleted.AttachmentId);
+        Assert.False(compensation.LastTokenWasCancelled);
     }
 
     [Fact]
-    public async Task Upload_WhenCompensatingDeleteAlsoFails_RethrowsOriginalNotDeleteError()
+    public async Task Upload_UnknownTransport_CompensatesCreatedAttachmentWithoutReadingBody()
+    {
+        var session = NewUnlockedSession();
+        var api = new FakeAttachmentApiClient
+        {
+            GetCipherResult = BuildCipherDto("c-unknown", cipherKeyEnc: null),
+            CreateResult = new AttachmentUploadV2Response(
+                AttachmentId: "att-unknown",
+                Url: "https://files.example/upload",
+                FileUploadType: (FileUploadType)42),
+        };
+        var compensation = new FakeCompensationClient();
+        var sync = new FakeSync(session, null);
+        var service = CreateService(
+            FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api),
+            session,
+            sync,
+            compensation);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            service.UploadAsync(
+                "c-unknown",
+                Source("file.bin", [1, 2, 3]),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(["get-cipher", "create-v2", "upload"], api.Calls);
+        Assert.Null(api.LastUploadBuffer);
+        var deleted = Assert.Single(compensation.Deletes);
+        Assert.Equal("c-unknown", deleted.CipherId);
+        Assert.Equal("att-unknown", deleted.AttachmentId);
+        Assert.Equal(0, sync.Calls);
+    }
+
+    [Fact]
+    public async Task Upload_LeaseExpiresAfterDataUpload_CompensatesBeforeRemoteCommitPoint()
+    {
+        var session = NewUnlockedSession();
+        var api = new FakeAttachmentApiClient
+        {
+            GetCipherResult = BuildCipherDto("c-lease", cipherKeyEnc: null),
+            CreateResult = new AttachmentUploadV2Response(
+                AttachmentId: "att-lease",
+                Url: "/ciphers/c-lease/attachment/att-lease",
+                FileUploadType: FileUploadType.Direct),
+            AfterUploadSuccess = () => session.Lock(),
+        };
+        var sync = new FakeSync(session, null);
+        var compensation = new FakeCompensationClient();
+        var service = CreateService(
+            FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api),
+            session,
+            sync,
+            compensation);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            service.UploadAsync(
+                "c-lease",
+                Source("lease.bin", [1, 2, 3]),
+                TestContext.Current.CancellationToken));
+
+        var deleted = Assert.Single(compensation.Deletes);
+        Assert.Equal("c-lease", deleted.CipherId);
+        Assert.Equal("att-lease", deleted.AttachmentId);
+        Assert.Equal(0, sync.Calls);
+    }
+
+    [Fact]
+    public async Task Upload_SyncCancellationAfterCommitPoint_ReturnsRefreshFailureWithoutCompensation()
+    {
+        var session = NewUnlockedSession();
+        var api = new FakeAttachmentApiClient
+        {
+            GetCipherResult = BuildCipherDto("c-committed", cipherKeyEnc: null),
+            CreateResult = new AttachmentUploadV2Response(
+                AttachmentId: "att-committed",
+                Url: "/ciphers/c-committed/attachment/att-committed",
+                FileUploadType: FileUploadType.Direct),
+        };
+        using var caller = new CancellationTokenSource();
+        var sync = new FakeSync(session, null)
+        {
+            BeforeResult = caller.Cancel,
+            Throws = new OperationCanceledException(caller.Token),
+        };
+        var compensation = new FakeCompensationClient();
+        var service = CreateService(
+            FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api),
+            session,
+            sync,
+            compensation);
+
+        var error = await Assert.ThrowsAsync<VaultRefreshException>(() =>
+            service.UploadAsync(
+                "c-committed",
+                Source("committed.bin", [4, 5, 6]),
+                caller.Token));
+
+        Assert.True(caller.IsCancellationRequested);
+        Assert.IsType<OperationCanceledException>(error.InnerException);
+        Assert.Contains("已保存", error.Message);
+        Assert.Contains("手动同步", error.Message);
+        Assert.Empty(compensation.Deletes);
+        Assert.Equal(1, sync.Calls);
+        Assert.Equal(["get-cipher", "create-v2", "upload"], api.Calls);
+    }
+
+    [Fact]
+    public async Task Upload_WhenCompensatingDeleteAlsoFails_ThrowsTypedCleanupError()
     {
         var session = NewUnlockedSession();
         var original = new TimeoutException("upload timed out");
@@ -334,16 +512,26 @@ public class AttachmentServiceTests
         {
             GetCipherResult = BuildCipherDto("c-3", cipherKeyEnc: null),
             CreateResult = new AttachmentUploadV2Response(
-                AttachmentId: "att-3", Url: "/ciphers/c-3/attachment/att-3", FileUploadType: 0),
+                AttachmentId: "att-3",
+                Url: "/ciphers/c-3/attachment/att-3",
+                FileUploadType: FileUploadType.Direct),
             UploadThrows = original,
-            DeleteThrows = new InvalidOperationException("compensating delete also failed"),
         };
-        var service = new AttachmentService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), _attCrypto, _decryptor, session, new FakeSync(session, null));
+        var cleanupError = new InvalidOperationException("compensating delete also failed");
+        var compensation = new FakeCompensationClient { DeleteThrows = cleanupError };
+        var service = CreateService(
+            FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api),
+            session,
+            new FakeSync(session, null),
+            compensation);
 
-        // 补偿删除自身失败不得掩盖原始上传异常:上抛的仍是原始 TimeoutException,而非 delete 的异常。
-        var ex = await Assert.ThrowsAsync<TimeoutException>(() =>
-            service.UploadAsync("c-3", "f.bin", new byte[] { 1 }, TestContext.Current.CancellationToken));
-        Assert.Same(original, ex);
-        Assert.Contains("delete", api.Calls); // 补偿删除确有尝试
+        var ex = await Assert.ThrowsAsync<AttachmentUploadCompensationException>(() =>
+            service.UploadAsync("c-3", Source("f.bin", [1]), TestContext.Current.CancellationToken));
+        Assert.Equal("c-3", ex.CipherId);
+        Assert.Equal("att-3", ex.OrphanedAttachmentId);
+        var errors = Assert.IsType<AggregateException>(ex.InnerException).InnerExceptions;
+        Assert.Contains(original, errors);
+        Assert.Contains(cleanupError, errors);
+        Assert.Single(compensation.Deletes);
     }
 }

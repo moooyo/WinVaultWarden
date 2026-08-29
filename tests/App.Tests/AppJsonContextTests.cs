@@ -11,10 +11,12 @@ public class AppJsonContextTests
     [Fact]
     public void PersistedSession_roundtrips_via_context()
     {
-        var s = new PersistedSession(PersistedSession.CurrentSchemaVersion, "a@b.com", new ServerOrigin("https://srv"), 1, "a@b.com", "dev", "rt", "2.key", KdfType.Pbkdf2, 600000, null, null);
+        var endpoints = ServerEndpoints.ForSelfHosted("https://srv/warden");
+        var s = new PersistedSession(PersistedSession.CurrentSchemaVersion, "a@b.com", endpoints, 1, "a@b.com", "dev", "rt", "2.key", KdfType.Pbkdf2, 600000, null, null);
         var bytes = JsonSerializer.SerializeToUtf8Bytes(s, AppJsonContext.Default.PersistedSession);
         var back = JsonSerializer.Deserialize(bytes, AppJsonContext.Default.PersistedSession)!;
         Assert.Equal(s, back);
+        Assert.Equal("https://srv/warden/api", back.Endpoints!.Api.Value);
     }
 
     [Fact]

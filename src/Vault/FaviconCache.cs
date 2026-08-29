@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+using Core.Models;
 using Core.Services;
 
 namespace Vault;
@@ -13,7 +14,7 @@ public sealed class FaviconCache : IFaviconCache
     private readonly HttpClient _http;
     private readonly VaultSession _session;
     private readonly string _cacheDir;
-    private readonly ConcurrentDictionary<string, Task<byte[]?>> _inflight = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<CacheKey, Task<byte[]?>> _inflight = [];
 
     public FaviconCache(HttpClient http, VaultSession session, string? cacheDir = null)
     {
@@ -29,7 +30,20 @@ public sealed class FaviconCache : IFaviconCache
         if (string.IsNullOrWhiteSpace(domain))
             return null;
 
-        var shared = _inflight.GetOrAdd(domain, LoadAsync);
+        ServerEndpoint iconsEndpoint;
+        try
+        {
+            iconsEndpoint = _session.CaptureLease().Endpoints.Icons;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+
+        var key = new CacheKey(
+            iconsEndpoint,
+            domain.Trim().ToLowerInvariant());
+        var shared = _inflight.GetOrAdd(key, LoadAsync);
         try
         {
             return await shared.WaitAsync(ct);
@@ -45,13 +59,13 @@ public sealed class FaviconCache : IFaviconCache
         finally
         {
             if (shared.IsCompleted)
-                _inflight.TryRemove(new KeyValuePair<string, Task<byte[]?>>(domain, shared)); // 仅移除同一个 task,避免误删更新的在途条目
+                _inflight.TryRemove(new KeyValuePair<CacheKey, Task<byte[]?>>(key, shared));
         }
     }
 
-    private async Task<byte[]?> LoadAsync(string domain)
+    private async Task<byte[]?> LoadAsync(CacheKey key)
     {
-        var hash = Hash(domain);
+        var hash = Hash(key);
         var png = Path.Combine(_cacheDir, hash + ".png");
         var none = Path.Combine(_cacheDir, hash + ".none");
 
@@ -59,10 +73,8 @@ public sealed class FaviconCache : IFaviconCache
         if (Fresh(png, PositiveTtl)) { try { return await File.ReadAllBytesAsync(png, CancellationToken.None); } catch { } }
         if (Fresh(none, NegativeTtl)) return null;
 
-        // 2. 拉取
-        var serverUrl = _session.Account.ServerUrl;
-        if (string.IsNullOrWhiteSpace(serverUrl)) return null;
-        var url = serverUrl.TrimEnd('/') + "/icons/" + domain + "/icon.png";
+        var url = key.Endpoint.Resolve(
+            $"{Uri.EscapeDataString(key.Domain)}/icon.png");
 
         try
         {
@@ -101,8 +113,7 @@ public sealed class FaviconCache : IFaviconCache
 
     private static void TryDelete(string path) { try { if (File.Exists(path)) File.Delete(path); } catch { } }
 
-    // 登出时清空本地图标缓存:删除缓存目录下所有 .png/.none/.tmp 文件。
-    // best-effort:目录不存在/文件被占用等异常一律吞掉,绝不抛。
+    // Clear all cached icons on logout. Failures are deliberately non-fatal.
     public void Clear()
     {
         try
@@ -115,6 +126,9 @@ public sealed class FaviconCache : IFaviconCache
         catch { /* 目录枚举失败(不存在/占用)忽略 */ }
     }
 
-    private static string Hash(string domain)
-        => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(domain.ToLowerInvariant())));
+    private static string Hash(CacheKey key)
+        => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            $"{key.Endpoint.Value}\n{key.Domain}")));
+
+    private readonly record struct CacheKey(ServerEndpoint Endpoint, string Domain);
 }

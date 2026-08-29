@@ -34,7 +34,7 @@ public sealed class HelloUnlockService : IHelloUnlockService
             using var userKey = copiedKey;
             if (!_tokenStore.TryLoad(out var persisted)
                 || persisted.AccountId != lease.AccountId
-                || persisted.Origin != lease.Origin
+                || persisted.Endpoints != lease.Endpoints
                 || persisted.Generation != lease.Generation)
                 throw new InvalidOperationException("No matching saved session.");
 
@@ -59,7 +59,7 @@ public sealed class HelloUnlockService : IHelloUnlockService
         var lease = _session.CaptureLease();
         if (!_tokenStore.TryLoad(out var persisted)
             || persisted.AccountId != lease.AccountId
-            || persisted.Origin != lease.Origin
+            || persisted.Endpoints != lease.Endpoints
             || persisted.Generation != lease.Generation)
             return;
 

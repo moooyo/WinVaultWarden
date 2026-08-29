@@ -10,6 +10,7 @@ namespace App.Views;
 public sealed partial class SendEditorDialog : ContentDialog
 {
     private bool _canUpdateBindings;
+    private bool _canApplyExpirationChanges;
     private readonly Func<SendEditorDraft, CancellationToken, Task<UiOperationResult>> _save;
 
     public SendEditorDraft Draft { get; }
@@ -46,6 +47,7 @@ public sealed partial class SendEditorDialog : ContentDialog
         {
             _canUpdateBindings = true;
             Bindings?.Update();
+            _canApplyExpirationChanges = true;
         };
         Opened += (_, _) => ApplyResponsiveWidth();
         SizeChanged += (_, _) => ApplyResponsiveWidth();
@@ -80,23 +82,28 @@ public sealed partial class SendEditorDialog : ContentDialog
             Bindings?.Update();
     }
 
-    // 过期时间相对标签 ⇄ Draft.ExpirationDate(可空)。
-    public string ExpirationLabel
+    private void OnExpirationLabelChanged(object sender, SelectionChangedEventArgs e)
     {
-        get => Draft.ExpirationDate is null ? "永不" : _expirationLabel;
-        set
-        {
-            _expirationLabel = value;
-            Draft.ExpirationDate = value switch
-            {
-                "1 小时" => DateTimeOffset.UtcNow.AddHours(1),
-                "1 天" => DateTimeOffset.UtcNow.AddDays(1),
-                "7 天" => DateTimeOffset.UtcNow.AddDays(7),
-                _ => null,
-            };
-        }
+        if (!_canApplyExpirationChanges
+            || sender is not ComboBox { SelectedItem: string label })
+            return;
+
+        Draft.SelectExpiration(label, DateTimeOffset.UtcNow);
+        Bindings?.Update();
     }
-    private string _expirationLabel = "永不";
+
+    private void OnCustomExpirationDateChanged(
+        CalendarDatePicker sender,
+        CalendarDatePickerDateChangedEventArgs args)
+    {
+        if (!_canApplyExpirationChanges)
+            return;
+
+        if (args.NewDate is { } selectedDate)
+            Draft.SelectCustomExpirationDate(selectedDate, TimeZoneInfo.Local);
+
+        Bindings?.Update();
+    }
 
     // 选择文件:只读取名称/长度构造可重开 SendFileSource(超限在构造前抛出),绝不读取整份明文字节。
     private async void OnChooseFileClick(object sender, RoutedEventArgs e)

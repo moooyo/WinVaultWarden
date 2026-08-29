@@ -3,12 +3,28 @@ namespace Core.Models;
 public sealed record AccountInfo(
     string Id,
     string Email,
-    ServerOrigin? Origin,
+    ServerEndpoints? Endpoints,
     string Initial,
     string KdfSummary)
 {
-    public string ServerUrl => Origin?.Value ?? string.Empty;
+    public AccountInfo(
+        string id,
+        string email,
+        ServerOrigin? origin,
+        string initial,
+        string kdfSummary)
+        : this(
+            id,
+            email,
+            origin is null ? null : ServerEndpoints.ForSelfHosted(origin.Value.Value),
+            initial,
+            kdfSummary)
+    {
+    }
+
+    public ServerOrigin? Origin => Endpoints?.WebVault.Origin;
+    public string ServerUrl => Endpoints?.WebVault.Value ?? string.Empty;
 
     public static AccountInfo Empty { get; } =
-        new(string.Empty, string.Empty, null, string.Empty, string.Empty);
+        new(string.Empty, string.Empty, (ServerEndpoints?)null, string.Empty, string.Empty);
 }

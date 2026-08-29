@@ -79,37 +79,45 @@ WinUI 3 + Windows App SDK 项目通常需要 Visual Studio 2022/2026（含“Win
 
 > 安全要点：主密码与主密钥**绝不**离开客户端内存边界，更不可落盘明文或写入日志。
 
-## 测试环境（实测 Vaultwarden 服务端）
+## Test environment (official Bitwarden Lite)
 
-用于把客户端代码跑在真实 Bitwarden 兼容服务端上做端到端验证。**该测试账户与服务端均为一次性测试用途，凭据可明文记录于此。**
+Use this environment for end-to-end verification against the official Bitwarden Lite server. The account and data are dedicated to testing.
 
-### 服务器与登录
+### Server access
 
-- **SSH 登录**：`ssh test-env`（已在 dotssh 配置 `D:\Code\dotssh\config.d/hosts` 定义 → `root@10.0.1.20:22`，认证走 Bitwarden SSH Agent 命名管道）。
-  - ⚠️ **必须用 Windows 原生 ssh.exe**（`$env:WINDIR\System32\OpenSSH\ssh.exe`，经 PowerShell 调用）。Git Bash 自带的 ssh 会因 `~/.ssh/config` 开头的 UTF-8 BOM 报 `Bad configuration option: \357\273\277include` 而失败，且其无法访问 Windows 命名管道里的 agent 私钥。
-  - 远程命令避免在 PowerShell 单引号里带 `()`（bash 会当语法）；多行命令用 PowerShell here-string `@' ... '@` 传给 ssh.exe。
-- **服务器**：test-env = Debian 13 (trixie) x86_64，对外 IP `10.0.1.20`，当前网络可直连。
-- **Vaultwarden**：docker 容器 `vaultwarden`（镜像 `vaultwarden/server:latest`，服务端 version `2025.12.0`），数据卷 `/opt/vaultwarden/data`，端口映射 `8080:80`。
-  - 启动参数：`DOMAIN=http://10.0.1.20:8080`、`SIGNUPS_ALLOWED=true`、`WEBSOCKET_ENABLED=true`、`ADMIN_TOKEN=testadmintoken123`。
-  - **客户端服务端 URL**：`http://10.0.1.20:8080`（客户端接受 http，无需 HTTPS）。
-  - 健康检查：`curl http://10.0.1.20:8080/alive`；管理后台：`http://10.0.1.20:8080/admin`（token `testadmintoken123`）。
-- **测试账户**：邮箱 `test@winvaultwarden.local` / 主密码 `Test-Master-Password-1!`（KDF = PBKDF2-SHA256，600000 次）。
+- **SSH host**: `ssh test-env`. The alias is defined in `D:\Code\dotssh\config.d/hosts` and authentication uses the Bitwarden SSH Agent named pipe.
+  - Use the Windows OpenSSH client at `$env:WINDIR\System32\OpenSSH\ssh.exe`. The Git Bash SSH client cannot use the Windows named-pipe agent and may reject the BOM in `~/.ssh/config`.
+- **Container**: `winvaultwarden-bitwarden-test` runs the official Bitwarden Lite server.
+- **Remote listener**: the service is bound only to `127.0.0.1:18082` on `test-env`; it is not a directly reachable LAN endpoint.
+- **Required local tunnel**: run this command before starting the desktop client or LiveSmoke:
 
-### 运行端到端冒烟测试
-
-`tests/LiveSmoke`（控制台 Exe，**不**随 `dotnet test` 跑，需手动指向 live 服务端）覆盖：config → 注册（幂等）→ 登录 → 同步 → 建文件夹/Login 条目 → 往返解密校验 → 更新 → 软删/恢复 → 硬删清理。全程走我们自己的 `Crypto`/`Api`/`Vault` 代码。
-
-```bash
-# 默认即指向上面的测试服务端与账户
-dotnet run --project tests/LiveSmoke -- http://10.0.1.20:8080
-# 或自定义: dotnet run --project tests/LiveSmoke -- <serverUrl> <email> <password>
+```powershell
+ssh -N -L 127.0.0.1:18082:127.0.0.1:18082 test-env
 ```
 
-> 客户端本身未实现自助注册（注册仅 Web 端）；冒烟测试用我方 Crypto 按 Vaultwarden `RegisterData` 契约（`src/api/core/accounts.rs`）自行构造注册体来准备账户，账户已存在时自动复用。
+- **Client and LiveSmoke URL**: `http://127.0.0.1:18082`.
+- Bare `127.0.0.1` is incorrect because it omits the forwarded port. The legacy `http://10.0.1.20:8080` URL is also incorrect and must not be used.
+- With the tunnel running, check availability locally with `curl http://127.0.0.1:18082/alive`.
+- **Test account**: `test@winvaultwarden.local` / `Test-Master-Password-1!` (PBKDF2-SHA256, 600000 iterations).
 
-> **⚠️ LiveSmoke 有状态测试的两个坑（2026-07-02 踩过）：**
-> 1. **改密/改KDF 用例会改测试账户**（`AccountChangePasswordAndRevertAsync` 切到 `Temp-Smoke-Password-2!` 再切回；`AccountChangeKdfAndRevertAsync` 切到 700000 再切回）。若某次运行**中途中断**（含被管道 `| head`/`sed` 提前关闭而 SIGPIPE 杀死进程），账户会**卡在临时密码或 700000 KDF**，导致后续所有运行在 login 就失败。查当前 KDF：`curl -s -X POST http://10.0.1.20:8080/identity/accounts/prelogin -H 'Content-Type: application/json' -d '{"email":"test@winvaultwarden.local"}'`。**恢复**：用我方 `AuthService.LoginAsync`(临时口令) + `AccountService.ChangePasswordAsync`(临时→`Test-Master-Password-1!`) 和 `ChangeKdfAsync(pwd, 600000)`（可临时在 LiveSmoke 加个 env 触发的 restore 分支，或写个引用 src 项目的一次性 console）。**因此：跑 LiveSmoke 时不要用 `| head`/`| sed` 截断输出**（会中途杀死进程、污染账户）；要么全量输出、要么重定向到文件再 grep。
-> 2. **Vaultwarden 有登录限流**。短时间内大量 login（改密/改KDF 往返一次就有 ~4 次 login）会触发限流，`LoginAsync` 返回**空消息的 `AuthResult.Failure`**、vault 变 Locked，account-mutation 系列连锁失败。这**不是代码 bug**——限流窗口（~60s）冷却后即恢复。密集调试后若见 login 莫名失败，先等一会再跑。
+### Running the end-to-end smoke test
+
+`tests/LiveSmoke` is a console executable and is not included in `dotnet test`. It exercises the production `Crypto`, `Api`, and `Vault` layers against the live service.
+
+```powershell
+# Start the tunnel in a separate PowerShell session first.
+ssh -N -L 127.0.0.1:18082:127.0.0.1:18082 test-env
+
+# The default URL is http://127.0.0.1:18082.
+dotnet run --project tests/LiveSmoke
+# Custom form: dotnet run --project tests/LiveSmoke -- <serverUrl> <email> <password>
+```
+
+> The desktop client does not expose self-service registration. LiveSmoke can prepare an account through the compatible registration contract and reuses the seeded account when server registration policy is disabled.
+
+> **Stateful LiveSmoke cautions:**
+> 1. Password and KDF tests temporarily change the test account before restoring it. If a run is terminated early, the account may remain on `Temp-Smoke-Password-2!` or 700000 KDF iterations. With the tunnel running, inspect the current KDF through `curl -s -X POST http://127.0.0.1:18082/identity/accounts/prelogin -H 'Content-Type: application/json' -d '{"email":"test@winvaultwarden.local"}'`. Do not pipe LiveSmoke directly through `head` or `sed`; redirect the complete output to a file before filtering it.
+> 2. The test server rate-limits bursts of login attempts. If login unexpectedly fails after dense mutation testing, wait for the rate-limit window to expire before rerunning.
 
 ## 给未来实例的工作提示
 

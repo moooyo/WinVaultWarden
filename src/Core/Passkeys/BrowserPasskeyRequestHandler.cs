@@ -191,7 +191,16 @@ public sealed class BrowserPasskeyRequestHandler
             if (cipher is null)
                 return Error(requestId, "cipher_not_found");
 
-            await _write.SaveCipherAsync(cipher, lease, ct);
+            try
+            {
+                await _write.SaveCipherAsync(cipher, lease, ct);
+            }
+            catch (VaultRefreshException)
+            {
+                // The credential was committed remotely. Continue only while the request's
+                // original lease is still current; a lock or account switch must still abort.
+            }
+            ct.ThrowIfCancellationRequested();
             _vault.ThrowIfExpired(lease);
 
             return new BrowserPasskeyResponse(requestId, "passkey.create", true,

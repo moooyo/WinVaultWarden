@@ -3,23 +3,127 @@ using System.Text.Json.Serialization;
 namespace Core.Models;
 
 /// <summary>
-/// 落盘的密码库缓存条目(纯数据)。SyncResponseJson 是**加密态** SyncResponse 的原样 JSON
-/// (字段皆 EncString 密文)。头部字段(schema/email/serverUrl)明文,用于失效判断与"数据可能过期"提示。
-/// 由 ICacheStore 序列化 + DPAPI 保护后落盘。
+/// Stores an encrypted sync payload together with its complete session binding.
 /// </summary>
-[method: JsonConstructor]
-public sealed record VaultCacheEntry(
-    int SchemaVersion,
-    string AccountId,
-    ServerOrigin Origin,
-    long Generation,
-    string Email,
-    DateTimeOffset CachedAtUtc,
-    string SyncResponseJson)
+public sealed record VaultCacheEntry
 {
-    /// <summary>
-    /// 兼容性只读视图:VaultCacheService(非 Task 2 范围)仍以字符串形式比较服务端地址。
-    /// 与 PersistedSession.ServerUrl/AccountInfo.ServerUrl 同一约定。
-    /// </summary>
-    public string ServerUrl => Origin.Value;
+    public const int LegacySchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
+
+    [JsonConstructor]
+    public VaultCacheEntry(
+        int schemaVersion,
+        string accountId,
+        ServerOrigin origin,
+        ServerEndpoints? endpoints,
+        long generation,
+        string email,
+        DateTimeOffset cachedAtUtc,
+        string syncResponseJson)
+    {
+        SchemaVersion = schemaVersion;
+        AccountId = accountId;
+        Origin = origin;
+        Endpoints = endpoints;
+        Generation = generation;
+        Email = email;
+        CachedAtUtc = cachedAtUtc;
+        SyncResponseJson = syncResponseJson;
+    }
+
+    public VaultCacheEntry(
+        int schemaVersion,
+        string accountId,
+        ServerEndpoints endpoints,
+        long generation,
+        string email,
+        DateTimeOffset cachedAtUtc,
+        string syncResponseJson)
+        : this(
+            schemaVersion,
+            accountId,
+            endpoints?.WebVault.Origin ?? default,
+            endpoints,
+            generation,
+            email,
+            cachedAtUtc,
+            syncResponseJson)
+    {
+    }
+
+    public VaultCacheEntry(
+        int schemaVersion,
+        string accountId,
+        ServerOrigin origin,
+        long generation,
+        string email,
+        DateTimeOffset cachedAtUtc,
+        string syncResponseJson)
+        : this(
+            schemaVersion,
+            accountId,
+            origin,
+            schemaVersion == CurrentSchemaVersion && origin.IsInitialized
+                ? ServerEndpoints.FromWebVault(origin.Value)
+                : null,
+            generation,
+            email,
+            cachedAtUtc,
+            syncResponseJson)
+    {
+    }
+
+    public int SchemaVersion { get; init; }
+    public string AccountId { get; init; }
+    public ServerOrigin Origin { get; init; }
+    public ServerEndpoints? Endpoints { get; init; }
+    public long Generation { get; init; }
+    public string Email { get; init; }
+    public DateTimeOffset CachedAtUtc { get; init; }
+    public string SyncResponseJson { get; init; }
+    public string ServerUrl => Endpoints?.WebVault.Value ?? string.Empty;
+
+    public bool HasValidBinding =>
+        SchemaVersion == CurrentSchemaVersion
+        && HasValidLegacyIdentity()
+        && Endpoints is not null
+        && Origin == Endpoints.WebVault.Origin;
+
+    public bool TryMigrate(out VaultCacheEntry migrated)
+    {
+        if (HasValidBinding)
+        {
+            migrated = this;
+            return true;
+        }
+
+        if (SchemaVersion != LegacySchemaVersion
+            || Endpoints is not null
+            || !HasValidLegacyIdentity())
+        {
+            migrated = null!;
+            return false;
+        }
+
+        try
+        {
+            migrated = this with
+            {
+                SchemaVersion = CurrentSchemaVersion,
+                Endpoints = ServerEndpoints.FromWebVault(Origin.Value),
+            };
+            return migrated.HasValidBinding;
+        }
+        catch (ArgumentException)
+        {
+            migrated = null!;
+            return false;
+        }
+    }
+
+    private bool HasValidLegacyIdentity() =>
+        !string.IsNullOrWhiteSpace(AccountId)
+        && !string.IsNullOrWhiteSpace(Email)
+        && Generation > 0
+        && Origin.IsInitialized;
 }

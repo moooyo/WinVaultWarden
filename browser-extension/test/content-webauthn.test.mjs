@@ -212,6 +212,8 @@ test("a matching request forwards to the port with origin/context stripped", () 
   assert.equal(harness.portHandle.posted.length, 1);
   const [forwarded] = harness.portHandle.posted;
   assert.equal(forwarded.kind, "request");
+  assert.equal(forwarded.id, id);
+  assert.equal(forwarded.request.id, id);
   assert.equal(forwarded.publicKeyCredentialsGetAllowed, true);
   assert.equal(forwarded.request.origin, undefined);
   assert.equal(forwarded.request.crossOrigin, undefined);
@@ -219,6 +221,25 @@ test("a matching request forwards to the port with origin/context stripped", () 
   assert.equal(forwarded.request.payload.origin, undefined);
   assert.equal(forwarded.request.payload.crossOrigin, undefined);
   assert.equal(forwarded.request.payload.context, undefined);
+});
+
+test("rejects divergent envelope and nested request ids without forwarding", () => {
+  const harness = createContentHarness();
+  const outerId = randomHex(16);
+  const innerId = randomHex(16);
+  harness.sendFromMain({
+    channelId: harness.channelId,
+    id: outerId,
+    kind: "request",
+    request: { v: 1, id: innerId, type: "passkey.get", payload: {} },
+  });
+
+  assert.equal(harness.portHandle.posted.length, 0);
+  const response = harness.fromIsolated.find(
+    (message) => message.kind === "response" && message.id === outerId,
+  );
+  assert.equal(response.response.error.code, "security_sender");
+  assert.equal(response.response.id, outerId);
 });
 
 test("ignores messages on a foreign channel or from another window", () => {
@@ -239,7 +260,13 @@ test("a port response is relayed back to MAIN on the frame channel", () => {
   });
   harness.portHandle.emitMessage({
     id,
-    response: { v: 1, id, type: "passkey.get", ok: true, payload: { credentialId: "abc" } },
+    response: {
+      v: 1,
+      id: randomHex(16),
+      type: "passkey.get",
+      ok: true,
+      payload: { credentialId: "abc" },
+    },
   });
 
   const response = harness.fromIsolated.find((message) => message.kind === "response");
@@ -247,6 +274,7 @@ test("a port response is relayed back to MAIN on the frame channel", () => {
   assert.equal(response.source, "winvaultwarden-isolated");
   assert.equal(response.channelId, harness.channelId);
   assert.equal(response.id, id);
+  assert.equal(response.response.id, id);
   assert.equal(response.response.payload.credentialId, "abc");
 });
 
@@ -281,6 +309,54 @@ test("a cancel from MAIN forwards to the port once", () => {
 
   const cancels = harness.portHandle.posted.filter((message) => message.kind === "cancel");
   assert.equal(cancels.length, 1);
+});
+
+test("a cancel racing a disconnected port is still locally settled", () => {
+  const harness = createContentHarness();
+  const id = randomHex(16);
+  harness.sendFromMain({
+    channelId: harness.channelId,
+    id,
+    kind: "request",
+    request: { v: 1, id, type: "passkey.get", payload: {} },
+  });
+  harness.portHandle.port.postMessage = () => {
+    throw new Error("port disconnected");
+  };
+
+  assert.doesNotThrow(() =>
+    harness.sendFromMain({ channelId: harness.channelId, id, kind: "cancel" }),
+  );
+
+  harness.portHandle.emitMessage({
+    id,
+    response: { v: 1, id, type: "passkey.get", ok: true, payload: { credentialId: "late" } },
+  });
+  assert.equal(
+    harness.fromIsolated.filter((message) => message.kind === "response").length,
+    0,
+  );
+});
+
+test("a response arriving after cancellation is dropped by the relay", () => {
+  const harness = createContentHarness();
+  const id = randomHex(16);
+  harness.sendFromMain({
+    channelId: harness.channelId,
+    id,
+    kind: "request",
+    request: { v: 1, id, type: "passkey.get", payload: {} },
+  });
+  harness.sendFromMain({ channelId: harness.channelId, id, kind: "cancel" });
+  const before = harness.fromIsolated.filter((message) => message.kind === "response").length;
+
+  harness.portHandle.emitMessage({
+    id,
+    response: { v: 1, id, type: "passkey.get", ok: true, payload: { credentialId: "late" } },
+  });
+
+  const after = harness.fromIsolated.filter((message) => message.kind === "response").length;
+  assert.equal(after, before);
 });
 
 test("port disconnect completes active requests as operation_aborted without leaking lastError", () => {

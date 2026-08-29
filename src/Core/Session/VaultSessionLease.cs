@@ -11,20 +11,28 @@ public sealed class VaultSessionLease
     internal VaultSessionLease(
         long generation,
         string accountId,
-        ServerOrigin origin,
+        ServerEndpoints endpoints,
         CancellationToken cancellationToken,
         Guid stamp)
     {
         Generation = generation;
         AccountId = accountId;
-        Origin = origin;
+        Endpoints = endpoints;
         CancellationToken = cancellationToken;
         Stamp = stamp;
     }
 
     public long Generation { get; }
     public string AccountId { get; }
-    public ServerOrigin Origin { get; }
+    public ServerEndpoints Endpoints { get; }
+    public ServerOrigin Origin => Endpoints.WebVault.Origin;
     public CancellationToken CancellationToken { get; }
     internal Guid Stamp { get; }
+
+    public bool SameSessionAs(VaultSessionLease? other) =>
+        other is not null
+        && Stamp == other.Stamp
+        && Generation == other.Generation
+        && AccountId == other.AccountId
+        && Endpoints == other.Endpoints;
 }

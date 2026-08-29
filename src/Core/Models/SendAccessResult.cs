@@ -1,25 +1,139 @@
+using System.Security.Cryptography;
 using Core.Enums;
 
 namespace Core.Models;
 
-// 访问分享 Send 后的解密结果。Seed 保留以便下载文件后用同一 cryptoKey 解密。
-// SendId / FileId 保留供 DownloadFileAsync 发起 access-file 中间请求换取真实下载 URL。
-public sealed class SendAccessResult
+// Decrypted projection of an accessed Send. Seed is retained so a file download can
+// derive the same crypto key. SendId and FileId identify the access-file request.
+public sealed class SendAccessResult : IDisposable
 {
+    private ServerEndpoints? _endpoints;
+    private readonly object _stateGate = new();
+    private byte[]? _seed;
+    private SendAccessTokenSecret? _accessToken;
+
     public SendType Type { get; init; }
     public string Name { get; init; } = "";
     public string? Notes { get; init; }
     public string? TextContent { get; init; }
     public string? FileName { get; init; }
     public string? FileDownloadUrl { get; init; }
-    /// <summary>文件型 Send 服务端 UUID(来自 SendAccessResponseDto.Id)。用于 access-file 中间步骤。</summary>
+    /// <summary>The file Send UUID used by the access-file request.</summary>
     public string? SendId { get; init; }
-    /// <summary>文件型 Send 的 file_id(来自 SendFileDto.Id)。用于 access-file 中间步骤。</summary>
+    /// <summary>The file identifier used by the access-file request.</summary>
     public string? FileId { get; init; }
     public string AccessId { get; init; } = "";
-    /// <summary>访问时使用的分享 URL 来源(从分享 URL 自身解析,而非当前登录账户)。文件下载沿用同一匿名 origin。</summary>
-    public ServerOrigin Origin { get; init; }
-    public byte[] Seed { get; init; } = Array.Empty<byte>();
-    /// <summary>访问时使用的密码证明(base64)。文件下载中间步骤需重新提交。</summary>
+
+    /// <summary>
+    /// Gets the service endpoints derived from the share URL rather than from the
+    /// currently signed-in account.
+    /// </summary>
+    public ServerEndpoints Endpoints
+    {
+        get => _endpoints
+            ?? throw new InvalidOperationException("The Send access endpoints are not initialized.");
+        init => _endpoints = value
+            ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>
+    /// Compatibility view of the Web Vault origin. Setting it derives a self-hosted
+    /// endpoint set; new code should set <see cref="Endpoints"/> instead.
+    /// </summary>
+    public ServerOrigin Origin
+    {
+        get => _endpoints?.WebVault.Origin ?? default;
+        init => _endpoints = ServerEndpoints.FromWebVault(value.Value);
+    }
+
+    /// <summary>
+    /// Returns an owned copy of the Send seed. Callers handling the copy must clear it when done.
+    /// </summary>
+    public byte[] Seed
+    {
+        get => CopySeed();
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            _seed = value.ToArray();
+        }
+    }
+
+    public byte[] CopySeed()
+    {
+        lock (_stateGate)
+        {
+            ObjectDisposedException.ThrowIf(_seed is null, this);
+            return _seed.ToArray();
+        }
+    }
+
+    public SendDownloadLease AcquireDownloadLease()
+    {
+        lock (_stateGate)
+        {
+            ObjectDisposedException.ThrowIf(_seed is null, this);
+            var accessToken = _accessToken?.Clone();
+            try
+            {
+                return new SendDownloadLease(
+                    Endpoints,
+                    AccessId,
+                    SendId,
+                    FileId,
+                    FileDownloadUrl,
+                    PasswordProof,
+                    UsesAccessToken,
+                    _seed,
+                    accessToken);
+            }
+            catch
+            {
+                accessToken?.Dispose();
+                throw;
+            }
+        }
+    }
+
+    internal void StoreAccessToken(
+        string value,
+        DateTimeOffset expiresAt)
+    {
+        var replacement = new SendAccessTokenSecret(value, expiresAt);
+        SendAccessTokenSecret? previous;
+        lock (_stateGate)
+        {
+            if (_seed is null)
+            {
+                replacement.Dispose();
+                throw new ObjectDisposedException(nameof(SendAccessResult));
+            }
+
+            previous = _accessToken;
+            _accessToken = replacement;
+        }
+
+        previous?.Dispose();
+    }
+
+    public void Dispose()
+    {
+        byte[]? seed;
+        SendAccessTokenSecret? accessToken;
+        lock (_stateGate)
+        {
+            seed = _seed;
+            _seed = null;
+            accessToken = _accessToken;
+            _accessToken = null;
+        }
+
+        if (seed is not null)
+            CryptographicOperations.ZeroMemory(seed);
+        accessToken?.Dispose();
+    }
+
+    /// <summary>The Base64 password proof resubmitted by the access-file request.</summary>
     public string? PasswordProof { get; init; }
+    public bool UsesAccessToken { get; init; }
 }

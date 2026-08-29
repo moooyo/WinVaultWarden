@@ -1,4 +1,5 @@
 using Core.Services;
+using Core.Session;
 
 namespace App.Services;
 
@@ -59,4 +60,28 @@ public sealed class NotificationsHost : IAsyncDisposable
 
     /// <inheritdoc/>
     public async ValueTask DisposeAsync() => await StopAsync();
+}
+
+public sealed class SessionTerminationHost : IDisposable
+{
+    private readonly ISessionTerminationSource _source;
+    private readonly Action<SessionTerminationNotice> _onTermination;
+
+    public SessionTerminationHost(
+        ISessionTerminationSource source,
+        Action<SessionTerminationNotice> onTermination)
+    {
+        _source = source;
+        _onTermination = onTermination;
+        _source.TerminationRequested += OnTerminationRequested;
+    }
+
+    private void OnTerminationRequested(SessionTerminationNotice notice)
+    {
+        try { _onTermination(notice); }
+        catch { }
+    }
+
+    public void Dispose() =>
+        _source.TerminationRequested -= OnTerminationRequested;
 }

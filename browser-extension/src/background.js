@@ -1,17 +1,18 @@
-// Service-worker background. It is the only component that assigns trust. Each frame's isolated relay
-// opens one long-lived runtime port named "winvaultwarden-passkey-frame-v1"; this worker rebuilds the
-// request context from that port's `sender` (never from the page payload), pins the ceremony origin to
-// the trusted frame origin, and multiplexes every frame onto the single persistent native port. A
-// wrong port name is refused, an untrusted sender is answered with a code-only security_sender, and a
-// frame disconnect cancels that frame's in-flight native requests.
+// Service-worker background. Each frame owns page-local request ids, while native-port owns its
+// independent wire ids. This layer keeps only capability handles, rebuilds trusted context from the
+// runtime port sender, and rebinds native responses to the originating page id. Per-frame and global
+// admission limits fail fast before another ceremony can be queued.
 import { buildTrustedContext } from "./trusted-context.js";
-import { sendNative, cancelNative } from "./native-port.js";
+import { startNativeRequest } from "./native-port.js";
 
 const FRAME_PORT_NAME = "winvaultwarden-passkey-frame-v1";
+const MAX_ACTIVE_PER_FRAME = 1;
+const MAX_ACTIVE_GLOBAL = 8;
+
+let activeGlobalCount = 0;
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== FRAME_PORT_NAME) {
-    // Only the passkey frame relay may connect; refuse anything else immediately.
     try {
       port.disconnect();
     } catch {
@@ -20,31 +21,46 @@ chrome.runtime.onConnect.addListener((port) => {
     return;
   }
 
-  const activeIds = new Set();
+  const activeOperations = new Map();
 
   port.onMessage.addListener((message) => {
     if (message?.kind === "request") {
-      void handleRequest(port, activeIds, message);
+      void handleRequest(port, activeOperations, message);
     } else if (message?.kind === "cancel" && typeof message.id === "string") {
-      if (activeIds.delete(message.id)) {
-        cancelNative(message.id);
+      const operation = activeOperations.get(message.id);
+      if (operation && releaseOperation(activeOperations, message.id, operation)) {
+        operation.cancel();
       }
     }
   });
 
   port.onDisconnect.addListener(() => {
     void chrome.runtime.lastError;
-    for (const id of activeIds) {
-      cancelNative(id);
+    for (const [id, operation] of [...activeOperations]) {
+      if (releaseOperation(activeOperations, id, operation)) {
+        operation.cancel();
+      }
     }
-    activeIds.clear();
   });
 });
 
-async function handleRequest(port, activeIds, message) {
-  const source = message.request;
-  const id = source?.id;
-  if (typeof id !== "string") {
+async function handleRequest(port, activeOperations, message) {
+  const pageId = message?.id;
+  const source = message?.request;
+  if (typeof pageId !== "string" || !source || typeof source !== "object") {
+    return;
+  }
+
+  // The envelope id is the sole frame-local correlation key. A different nested id must never be
+  // allowed to cancel one request while delivering another request's response.
+  if (source.id !== pageId) {
+    postResponse(port, pageId, failure(pageId, "security_sender"));
+    return;
+  }
+
+  // A duplicate page id cannot receive a second failure response because that response could settle
+  // the already-running operation. Ignore it and preserve ownership of the original capability.
+  if (activeOperations.has(pageId)) {
     return;
   }
 
@@ -52,17 +68,26 @@ async function handleRequest(port, activeIds, message) {
   try {
     context = buildTrustedContext(port.sender, chrome.runtime.id, message.publicKeyCredentialsGetAllowed);
   } catch {
-    postResponse(port, id, failure(id, "security_sender"));
+    postResponse(port, pageId, failure(pageId, "security_sender"));
     return;
   }
 
-  const request = { ...source, v: 1, context };
+  if (activeOperations.size >= MAX_ACTIVE_PER_FRAME) {
+    postResponse(port, pageId, failure(pageId, "request_in_progress"));
+    return;
+  }
+  if (activeGlobalCount >= MAX_ACTIVE_GLOBAL) {
+    postResponse(port, pageId, failure(pageId, "rate_limited"));
+    return;
+  }
+
+  const sourceWithoutId = { ...source };
+  delete sourceWithoutId.id;
+  const request = { ...sourceWithoutId, v: 1, context };
   // Discard any page-supplied top-level origin/crossOrigin; the trusted context is authoritative.
   delete request.origin;
   delete request.crossOrigin;
   if (request.payload && typeof request.payload === "object") {
-    // The App derives the ceremony origin/crossOrigin from the payload; pin them to the trusted
-    // frame/top origins so a page can never assert an origin that is not its own.
     request.payload = {
       ...request.payload,
       origin: context.frameOrigin,
@@ -71,13 +96,36 @@ async function handleRequest(port, activeIds, message) {
     delete request.payload.context;
   }
 
-  activeIds.add(id);
+  const operation = startNativeRequest(request);
+  activeOperations.set(pageId, operation);
+  activeGlobalCount += 1;
+
   try {
-    const response = await sendNative(request);
-    postResponse(port, id, response);
+    const response = await operation.result;
+    // Cancellation, frame disconnect, or page-id reuse revokes delivery authority even if a native
+    // response was already queued as a microtask.
+    if (activeOperations.get(pageId) === operation) {
+      postResponse(port, pageId, bindPageId(response, pageId));
+    }
   } finally {
-    activeIds.delete(id);
+    releaseOperation(activeOperations, pageId, operation);
   }
+}
+
+function releaseOperation(activeOperations, pageId, operation) {
+  if (activeOperations.get(pageId) !== operation) {
+    return false;
+  }
+  activeOperations.delete(pageId);
+  activeGlobalCount = Math.max(0, activeGlobalCount - 1);
+  return true;
+}
+
+function bindPageId(response, pageId) {
+  if (!response || typeof response !== "object") {
+    return failure(pageId, "internal_error");
+  }
+  return { ...response, v: 1, id: pageId };
 }
 
 function postResponse(port, id, response) {

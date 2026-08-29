@@ -10,11 +10,15 @@
                   HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="{StaticResource SpacingXLarge}" MaxWidth="1000" HorizontalAlignment="Stretch">
-            <TextBlock Text="设置" Style="{ThemeResource TitleTextBlockStyle}" />
+            <TextBlock Text="设置"
+                       Style="{ThemeResource TitleTextBlockStyle}"
+                       AutomationProperties.HeadingLevel="Level1" />
 
             <!-- ================= 账户 ================= -->
             <StackPanel Spacing="{StaticResource SpacingXSmall}">
-                <TextBlock Text="账户" Style="{StaticResource SectionHeaderTextBlockStyle}" />
+                <TextBlock Text="账户"
+                           Style="{StaticResource SectionHeaderTextBlockStyle}"
+                           AutomationProperties.HeadingLevel="Level2" />
 
                 <tk:SettingsCard Header="{x:Bind ViewModel.AccountEmail}"
                                  Description="{x:Bind ViewModel.AccountServer}">
@@ -48,13 +52,17 @@
 
             <!-- ================= 安全 ================= -->
             <StackPanel Spacing="{StaticResource SpacingXSmall}">
-                <TextBlock Text="安全" Style="{StaticResource SectionHeaderTextBlockStyle}" />
+                <TextBlock Text="安全"
+                           Style="{StaticResource SectionHeaderTextBlockStyle}"
+                           AutomationProperties.HeadingLevel="Level2" />
 
                 <tk:SettingsCard Header="会话超时" Description="超时后将密码库锁定或登出">
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE916;" />
                     </tk:SettingsCard.HeaderIcon>
-                    <ComboBox MinWidth="200"
+                    <ComboBox MinWidth="0"
+                              HorizontalAlignment="Stretch"
+                              AutomationProperties.Name="会话超时"
                               SelectedIndex="{x:Bind ViewModel.SelectedSessionTimeoutIndex, Mode=TwoWay}">
                         <ComboBoxItem Content="重启时" />
                         <ComboBoxItem Content="1 分钟" />
@@ -71,7 +79,9 @@
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE72E;" />
                     </tk:SettingsCard.HeaderIcon>
-                    <ComboBox MinWidth="200"
+                    <ComboBox MinWidth="0"
+                              HorizontalAlignment="Stretch"
+                              AutomationProperties.Name="超时动作"
                               SelectedIndex="{x:Bind ViewModel.SelectedTimeoutActionIndex, Mode=TwoWay}">
                         <ComboBoxItem Content="锁定" />
                         <ComboBoxItem Content="登出" />
@@ -84,6 +94,7 @@
                     </tk:SettingsCard.HeaderIcon>
                     <ToggleSwitch x:Name="PinToggle"
                                   AutomationProperties.AutomationId="PinToggle"
+                                  AutomationProperties.Name="PIN 解锁"
                                   Toggled="OnPinToggleToggled" />
                 </tk:SettingsCard>
 
@@ -93,6 +104,8 @@
                     </tk:SettingsCard.HeaderIcon>
                     <ToggleSwitch x:Name="HelloToggle"
                                   AutomationProperties.AutomationId="HelloToggle"
+                                  AutomationProperties.Name="Windows Hello 解锁"
+                                  IsEnabled="{x:Bind ViewModel.CanToggleWindowsHello, Mode=OneWay}"
                                   Toggled="OnHelloToggleToggled" />
                 </tk:SettingsCard>
 
@@ -119,13 +132,17 @@
 
             <!-- ================= 偏好设置 ================= -->
             <StackPanel Spacing="{StaticResource SpacingXSmall}">
-                <TextBlock Text="偏好设置" Style="{StaticResource SectionHeaderTextBlockStyle}" />
+                <TextBlock Text="偏好设置"
+                           Style="{StaticResource SectionHeaderTextBlockStyle}"
+                           AutomationProperties.HeadingLevel="Level2" />
 
                 <tk:SettingsCard Header="清空剪贴板" Description="自动清除复制到剪贴板的值">
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE8C8;" />
                     </tk:SettingsCard.HeaderIcon>
-                    <ComboBox MinWidth="200"
+                    <ComboBox MinWidth="0"
+                              HorizontalAlignment="Stretch"
+                              AutomationProperties.Name="清空剪贴板"
                               SelectedIndex="{x:Bind ViewModel.SelectedClearClipboardIndex, Mode=TwoWay}">
                         <ComboBoxItem Content="永不" />
                         <ComboBoxItem Content="10 秒" />
@@ -141,34 +158,45 @@
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE921;" />
                     </tk:SettingsCard.HeaderIcon>
-                    <ToggleSwitch IsEnabled="False" IsOn="{x:Bind ViewModel.MinimizeOnCopy, Mode=TwoWay}" />
+                    <ToggleSwitch IsEnabled="False"
+                                  AutomationProperties.Name="复制后最小化"
+                                  IsOn="{x:Bind ViewModel.MinimizeOnCopy, Mode=TwoWay}" />
                 </tk:SettingsCard>
             </StackPanel>
 
             <!-- ================= APP 设置(所有账户) ================= -->
             <StackPanel Spacing="{StaticResource SpacingXSmall}">
-                <TextBlock Text="应用（所有账户）" Style="{StaticResource SectionHeaderTextBlockStyle}" />
+                <TextBlock Text="应用（所有账户）"
+                           Style="{StaticResource SectionHeaderTextBlockStyle}"
+                           AutomationProperties.HeadingLevel="Level2" />
 
                 <tk:SettingsCard Header="显示托盘图标" Description="始终在系统托盘中显示图标">
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE700;" />
                     </tk:SettingsCard.HeaderIcon>
-                    <ToggleSwitch IsOn="{x:Bind ViewModel.ShowTrayIcon, Mode=TwoWay}" />
+                    <ToggleSwitch AutomationProperties.Name="显示托盘图标"
+                                  IsOn="{x:Bind ViewModel.ShowTrayIcon, Mode=TwoWay}" />
                 </tk:SettingsCard>
 
                 <tk:SettingsCard Header="最小化到托盘" Description="最小化窗口后保留系统托盘入口">
-                    <ToggleSwitch IsOn="{x:Bind ViewModel.MinimizeToTray, Mode=TwoWay}" />
+                    <ToggleSwitch AutomationProperties.Name="最小化到托盘"
+                                  IsEnabled="{x:Bind ViewModel.CanConfigureTrayBehavior, Mode=OneWay}"
+                                  IsOn="{x:Bind ViewModel.MinimizeToTray, Mode=TwoWay}" />
                 </tk:SettingsCard>
 
                 <tk:SettingsCard Header="关闭到托盘" Description="关闭窗口后保留系统托盘入口">
-                    <ToggleSwitch IsOn="{x:Bind ViewModel.CloseToTray, Mode=TwoWay}" />
+                    <ToggleSwitch AutomationProperties.Name="关闭到托盘"
+                                  IsEnabled="{x:Bind ViewModel.CanConfigureTrayBehavior, Mode=OneWay}"
+                                  IsOn="{x:Bind ViewModel.CloseToTray, Mode=TwoWay}" />
                 </tk:SettingsCard>
 
                 <tk:SettingsCard Header="登录时自动启动" Description="登录 Windows 后自动启动应用（即将推出）">
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE7E8;" />
                     </tk:SettingsCard.HeaderIcon>
-                    <ToggleSwitch IsEnabled="False" IsOn="{x:Bind ViewModel.StartOnLogin, Mode=TwoWay}" />
+                    <ToggleSwitch IsEnabled="False"
+                                  AutomationProperties.Name="登录时自动启动"
+                                  IsOn="{x:Bind ViewModel.StartOnLogin, Mode=TwoWay}" />
                 </tk:SettingsCard>
 
                 <tk:SettingsCard Header="允许浏览器集成" Description="仅便携版支持">
@@ -176,11 +204,14 @@
                         <FontIcon Glyph="&#xE774;" />
                     </tk:SettingsCard.HeaderIcon>
                     <ToggleSwitch IsEnabled="{x:Bind ViewModel.BrowserIntegrationSupported, Mode=OneTime}"
+                                  AutomationProperties.Name="允许浏览器集成"
                                   IsOn="{x:Bind ViewModel.AllowBrowserIntegration, Mode=TwoWay}" />
                 </tk:SettingsCard>
 
                 <tk:SettingsCard Header="使用硬件加速" Description="仅在遇到图形问题时关闭（即将推出）">
-                    <ToggleSwitch IsEnabled="False" IsOn="{x:Bind ViewModel.UseHardwareAcceleration, Mode=TwoWay}" />
+                    <ToggleSwitch IsEnabled="False"
+                                  AutomationProperties.Name="使用硬件加速"
+                                  IsOn="{x:Bind ViewModel.UseHardwareAcceleration, Mode=TwoWay}" />
                 </tk:SettingsCard>
 
                 <tk:SettingsCard Header="显示网站图标" Description="关闭后仅显示类型图标，不向服务器请求网站图标">
@@ -188,6 +219,7 @@
                         <FontIcon Glyph="&#xEB9F;" />
                     </tk:SettingsCard.HeaderIcon>
                     <ToggleSwitch OffContent="关" OnContent="开"
+                                  AutomationProperties.Name="显示网站图标"
                                   IsOn="{x:Bind ViewModel.ShowWebsiteIcons, Mode=TwoWay}" />
                 </tk:SettingsCard>
 
@@ -197,10 +229,13 @@
                     <tk:SettingsExpander.HeaderIcon>
                         <FontIcon Glyph="&#xE756;" />
                     </tk:SettingsExpander.HeaderIcon>
-                    <ToggleSwitch IsOn="{x:Bind ViewModel.EnableSshAgent, Mode=TwoWay}" />
+                    <ToggleSwitch AutomationProperties.Name="SSH 代理"
+                                  IsOn="{x:Bind ViewModel.EnableSshAgent, Mode=TwoWay}" />
                     <tk:SettingsExpander.Items>
                         <tk:SettingsCard Header="SSH 授权提示">
-                            <ComboBox MinWidth="200"
+                            <ComboBox MinWidth="0"
+                                      HorizontalAlignment="Stretch"
+                                      AutomationProperties.Name="SSH 授权提示"
                                       SelectedIndex="{x:Bind ViewModel.SelectedSshAuthorizationPromptIndex, Mode=TwoWay}">
                                 <ComboBoxItem Content="记住直到密码库锁定" />
                                 <ComboBoxItem Content="每次都提示" />
@@ -211,14 +246,17 @@
                 </tk:SettingsExpander>
 
                 <tk:SettingsCard Header="允许屏幕截图" Description="允许捕获桌面应用窗口内容">
-                    <ToggleSwitch IsOn="{x:Bind ViewModel.AllowScreenshots, Mode=TwoWay}" />
+                    <ToggleSwitch AutomationProperties.Name="允许屏幕截图"
+                                  IsOn="{x:Bind ViewModel.AllowScreenshots, Mode=TwoWay}" />
                 </tk:SettingsCard>
 
                 <tk:SettingsCard Header="主题" Description="更改应用颜色主题">
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE790;" />
                     </tk:SettingsCard.HeaderIcon>
-                    <ComboBox MinWidth="200"
+                    <ComboBox MinWidth="0"
+                              HorizontalAlignment="Stretch"
+                              AutomationProperties.Name="主题"
                               SelectedIndex="{x:Bind ViewModel.SelectedThemeIndex, Mode=TwoWay}">
                         <ComboBoxItem Content="默认（跟随系统）" />
                         <ComboBoxItem Content="浅色" />
@@ -230,7 +268,9 @@
                     <tk:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xF2B7;" />
                     </tk:SettingsCard.HeaderIcon>
-                    <ComboBox MinWidth="200"
+                    <ComboBox MinWidth="0"
+                              HorizontalAlignment="Stretch"
+                              AutomationProperties.Name="语言"
                               IsEnabled="False"
                               SelectedIndex="{x:Bind ViewModel.SelectedLanguageIndex, Mode=TwoWay}">
                         <ComboBoxItem Content="zh-CN - 中文（中国大陆）" />
@@ -241,7 +281,9 @@
 
             <!-- ================= 关于 ================= -->
             <StackPanel Spacing="{StaticResource SpacingXSmall}">
-                <TextBlock Text="关于" Style="{StaticResource SectionHeaderTextBlockStyle}" />
+                <TextBlock Text="关于"
+                           Style="{StaticResource SectionHeaderTextBlockStyle}"
+                           AutomationProperties.HeadingLevel="Level2" />
 
                 <tk:SettingsExpander Header="WinVaultWarden"
                                      Description="版本与诊断信息">
@@ -282,7 +324,9 @@
 
             <!-- ================= 危险区 ================= -->
             <StackPanel Spacing="{StaticResource SpacingXSmall}">
-                <TextBlock Text="危险区" Style="{StaticResource SectionHeaderTextBlockStyle}" />
+                <TextBlock Text="危险区"
+                           Style="{StaticResource SectionHeaderTextBlockStyle}"
+                           AutomationProperties.HeadingLevel="Level2" />
 
                 <tk:SettingsCard Header="删除账户"
                                  Description="永久删除您的账户与所有密码库数据(即将推出)">

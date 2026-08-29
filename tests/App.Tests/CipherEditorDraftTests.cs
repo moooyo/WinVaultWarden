@@ -140,6 +140,51 @@ public class CipherEditorDraftTests
         Assert.Equal("secret", draft.CustomFields[0].Value);
     }
 
+    [Theory]
+    [InlineData(CipherEditorFieldType.Text, 0, true, false, false)]
+    [InlineData(CipherEditorFieldType.Hidden, 1, false, true, false)]
+    [InlineData(CipherEditorFieldType.Boolean, 2, false, false, true)]
+    public void CustomFieldTypeProjections_AreMutuallyExclusive(
+        CipherEditorFieldType type,
+        int expectedIndex,
+        bool expectedText,
+        bool expectedHidden,
+        bool expectedBoolean)
+    {
+        var field = new CustomFieldEditorDraft { Type = type };
+
+        Assert.Equal(expectedIndex, field.TypeIndex);
+        Assert.Equal(expectedText, field.IsText);
+        Assert.Equal(expectedHidden, field.IsHidden);
+        Assert.Equal(expectedBoolean, field.IsBoolean);
+    }
+
+    [Fact]
+    public void CustomFieldTypeIndex_RoundTripsAndRejectsInvalidValues()
+    {
+        var field = new CustomFieldEditorDraft();
+        var changed = new List<string?>();
+        field.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        field.TypeIndex = 1;
+
+        Assert.Equal(CipherEditorFieldType.Hidden, field.Type);
+        Assert.Equal(1, field.TypeIndex);
+        Assert.Contains(nameof(CustomFieldEditorDraft.TypeIndex), changed);
+        Assert.Contains(nameof(CustomFieldEditorDraft.IsText), changed);
+        Assert.Contains(nameof(CustomFieldEditorDraft.IsHidden), changed);
+        Assert.Contains(nameof(CustomFieldEditorDraft.IsBoolean), changed);
+
+        field.TypeIndex = 2;
+        Assert.Equal(CipherEditorFieldType.Boolean, field.Type);
+
+        field.TypeIndex = -1;
+        Assert.Equal(CipherEditorFieldType.Boolean, field.Type);
+
+        field.TypeIndex = 3;
+        Assert.Equal(CipherEditorFieldType.Boolean, field.Type);
+    }
+
     [Fact]
     public void PrimaryUri_Get_ReturnsFirstUri()
     {

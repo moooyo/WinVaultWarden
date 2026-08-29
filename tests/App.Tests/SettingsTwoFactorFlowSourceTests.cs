@@ -26,6 +26,36 @@ public sealed class SettingsTwoFactorFlowSourceTests
         Assert.True(status > providers);
     }
 
+    [Fact]
+    public void SettingsOperations_AdvanceOnlyFromExplicitSuccessResults()
+    {
+        var source = Read();
+
+        Assert.DoesNotContain(
+            "string.IsNullOrEmpty(ViewModel.OperationError)",
+            source,
+            StringComparison.Ordinal);
+        Assert.True(
+            source.Split("operation.IsSuccess", StringSplitOptions.None).Length - 1 >= 8);
+        Assert.Contains(
+            "operation.Status != UiOperationStatus.Failed",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RecoveryRetry_NeverCallsTotpActivationAgain()
+    {
+        var source = Read();
+
+        Assert.Equal(
+            1,
+            source.Split("ViewModel.EnableTotpAsync", StringSplitOptions.None).Length - 1);
+        Assert.Contains("ViewModel.GetRecoveryCodeAsync", source, StringComparison.Ordinal);
+        Assert.Contains("TotpSetupRecoveryWarning", source, StringComparison.Ordinal);
+        Assert.Contains("TotpRecoveryPasswordBox", source, StringComparison.Ordinal);
+    }
+
     private static string Read()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory);

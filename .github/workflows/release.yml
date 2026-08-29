@@ -6,272 +6,395 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Dry-run version (artifacts only, no Release upload)"
+        description: "Unsigned artifact version (production signing is release-only)"
         required: false
         default: "0.0.0"
 
-permissions:
-  contents: write
+permissions: {}
 
 env:
   PROJECT: src/App/App.csproj
   PACKAGE_NAME: WinVaultWarden
 
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.version }}
+  cancel-in-progress: false
+
 jobs:
-  test:
+  metadata:
     runs-on: windows-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      core: ${{ steps.version.outputs.core }}
+      manifest: ${{ steps.version.outputs.manifest }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-      - name: Run test suites (pure libs + linked-source App tests)
+      - name: Validate and normalize version
+        id: version
         shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          DISPATCH_VERSION: ${{ inputs.version }}
         run: |
-          Get-ChildItem tests -Recurse -Filter *.Tests.csproj | ForEach-Object {
-            Write-Host "==> $($_.Name)" -ForegroundColor Cyan
-            dotnet test $_.FullName -c Debug --nologo
-            if ($LASTEXITCODE -ne 0) { throw "tests failed: $($_.Name)" }
+          $ErrorActionPreference = 'Stop'
+          if ($env:EVENT_NAME -eq 'release') {
+            $raw = $env:RELEASE_TAG
+            if ([string]::IsNullOrWhiteSpace($raw)) { throw 'The release event did not provide a tag.' }
+          }
+          elseif ($env:EVENT_NAME -eq 'workflow_dispatch') {
+            $raw = $env:DISPATCH_VERSION
+            if ([string]::IsNullOrWhiteSpace($raw)) { $raw = '0.0.0' }
+          }
+          else { throw "Unsupported event: $($env:EVENT_NAME)" }
+
+          if ($raw.Length -gt 128) {
+            throw 'Version input exceeds the 128-character safety limit.'
           }
 
-  build:
-    needs: test
+          $candidate = $raw
+          if ($candidate.StartsWith('v', [StringComparison]::Ordinal)) {
+            $candidate = $candidate.Substring(1)
+          }
+
+          # SemVer 2.0.0, with ASCII-only identifiers and no leading zeroes in numeric identifiers.
+          $semVerPattern = '\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?\z'
+          $match = [regex]::Match($candidate, $semVerPattern, [Text.RegularExpressions.RegexOptions]::CultureInvariant)
+          if (-not $match.Success) {
+            throw "Version must be a complete SemVer 2.0.0 value, optionally prefixed with 'v'."
+          }
+
+          $coreParts = @($match.Groups[1].Value, $match.Groups[2].Value, $match.Groups[3].Value)
+          foreach ($part in $coreParts) {
+            $component = [uint32]0
+            if (-not [uint32]::TryParse($part, [ref]$component) -or $component -gt 65535) {
+              throw "MSIX version components must be between 0 and 65535: '$part'"
+            }
+          }
+
+          $core = $coreParts -join '.'
+          $tag = if ($env:EVENT_NAME -eq 'release') { $raw } else { '' }
+          "tag=$tag" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "version=$candidate" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "core=$core" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "manifest=$core.0" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+  verify:
+    needs: metadata
     runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Run .NET test projects
+        shell: pwsh
+        run: |
+          $projects = @(Get-ChildItem tests -Recurse -Filter *.Tests.csproj -File)
+          if ($projects.Count -eq 0) { throw 'No .NET test projects were found.' }
+          foreach ($project in $projects) {
+            dotnet test $project.FullName -c Debug --nologo
+            if ($LASTEXITCODE -ne 0) { throw "Tests failed: $($project.Name)" }
+          }
+      - name: Run browser extension tests
+        working-directory: browser-extension
+        shell: pwsh
+        run: |
+          npm test
+          if ($LASTEXITCODE -ne 0) { throw 'Browser extension tests failed.' }
+
+  build-unsigned:
+    needs: [metadata, verify]
+    runs-on: windows-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
         arch: [x64, arm64]
+    env:
+      ARCH: ${{ matrix.arch }}
+      RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+      RELEASE_CORE_VERSION: ${{ needs.metadata.outputs.core }}
+      MANIFEST_VERSION: ${{ needs.metadata.outputs.manifest }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Resolve version
-        id: ver
-        shell: pwsh
-        run: |
-          $v = "${{ github.event.release.tag_name }}"
-          if (-not $v) { $v = "${{ github.event.inputs.version }}" }
-          if (-not $v) { $v = "0.0.0" }
-          $v = $v -replace '^v',''
-          $core = ($v -split '-')[0]
-          if ($core -notmatch '^\d+\.\d+\.\d+$') { throw "Bad version: '$v'" }
-          "version=$v"        >> $env:GITHUB_OUTPUT
-          "core=$core"        >> $env:GITHUB_OUTPUT
-          "manifest=$core.0"  >> $env:GITHUB_OUTPUT
-          Write-Host "version=$v core=$core manifest=$core.0"
-
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           global-json-file: global.json
-
       - name: Add VS MSBuild to PATH
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Ensure vswhere on PATH (ILC native link shells out to it)
+        uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2.0.0
+      - name: Ensure vswhere on PATH
         shell: pwsh
         run: Add-Content $env:GITHUB_PATH "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
-
+      - name: Validate build inputs
+        shell: pwsh
+        run: |
+          if ($env:ARCH -notin @('x64', 'arm64')) { throw "Unsupported architecture: $($env:ARCH)" }
+          if ($env:RELEASE_CORE_VERSION -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Invalid normalized core version.' }
+          if ($env:MANIFEST_VERSION -notmatch '^[0-9]+\.[0-9]+\.[0-9]+\.0$') { throw 'Invalid normalized manifest version.' }
       - name: Install ARM64 C++ build tools
         if: matrix.arch == 'arm64'
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $install = (& $vswhere -latest -property installationPath).Trim()
+          if ([string]::IsNullOrWhiteSpace($install)) { throw 'Visual Studio installation was not found.' }
           $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
-          Write-Host "Adding VC.Tools.ARM64 to $install"
-          $p = Start-Process -FilePath $setup -Wait -PassThru -ArgumentList @(
-            'modify','--installPath',"`"$install`"",
-            '--add','Microsoft.VisualStudio.Component.VC.Tools.ARM64',
-            '--quiet','--norestart','--force')
-          Write-Host "installer exit: $($p.ExitCode)"
-
+          $process = Start-Process -FilePath $setup -WindowStyle Hidden -Wait -PassThru -ArgumentList @(
+            'modify', '--installPath', "`"$install`"",
+            '--add', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64',
+            '--quiet', '--norestart', '--force')
+          if ($process.ExitCode -ne 0) { throw "Visual Studio installer failed ($($process.ExitCode))." }
       - name: Patch manifest version
         shell: pwsh
         run: |
-          $m = "src/App/Package.appxmanifest"
-          $x = Get-Content $m -Raw
-          $x = $x -replace 'Version="\d+\.\d+\.\d+\.\d+"', 'Version="${{ steps.ver.outputs.manifest }}"'
-          Set-Content $m $x -NoNewline
-          Write-Host "manifest version -> ${{ steps.ver.outputs.manifest }}"
-
-      - name: Build MSIX (Native AOT, self-contained)
+          $path = 'src/App/Package.appxmanifest'
+          $text = [IO.File]::ReadAllText($path)
+          $pattern = 'Version="[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"'
+          $matches = [regex]::Matches($text, $pattern)
+          if ($matches.Count -ne 1) { throw "Expected one manifest version, found $($matches.Count)." }
+          $replacement = 'Version="' + $env:MANIFEST_VERSION + '"'
+          $updated = [regex]::Replace($text, $pattern, $replacement, 1)
+          [IO.File]::WriteAllText($path, $updated, [Text.UTF8Encoding]::new($false))
+      - name: Build unsigned MSIX
         shell: pwsh
         run: |
-          $out = "$PWD\artifacts\msix"
-          New-Item -ItemType Directory -Force $out | Out-Null
-          # -restore (separate first pass) NOT -t:Restore,Build: a combined
-          # Restore+Build in one evaluation leaves NuGet-imported WinUI XAML
-          # targets unavailable, skipping XAML codegen (CS5001 / missing
-          # InitializeComponent). -restore re-evaluates before Build.
+          $output = Join-Path $PWD 'artifacts\msix'
+          New-Item -ItemType Directory -Force $output | Out-Null
           msbuild $env:PROJECT -restore -t:Build `
-            -p:Configuration=Release `
-            -p:Platform=${{ matrix.arch }} `
-            -p:Version=${{ steps.ver.outputs.core }} `
-            -p:GenerateAppxPackageOnBuild=true `
-            -p:AppxPackageSigningEnabled=false `
-            -p:UapAppxPackageBuildMode=SideloadOnly `
-            -p:AppxBundle=Never `
-            -p:AppxPackageDir="$out\" `
+            "-p:Configuration=Release" `
+            "-p:Platform=$($env:ARCH)" `
+            "-p:Version=$($env:RELEASE_CORE_VERSION)" `
+            "-p:GenerateAppxPackageOnBuild=true" `
+            "-p:AppxPackageSigningEnabled=false" `
+            "-p:UapAppxPackageBuildMode=SideloadOnly" `
+            "-p:AppxBundle=Never" `
+            "-p:AppxPackageDir=$output\" `
             -nologo -m
-          if ($LASTEXITCODE -ne 0) { throw "MSBuild failed ($LASTEXITCODE)" }
-
-      - name: Locate and rename MSIX
-        id: pkg
+          if ($LASTEXITCODE -ne 0) { throw "MSBuild failed ($LASTEXITCODE)." }
+      - name: Stage unsigned MSIX
         shell: pwsh
         run: |
-          $msix = Get-ChildItem artifacts\msix -Recurse -Filter *.msix |
-            Where-Object { $_.Name -notmatch '\.appxsym$' } | Select-Object -First 1
-          if (-not $msix) { throw "No .msix produced under artifacts\msix" }
+          $packages = @(Get-ChildItem artifacts\msix -Recurse -Filter *.msix -File)
+          if ($packages.Count -ne 1) { throw "Expected one MSIX, found $($packages.Count)." }
           New-Item -ItemType Directory -Force artifacts\out | Out-Null
-          $final = "artifacts\out\$env:PACKAGE_NAME-${{ steps.ver.outputs.version }}-${{ matrix.arch }}.msix"
-          Copy-Item $msix.FullName $final -Force
-          "path=$final" >> $env:GITHUB_OUTPUT
-          Write-Host "packaged: $final"
-
-      - name: Decode signing certificate
+          $name = "$($env:PACKAGE_NAME)-$($env:RELEASE_VERSION)-$($env:ARCH)-unsigned.msix"
+          Copy-Item -LiteralPath $packages[0].FullName -Destination (Join-Path 'artifacts\out' $name) -Force
+      - name: Publish unsigned portable build
         shell: pwsh
         run: |
-          if (-not "${{ secrets.SIGNING_PFX_BASE64 }}") { throw "Secret SIGNING_PFX_BASE64 not set" }
-          [IO.File]::WriteAllBytes("$PWD\cert.pfx",
-            [Convert]::FromBase64String("${{ secrets.SIGNING_PFX_BASE64 }}"))
-
-      - name: Sign and verify MSIX
-        shell: pwsh
-        env:
-          SIGNING_PFX_PASSWORD: ${{ secrets.SIGNING_PFX_PASSWORD }}
-        run: |
-          $kits = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
-          $signtool = Get-ChildItem $kits -Recurse -Filter signtool.exe |
-            Where-Object FullName -match '\\x64\\' |
-            Sort-Object FullName -Descending | Select-Object -First 1
-          if (-not $signtool) { throw "signtool.exe not found under $kits" }
-          & $signtool.FullName sign /fd SHA256 /f "$PWD\cert.pfx" `
-            /p $env:SIGNING_PFX_PASSWORD "${{ steps.pkg.outputs.path }}"
-          if ($LASTEXITCODE -ne 0) { throw "signtool sign failed" }
-          # Trust the self-signed cert on this ephemeral runner so verify /pa can
-          # validate the chain (a self-signed cert is its own root).
-          $pfx = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
-            "$PWD\cert.pfx", $env:SIGNING_PFX_PASSWORD)
-          $pub = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($pfx.Export('Cert'))
-          foreach ($name in @('Root','TrustedPeople')) {
-            $store = [System.Security.Cryptography.X509Certificates.X509Store]::new(
-              $name, 'LocalMachine')
-            $store.Open('ReadWrite'); $store.Add($pub); $store.Close()
-          }
-          & $signtool.FullName verify /pa "${{ steps.pkg.outputs.path }}"
-          if ($LASTEXITCODE -ne 0) { throw "signtool verify failed" }
-
-      - name: Export public certificate (.cer, x64 leg only)
-        if: matrix.arch == 'x64'
-        shell: pwsh
-        env:
-          SIGNING_PFX_PASSWORD: ${{ secrets.SIGNING_PFX_PASSWORD }}
-        run: |
-          $c = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
-            "$PWD\cert.pfx", $env:SIGNING_PFX_PASSWORD)
-          [IO.File]::WriteAllBytes(
-            "artifacts\out\$env:PACKAGE_NAME-${{ steps.ver.outputs.version }}.cer",
-            $c.Export('Cert'))
-
-      - name: Publish unpackaged self-contained (portable, AOT)
-        shell: pwsh
-        run: |
-          $pub = "$PWD\artifacts\portable\${{ matrix.arch }}"
-          New-Item -ItemType Directory -Force $pub | Out-Null
-          # Unpackaged (WindowsPackageType=None): runs from a folder, no MSIX,
-          # no signing/trust needed. Self-contained + AOT, same toolchain as MSIX.
+          $publish = Join-Path $PWD "artifacts\portable\$($env:ARCH)"
+          New-Item -ItemType Directory -Force $publish | Out-Null
           msbuild $env:PROJECT -restore -t:Publish `
-            -p:Configuration=Release `
-            -p:Platform=${{ matrix.arch }} `
-            -p:RuntimeIdentifier=win-${{ matrix.arch }} `
-            -p:Version=${{ steps.ver.outputs.core }} `
-            -p:WindowsPackageType=None `
-            -p:SelfContained=true `
-            -p:WindowsAppSDKSelfContained=true `
-            -p:PublishDir="$pub\" `
+            "-p:Configuration=Release" `
+            "-p:Platform=$($env:ARCH)" `
+            "-p:RuntimeIdentifier=win-$($env:ARCH)" `
+            "-p:Version=$($env:RELEASE_CORE_VERSION)" `
+            "-p:WindowsPackageType=None" `
+            "-p:SelfContained=true" `
+            "-p:WindowsAppSDKSelfContained=true" `
+            "-p:PublishDir=$publish\" `
             -nologo -m
-          if ($LASTEXITCODE -ne 0) { throw "unpackaged publish failed ($LASTEXITCODE)" }
-
-      - name: Sign portable executables (App + native Host)
-        shell: pwsh
-        env:
-          SIGNING_PFX_PASSWORD: ${{ secrets.SIGNING_PFX_PASSWORD }}
-        run: |
-          $portable = "$PWD\artifacts\portable\${{ matrix.arch }}"
-          $kits = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
-          $signtool = Get-ChildItem $kits -Recurse -Filter signtool.exe |
-            Where-Object FullName -Match '\\x64\\' |
-            Sort-Object FullName -Descending |
-            Select-Object -First 1
-          if (-not $signtool) { throw "signtool.exe not found under $kits" }
-          # App.exe and BrowserNativeHost.exe ship together and are signed with the same cert
-          # so the pipe peer authorizer can trust the Host as one unit with the App.
-          foreach ($exe in @('App.exe', 'BrowserNativeHost.exe')) {
-            $path = Join-Path $portable $exe
-            if (-not (Test-Path $path)) { throw "portable payload missing $exe" }
-            & $signtool.FullName sign /fd SHA256 /f "$PWD\cert.pfx" `
-              /p $env:SIGNING_PFX_PASSWORD $path
-            if ($LASTEXITCODE -ne 0) { throw "sign failed: $exe" }
-            & $signtool.FullName verify /pa $path
-            if ($LASTEXITCODE -ne 0) { throw "signature verify failed: $exe" }
-          }
-
-      - name: Remove decoded pfx
-        if: always()
-        shell: pwsh
-        run: Remove-Item "$PWD\cert.pfx" -Force -ErrorAction SilentlyContinue
-
+          if ($LASTEXITCODE -ne 0) { throw "Portable publish failed ($LASTEXITCODE)." }
       - name: Verify browser native host package layout
         shell: pwsh
         run: |
           pwsh -NoProfile -File scripts\verify-browser-native-host-package.ps1 `
-            -Configuration Release -RuntimeIdentifier win-${{ matrix.arch }}
-          if ($LASTEXITCODE -ne 0) { throw "browser native host package verification failed" }
-
-      - name: Build browser extensions (x64 leg only)
+            -Configuration Release -RuntimeIdentifier "win-$($env:ARCH)"
+          if ($LASTEXITCODE -ne 0) { throw 'Browser native host package verification failed.' }
+      - name: Build browser extensions
         if: matrix.arch == 'x64'
         shell: pwsh
         run: |
           pwsh -NoProfile -File browser-extension\build-extension.ps1 `
-            -OutputDirectory "$PWD\artifacts\browser-extension"
-          New-Item -ItemType Directory -Force artifacts\out | Out-Null
-          Copy-Item artifacts\browser-extension\winvaultwarden-chrome.zip artifacts\out -Force
-          Copy-Item artifacts\browser-extension\winvaultwarden-edge.zip artifacts\out -Force
-
-      - name: Zip portable build
+            -OutputDirectory (Join-Path $PWD 'artifacts\browser-extension')
+          if ($LASTEXITCODE -ne 0) { throw 'Browser extension build failed.' }
+          Copy-Item -LiteralPath artifacts\browser-extension\winvaultwarden-chrome.zip -Destination artifacts\out -Force
+          Copy-Item -LiteralPath artifacts\browser-extension\winvaultwarden-edge.zip -Destination artifacts\out -Force
+          Copy-Item -LiteralPath docs\INSTALL.md -Destination artifacts\out\INSTALL.md -Force
+      - name: Zip unsigned portable build
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force artifacts\out | Out-Null
-          $zip = "artifacts\out\$env:PACKAGE_NAME-${{ steps.ver.outputs.version }}-${{ matrix.arch }}-portable.zip"
-          Compress-Archive -Path "artifacts\portable\${{ matrix.arch }}\*" -DestinationPath $zip -Force
-          Write-Host "zipped: $zip"
-
-      - uses: actions/upload-artifact@v4
+          $source = Join-Path $PWD "artifacts\portable\$($env:ARCH)\*"
+          $name = "$($env:PACKAGE_NAME)-$($env:RELEASE_VERSION)-$($env:ARCH)-unsigned-portable.zip"
+          Compress-Archive -Path $source -DestinationPath (Join-Path 'artifacts\out' $name) -Force
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: msix-${{ matrix.arch }}
+          name: unsigned-${{ matrix.arch }}
           path: artifacts/out/*
           if-no-files-found: error
+          retention-days: 7
 
-  publish:
-    needs: build
+  sign-production:
+    needs: [metadata, build-unsigned]
     if: github.event_name == 'release'
     runs-on: windows-latest
+    # Protect this environment with required reviewers and release-tag deployment rules.
+    # Store the PFX secrets and SIGNING_TIMESTAMP_URL environment variable there.
+    environment: production-signing
+    permissions: {}
+    env:
+      RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          path: dl
-      - name: Stage release assets
+          pattern: unsigned-*
+          path: input
+          merge-multiple: true
+      - name: Decode production signing certificate
+        shell: pwsh
+        env:
+          SIGNING_PFX_BASE64: ${{ secrets.SIGNING_PFX_BASE64 }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_PFX_BASE64)) {
+            throw 'The production-signing environment must define SIGNING_PFX_BASE64.'
+          }
+          $bytes = [Convert]::FromBase64String($env:SIGNING_PFX_BASE64)
+          [IO.File]::WriteAllBytes((Join-Path $env:RUNNER_TEMP 'winvaultwarden-signing.pfx'), $bytes)
+          [Array]::Clear($bytes, 0, $bytes.Length)
+      - name: Sign and stage production artifacts
+        shell: pwsh
+        env:
+          SIGNING_PFX_PASSWORD: ${{ secrets.SIGNING_PFX_PASSWORD }}
+          SIGNING_TIMESTAMP_URL: ${{ vars.SIGNING_TIMESTAMP_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_PFX_PASSWORD)) {
+            throw 'The production-signing environment must define SIGNING_PFX_PASSWORD.'
+          }
+          $timestamp = $null
+          if (-not [Uri]::TryCreate($env:SIGNING_TIMESTAMP_URL, [UriKind]::Absolute, [ref]$timestamp) -or
+              $timestamp.Scheme -notin @('http', 'https')) {
+            throw 'The production-signing environment must define SIGNING_TIMESTAMP_URL as an absolute RFC 3161 HTTP(S) endpoint.'
+          }
+
+          $kits = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+          $signTool = Get-ChildItem $kits -Recurse -Filter signtool.exe -File |
+            Where-Object FullName -match '\\x64\\' |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $signTool) { throw "signtool.exe was not found under $kits." }
+
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'winvaultwarden-signing.pfx'
+          $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+            $pfxPath, $env:SIGNING_PFX_PASSWORD)
+          $publicCertificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+            $certificate.Export('Cert'))
+
+          # The certificate may be self-signed. Trust it only on this ephemeral runner so
+          # SignTool can validate the completed signatures after signing.
+          foreach ($storeName in @('Root', 'TrustedPeople')) {
+            $store = [Security.Cryptography.X509Certificates.X509Store]::new($storeName, 'LocalMachine')
+            try {
+              $store.Open('ReadWrite')
+              $store.Add($publicCertificate)
+            }
+            finally { $store.Close() }
+          }
+
+          function Invoke-Sign([string]$Path) {
+            & $signTool.FullName sign /fd SHA256 /f $pfxPath /p $env:SIGNING_PFX_PASSWORD `
+              /tr $timestamp.AbsoluteUri /td SHA256 $Path
+            if ($LASTEXITCODE -ne 0) { throw "Signing failed: $Path" }
+            & $signTool.FullName verify /pa /all $Path
+            if ($LASTEXITCODE -ne 0) { throw "Signature verification failed: $Path" }
+          }
+
+          New-Item -ItemType Directory -Force output | Out-Null
+          $msixFiles = @()
+          $portableArchives = @()
+          foreach ($arch in @('x64', 'arm64')) {
+            $msixPath = Join-Path 'input' "$($env:PACKAGE_NAME)-$($env:RELEASE_VERSION)-$arch-unsigned.msix"
+            $portablePath = Join-Path 'input' "$($env:PACKAGE_NAME)-$($env:RELEASE_VERSION)-$arch-unsigned-portable.zip"
+            if (-not (Test-Path -LiteralPath $msixPath -PathType Leaf)) { throw "Missing expected artifact: $msixPath" }
+            if (-not (Test-Path -LiteralPath $portablePath -PathType Leaf)) { throw "Missing expected artifact: $portablePath" }
+            $msixFiles += Get-Item -LiteralPath $msixPath
+            $portableArchives += Get-Item -LiteralPath $portablePath
+          }
+
+          foreach ($msix in $msixFiles) {
+            Invoke-Sign $msix.FullName
+            $finalName = $msix.Name -replace '-unsigned\.msix$', '.msix'
+            Copy-Item -LiteralPath $msix.FullName -Destination (Join-Path 'output' $finalName) -Force
+          }
+
+          foreach ($archive in $portableArchives) {
+            $extract = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetFileNameWithoutExtension($archive.Name))
+            Expand-Archive -LiteralPath $archive.FullName -DestinationPath $extract -Force
+            foreach ($executable in @('App.exe', 'BrowserNativeHost.exe')) {
+              $path = Join-Path $extract $executable
+              if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+                throw "Portable payload is missing $executable: $($archive.Name)"
+              }
+              Invoke-Sign $path
+            }
+            $finalName = $archive.Name -replace '-unsigned-portable\.zip$', '-portable.zip'
+            Compress-Archive -Path (Join-Path $extract '*') -DestinationPath (Join-Path 'output' $finalName) -Force
+          }
+
+          foreach ($name in @('winvaultwarden-chrome.zip', 'winvaultwarden-edge.zip', 'INSTALL.md')) {
+            $matches = @(Get-ChildItem input -Recurse -Filter $name -File)
+            if ($matches.Count -ne 1) { throw "Expected one $name, found $($matches.Count)." }
+            Copy-Item -LiteralPath $matches[0].FullName -Destination (Join-Path 'output' $name) -Force
+          }
+
+          $certificatePath = Join-Path 'output' "$($env:PACKAGE_NAME)-$($env:RELEASE_VERSION).cer"
+          [IO.File]::WriteAllBytes($certificatePath, $certificate.Export('Cert'))
+      - name: Write release checksums
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force assets | Out-Null
-          Get-ChildItem dl -Recurse -Include *.msix,*.cer,*.zip |
-            ForEach-Object { Copy-Item $_.FullName assets -Force }
-          Copy-Item docs/INSTALL.md assets/INSTALL.md -Force
-          Get-ChildItem assets | Format-Table Name,Length
-      - name: Upload assets to Release
+          $lines = Get-ChildItem output -File |
+            Sort-Object Name |
+            ForEach-Object {
+              $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash *$($_.Name)"
+            }
+          if ($lines.Count -eq 0) { throw 'No release files were staged for checksumming.' }
+          [IO.File]::WriteAllLines(
+            (Join-Path $PWD 'output\SHA256SUMS.txt'),
+            [string[]]$lines,
+            [Text.UTF8Encoding]::new($false))
+      - name: Remove decoded PFX
+        if: always()
+        shell: pwsh
+        run: Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'winvaultwarden-signing.pfx') -Force -ErrorAction SilentlyContinue
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: signed-release
+          path: output/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [metadata, sign-production]
+    if: github.event_name == 'release'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+      RELEASE_REPOSITORY: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: signed-release
+          path: assets
+      - name: Upload signed assets to Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $files = Get-ChildItem assets | ForEach-Object { $_.FullName }
-          gh release upload "${{ github.event.release.tag_name }}" @files --clobber
+          if ([string]::IsNullOrWhiteSpace($env:RELEASE_TAG)) { throw 'Validated release tag is missing.' }
+          $files = @(Get-ChildItem assets -File)
+          if ($files.Count -eq 0) { throw 'No signed release assets were downloaded.' }
+          gh release upload $env:RELEASE_TAG @($files.FullName) --repo $env:RELEASE_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed.' }

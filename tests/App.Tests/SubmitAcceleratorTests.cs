@@ -21,6 +21,7 @@ public sealed class SubmitAcceleratorTests
         var src = ReadSource("src", "App", "Views", "RegisterPage.xaml.cs");
 
         Assert.Contains("private async void OnSubmitAccelerator", src);
+        Assert.Contains("if (!ViewModel.CanEditForm)", src);
         Assert.Contains("args.Handled = true;", src);
         Assert.Contains("await SubmitAsync();", src);
         Assert.DoesNotContain("_ = SubmitAsync();", src);

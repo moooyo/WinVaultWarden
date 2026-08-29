@@ -65,7 +65,8 @@ public sealed class VaultRepromptCoverageTests
         var result = await vm.DownloadAttachmentAsync(
             "cipher-a",
             "attachment-a",
-            _ => Task.FromResult<string?>("wrong"));
+            _ => Task.FromResult<string?>("wrong"),
+            new MemoryStream());
 
         Assert.Equal(UiOperationStatus.Failed, result.Status);
         Assert.Equal(0, attachments.DownloadCalls);
@@ -182,12 +183,19 @@ public sealed class VaultRepromptCoverageTests
     private sealed class RecordingAttachments : IAttachmentUiService
     {
         public int DownloadCalls { get; private set; }
-        public Task<IReadOnlyList<AttachmentItem>> AddAttachmentAsync(string cipherId, byte[] fileBytes, string fileName, CancellationToken ct = default) =>
+        public Task<IReadOnlyList<AttachmentItem>> AddAttachmentAsync(
+            string cipherId,
+            Core.Models.ReopenableFileSource file,
+            CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<AttachmentItem>>([]);
-        public Task<byte[]> DownloadAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default)
+        public Task<long> DownloadAttachmentAsync(
+            string cipherId,
+            string attachmentId,
+            Stream plaintextDestination,
+            CancellationToken ct = default)
         {
             DownloadCalls++;
-            return Task.FromResult(Array.Empty<byte>());
+            return Task.FromResult(0L);
         }
         public Task<IReadOnlyList<AttachmentItem>> DeleteAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<AttachmentItem>>([]);

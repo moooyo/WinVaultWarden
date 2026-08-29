@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Cryptography;
 using Api;
 using Core.Enums;
 using Core.Models;
@@ -51,6 +52,75 @@ public class AuthServicePinTests
         Assert.Equal("new-refresh", persisted.RefreshToken);
         Assert.Equal(0, persisted.PinFailedAttempts);
         Assert.Equal(fixture.PinProtectedUserKey, persisted.PinProtectedUserKey);
+    }
+
+    [Fact]
+    public async Task SetAndUnlockPin_MixedEmailAndCustomMasterSalt_UsesNormalizedEmailDomain()
+    {
+        const string mixedEmail = " ME@EXAMPLE.COM ";
+        const string customSalt = "Case-Sensitive-Master-Salt";
+        const string pin = "123456";
+        using var userKey = new SymmetricCryptoKey(
+            Enumerable.Range(64, 64).Select(i => (byte)i).ToArray());
+        var masterKey = _crypto.DeriveMasterKey(
+            "correct horse battery staple",
+            customSalt,
+            KdfType.Pbkdf2,
+            Iterations,
+            null,
+            null);
+        string protectedUserKey;
+        try
+        {
+            protectedUserKey = _crypto.ProtectUserKey(masterKey, userKey).ToString();
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(masterKey);
+        }
+
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession(
+            Email,
+            mixedEmail,
+            new ServerOrigin("https://vault.example"));
+        session.TryCommit(lease, () =>
+        {
+            session.SetTokens("access", "stored-refresh");
+            session.SetUnlockedKey(userKey);
+        });
+        var tokenStore = new MemoryTokenStore();
+        tokenStore.Save(new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            Email,
+            lease.Endpoints,
+            lease.Generation,
+            mixedEmail,
+            "device-id",
+            "stored-refresh",
+            protectedUserKey,
+            KdfType.Pbkdf2,
+            Iterations,
+            null,
+            null,
+            customSalt));
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
+            """{"access_token":"new-access","refresh_token":"new-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, SyncJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, DevicesJson()));
+        var auth = CreateAuthService(handler, session, tokenStore);
+
+        new PinService(_crypto, session, tokenStore).SetPin(pin);
+        await auth.LockAsync(TestContext.Current.CancellationToken);
+        var result = await auth.UnlockWithPinAsync(
+            pin,
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<AuthResult.Success>(result);
+        Assert.True(tokenStore.TryLoad(out var persisted));
+        Assert.Equal(customSalt, persisted.MasterPasswordSalt);
+        Assert.NotNull(persisted.PinProtectedUserKey);
     }
 
     [Fact]

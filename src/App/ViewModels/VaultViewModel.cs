@@ -29,6 +29,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     private readonly IItemRepromptGate? _reprompt;
     private string? _editingId;
     private bool _suppressApply;
+    private bool _isRebuildingFilteredItems;
     private readonly HashSet<string> _selectedIds = new(StringComparer.Ordinal);
     private readonly AsyncOperationGate _operationGate = new();
     private CancellationTokenSource? _operationCts;
@@ -162,6 +163,13 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     public bool HasOperationError => !string.IsNullOrEmpty(OperationError);
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOperationWarning))]
+    [NotifyPropertyChangedFor(nameof(ShowDataStaleInfo))]
+    public partial string OperationWarning { get; set; } = string.Empty;
+
+    public bool HasOperationWarning => !string.IsNullOrEmpty(OperationWarning);
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSkippedCiphers))]
     [NotifyPropertyChangedFor(nameof(SkippedCipherMessage))]
     public partial int SkippedCipherCount { get; set; }
@@ -172,7 +180,10 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     // 当前快照来自离线缓存(未联网同步) → 提示用户数据可能已过期。
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowDataStaleInfo))]
     public partial bool DataStale { get; set; }
+
+    public bool ShowDataStaleInfo => DataStale && !HasOperationWarning;
 
     public bool HasDetailSelected => Detail is not null;
     public bool NoSelection => Detail is null;
@@ -198,9 +209,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     public string TrashHeader => $"回收站 ({TrashCount})";
 
     // 保险库内一条(未删除)记录都没有 → 空库引导。
-    public bool HasNoItems => Items.All(i => i.IsDeleted);
+    public bool HasNoItems => !IsTrashFilterSelected && Items.All(i => i.IsDeleted);
     // 库里有记录,但当前搜索/筛选结果为空 → 无结果提示。
-    public bool NoResults => !HasNoItems && FilteredItems.Count == 0;
+    public bool NoResults => FilteredItems.Count == 0 && !HasNoItems && !IsTrashEmpty;
 
     public event EventHandler? FoldersChanged;
 
@@ -276,6 +287,14 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     partial void OnSelectedItemChanged(CipherListItem? value)
     {
+        if (_isRebuildingFilteredItems && value is null)
+            return;
+
+        UpdateSelectedItemProjection(value);
+    }
+
+    private void UpdateSelectedItemProjection(CipherListItem? value)
+    {
         Detail = value is null ? null : ProjectDetail(value.Id);
         OnPropertyChanged(nameof(HasDetailSelected));
         OnPropertyChanged(nameof(NoSelection));
@@ -348,21 +367,34 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     private void ApplyFilter()
     {
-        FilteredItems.Clear();
-
-        IEnumerable<CipherListItem> baseItems = SelectedFilter?.Kind switch
+        var selectedId = SelectedItem?.Id;
+        var wasRebuildingFilteredItems = _isRebuildingFilteredItems;
+        _isRebuildingFilteredItems = true;
+        try
         {
-            FilterKind.Favorites => Items.Where(i => i.Favorite && !i.IsDeleted),
-            FilterKind.Trash     => Items.Where(i => i.IsDeleted),
-            FilterKind.Type      => Items.Where(i => i.Kind == SelectedFilter.TypeFilter && !i.IsDeleted),
-            FilterKind.Folder    => Items.Where(i => i.FolderId == SelectedFilter.FolderId && !i.IsDeleted),
-            _                    => Items.Where(i => !i.IsDeleted), // AllItems 及未选中
-        };
+            FilteredItems.Clear();
 
-        foreach (var i in VaultQuery.Apply(baseItems, SearchText, CurrentFacets, SelectedSort))
-            FilteredItems.Add(i);
+            IEnumerable<CipherListItem> baseItems = SelectedFilter?.Kind switch
+            {
+                FilterKind.Favorites => Items.Where(i => i.Favorite && !i.IsDeleted),
+                FilterKind.Trash     => Items.Where(i => i.IsDeleted),
+                FilterKind.Type      => Items.Where(i => i.Kind == SelectedFilter.TypeFilter && !i.IsDeleted),
+                FilterKind.Folder    => Items.Where(i => i.FolderId == SelectedFilter.FolderId && !i.IsDeleted),
+                _                    => Items.Where(i => !i.IsDeleted), // AllItems 及未选中
+            };
 
-        RebuildGroups();
+            foreach (var i in VaultQuery.Apply(baseItems, SearchText, CurrentFacets, SelectedSort))
+                FilteredItems.Add(i);
+
+            RebuildGroups();
+        }
+        finally
+        {
+            _isRebuildingFilteredItems = wasRebuildingFilteredItems;
+        }
+
+        if (!wasRebuildingFilteredItems)
+            RestoreVisibleSelection(selectedId);
         OnPropertyChanged(nameof(HasNoItems));
         OnPropertyChanged(nameof(NoResults));
         OnPropertyChanged(nameof(HasActiveRefinement));
@@ -371,6 +403,22 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(IsTrashEmpty));
         OnPropertyChanged(nameof(CanEmptyRecycleBin));
         OnPropertyChanged(nameof(TrashHeader));
+    }
+
+    private void RestoreVisibleSelection(string? id)
+    {
+        var item = string.IsNullOrEmpty(id)
+            ? null
+            : FilteredItems.FirstOrDefault(item => item.Id == id);
+
+        if (SelectedItem is null && item is null)
+        {
+            if (Detail is not null)
+                UpdateSelectedItemProjection(null);
+            return;
+        }
+
+        SelectedItem = item;
     }
 
     private static readonly VaultItemKind[] TypeOrder =
@@ -524,7 +572,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     private async Task<UiOperationResult<T>> RunOperationAsync<T>(
         VaultOperationKind kind,
         Func<CancellationToken, Task<T>> action,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Func<T>? committedRefreshFailure = null)
     {
         if (!_operationGate.TryEnter(out var operation))
             return UiOperationResult<T>.Busy();
@@ -538,15 +587,28 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             {
                 return UiOperationResult<T>.Success(await action(_operationCts.Token));
             }
-            catch (OperationCanceledException) when (_operationCts.IsCancellationRequested)
+            catch (OperationCanceledException ex)
+                when (UiExceptionPolicy.IsGenuineCancellation(ex, _operationCts.Token))
             {
                 return UiOperationResult<T>.Cancelled();
             }
-            catch (Exception ex) when (ex is
-                Core.Services.VaultRefreshException
-                or Core.Services.AttachmentTooLargeException
-                or Api.VaultWriteException
-                or HttpRequestException)
+            catch (Core.Services.VaultRefreshException) when (committedRefreshFailure is not null)
+            {
+                DataStale = true;
+                OperationWarning = "更改已保存，但本地密码库刷新失败，请手动同步。";
+                return UiOperationResult<T>.Success(committedRefreshFailure());
+            }
+            catch (Exception ex) when (
+                ex is Core.Services.AttachmentTooLargeException
+                    or Vault.AttachmentUploadCompensationException
+                    or Api.VaultWriteException
+                    or HttpRequestException
+                    or IOException
+                    or InvalidDataException
+                    or UnauthorizedAccessException
+                    or System.Security.Cryptography.CryptographicException
+                    or TimeoutException
+                || Api.RequestTimeoutClassifier.IsTimeout(ex, _operationCts.Token))
             {
                 OperationError = SafeOperationMessage(ex);
                 return UiOperationResult<T>.Failure(OperationError);
@@ -560,14 +622,27 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         }
     }
 
-    private static string SafeOperationMessage(Exception ex) => ex switch
+    private static string SafeOperationMessage(Exception ex)
     {
-        Core.Services.VaultRefreshException => "更改已保存，但本地密码库刷新失败，请手动同步。",
-        Core.Services.AttachmentTooLargeException => ex.Message,
-        Api.VaultWriteException => "服务器拒绝了此更改，请检查输入后重试。",
-        HttpRequestException => "网络请求失败，请检查连接后重试。",
-        _ => "操作失败。",
-    };
+        if (ex is Vault.AttachmentUploadCompensationException compensation)
+        {
+            return $"附件上传未完成，且服务器记录 {compensation.OrphanedAttachmentId} 可能需要手动清理。";
+        }
+        if (Api.RequestTimeoutClassifier.IsTimeout(ex))
+            return "文件传输长时间没有进展，请检查连接后重试。";
+
+        return ex switch
+        {
+            Core.Services.AttachmentTooLargeException => ex.Message,
+            Api.VaultWriteException => "服务器拒绝了此更改，请检查输入后重试。",
+            InvalidDataException or System.Security.Cryptography.CryptographicException =>
+                "附件内容无效或完整性校验失败。",
+            UnauthorizedAccessException => "没有访问所选文件的权限。",
+            IOException => "文件读取或写入失败，请检查磁盘和文件状态后重试。",
+            HttpRequestException => "网络请求失败，请检查连接后重试。",
+            _ => "操作失败。",
+        };
+    }
 
     /// <summary>取消当前正在进行的 Vault 操作(若有)。用于生命周期清理与用户主动取消,不影响后续新操作进入门禁。</summary>
     public void CancelCurrentOperation() => _operationCts?.Cancel();
@@ -596,7 +671,14 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
                 CancelEdit();
                 return savedId;
             },
-            ct);
+            ct,
+            committedRefreshFailure: () =>
+            {
+                // The remote record exists even though the refreshed snapshot is unavailable.
+                // Discard the draft so the user cannot accidentally submit the same create again.
+                CancelEdit();
+                return editingId ?? string.Empty;
+            });
     }
 
     private async Task<UiOperationResult> RunWriteAndReloadAsync(
@@ -615,7 +697,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
                 SelectById(selectId);
                 return true;
             },
-            ct);
+            ct,
+            committedRefreshFailure: () => true);
         return new UiOperationResult(result.Status, result.Error);
     }
 
@@ -698,6 +781,24 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         SelectFilterByTag(tag); // 复原选中(凭 tag),触发 ApplyFilter
     }
 
+    private void ReloadSnapshotPreservingSelection(string? selectedId)
+    {
+        var wasRebuildingFilteredItems = _isRebuildingFilteredItems;
+        _isRebuildingFilteredItems = true;
+        try
+        {
+            ReloadItems();
+            ReloadFilters();
+        }
+        finally
+        {
+            _isRebuildingFilteredItems = wasRebuildingFilteredItems;
+        }
+
+        if (!wasRebuildingFilteredItems)
+            RestoreVisibleSelection(selectedId);
+    }
+
     private void SelectById(string? id)
     {
         ApplyFilter();
@@ -725,9 +826,11 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             async token =>
             {
                 await _service.SyncAsync(token);
-                ReloadItems();
-                ReloadFilters();
-                SelectById(selectedId);
+                ReloadSnapshotPreservingSelection(selectedId);
+                SkippedCipherCount = _service.SkippedCipherCount;
+                DataStale = _service.DataStale;
+                if (!DataStale)
+                    OperationWarning = string.Empty;
                 return true;
             },
             ct);
@@ -742,12 +845,12 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     /// </summary>
     public void RefreshFromSnapshot()
     {
-        ReloadItems();
-        ReloadFilters();
-        // 保持当前选中项（若已被删除则自动清空）
-        SelectById(SelectedItem?.Id);
+        var selectedId = SelectedItem?.Id;
+        ReloadSnapshotPreservingSelection(selectedId);
         SkippedCipherCount = _service.SkippedCipherCount;
-        DataStale = _service.DataStale;
+        // Notification-driven snapshot refreshes do not prove that the failed post-write sync
+        // has recovered. Only a successful explicit SyncAsync clears the committed-write warning.
+        DataStale = _service.DataStale || HasOperationWarning;
     }
 
     [RelayCommand]
@@ -794,6 +897,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         IsEditing = false;
         SearchText = string.Empty;
         OperationError = string.Empty;
+        OperationWarning = string.Empty;
         EditorError = string.Empty;
         ClearSelection();
         Items.Clear();
@@ -967,7 +1071,10 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             selectId: id,
             ct);
 
-    public async Task<UiOperationResult> AddAttachmentAsync(string cipherId, byte[] fileBytes, string fileName, CancellationToken ct = default)
+    public async Task<UiOperationResult> AddAttachmentAsync(
+        string cipherId,
+        Core.Models.ReopenableFileSource file,
+        CancellationToken ct = default)
     {
         if (_attachments is null)
             return UiOperationResult.Failure("附件服务不可用");
@@ -976,32 +1083,38 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             VaultOperationKind.AttachmentUpload,
             async token =>
             {
-                var attachments = await _attachments.AddAttachmentAsync(cipherId, fileBytes, fileName, token);
+                var attachments = await _attachments.AddAttachmentAsync(cipherId, file, token);
                 RefreshDetailAttachments(cipherId, attachments);
                 return true;
             },
-            ct);
+            ct,
+            committedRefreshFailure: () => true);
         return new UiOperationResult(result.Status, result.Error);
     }
 
     // 下载附件前必须先过条目级门禁:被拒/取消时绝不调用附件服务、绝不占用操作门禁。
     // 门禁原子去重交由 RunOperationAsync 的 TryEnter 完成,无需额外 IsBusy 预检查。
-    public async Task<UiOperationResult<byte[]>> DownloadAttachmentAsync(
+    public async Task<UiOperationResult<long>> DownloadAttachmentAsync(
         string cipherId,
         string attachmentId,
         Func<CancellationToken, Task<string?>> prompt,
+        Stream plaintextDestination,
         CancellationToken ct = default)
     {
         var authorization = await EnsureAuthorizedAsync(
             cipherId, SensitiveItemAction.DownloadAttachment, prompt, ct);
         if (!authorization.IsSuccess)
-            return new UiOperationResult<byte[]>(authorization.Status, default, authorization.Error);
+            return new UiOperationResult<long>(authorization.Status, default, authorization.Error);
         if (_attachments is null)
-            return UiOperationResult<byte[]>.Failure("附件服务不可用");
+            return UiOperationResult<long>.Failure("附件服务不可用");
 
         return await RunOperationAsync(
             VaultOperationKind.AttachmentDownload,
-            token => _attachments.DownloadAttachmentAsync(cipherId, attachmentId, token),
+            token => _attachments.DownloadAttachmentAsync(
+                cipherId,
+                attachmentId,
+                plaintextDestination,
+                token),
             ct);
     }
 
@@ -1018,7 +1131,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
                 RefreshDetailAttachments(cipherId, attachments);
                 return true;
             },
-            ct);
+            ct,
+            committedRefreshFailure: () => true);
         return new UiOperationResult(result.Status, result.Error);
     }
 

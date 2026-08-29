@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Core.Enums;
 
 namespace Api.Dtos;
 
@@ -135,4 +136,4 @@ public sealed record AttachmentUploadRequest(
 public sealed record AttachmentUploadV2Response(
     [property: JsonPropertyName("attachmentId")] string AttachmentId,
     [property: JsonPropertyName("url")] string Url,
-    [property: JsonPropertyName("fileUploadType")] int FileUploadType);
+    [property: JsonPropertyName("fileUploadType")] FileUploadType FileUploadType);

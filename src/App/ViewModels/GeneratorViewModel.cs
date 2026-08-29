@@ -48,14 +48,29 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
     [ObservableProperty]
     public partial bool PassphraseIncludeNumber { get; set; }
 
-    [ObservableProperty]
-    public partial UsernameGenerationType UsernameType { get; set; } = UsernameGenerationType.RandomWord;
+    private UsernameGenerationType _usernameType = UsernameGenerationType.RandomWord;
 
     [ObservableProperty]
     public partial bool UsernameCapitalize { get; set; }
 
     [ObservableProperty]
     public partial bool UsernameIncludeNumber { get; set; }
+
+    public UsernameGenerationType UsernameType
+    {
+        get => _usernameType;
+        set
+        {
+            var normalized = value == UsernameGenerationType.RandomWord
+                ? value
+                : UsernameGenerationType.RandomWord;
+            if (!SetProperty(ref _usernameType, normalized))
+                return;
+
+            OnPropertyChanged(nameof(UsernameTypeIndex));
+            Regenerate();
+        }
+    }
 
     public int Length
     {
@@ -66,6 +81,7 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
             if (!SetProperty(ref _length, clamped))
                 return;
 
+            ApplyNormalizedMinimums(_minNumbers, _minSpecial, MinimumPriority.Numbers);
             OnPropertyChanged(nameof(LengthValue));
             Regenerate();
         }
@@ -116,12 +132,8 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         get => _minNumbers;
         set
         {
-            var normalized = Math.Clamp(value, 0, 128);
-            if (!SetProperty(ref _minNumbers, normalized))
-                return;
-
-            OnPropertyChanged(nameof(MinNumbersValue));
-            Regenerate();
+            if (ApplyNormalizedMinimums(value, _minSpecial, MinimumPriority.Numbers))
+                Regenerate();
         }
     }
 
@@ -130,12 +142,8 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         get => _minSpecial;
         set
         {
-            var normalized = Math.Clamp(value, 0, 128);
-            if (!SetProperty(ref _minSpecial, normalized))
-                return;
-
-            OnPropertyChanged(nameof(MinSpecialValue));
-            Regenerate();
+            if (ApplyNormalizedMinimums(_minNumbers, value, MinimumPriority.Special))
+                Regenerate();
         }
     }
 
@@ -197,7 +205,7 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
     public int UsernameTypeIndex
     {
         get => (int)UsernameType;
-        set => UsernameType = (UsernameGenerationType)Math.Clamp(value, 0, 3);
+        set => UsernameType = UsernameGenerationType.RandomWord;
     }
 
     public GeneratorViewModel(IClipboardService? clipboard = null, PasswordStrengthEvaluator? strength = null)
@@ -209,9 +217,9 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
 
     private void CharacterSetChanged()
     {
-        var fallbackApplied = EnsureAtLeastOneCharacterSet();
-        if (fallbackApplied || IncludeUppercase || IncludeLowercase || IncludeNumbers || IncludeSpecial)
-            Regenerate();
+        EnsureAtLeastOneCharacterSet();
+        ApplyNormalizedMinimums(_minNumbers, _minSpecial, MinimumPriority.Numbers);
+        Regenerate();
     }
 
     private const int MaxHistory = 20;
@@ -298,24 +306,16 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
     partial void OnPassphraseSeparatorChanged(string value) => Regenerate();
     partial void OnPassphraseCapitalizeChanged(bool value) => Regenerate();
     partial void OnPassphraseIncludeNumberChanged(bool value) => Regenerate();
-    partial void OnUsernameTypeChanged(UsernameGenerationType value)
-    {
-        OnPropertyChanged(nameof(UsernameTypeIndex));
-        Regenerate();
-    }
     partial void OnUsernameCapitalizeChanged(bool value) => Regenerate();
     partial void OnUsernameIncludeNumberChanged(bool value) => Regenerate();
 
     private PasswordGenerationOptions BuildOptions()
     {
         EnsureAtLeastOneCharacterSet();
+        ApplyNormalizedMinimums(_minNumbers, _minSpecial, MinimumPriority.Numbers);
 
         var minUppercase = IncludeUppercase ? 1 : 0;
         var minLowercase = IncludeLowercase ? 1 : 0;
-        var minNumbers = IncludeNumbers ? Math.Clamp(MinNumbers, 0, 128) : 0;
-        var minSpecial = IncludeSpecial ? Math.Clamp(MinSpecial, 0, 128) : 0;
-
-        ReduceMinimumsToFitLength(ref minNumbers, ref minSpecial, minUppercase + minLowercase);
 
         return new PasswordGenerationOptions(
             Length,
@@ -325,8 +325,8 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
             IncludeSpecial,
             minUppercase,
             minLowercase,
-            minNumbers,
-            minSpecial,
+            _minNumbers,
+            _minSpecial,
             AvoidAmbiguous);
     }
 
@@ -341,18 +341,56 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         return false;
     }
 
-    private void ReduceMinimumsToFitLength(ref int minNumbers, ref int minSpecial, int fixedMinimums)
+    private bool ApplyNormalizedMinimums(
+        int requestedNumbers,
+        int requestedSpecial,
+        MinimumPriority priority)
     {
-        var overflow = (long)fixedMinimums + minNumbers + minSpecial - Length;
-        if (overflow <= 0)
-            return;
+        requestedNumbers = IncludeNumbers ? Math.Clamp(requestedNumbers, 0, 128) : 0;
+        requestedSpecial = IncludeSpecial ? Math.Clamp(requestedSpecial, 0, 128) : 0;
 
-        var specialReduction = (int)Math.Min(minSpecial, overflow);
-        minSpecial -= specialReduction;
-        overflow -= specialReduction;
+        var fixedMinimums = (IncludeUppercase ? 1 : 0) + (IncludeLowercase ? 1 : 0);
+        var remaining = Math.Max(0, Length - fixedMinimums);
 
-        var numberReduction = (int)Math.Min(minNumbers, overflow);
-        minNumbers -= numberReduction;
+        int normalizedNumbers;
+        int normalizedSpecial;
+        if (priority == MinimumPriority.Special)
+        {
+            normalizedSpecial = Math.Min(requestedSpecial, remaining);
+            normalizedNumbers = Math.Min(requestedNumbers, remaining - normalizedSpecial);
+        }
+        else
+        {
+            normalizedNumbers = Math.Min(requestedNumbers, remaining);
+            normalizedSpecial = Math.Min(requestedSpecial, remaining - normalizedNumbers);
+        }
+
+        var numbersChanged = SetMinimum(
+            ref _minNumbers,
+            normalizedNumbers,
+            nameof(MinNumbers),
+            nameof(MinNumbersValue));
+        var specialChanged = SetMinimum(
+            ref _minSpecial,
+            normalizedSpecial,
+            nameof(MinSpecial),
+            nameof(MinSpecialValue));
+        return numbersChanged || specialChanged;
+    }
+
+    private bool SetMinimum(ref int field, int value, string propertyName, string valuePropertyName)
+    {
+        if (!SetProperty(ref field, value, propertyName))
+            return false;
+
+        OnPropertyChanged(valuePropertyName);
+        return true;
+    }
+
+    private enum MinimumPriority
+    {
+        Numbers,
+        Special,
     }
 
     private static int ClampRounded(double value, int minimum, int maximum)

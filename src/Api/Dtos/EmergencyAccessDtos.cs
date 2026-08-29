@@ -53,6 +53,7 @@ public sealed class EmergencyAccessTakeoverResponse
     public int KdfIterations { get; init; }
     public int? KdfMemory { get; init; }
     public int? KdfParallelism { get; init; }
+    public string? Salt { get; init; }
     public string? KeyEncrypted { get; init; }
 }
 

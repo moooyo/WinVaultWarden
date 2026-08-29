@@ -42,6 +42,15 @@ public class GeneratorDialogXamlTests
     }
 
     [Fact]
+    public void PrimaryButton_DescribesItsCopyOnlyAction()
+    {
+        var dialog = Load().Root;
+
+        Assert.NotNull(dialog);
+        Assert.Equal("复制", (string?)dialog!.Attribute("PrimaryButtonText"));
+    }
+
+    [Fact]
     public void ResultCardBorders_UseCardBorderStyle_AndCompactPadding()
     {
         var doc = Load();
@@ -89,6 +98,62 @@ public class GeneratorDialogXamlTests
         // 密码 + 密码短语 两个 Tab 各一个,用户名 Tab 不含强度条。
         Assert.Equal(2, bars.Count);
         Assert.All(bars, e => Assert.Contains("Mode=OneWay", e.Attribute("Value")!.Value));
+    }
+
+    [Theory]
+    [InlineData("PasswordLengthSlider", "密码长度滑块")]
+    [InlineData("PasswordLengthNumberBox", "密码长度数值")]
+    public void PasswordLengthInputs_HaveDistinctAccessibleNames(string automationId, string accessibleName)
+    {
+        var input = Load().Descendants().Single(e =>
+            e.Attribute("AutomationProperties.AutomationId")?.Value == automationId);
+
+        Assert.Equal(accessibleName, input.Attribute("AutomationProperties.Name")?.Value);
+    }
+
+    [Fact]
+    public void PasswordOptions_UseResponsiveGridsInsteadOfSingleHorizontalRows()
+    {
+        var doc = Load();
+        var lengthCard = doc.Descendants().Single(e =>
+            e.Name.LocalName == "SettingsCard" && (string?)e.Attribute("Header") == "长度");
+        var characterCard = doc.Descendants().Single(e =>
+            e.Name.LocalName == "SettingsCard" && (string?)e.Attribute("Header") == "包含字符");
+
+        Assert.Equal("Stretch", (string?)lengthCard.Attribute("HorizontalContentAlignment"));
+        Assert.Equal("Grid", lengthCard.Elements().Single().Name.LocalName);
+        Assert.Equal("Stretch", (string?)characterCard.Attribute("HorizontalContentAlignment"));
+        Assert.Equal("Grid", characterCard.Elements().Single().Name.LocalName);
+        Assert.DoesNotContain(characterCard.Descendants(), e =>
+            e.Name.LocalName == "StackPanel" && (string?)e.Attribute("Orientation") == "Horizontal");
+    }
+
+    [Fact]
+    public void UsernameType_OnlyPromisesImplementedRandomWordMode()
+    {
+        var doc = Load();
+        var typeCard = doc.Descendants().Single(e =>
+            e.Name.LocalName == "SettingsCard" && (string?)e.Attribute("Header") == "类型");
+
+        Assert.Equal("随机单词", (string?)typeCard.Descendants()
+            .Single(e => e.Attribute("AutomationProperties.AutomationId")?.Value == "UsernameTypeText")
+            .Attribute("Text"));
+        Assert.DoesNotContain(typeCard.Descendants(), e => e.Name.LocalName == "ComboBox");
+        Assert.DoesNotContain(doc.ToString(), "转发的电子邮箱别名", StringComparison.Ordinal);
+        Assert.DoesNotContain(doc.ToString(), "Catch-all 电子邮箱", StringComparison.Ordinal);
+        Assert.DoesNotContain(doc.ToString(), "附加地址电子邮箱", StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("MinNumbersNumberBox", "ViewModel.IncludeNumbers")]
+    [InlineData("MinSpecialNumberBox", "ViewModel.IncludeSpecial")]
+    public void MinimumInputs_AreEnabledOnlyForAvailableCharacterSets(string automationId, string property)
+    {
+        var input = Load().Descendants().Single(e =>
+            e.Attribute("AutomationProperties.AutomationId")?.Value == automationId);
+
+        Assert.Contains(property, input.Attribute("IsEnabled")?.Value);
+        Assert.Contains("Mode=OneWay", input.Attribute("IsEnabled")?.Value);
     }
 
     [Fact]

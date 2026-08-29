@@ -1,0 +1,64 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dotnet-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          global-json-file: global.json
+      - name: Run .NET test projects
+        shell: pwsh
+        run: |
+          $projects = @(Get-ChildItem tests -Recurse -Filter *.Tests.csproj -File)
+          if ($projects.Count -eq 0) { throw 'No .NET test projects were found.' }
+          foreach ($project in $projects) {
+            dotnet test $project.FullName -c Debug --nologo
+            if ($LASTEXITCODE -ne 0) { throw "Tests failed: $($project.Name)" }
+          }
+
+  browser-extension-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Run browser extension tests
+        working-directory: browser-extension
+        shell: pwsh
+        run: |
+          npm test
+          if ($LASTEXITCODE -ne 0) { throw 'Browser extension tests failed.' }
+
+  portable-package-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          global-json-file: global.json
+      - uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2.0.0
+      - name: Ensure vswhere on PATH
+        shell: pwsh
+        run: Add-Content $env:GITHUB_PATH "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+      - name: Verify a clean x64 portable package
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File scripts\verify-browser-native-host-package.ps1 `
+            -Configuration Release -RuntimeIdentifier win-x64 -SkipMsix
+          if ($LASTEXITCODE -ne 0) { throw 'Portable package verification failed.' }

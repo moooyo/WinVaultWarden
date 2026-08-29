@@ -7,7 +7,10 @@ public interface ISendUiService
     Task<IReadOnlyList<SendListItem>> GetSendsAsync(CancellationToken ct = default);
     Task<SendListItem> CreateSendAsync(SendEditorDraft draft, Core.Models.SendFileSource? file, CancellationToken ct = default);
     Task<SendListItem> UpdateSendAsync(string id, SendEditorDraft draft, Core.Models.SendFileSource? file, CancellationToken ct = default);
-    Task DeleteSendAsync(string id, CancellationToken ct = default);
+    Task DeleteSendAsync(
+        string id,
+        Core.Session.VaultSessionLease originatingSession,
+        CancellationToken ct = default);
     string? CopyShareLink(SendListItem item);
     Task<SendReceivedResult> OpenReceivedLinkAsync(string url, string? password, CancellationToken ct = default);
 
@@ -23,10 +26,18 @@ public sealed record SendReceivedResult(
     string? TextContent,
     string? FileName,
     string? Error,
-    object? Accessed)
+    Core.Models.SendAccessResult? Accessed) : IDisposable
 {
+    private int _disposed;
+
     public static SendReceivedResult Failure(string error) =>
         new(false, false, SendType.Text, "", null, null, error, null);
     public static SendReceivedResult Wrong() =>
         new(false, true, SendType.Text, "", null, null, null, null);
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            Accessed?.Dispose();
+    }
 }

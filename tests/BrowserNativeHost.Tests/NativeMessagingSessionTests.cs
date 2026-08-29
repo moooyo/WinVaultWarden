@@ -219,6 +219,26 @@ public class NativeMessagingSessionTests
     }
 
     [Fact]
+    public async Task NinthActiveRequest_IsRateLimitedWithoutCallingBridge()
+    {
+        var bridge = new ControlledBridge();
+        await using var fixture = await SessionFixture.StartAsync(bridge);
+        var ids = Enumerable.Range(1, NativeMessagingSession.MaxActiveRequests + 1)
+            .Select(value => value.ToString("x32"))
+            .ToArray();
+
+        foreach (var id in ids.Take(NativeMessagingSession.MaxActiveRequests))
+            await fixture.SendAsync(Request(id, TimeSpan.FromSeconds(60)));
+
+        await fixture.SendAsync(Request(ids[^1], TimeSpan.FromSeconds(60)));
+
+        var rejected = Assert.Single(fixture.ResponsesFor(ids[^1]));
+        Assert.False(rejected.Ok);
+        Assert.Equal(PasskeyErrorCodes.RateLimited, rejected.Error?.Code);
+        Assert.Equal(NativeMessagingSession.MaxActiveRequests, bridge.SendCalls);
+    }
+
+    [Fact]
     public async Task ConcurrentCompletions_WriteTwoIntactFrames()
     {
         var bridge = new ControlledBridge();

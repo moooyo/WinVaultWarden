@@ -1,9 +1,11 @@
 using System.IO;
 using System.Net.Http;
+using Api;
 using App.Services;
 using App.ViewModels;
 using App.ViewModels.Models;
 using Core.Models;
+using Core.Session;
 using Xunit;
 
 namespace App.Tests;
@@ -36,6 +38,9 @@ public class SendViewModelTests
         public string? LastOpenedUrl { get; private set; }
         public string? LastOpenedPassword { get; private set; }
         public SendReceivedResult? ScriptedReceived { get; set; }
+        public Exception? CreateError { get; set; }
+        public Exception? DeleteError { get; set; }
+        public Exception? OpenError { get; set; }
 
         public Task<IReadOnlyList<SendListItem>> GetSendsAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<SendListItem>>(Sends.ToList());
@@ -55,6 +60,8 @@ public class SendViewModelTests
         {
             LastCreateDraft = draft;
             LastCreateFile = file;
+            if (CreateError is not null)
+                return Task.FromException<SendListItem>(CreateError);
             var name = draft.Type == SendType.File && !string.IsNullOrWhiteSpace(draft.FileName) ? draft.FileName : draft.Name;
             return Task.FromResult(new SendListItem("new-1", name, draft.Type, "新建", "https://vault.example/#/send/new/seed"));
         }
@@ -68,9 +75,14 @@ public class SendViewModelTests
             return Task.FromResult(new SendListItem(id, name, draft.Type, "已更新", "https://vault.example/#/send/upd/seed"));
         }
 
-        public Task DeleteSendAsync(string id, CancellationToken ct = default)
+        public Task DeleteSendAsync(
+            string id,
+            VaultSessionLease originatingSession,
+            CancellationToken ct = default)
         {
             LastDeletedId = id;
+            if (DeleteError is not null)
+                return Task.FromException(DeleteError);
             Sends.RemoveAll(s => s.Id == id);
             return Task.CompletedTask;
         }
@@ -81,6 +93,8 @@ public class SendViewModelTests
         {
             LastOpenedUrl = url;
             LastOpenedPassword = password;
+            if (OpenError is not null)
+                return Task.FromException<SendReceivedResult>(OpenError);
             return Task.FromResult(ScriptedReceived ?? new SendReceivedResult(true, false, SendType.Text, "分享", "明文内容", null, null, null));
         }
     }
@@ -309,6 +323,7 @@ public class SendViewModelTests
     {
         var vm = new SendViewModel(new ThrowingInvalidDataSendUiService());
         var item = new SendListItem("s1", "周报.pdf", SendType.File, "d", "https://vault.example/#/send/acc1/seed1");
+        vm.Items.Add(item);
         var draft = SendEditorDraft.CreateDefault(SendType.File);
         draft.Name = "合同";
         draft.FileName = "合同.zip";
@@ -326,18 +341,180 @@ public class SendViewModelTests
     }
 
     [Fact]
+    public async Task CreateSendAsync_CompensationFailure_HidesInternalSendIdAndDiagnostics()
+    {
+        const string orphanedSendId = "internal-send-id-91";
+        const string diagnostic = "Bearer private-token from C:\\private\\payload.bin";
+        var svc = new FakeSendUiService
+        {
+            CreateError = new Vault.SendUploadCompensationException(
+                orphanedSendId,
+                new IOException(diagnostic),
+                new HttpRequestException(diagnostic)),
+        };
+        var vm = await LoadedVmAsync(svc);
+        var draft = SendEditorDraft.CreateDefault(SendType.Text);
+        draft.Name = "一次性口令";
+        draft.Text = "123456";
+
+        var result = await vm.CreateSendAsync(draft, file: null, CancellationToken.None);
+
+        const string expected = "文件上传未完成，服务器可能保留了未完成的 Send。请刷新列表，确认并删除该条目后再重试。";
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal(expected, result.Error);
+        Assert.Equal(expected, vm.Error);
+        Assert.DoesNotContain(orphanedSendId, vm.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain(diagnostic, vm.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task LoadAsync_RequestTimeout_ReturnsFailedAndSetsErrorState()
+    {
+        var vm = new SendViewModel(new TimeoutSendUiService());
+
+        var result = await vm.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, result.Error);
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, vm.Error);
+        Assert.Equal(DataPageState.Error, vm.LoadState);
+    }
+
+    [Fact]
+    public async Task UpdateSendFromDraftAsync_ProtectedReplacementKeep_RequiresPasswordAndKeepsFile()
+    {
+        var service = new PasswordRequiredSendUiService();
+        var vm = new SendViewModel(service);
+        await vm.LoadAsync(CancellationToken.None);
+        var item = Assert.Single(vm.Items);
+        var draft = SendEditorDraft.CreateDefault(SendType.File);
+        draft.Name = "replacement";
+        draft.FileName = "replacement.bin";
+        draft.ExistingHasPassword = true;
+        var source = MemorySource("replacement.bin", [1, 2, 3]);
+        draft.ReplacementFile = source;
+
+        var result = await vm.UpdateSendFromDraftAsync(
+            item,
+            draft,
+            draft.ReplacementFile,
+            CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal("此 Send 已设置密码。替换文件时请重新输入原密码或设置新密码。", result.Error);
+        Assert.Same(source, draft.ReplacementFile);
+        Assert.Single(vm.Items);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task CreateSendAsync_RequestTimeout_ReturnsFailedInsteadOfCancelled()
+    {
+        var vm = new SendViewModel(new TimeoutSendUiService());
+        var draft = SendEditorDraft.CreateDefault(SendType.File);
+        draft.Name = "合同";
+        draft.FileName = "合同.zip";
+        var source = MemorySource("合同.zip", [1, 2, 3]);
+
+        var result = await vm.CreateSendAsync(draft, source, CancellationToken.None);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal("文件传输长时间没有进展，请检查连接后重试。", result.Error);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task UpdateSendFromDraftAsync_UncertainOldDelete_LocksExactPairAndDoesNotInviteRetry()
+    {
+        var service = new UncertainReplacementSendUiService();
+        var vm = new SendViewModel(service);
+        await vm.LoadAsync(CancellationToken.None);
+        var original = Assert.Single(vm.Items);
+        var draft = SendEditorDraft.CreateDefault(SendType.File);
+        draft.Name = "replacement.pdf";
+        draft.FileName = "replacement.pdf";
+        var source = MemorySource("replacement.pdf", [1, 2, 3]);
+
+        var result = await vm.UpdateSendFromDraftAsync(
+            original,
+            draft,
+            source,
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, service.LoadCalls);
+        Assert.Contains(vm.Items, item =>
+            item.Id == "old-send"
+            && item.ReconciliationState == SendReconciliationState.ReplacementOriginalPending
+            && !item.CanModify);
+        Assert.Contains(vm.Items, item =>
+            item.Id == "new-send"
+            && item.ReconciliationState == SendReconciliationState.ReplacementNewPending
+            && !item.CanModify);
+        Assert.True(vm.ShowNotice);
+        Assert.Contains("已锁定", vm.Notice);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
     public async Task DeleteSendCommand_RemovesItemAndCallsService()
     {
         var svc = new FakeSendUiService();
         var vm = await LoadedVmAsync(svc);
         var item = vm.Items[0];
 
-        vm.DeleteSendCommand.Execute(item);
+        vm.DeleteSendCommand.Execute(new SendDeleteRequest(
+            item,
+            TestSessionLeases.CreateSessionLease()));
         await WaitForIdle(vm);
 
         Assert.Equal(item.Id, svc.LastDeletedId);
         Assert.DoesNotContain(vm.Items, s => s.Id == item.Id);
         Assert.DoesNotContain(vm.FilteredItems, s => s.Id == item.Id);
+    }
+
+    [Fact]
+    public async Task DeleteSendCommand_RecoverableFailure_ShowsSanitizedActionableError()
+    {
+        const string diagnostic = "DELETE https://vault.example/api/sends/secret?token=private";
+        var svc = new FakeSendUiService
+        {
+            DeleteError = new HttpRequestException(diagnostic),
+        };
+        var vm = await LoadedVmAsync(svc);
+        var item = vm.Items[0];
+        var request = new SendDeleteRequest(item, TestSessionLeases.CreateSessionLease());
+
+        await vm.DeleteSendCommand.ExecuteAsync(request);
+
+        Assert.Equal(
+            "无法确认删除结果，请刷新列表检查该 Send 是否仍存在后再操作。",
+            vm.Error);
+        Assert.DoesNotContain(diagnostic, vm.Error, StringComparison.Ordinal);
+        Assert.True(vm.HasError);
+        Assert.True(vm.ShowContent);
+        Assert.False(vm.ShowError);
+        Assert.Contains(vm.Items, send => send.Id == item.Id);
+    }
+
+    [Fact]
+    public async Task DeleteSendCommand_UnknownFailure_PropagatesWithoutWritingError()
+    {
+        const string diagnostic = "invalid internal mutation state: private-token";
+        var failure = new InvalidOperationException(diagnostic);
+        var svc = new FakeSendUiService { DeleteError = failure };
+        var vm = await LoadedVmAsync(svc);
+        var request = new SendDeleteRequest(
+            vm.Items[0],
+            TestSessionLeases.CreateSessionLease());
+
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => vm.DeleteSendCommand.ExecuteAsync(request));
+
+        Assert.Same(failure, thrown);
+        Assert.Null(vm.Error);
+        Assert.False(vm.HasError);
+        Assert.False(vm.IsBusy);
     }
 
     [Fact]
@@ -386,6 +563,8 @@ public class SendViewModelTests
         Assert.Equal("hello world", vm.ReceivedText);
         Assert.True(vm.HasReceivedText);
         Assert.False(vm.ReceivedWrongPassword);
+        Assert.Equal(string.Empty, vm.ReceivedLinkUrl);
+        Assert.Equal(string.Empty, vm.ReceivedLinkPassword);
     }
 
     [Fact]
@@ -403,6 +582,8 @@ public class SendViewModelTests
         await WaitForIdle(vm);
 
         Assert.Equal("hunter2", svc.LastOpenedPassword);
+        Assert.Equal(string.Empty, vm.ReceivedLinkUrl);
+        Assert.Equal(string.Empty, vm.ReceivedLinkPassword);
     }
 
     [Fact]
@@ -425,7 +606,20 @@ public class SendViewModelTests
     {
         var svc = new FakeSendUiService
         {
-            ScriptedReceived = new SendReceivedResult(true, false, SendType.File, "报告", null, "报告.pdf", null, new object()),
+            ScriptedReceived = new SendReceivedResult(
+                true,
+                false,
+                SendType.File,
+                "报告",
+                null,
+                "报告.pdf",
+                null,
+                new Core.Models.SendAccessResult
+                {
+                    AccessId = "access",
+                    Endpoints = Core.Models.ServerEndpoints.FromWebVault("https://vault.example"),
+                    Seed = new byte[16],
+                }),
         };
         var vm = await LoadedVmAsync(svc);
         vm.ReceivedLinkUrl = "https://vault.example/#/send/acc/seed";
@@ -454,6 +648,162 @@ public class SendViewModelTests
     }
 
     [Fact]
+    public async Task OpenReceivedLinkCommand_RecoverableFailure_ShowsSanitizedActionableError()
+    {
+        const string diagnostic = "Could not read C:\\private\\send.bin; token=private";
+        var svc = new FakeSendUiService { OpenError = new IOException(diagnostic) };
+        var vm = await LoadedVmAsync(svc);
+        vm.ReceivedLinkUrl = "https://vault.example/#/send/access/seed";
+
+        await vm.OpenReceivedLinkCommand.ExecuteAsync(null);
+
+        Assert.Equal(
+            "无法读取该 Send 的内容，请确认链接完整后重试。",
+            vm.Error);
+        Assert.DoesNotContain(diagnostic, vm.Error, StringComparison.Ordinal);
+        Assert.True(vm.HasError);
+        Assert.True(vm.ShowContent);
+        Assert.False(vm.ShowError);
+    }
+
+    [Fact]
+    public async Task OpenReceivedLinkCommand_OpaqueFailureResult_IsSanitized()
+    {
+        const string diagnostic = "server stack trace: access_token=private";
+        var svc = new FakeSendUiService
+        {
+            ScriptedReceived = SendReceivedResult.Failure(diagnostic),
+        };
+        var vm = await LoadedVmAsync(svc);
+        vm.ReceivedLinkUrl = "https://vault.example/#/send/access/seed";
+
+        await vm.OpenReceivedLinkCommand.ExecuteAsync(null);
+
+        Assert.Equal(
+            "无法打开该 Send 链接，请检查链接是否完整，并稍后重试。",
+            vm.Error);
+        Assert.DoesNotContain(diagnostic, vm.Error, StringComparison.Ordinal);
+        Assert.True(vm.HasError);
+    }
+
+    [Fact]
+    public async Task OpenReceivedLinkCommand_RequestTimeout_PreservesStableTimeoutMessage()
+    {
+        var vm = new SendViewModel(new TimeoutSendUiService())
+        {
+            ReceivedLinkUrl = "https://vault.example/#/send/access/seed",
+        };
+
+        await vm.OpenReceivedLinkCommand.ExecuteAsync(null);
+
+        Assert.Equal(UiExceptionPolicy.RequestTimeoutMessage, vm.Error);
+        Assert.True(vm.HasError);
+        Assert.False(vm.ShowError);
+    }
+
+    [Fact]
+    public async Task OpenReceivedLinkCommand_UnknownFailure_PropagatesWithoutWritingError()
+    {
+        const string diagnostic = "invalid internal receive state: private-token";
+        var failure = new InvalidOperationException(diagnostic);
+        var svc = new FakeSendUiService { OpenError = failure };
+        var vm = await LoadedVmAsync(svc);
+        vm.ReceivedLinkUrl = "https://vault.example/#/send/access/seed";
+
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => vm.OpenReceivedLinkCommand.ExecuteAsync(null));
+
+        Assert.Same(failure, thrown);
+        Assert.Null(vm.Error);
+        Assert.False(vm.HasError);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task ClearSensitive_WhileReceiveIsPending_DropsAndDisposesLateResult()
+    {
+        var service = new DeferredReceiveSendUiService();
+        var vm = new SendViewModel(service)
+        {
+            ReceivedLinkUrl = "https://vault.example/#/send/access/seed",
+        };
+        vm.OpenReceivedLinkCommand.Execute(null);
+        var execution = vm.OpenReceivedLinkCommand.ExecutionTask!;
+        var accessed = AccessResult(7);
+
+        vm.ClearSensitive();
+        service.Completion.SetResult(new SendReceivedResult(
+            true,
+            false,
+            SendType.File,
+            "late",
+            null,
+            "late.bin",
+            null,
+            accessed));
+        await execution;
+
+        Assert.Null(vm.LastReceived);
+        Assert.Null(vm.ReceivedFileName);
+        Assert.Throws<ObjectDisposedException>(() => accessed.CopySeed());
+    }
+
+    [Fact]
+    public void ReplacingOrClearingReceivedResult_DisposesOwnedAccessSeed()
+    {
+        var vm = new SendViewModel(new FakeSendUiService());
+        var firstAccess = AccessResult(1);
+        var secondAccess = AccessResult(2);
+        vm.LastReceived = new SendReceivedResult(
+            true, false, SendType.File, "first", null, "first.bin", null, firstAccess);
+
+        vm.LastReceived = new SendReceivedResult(
+            true, false, SendType.File, "second", null, "second.bin", null, secondAccess);
+
+        Assert.Throws<ObjectDisposedException>(() => firstAccess.CopySeed());
+        vm.ClearSensitive();
+        Assert.Throws<ObjectDisposedException>(() => secondAccess.CopySeed());
+    }
+
+    [Fact]
+    public async Task CancelReceive_RacingCompletion_IsIdempotentAndDoesNotCommitLateState()
+    {
+        var service = new DeferredReceiveSendUiService();
+        var vm = new SendViewModel(service)
+        {
+            ReceivedLinkUrl = "https://vault.example/#/send/access/seed",
+        };
+        vm.OpenReceivedLinkCommand.Execute(null);
+        var execution = vm.OpenReceivedLinkCommand.ExecutionTask!;
+        var accessed = AccessResult(3);
+        var firstCancellation = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var cancellation = Task.Run(() =>
+        {
+            vm.CancelReceive();
+            firstCancellation.SetResult();
+            for (var index = 1; index < 100; index++)
+                vm.CancelReceive();
+        });
+        await firstCancellation.Task;
+        service.Completion.TrySetResult(new SendReceivedResult(
+            true, false, SendType.File, "late", null, "late.bin", null, accessed));
+
+        await Task.WhenAll(cancellation, execution);
+        Assert.Null(vm.LastReceived);
+        Assert.Null(vm.ReceivedFileName);
+        Assert.Throws<ObjectDisposedException>(() => accessed.CopySeed());
+    }
+
+    private static SendAccessResult AccessResult(byte value) => new()
+    {
+        AccessId = "access",
+        Endpoints = ServerEndpoints.FromWebVault("https://vault.example"),
+        Seed = Enumerable.Repeat(value, 16).ToArray(),
+    };
+
+    [Fact]
     public void ClearSensitive_CancelsLoadAndDropsAllSecretReferences()
     {
         var vm = new SendViewModel(new FakeSendUiService())
@@ -463,6 +813,7 @@ public class SendViewModelTests
             ReceivedText = "payload",
             ReceivedFileName = "secret.txt",
             LastReceived = SendReceivedResult.Wrong(),
+            Notice = "replacement state",
         };
 
         ((ISensitiveState)vm).ClearSensitive();
@@ -472,6 +823,7 @@ public class SendViewModelTests
         Assert.Null(vm.ReceivedText);
         Assert.Null(vm.ReceivedFileName);
         Assert.Null(vm.LastReceived);
+        Assert.Null(vm.Notice);
         Assert.Empty(vm.Items);
         Assert.Empty(vm.FilteredItems);
         Assert.Equal(DataPageState.Loading, vm.LoadState);
@@ -492,7 +844,7 @@ public class SendViewModelTests
             Task.FromException<SendListItem>(new IOException("upload failed"));
         public Task<SendListItem> UpdateSendAsync(string id, SendEditorDraft draft, SendFileSource? file, CancellationToken ct = default) =>
             Task.FromException<SendListItem>(new IOException("upload failed"));
-        public Task DeleteSendAsync(string id, CancellationToken ct = default) =>
+        public Task DeleteSendAsync(string id, VaultSessionLease originatingSession, CancellationToken ct = default) =>
             Task.FromException(new IOException("delete failed"));
         public string? CopyShareLink(SendListItem item) => item.Link;
         public Task<SendReceivedResult> OpenReceivedLinkAsync(string url, string? password, CancellationToken ct = default) =>
@@ -509,7 +861,7 @@ public class SendViewModelTests
             Task.FromException<SendListItem>(new InvalidDataException("file changed"));
         public Task<SendListItem> UpdateSendAsync(string id, SendEditorDraft draft, SendFileSource? file, CancellationToken ct = default) =>
             Task.FromException<SendListItem>(new InvalidDataException("file changed"));
-        public Task DeleteSendAsync(string id, CancellationToken ct = default) =>
+        public Task DeleteSendAsync(string id, VaultSessionLease originatingSession, CancellationToken ct = default) =>
             Task.CompletedTask;
         public string? CopyShareLink(SendListItem item) => item.Link;
         public Task<SendReceivedResult> OpenReceivedLinkAsync(string url, string? password, CancellationToken ct = default) =>
@@ -529,11 +881,153 @@ public class SendViewModelTests
             throw new NotSupportedException();
         public Task<SendListItem> UpdateSendAsync(string id, SendEditorDraft draft, SendFileSource? file, CancellationToken ct = default) =>
             throw new NotSupportedException();
-        public Task DeleteSendAsync(string id, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task DeleteSendAsync(string id, VaultSessionLease originatingSession, CancellationToken ct = default) => throw new NotSupportedException();
         public string? CopyShareLink(SendListItem item) => item.Link;
         public Task<SendReceivedResult> OpenReceivedLinkAsync(string url, string? password, CancellationToken ct = default) =>
             throw new NotSupportedException();
         public Task<SendEditorDraft?> GetEditDraftAsync(string id, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class PasswordRequiredSendUiService : ISendUiService
+    {
+        public Task<IReadOnlyList<SendListItem>> GetSendsAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<SendListItem>>(
+                [new("protected-send", "original.bin", SendType.File, "d", null)]);
+        public Task<SendListItem> CreateSendAsync(
+            SendEditorDraft draft,
+            SendFileSource? file,
+            CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<SendListItem> UpdateSendAsync(
+            string id,
+            SendEditorDraft draft,
+            SendFileSource? file,
+            CancellationToken ct = default) =>
+            Task.FromException<SendListItem>(new Vault.SendPasswordRequiredForReplacementException());
+        public Task DeleteSendAsync(string id, VaultSessionLease originatingSession, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public string? CopyShareLink(SendListItem item) => item.Link;
+        public Task<SendReceivedResult> OpenReceivedLinkAsync(
+            string url,
+            string? password,
+            CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<SendEditorDraft?> GetEditDraftAsync(
+            string id,
+            CancellationToken ct = default) => throw new NotSupportedException();
+    }
+
+    private sealed class TimeoutSendUiService : ISendUiService
+    {
+        private static TaskCanceledException Timeout() => new(
+            "upload timed out",
+            new RequestTimeoutException(
+                RequestTimeoutPhase.UploadResponseHeaders,
+                TimeSpan.FromSeconds(30)),
+            CancellationToken.None);
+
+        public Task<IReadOnlyList<SendListItem>> GetSendsAsync(CancellationToken ct = default) =>
+            Task.FromException<IReadOnlyList<SendListItem>>(Timeout());
+        public Task<SendListItem> CreateSendAsync(
+            SendEditorDraft draft,
+            SendFileSource? file,
+            CancellationToken ct = default) => Task.FromException<SendListItem>(Timeout());
+        public Task<SendListItem> UpdateSendAsync(
+            string id,
+            SendEditorDraft draft,
+            SendFileSource? file,
+            CancellationToken ct = default) => Task.FromException<SendListItem>(Timeout());
+        public Task DeleteSendAsync(string id, VaultSessionLease originatingSession, CancellationToken ct = default) =>
+            Task.FromException(Timeout());
+        public string? CopyShareLink(SendListItem item) => item.Link;
+        public Task<SendReceivedResult> OpenReceivedLinkAsync(
+            string url,
+            string? password,
+            CancellationToken ct = default) => Task.FromException<SendReceivedResult>(Timeout());
+        public Task<SendEditorDraft?> GetEditDraftAsync(
+            string id,
+            CancellationToken ct = default) => Task.FromException<SendEditorDraft?>(Timeout());
+    }
+
+    private sealed class DeferredReceiveSendUiService : ISendUiService
+    {
+        public TaskCompletionSource<SendReceivedResult> Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<IReadOnlyList<SendListItem>> GetSendsAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<SendListItem>>([]);
+        public Task<SendListItem> CreateSendAsync(
+            SendEditorDraft draft,
+            SendFileSource? file,
+            CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<SendListItem> UpdateSendAsync(
+            string id,
+            SendEditorDraft draft,
+            SendFileSource? file,
+            CancellationToken ct = default) => throw new NotSupportedException();
+        public Task DeleteSendAsync(string id, VaultSessionLease originatingSession, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public string? CopyShareLink(SendListItem item) => item.Link;
+        public Task<SendReceivedResult> OpenReceivedLinkAsync(
+            string url,
+            string? password,
+            CancellationToken ct = default) => Completion.Task;
+        public Task<SendEditorDraft?> GetEditDraftAsync(
+            string id,
+            CancellationToken ct = default) => throw new NotSupportedException();
+    }
+
+    private sealed class UncertainReplacementSendUiService : ISendUiService
+    {
+        public int LoadCalls { get; private set; }
+
+        public Task<IReadOnlyList<SendListItem>> GetSendsAsync(CancellationToken ct = default)
+        {
+            LoadCalls++;
+            IReadOnlyList<SendListItem> sends = LoadCalls == 1
+                ? [new("old-send", "original.pdf", SendType.File, "d", null)]
+                :
+                [
+                    new("old-send", "original.pdf", SendType.File, "d", null),
+                    new("new-send", "replacement.pdf", SendType.File, "d", null),
+                ];
+            return Task.FromResult(sends);
+        }
+
+        public Task<SendListItem> CreateSendAsync(
+            SendEditorDraft draft,
+            SendFileSource? file,
+            CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<SendListItem> UpdateSendAsync(
+            string id,
+            SendEditorDraft draft,
+            SendFileSource? file,
+            CancellationToken ct = default) =>
+            Task.FromException<SendListItem>(new Vault.SendReplacementUncertainException(
+                id,
+                new SendMutationReceipt(
+                    "new-send",
+                    null,
+                    SendMutationKind.Replace,
+                    "new-access",
+                    ReplacedSendId: id),
+                new HttpRequestException("response lost")));
+
+        public Task DeleteSendAsync(string id, VaultSessionLease originatingSession, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public string? CopyShareLink(SendListItem item) => item.Link;
+
+        public Task<SendReceivedResult> OpenReceivedLinkAsync(
+            string url,
+            string? password,
+            CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<SendEditorDraft?> GetEditDraftAsync(
+            string id,
+            CancellationToken ct = default) =>
             throw new NotSupportedException();
     }
 }

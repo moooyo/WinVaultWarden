@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Api;
 using App.Services;
 using App.ViewModels.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -90,10 +91,17 @@ public partial class DevicesViewModel : ObservableObject
                 Error = null;
                 return UiOperationResult<IReadOnlyList<AuthRequestItem>>.Success(items);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
+                when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
             {
                 RestoreRequestsState();
                 return UiOperationResult<IReadOnlyList<AuthRequestItem>>.Cancelled();
+            }
+            catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+            {
+                SetLoadFailure(UiExceptionPolicy.RequestTimeoutMessage);
+                return UiOperationResult<IReadOnlyList<AuthRequestItem>>.Failure(
+                    UiExceptionPolicy.RequestTimeoutMessage);
             }
             catch (HttpRequestException)
             {
@@ -137,7 +145,8 @@ public partial class DevicesViewModel : ObservableObject
                 {
                     confirmed = await confirmAsync(item, ct);
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException ex)
+                    when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
                 {
                     return UiOperationResult.Cancelled();
                 }
@@ -150,9 +159,14 @@ public partial class DevicesViewModel : ObservableObject
                 Error = null;
                 return UiOperationResult.Success();
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
+                when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
             {
                 return UiOperationResult.Cancelled();
+            }
+            catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+            {
+                return FailOperation(UiExceptionPolicy.RequestTimeoutMessage);
             }
             catch (HttpRequestException)
             {
@@ -197,9 +211,14 @@ public partial class DevicesViewModel : ObservableObject
                 Error = null;
                 return UiOperationResult.Success();
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
+                when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
             {
                 return UiOperationResult.Cancelled();
+            }
+            catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+            {
+                return FailOperation(UiExceptionPolicy.RequestTimeoutMessage);
             }
             catch (HttpRequestException)
             {

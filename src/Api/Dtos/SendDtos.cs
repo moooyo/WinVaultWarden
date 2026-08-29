@@ -1,11 +1,13 @@
 using System.Text.Json.Serialization;
+using Core.Enums;
 
 namespace Api.Dtos;
 
 // /api/sends 列表响应:{ data:[...], object:"list", continuationToken:null }
 public sealed record SendListResponse(
     [property: JsonPropertyName("data")] SendResponseDto[] Data,
-    [property: JsonPropertyName("object")] string? Object);
+    [property: JsonPropertyName("object")] string? Object,
+    [property: JsonPropertyName("continuationToken")] string? ContinuationToken = null);
 
 // Send.to_json (db/models/send.rs:140)。text/file 二选一:
 // text => { text, hidden };  file => { id, fileName, size(字符串), sizeName }。
@@ -20,15 +22,17 @@ public sealed record SendResponseDto(
     [property: JsonPropertyName("key")] string? Key,
     [property: JsonPropertyName("maxAccessCount")] int? MaxAccessCount,
     [property: JsonPropertyName("accessCount")] int AccessCount,
-    // 存在即表示设有密码(值是 base64url 的 password_hash),仅用于布尔判断。
+    // Presence indicates password protection. The value is a server-side verifier and must never
+    // be resubmitted as the password proof for a newly created Send.
     [property: JsonPropertyName("password")] string? Password,
-    [property: JsonPropertyName("authType")] int AuthType,
+    [property: JsonPropertyName("authType")] int? AuthType,
     [property: JsonPropertyName("disabled")] bool Disabled,
     [property: JsonPropertyName("hideEmail")] bool HideEmail,
     [property: JsonPropertyName("revisionDate")] DateTimeOffset? RevisionDate,
     [property: JsonPropertyName("expirationDate")] DateTimeOffset? ExpirationDate,
     [property: JsonPropertyName("deletionDate")] DateTimeOffset DeletionDate,
-    [property: JsonPropertyName("object")] string? Object);
+    [property: JsonPropertyName("object")] string? Object,
+    [property: JsonPropertyName("emails")] string? Emails = null);
 
 public sealed record SendTextDto(
     [property: JsonPropertyName("text")] string? Text,
@@ -68,14 +72,43 @@ public sealed record SendFileRequest(string FileName);
 
 // POST /api/sends/file/v2 响应。
 public sealed record SendFileUploadV2Response(
-    [property: JsonPropertyName("fileUploadType")] int FileUploadType,
+    [property: JsonPropertyName("fileUploadType")] FileUploadType FileUploadType,
     [property: JsonPropertyName("object")] string? Object,
     [property: JsonPropertyName("url")] string Url,
     [property: JsonPropertyName("sendResponse")] SendResponseDto SendResponse);
 
+public sealed record FileUploadRenewalResponse(
+    [property: JsonPropertyName("url")] string Url,
+    [property: JsonPropertyName("fileUploadType")] FileUploadType FileUploadType);
+
 // POST /api/sends/access/{accessId} 请求体:{ password?:string }(密码证明)。
 public sealed record SendAccessRequest(
     [property: JsonPropertyName("password")] string? Password);
+
+public sealed record SendAccessTokenResponse(
+    [property: JsonPropertyName("access_token")] string AccessToken,
+    [property: JsonPropertyName("expires_in")] int ExpiresIn,
+    [property: JsonPropertyName("token_type")] string? TokenType,
+    [property: JsonPropertyName("scope")] string? Scope);
+
+public sealed record SendAccessTokenErrorResponse(
+    [property: JsonPropertyName("error")] string? Error,
+    [property: JsonPropertyName("error_description")] string? ErrorDescription,
+    [property: JsonPropertyName("send_access_error_type")] string? SendAccessErrorType,
+    [property: JsonPropertyName("message")] string? Message);
+
+public abstract record SendAccessTokenResult
+{
+    private SendAccessTokenResult() { }
+
+    public sealed record Success(string AccessToken, int ExpiresIn) : SendAccessTokenResult;
+    public sealed record Unsupported : SendAccessTokenResult;
+    public sealed record Error(
+        int HttpStatus,
+        string? ErrorCode,
+        string? ErrorDescription,
+        string? SendAccessErrorType) : SendAccessTokenResult;
+}
 
 // to_json_access(db/models/send.rs:173):无 key/password,附 creatorIdentifier。
 public sealed record SendAccessResponseDto(

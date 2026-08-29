@@ -16,7 +16,7 @@ namespace Vault;
 /// </summary>
 public sealed class VaultCacheService
 {
-    public const int SchemaVersion = 2;
+    public const int SchemaVersion = VaultCacheEntry.CurrentSchemaVersion;
 
     private readonly ICacheStore _store;
     private readonly VaultDecryptor _decryptor;
@@ -49,7 +49,7 @@ public sealed class VaultCacheService
         _store.SaveVaultCache(new VaultCacheEntry(
             SchemaVersion,
             lease.AccountId,
-            lease.Origin,
+            lease.Endpoints,
             lease.Generation,
             sync.Profile?.Email ?? string.Empty,
             cachedAt,
@@ -67,26 +67,24 @@ public sealed class VaultCacheService
     {
         ArgumentNullException.ThrowIfNull(lease);
 
-        if (!_store.TryLoadVaultCache(out var entry)
-            || entry.SchemaVersion != SchemaVersion
+        if (!TryLoadAvailableCache(out var loaded)
+            || !loaded.TryMigrate(out var entry)
             || entry.AccountId != lease.AccountId
-            || entry.Origin != lease.Origin
+            || entry.Endpoints != lease.Endpoints
             || entry.Generation != lease.Generation)
             return false;
 
+        SyncResponse sync;
+        DecryptedVault vault;
         try
         {
-            var sync = JsonSerializer.Deserialize(
+            var deserialized = JsonSerializer.Deserialize(
                 entry.SyncResponseJson,
                 ApiJsonContext.Default.SyncResponse);
-            if (sync?.Profile?.Id != lease.AccountId)
+            if (deserialized?.Profile?.Id != lease.AccountId)
                 return false;
-            var vault = _decryptor.Decrypt(sync, userKey, lease.Origin.Value);
-            return _session.TryCommit(lease, () =>
-            {
-                _session.SetEncryptedPrivateKey(sync.Profile.PrivateKey);
-                _session.SetSnapshot(vault, dataStale: true);
-            });
+            sync = deserialized;
+            vault = _decryptor.Decrypt(sync, userKey, lease.Endpoints);
         }
         catch (Exception ex) when (
             ex is JsonException
@@ -99,6 +97,27 @@ public sealed class VaultCacheService
             // 在解锁(auth)路径上宁可回退也不外抛:此时会话已 SetUnlockedKey,外抛会留悬挂态。
             return false;
         }
+
+        return _session.TryCommit(lease, () =>
+        {
+            if (!ReferenceEquals(loaded, entry))
+            {
+                try
+                {
+                    _store.SaveVaultCache(entry);
+                }
+                catch (Exception ex) when (
+                    ex is IOException
+                        or UnauthorizedAccessException
+                        or CryptographicException)
+                {
+                    // The validated in-memory migration remains usable when the
+                    // best-effort cache rewrite cannot be persisted.
+                }
+            }
+            _session.SetEncryptedPrivateKey(sync.Profile.PrivateKey);
+            _session.SetSnapshot(vault, dataStale: true);
+        });
     }
 
     /// <summary>
@@ -110,13 +129,41 @@ public sealed class VaultCacheService
     {
         ArgumentNullException.ThrowIfNull(lease);
 
-        if (!_store.TryLoadVaultCache(out var entry)
-            || entry.SchemaVersion != SchemaVersion
+        if (!TryLoadAvailableCache(out var loaded)
+            || !loaded.TryMigrate(out var entry)
             || entry.AccountId != lease.AccountId
-            || entry.Origin != lease.Origin)
+            || entry.Endpoints != lease.Endpoints)
             return false;
-        return _session.TryCommit(lease, () =>
-            _store.SaveVaultCache(entry with { Generation = lease.Generation }));
+        try
+        {
+            return _session.TryCommit(lease, () =>
+                _store.SaveVaultCache(entry with { Generation = lease.Generation }));
+        }
+        catch (Exception ex) when (
+            ex is IOException
+                or UnauthorizedAccessException
+                or CryptographicException)
+        {
+            // Generation rebinding is best-effort. The caller treats a failed
+            // persistence attempt as a cache miss and can continue online.
+            return false;
+        }
+    }
+
+    private bool TryLoadAvailableCache(out VaultCacheEntry entry)
+    {
+        try
+        {
+            return _store.TryLoadVaultCache(out entry);
+        }
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException)
+        {
+            // An unreadable cache is equivalent to a cache miss. Other store
+            // failures remain visible to avoid masking implementation defects.
+            entry = null!;
+            return false;
+        }
     }
 
     public void Clear() => _store.ClearVaultCache();

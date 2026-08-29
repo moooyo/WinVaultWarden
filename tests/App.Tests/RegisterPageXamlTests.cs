@@ -59,6 +59,79 @@ public class RegisterPageXamlTests
             "RegisterPage.xaml must have AutomationProperties.AutomationId=\"BackToLoginButton\"");
     }
 
+    [Theory]
+    [InlineData("RegisterContinueToLoginButton")]
+    [InlineData("RegisterEditEmailButton")]
+    [InlineData("RegisterUncertainLoginButton")]
+    [InlineData("RegisterUncertainEditButton")]
+    public void RegisterPage_HasExplicitRegistrationHandoffActions(string automationId)
+    {
+        var doc = LoadRegisterPage();
+        Assert.True(HasAutomationId(doc, automationId));
+    }
+
+    [Theory]
+    [InlineData("RegisterContinueToLoginButton")]
+    [InlineData("RegisterUncertainLoginButton")]
+    public void RegisterPage_HandoffPrimaryActions_AreNamedForFocus(string name)
+    {
+        var doc = LoadRegisterPage();
+        var action = doc.Descendants().FirstOrDefault(element =>
+            element.Name.LocalName == "Button"
+            && element.Attribute(XName.Get(
+                "Name",
+                "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value == name);
+
+        Assert.NotNull(action);
+    }
+
+    [Fact]
+    public void RegisterPage_SeparatesEditingAndEmailVerificationStates()
+    {
+        var doc = LoadRegisterPage();
+        var editingPanel = doc.Descendants().Single(e =>
+            e.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value
+                == "RegisterEditingPanel");
+        var verificationPanel = doc.Descendants().Single(e =>
+            e.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value
+                == "RegisterEmailVerificationPanel");
+
+        Assert.Contains("ViewModel.IsEditing", editingPanel.Attribute("Visibility")?.Value);
+        Assert.Contains(
+            "ViewModel.IsAwaitingEmailVerification",
+            verificationPanel.Attribute("Visibility")?.Value);
+        Assert.Contains(
+            doc.Descendants().SelectMany(e => e.Attributes()),
+            attribute => attribute.Name.LocalName == "Text"
+                && attribute.Value.Contains("Web Vault", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RegisterPage_UnloadClearsSecretsAndSubmitNavigatesOnlyAfterRegistered()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        string? source = null;
+        while (dir is not null)
+        {
+            var path = Path.Combine(
+                dir.FullName,
+                "src",
+                "App",
+                "Views",
+                "RegisterPage.xaml.cs");
+            if (File.Exists(path))
+            {
+                source = File.ReadAllText(path);
+                break;
+            }
+            dir = dir.Parent;
+        }
+
+        Assert.NotNull(source);
+        Assert.Contains("ViewModel.ClearSensitive();", source);
+        Assert.Contains("if (ViewModel.Registered)", source);
+    }
+
     // ── RegisterPage 输入控件断言 ─────────────────────────────────────────────
 
     [Fact]

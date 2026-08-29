@@ -107,6 +107,33 @@ public class BrowserPasskeyCancellationTests
         Assert.Equal(lease.Origin, seen.Origin);
     }
 
+    [Fact]
+    public async Task LockDuringCommittedRefreshFailure_DoesNotReturnAttestation()
+    {
+        var session = UnlockedSession("account-a", "https://a.example");
+        var approval = new ImmediateApprovalService(ApprovedCreateNew());
+        var writer = new CapturingWriter(
+            blockUntilReleased: true,
+            saveException: new VaultRefreshException(
+                "Remote write committed.",
+                new HttpRequestException("Refresh failed.")));
+        var handler = CreateHandler(session, approval, writer);
+
+        var operation = handler.HandleAsync(
+            RequestForCreate("00000000000000000000000000000025"),
+            CancellationToken.None);
+
+        await writer.Entered.Task;
+        session.Lock();
+        writer.Release();
+
+        var response = await operation;
+
+        Assert.False(response.Ok);
+        Assert.Equal(PasskeyErrorCodes.OperationAborted, response.Error!.Code);
+        Assert.Single(writer.Leases);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private static BrowserPasskeyRequestHandler CreateHandler(
@@ -267,10 +294,17 @@ public class BrowserPasskeyCancellationTests
     private sealed class CapturingWriter : IVaultWriteService
     {
         private readonly bool _block;
+        private readonly Exception? _saveException;
         private readonly TaskCompletionSource _release =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public CapturingWriter(bool blockUntilReleased = false) => _block = blockUntilReleased;
+        public CapturingWriter(
+            bool blockUntilReleased = false,
+            Exception? saveException = null)
+        {
+            _block = blockUntilReleased;
+            _saveException = saveException;
+        }
 
         public int SaveCalls { get; private set; }
         public List<VaultSessionLease> Leases { get; } = new();
@@ -289,6 +323,8 @@ public class BrowserPasskeyCancellationTests
             Entered.TrySetResult();
             if (_block)
                 await _release.Task; // deliberately ignore ct: an in-flight write cannot be cancelled.
+            if (_saveException is not null)
+                throw _saveException;
         }
 
         public Task DeleteCipherAsync(string cipherId, bool permanent, CancellationToken ct = default) =>

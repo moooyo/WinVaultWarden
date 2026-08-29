@@ -4,7 +4,8 @@ using Xunit;
 
 namespace App.Tests;
 
-public class SettingsViewModelPinTests
+[Collection(TestCollectionNames.AppPreferences)]
+public class SettingsViewModelPinTests : AppPreferencesTestBase
 {
     private sealed class FakePin : IPinService
     {

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Net;
 using Api;
 using Api.Dtos;
 using Core.Enums;
@@ -11,6 +12,8 @@ namespace Vault;
 public sealed class RegisterService : IRegisterService
 {
     private const int Iterations = 600_000;
+    private const int MaxEmailLength = 256;
+    private const int MaxNameLength = 50;
     private readonly CryptoService _crypto;
     private readonly IVaultApiClientProvider _clients;
 
@@ -20,7 +23,7 @@ public sealed class RegisterService : IRegisterService
         _clients = clients;
     }
 
-    public async Task RegisterAsync(
+    public async Task<RegistrationOutcome> RegisterAsync(
         string serverUrl,
         string email,
         string? name,
@@ -28,12 +31,69 @@ public sealed class RegisterService : IRegisterService
         string? hint,
         CancellationToken ct = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(serverUrl);
-        ArgumentException.ThrowIfNullOrWhiteSpace(email);
-        ArgumentException.ThrowIfNullOrWhiteSpace(password);
-        var origin = new ServerOrigin(serverUrl);
+        if (!TryParseWebVault(serverUrl, out var webVault))
+            throw new RegistrationException("请输入有效的服务器地址。");
+        if (string.IsNullOrWhiteSpace(email)
+            || email.Trim().Length > MaxEmailLength
+            || !email.Contains('@'))
+        {
+            throw new RegistrationException("请输入有效的邮箱地址。");
+        }
+        if (string.IsNullOrEmpty(password))
+            throw new RegistrationException("密码不能为空。");
+        if (name is not null && name.Trim().Length > MaxNameLength)
+            throw new RegistrationException($"昵称不能超过 {MaxNameLength} 个字符。");
 
-        var masterKey = _crypto.DeriveMasterKey(password, email, KdfType.Pbkdf2, Iterations, null, null);
+        var endpoints = ServerEndpoints.FromWebVault(webVault);
+        var normalizedEmail = MasterPasswordSaltPolicy.Resolve(email, explicitSalt: null);
+        var normalizedName = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+        var api = _clients.GetAnonymous<IRegistrationApiClient>(endpoints);
+        var useRegistrationFinish = true;
+        RegistrationVerificationResult? verification = null;
+        try
+        {
+            verification = await api.RequestRegistrationVerificationTokenAsync(
+                new RegisterVerificationRequest(normalizedEmail, normalizedName),
+                ct);
+        }
+        catch (VaultWriteException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            useRegistrationFinish = false;
+        }
+        catch (VaultWriteException ex)
+        {
+            throw new RegistrationException(ex.Message);
+        }
+        catch (InvalidDataException)
+        {
+            throw new RegistrationException("注册服务器返回了无效的验证响应。");
+        }
+        catch (Exception ex) when (IsVerificationTransportFailure(ex, ct))
+        {
+            throw new RegistrationException("无法连接注册服务器，请稍后重试。", ex);
+        }
+
+        if (useRegistrationFinish
+            && verification is RegistrationVerificationResult.EmailVerificationSent)
+        {
+            return new RegistrationOutcome.EmailVerificationRequired();
+        }
+
+        var verificationToken = verification switch
+        {
+            RegistrationVerificationResult.InlineToken token
+                when !string.IsNullOrWhiteSpace(token.Token) => token.Token,
+            null when !useRegistrationFinish => null,
+            _ => throw new RegistrationException("注册服务器返回了无效的验证响应。"),
+        };
+
+        var masterKey = _crypto.DeriveMasterKey(
+            password,
+            normalizedEmail,
+            KdfType.Pbkdf2,
+            Iterations,
+            null,
+            null);
         var userKeyBytes = RandomNumberGenerator.GetBytes(64);
         // 提前构造:64 字节构造下 EncKey/MacKey 是 userKeyBytes 的独立拷贝,
         // 故须 Dispose 整个 userKey(清 FullKey+EncKey+MacKey 三份),仅清 userKeyBytes 会漏掉两份拷贝。
@@ -62,8 +122,8 @@ public sealed class RegisterService : IRegisterService
             }
 
             var req = new RegisterRequest(
-                email,
-                string.IsNullOrWhiteSpace(name) ? null : name.Trim(),
+                normalizedEmail,
+                normalizedName,
                 passwordHash,
                 string.IsNullOrEmpty(hint) ? null : hint,
                 key,
@@ -73,15 +133,63 @@ public sealed class RegisterService : IRegisterService
                 null,
                 new RegisterKeys(encryptedPrivateKey, publicKey));
 
+            ct.ThrowIfCancellationRequested();
             try
             {
-                var api = _clients.GetAnonymous<IRegistrationApiClient>(origin);
-                await api.RegisterAsync(req, ct);
+                RegistrationWriteResult writeResult;
+                if (useRegistrationFinish)
+                {
+                    writeResult = await api.FinishRegistrationAsync(
+                        new RegisterFinishRequest(
+                            req.Email,
+                            verificationToken!,
+                            req.MasterPasswordHash,
+                            req.MasterPasswordHint,
+                            req.Key,
+                            req.Kdf,
+                            req.KdfIterations,
+                            req.KdfMemory,
+                            req.KdfParallelism,
+                            req.Keys),
+                        ct);
+                }
+                else
+                {
+                    writeResult = await api.RegisterAsync(req, ct);
+                }
+
+                if (writeResult is RegistrationWriteResult.OutcomeUncertain)
+                    return new RegistrationOutcome.OutcomeUncertain();
+                if (writeResult is not RegistrationWriteResult.Completed)
+                    throw new RegistrationException(
+                        "注册服务器返回了无法识别的完成状态。");
+            }
+            catch (VaultWriteException ex) when (IsUncertainStatus(ex.StatusCode))
+            {
+                return new RegistrationOutcome.OutcomeUncertain();
             }
             catch (VaultWriteException ex)
             {
                 throw new RegistrationException(ex.Message);
             }
+            catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex, ct))
+            {
+                return new RegistrationOutcome.OutcomeUncertain();
+            }
+            catch (OperationCanceledException)
+            {
+                return new RegistrationOutcome.OutcomeUncertain();
+            }
+            catch (HttpRequestException)
+            {
+                return new RegistrationOutcome.OutcomeUncertain();
+            }
+            catch (IOException)
+            {
+                return new RegistrationOutcome.OutcomeUncertain();
+            }
+
+            return new RegistrationOutcome.Registered();
         }
         finally
         {
@@ -90,4 +198,30 @@ public sealed class RegisterService : IRegisterService
             userKey.Dispose();
         }
     }
+
+    private static bool TryParseWebVault(
+        string? serverUrl,
+        out ServerEndpoint endpoint)
+    {
+        try
+        {
+            return ServerEndpoint.TryParse(serverUrl, out endpoint);
+        }
+        catch (Exception ex) when (ex is ArgumentException or UriFormatException)
+        {
+            endpoint = default;
+            return false;
+        }
+    }
+
+    private static bool IsVerificationTransportFailure(
+        Exception exception,
+        CancellationToken callerToken) =>
+        !callerToken.IsCancellationRequested
+        && !RequestTimeoutClassifier.IsTimeout(exception, callerToken)
+        && exception is HttpRequestException or IOException or OperationCanceledException;
+
+    private static bool IsUncertainStatus(HttpStatusCode? statusCode) =>
+        statusCode == HttpStatusCode.RequestTimeout
+        || statusCode is not null && (int)statusCode.Value >= 500;
 }

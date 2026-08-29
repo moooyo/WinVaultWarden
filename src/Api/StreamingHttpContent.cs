@@ -3,13 +3,20 @@ using Core.Models;
 
 namespace Api;
 
-// 把 StreamUploadContent 适配成 HttpContent:序列化时直接调用其 WriteAsync 委托,把密文流式写进网络流,
-// 绝不预先缓冲整份密文。TryComputeLength 返回精确的加密后字节数,使 Content-Length 正确、无需分块。
+// Adapts prepared upload content to HttpContent without buffering the encrypted payload.
 public sealed class StreamingHttpContent : HttpContent
 {
     private readonly StreamUploadContent _content;
 
-    public StreamingHttpContent(StreamUploadContent content) => _content = content;
+    public StreamingHttpContent(StreamUploadContent content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        if (content.Length < 0)
+            throw new ArgumentOutOfRangeException(nameof(content), "Content length cannot be negative.");
+
+        _content = content;
+        Headers.ContentLength = content.Length;
+    }
 
     protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
         _content.WriteAsync(stream, CancellationToken.None);

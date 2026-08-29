@@ -1,5 +1,6 @@
 using App.Services;
 using App.ViewModels;
+using Crypto;
 using Crypto.PasswordStrength;
 using Xunit;
 
@@ -71,6 +72,9 @@ public class GeneratorViewModelTests
         vm.RegenerateCommand.Execute(null);
 
         Assert.Equal(5, vm.GeneratedPassword.Length);
+        Assert.Equal(0, vm.MinNumbers);
+        Assert.Equal(3, vm.MinSpecial);
+        Assert.True(vm.GeneratedPassword.Count(c => "!@#$%^&*".Contains(c)) >= 3);
     }
 
     [Fact]
@@ -90,8 +94,62 @@ public class GeneratorViewModelTests
         vm.RegenerateCommand.Execute(null);
 
         Assert.Equal(5, vm.GeneratedPassword.Length);
-        Assert.Equal(128, vm.MinNumbers);
-        Assert.Equal(128, vm.MinSpecial);
+        Assert.Equal(0, vm.MinNumbers);
+        Assert.Equal(3, vm.MinSpecial);
+        Assert.Equal(vm.MinNumbers, vm.MinNumbersValue);
+        Assert.Equal(vm.MinSpecial, vm.MinSpecialValue);
+    }
+
+    [Fact]
+    public void ReducingLength_NormalizesMinimumsAndRaisesBoundValueNotifications()
+    {
+        var vm = new GeneratorViewModel
+        {
+            IncludeSpecial = true,
+            Length = 20,
+            MinNumbers = 8,
+            MinSpecial = 8,
+        };
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, args) => changed.Add(args.PropertyName);
+
+        vm.Length = 5;
+
+        Assert.Equal(3, vm.MinNumbers);
+        Assert.Equal(0, vm.MinSpecial);
+        Assert.Contains(nameof(vm.MinNumbersValue), changed);
+        Assert.Contains(nameof(vm.MinSpecialValue), changed);
+        Assert.Equal(5, vm.GeneratedPassword.Length);
+    }
+
+    [Fact]
+    public void DisablingCharacterSet_ResetsItsMinimum()
+    {
+        var vm = new GeneratorViewModel { MinNumbers = 4 };
+
+        vm.IncludeNumbers = false;
+        vm.MinNumbers = 12;
+
+        Assert.Equal(0, vm.MinNumbers);
+        Assert.Equal(0, vm.MinNumbersValue);
+        Assert.DoesNotContain(vm.GeneratedPassword, char.IsDigit);
+    }
+
+    [Theory]
+    [InlineData(UsernameGenerationType.ForwardedEmailAlias)]
+    [InlineData(UsernameGenerationType.CatchAllEmail)]
+    [InlineData(UsernameGenerationType.PlusAddressedEmail)]
+    [InlineData((UsernameGenerationType)99)]
+    public void UnsupportedUsernameType_IsNormalizedToRandomWord(UsernameGenerationType type)
+    {
+        var vm = new GeneratorViewModel { Mode = GeneratorMode.Username };
+
+        vm.UsernameType = type;
+        vm.UsernameTypeIndex = (int)type;
+
+        Assert.Equal(UsernameGenerationType.RandomWord, vm.UsernameType);
+        Assert.Equal(0, vm.UsernameTypeIndex);
+        Assert.DoesNotContain("@", vm.GeneratedPassword);
     }
 
     [Fact]

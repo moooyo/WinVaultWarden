@@ -3,6 +3,7 @@ using Core.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
 using System.ComponentModel;
 
@@ -17,10 +18,10 @@ public sealed partial class LoginPage : Page
     public LoginPage()
     {
         ViewModel = global::App.App.Services.GetRequiredService<LoginViewModel>();
-        ViewModel.SetSuccessCallback(() =>
+        ViewModel.SetSuccessCallback(lease =>
         {
             if (App.MainWindow is { } window)
-                window.ShowVault();
+                window.ShowVault(lease);
         });
 
         var tokenStore = global::App.App.Services.GetRequiredService<ITokenStore>();
@@ -153,4 +154,18 @@ public sealed partial class LoginPage : Page
     {
         global::App.App.Services.GetRequiredService<global::App.Services.INavigationService>().GoToRegister();
     }
+}
+
+public sealed partial class LoginStatusKindToInfoBarSeverityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language) =>
+        value switch
+        {
+            LoginStatusKind.Success => InfoBarSeverity.Success,
+            LoginStatusKind.Error => InfoBarSeverity.Error,
+            _ => InfoBarSeverity.Informational,
+        };
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+        throw new NotSupportedException();
 }

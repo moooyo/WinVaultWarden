@@ -144,7 +144,35 @@ public class SendDomainTests
 
         Assert.Equal(SendType.File, result.Type);
         Assert.Equal("def456", result.AccessId);
-        Assert.Same(seed, result.Seed);
+        var copiedSeed = result.Seed;
+        Assert.Equal(seed, copiedSeed);
+        Assert.NotSame(seed, copiedSeed);
         Assert.Equal("https://cdn.example/file", result.FileDownloadUrl);
+    }
+
+    [Fact]
+    public void SendDownloadLease_OwnsSeedAfterAccessResultIsDisposed()
+    {
+        var result = new SendAccessResult
+        {
+            Type = SendType.File,
+            SendId = "send-1",
+            FileId = "file-1",
+            AccessId = "access-1",
+            Endpoints = ServerEndpoints.FromWebVault("https://vault.example"),
+            Seed = [1, 2, 3, 4],
+            PasswordProof = "proof",
+        };
+
+        var download = result.AcquireDownloadLease();
+        result.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => result.AcquireDownloadLease());
+        Assert.Equal([1, 2, 3, 4], download.CopySeed());
+        Assert.Equal("send-1", download.SendId);
+        Assert.Equal("file-1", download.FileId);
+        Assert.Equal("proof", download.PasswordProof);
+        download.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => download.CopySeed());
     }
 }

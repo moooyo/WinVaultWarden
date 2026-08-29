@@ -66,7 +66,7 @@ function publicKeyOptions(extra = {}) {
   };
 }
 
-function createPageHarness() {
+function createPageHarness({ answerHandshake = true } = {}) {
   const origin = "https://example.com";
   const win = makeWindow(origin);
   const counts = { get: 0, create: 0 };
@@ -101,6 +101,7 @@ function createPageHarness() {
   const channelId = randomHex(32);
   const posted = [];
   let lastRequestId = null;
+  let lastBootstrapId = null;
 
   // Stand in for the ISOLATED relay: answer the MAIN handshake and capture its traffic.
   win.addEventListener("message", (event) => {
@@ -108,6 +109,8 @@ function createPageHarness() {
     if (event.source !== win || message?.source !== "winvaultwarden-main") return;
 
     if (message.kind === "main.ready") {
+      lastBootstrapId = message.bootstrapId;
+      if (!answerHandshake) return;
       win.postMessage({
         source: "winvaultwarden-isolated",
         kind: "isolated.ready",
@@ -136,6 +139,14 @@ function createPageHarness() {
     },
     get credentials() {
       return navigator.credentials;
+    },
+    completeHandshake() {
+      win.postMessage({
+        source: "winvaultwarden-isolated",
+        kind: "isolated.ready",
+        bootstrapId: lastBootstrapId,
+        channelId,
+      });
     },
     respond(code, { payload = null } = {}) {
       const id = lastRequestId;
@@ -205,6 +216,21 @@ test("only client_not_handled falls back", async () => {
     await assert.rejects(operation, (error) => error instanceof DOMException);
     assert.equal(harness.nativeGetCalls, 0);
   }
+});
+
+test("a request falls back when the isolated bootstrap never becomes ready", async () => {
+  const harness = createPageHarness({ answerHandshake: false });
+  const operation = harness.credentials.get(publicKeyOptions({ timeout: 20 }));
+
+  await operation;
+  assert.equal(harness.nativeGetCalls, 1);
+  assert.equal(harness.posted.filter((message) => message.kind === "request").length, 0);
+
+  // A late ready frame must not retain or revive the expired bind waiter.
+  harness.completeHandshake();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(harness.posted.filter((message) => message.kind === "request").length, 0);
+  assert.equal(harness.nativeGetCalls, 1);
 });
 
 test("AbortSignal posts cancel and throws AbortError immediately", async () => {

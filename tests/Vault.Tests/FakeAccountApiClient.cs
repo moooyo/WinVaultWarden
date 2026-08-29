@@ -1,5 +1,6 @@
 using Api;
 using Api.Dtos;
+using System.Net;
 
 namespace Vault.Tests;
 
@@ -32,11 +33,62 @@ public sealed class FakeAccountApiClient : IAccountApiClient, IRegistrationApiCl
     }
 
     public RegisterRequest? Register;
+    public RegisterVerificationRequest? RegisterVerification;
+    public RegisterFinishRequest? RegisterFinish;
+    public bool SupportsRegistrationFinish;
+    public RegistrationVerificationResult RegistrationVerificationResult =
+        new RegistrationVerificationResult.InlineToken("registration-token");
+    public Exception? RegistrationVerificationThrow;
+    public Exception? RegistrationFinishThrow;
+    public Exception? LegacyRegistrationThrow;
+    public RegistrationWriteResult RegistrationFinishResult =
+        new RegistrationWriteResult.Completed();
+    public RegistrationWriteResult LegacyRegistrationResult =
+        new RegistrationWriteResult.Completed();
+    public int RegistrationVerificationRequestCount;
+    public int RegistrationFinishRequestCount;
+    public int LegacyRegistrationRequestCount;
 
-    public Task RegisterAsync(RegisterRequest r, CancellationToken ct = default)
+    public Task<RegistrationVerificationResult> RequestRegistrationVerificationTokenAsync(
+        RegisterVerificationRequest request,
+        CancellationToken ct = default)
     {
-        if (Throw != null) throw Throw;
+        RegistrationVerificationRequestCount++;
+        var error = RegistrationVerificationThrow ?? Throw;
+        if (error is not null)
+            throw error;
+        RegisterVerification = request;
+        if (!SupportsRegistrationFinish)
+        {
+            throw new VaultWriteException(
+                HttpStatusCode.NotFound,
+                "Not Found",
+                null);
+        }
+        return Task.FromResult(RegistrationVerificationResult);
+    }
+
+    public Task<RegistrationWriteResult> FinishRegistrationAsync(
+        RegisterFinishRequest request,
+        CancellationToken ct = default)
+    {
+        RegistrationFinishRequestCount++;
+        var error = RegistrationFinishThrow ?? Throw;
+        if (error is not null)
+            throw error;
+        RegisterFinish = request;
+        return Task.FromResult(RegistrationFinishResult);
+    }
+
+    public Task<RegistrationWriteResult> RegisterAsync(
+        RegisterRequest r,
+        CancellationToken ct = default)
+    {
+        LegacyRegistrationRequestCount++;
+        var error = LegacyRegistrationThrow ?? Throw;
+        if (error is not null)
+            throw error;
         Register = r;
-        return Task.CompletedTask;
+        return Task.FromResult(LegacyRegistrationResult);
     }
 }

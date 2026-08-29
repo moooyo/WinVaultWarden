@@ -109,6 +109,57 @@ public class CipherEditorXamlTests
     }
 
     [Fact]
+    public void VaultPage_TotpSecret_UsesPasswordBox()
+    {
+        var document = LoadVaultPageXaml();
+        var editor = RequireByName(document, "TotpSecretEditor");
+
+        Assert.Equal(Xaml + "PasswordBox", editor.Name);
+        Assert.Contains("EditorDraft.Login.Totp", editor.Attribute("Password")?.Value);
+        Assert.Contains("Mode=TwoWay", editor.Attribute("Password")?.Value);
+        Assert.DoesNotContain(document.Descendants(Xaml + "TextBox"),
+            textBox => textBox.Attribute("Text")?.Value?.Contains("EditorDraft.Login.Totp") == true);
+    }
+
+    [Fact]
+    public void VaultPage_CustomFieldEditor_UsesTypeSpecificControls()
+    {
+        var document = LoadVaultPageXaml();
+        var customFields = RequireByName(document, "CustomFieldsEditorItems");
+        var typeBox = RequireByName(document, "CustomFieldTypeBox");
+        var textValue = RequireByName(document, "CustomFieldTextValueBox");
+        var hiddenValue = RequireByName(document, "CustomFieldHiddenValueBox");
+        var booleanValue = RequireByName(document, "CustomFieldBooleanValueCheckBox");
+
+        Assert.Null(typeBox.Attribute("SelectionChanged"));
+        Assert.Contains("TypeIndex", typeBox.Attribute("SelectedIndex")?.Value);
+        Assert.Contains("Mode=TwoWay", typeBox.Attribute("SelectedIndex")?.Value);
+        Assert.Equal(
+            new[] { "Text", "Hidden", "Boolean" },
+            typeBox.Elements(Xaml + "ComboBoxItem").Select(item => item.Attribute("Tag")?.Value));
+
+        Assert.Equal(Xaml + "TextBox", textValue.Name);
+        Assert.Contains("Value", textValue.Attribute("Text")?.Value);
+        Assert.Contains("Mode=TwoWay", textValue.Attribute("Text")?.Value);
+        Assert.Contains("IsText", textValue.Attribute(X + "Load")?.Value);
+        Assert.Contains("Mode=OneWay", textValue.Attribute(X + "Load")?.Value);
+
+        Assert.Equal(Xaml + "PasswordBox", hiddenValue.Name);
+        Assert.Contains("Value", hiddenValue.Attribute("Password")?.Value);
+        Assert.Contains("Mode=TwoWay", hiddenValue.Attribute("Password")?.Value);
+        Assert.Contains("IsHidden", hiddenValue.Attribute(X + "Load")?.Value);
+        Assert.Contains("Mode=OneWay", hiddenValue.Attribute(X + "Load")?.Value);
+
+        Assert.Equal(Xaml + "CheckBox", booleanValue.Name);
+        Assert.Contains("BooleanValue", booleanValue.Attribute("IsChecked")?.Value);
+        Assert.Contains("Mode=TwoWay", booleanValue.Attribute("IsChecked")?.Value);
+        Assert.Contains("IsBoolean", booleanValue.Attribute(X + "Load")?.Value);
+        Assert.Contains("Mode=OneWay", booleanValue.Attribute(X + "Load")?.Value);
+
+        Assert.DoesNotContain("{Binding ", customFields.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void VaultPage_EditorInputs_StretchHorizontally()
     {
         var document = LoadVaultPageXaml();

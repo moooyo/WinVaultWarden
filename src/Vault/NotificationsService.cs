@@ -19,7 +19,7 @@ namespace Vault;
 /// - StartAsync 立即返回（不阻塞），循环在后台 Task.Run 中运行。
 /// - StartAsync 只捕获一次租约（<see cref="VaultSession.CaptureLease"/>），整个循环——连接、
 ///   token 刷新、消息分发——始终复用该租约；绝不从 token store 或切换后的新账户重新解析 origin/token。
-/// - origin 取自租约（<see cref="VaultSessionLease.Origin"/>）；accessToken 取自
+/// - The notifications endpoint comes from <see cref="VaultSessionLease.Endpoints"/>; the access token comes from
 ///   <see cref="VaultSession.GetAccessTokenBinding"/>（校验租约仍 current）。
 /// - 连接失败仅触发退避重连，不抛出到调用方。
 /// - 账户切换/锁定/登出会轮换 generation 并取消该租约的取消令牌，循环随之退出（旧连接不会看到新账户）。
@@ -167,12 +167,15 @@ public sealed class NotificationsService : INotificationsService
             if (binding is null)
                 return;
 
-            // 2. 建立连接并读取消息。origin 恒取自租约，绝不解析新账户。
+            // 2. Connect to the notifications endpoint frozen into the lease.
             var conn = _connectionFactory();
             var connectionFailed = false;
             try
             {
-                await conn.ConnectAsync(lease.Origin.Value, binding.Token, ct).ConfigureAwait(false);
+                await conn.ConnectAsync(
+                    lease.Endpoints.Notifications.Value,
+                    binding.Token,
+                    ct).ConfigureAwait(false);
                 backoff = _baseBackoff; // 重置退避
 
                 await foreach (var msg in conn.ReadAsync(ct).ConfigureAwait(false))

@@ -63,16 +63,18 @@ public sealed class TwoFactorService : ITwoFactorService
     public async Task<(string secret, string otpauth)> BeginTotpSetupAsync(
         string pw, CancellationToken ct = default)
     {
-        var mphash = ComputeHash(pw); // 若 store 未加载会抛 TwoFactorOperationException
         var lease = _session.CaptureLease();
+        var persisted = LoadPersisted(lease);
+        var mphash = ComputeHash(pw, persisted);
+        _session.ThrowIfExpired(lease);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        _session.ThrowIfExpired(lease);
         var response = await api.GetAuthenticatorAsync(new PasswordVerifyRequest(mphash), linked.Token);
         _session.ThrowIfExpired(lease);
 
         var secret = response.Key;
-        var email = LoadPersisted().Email;
-        var otpauth = $"otpauth://totp/{Uri.EscapeDataString(email)}?secret={Uri.EscapeDataString(secret)}&issuer=WinVaultWarden";
+        var otpauth = $"otpauth://totp/{Uri.EscapeDataString(persisted.Email)}?secret={Uri.EscapeDataString(secret)}&issuer=WinVaultWarden";
         return (secret, otpauth);
     }
 
@@ -80,17 +82,47 @@ public sealed class TwoFactorService : ITwoFactorService
     // EnableTotpAsync — 把 secret(=key) + code(=token) + hash 发给服务端启用，再拉 recovery code
     // -----------------------------------------------------------------------
 
-    public async Task<string> EnableTotpAsync(
+    public async Task<TotpActivationResult> EnableTotpAsync(
         string pw, string secret, string code, CancellationToken ct = default)
     {
-        var mphash = ComputeHash(pw);
-
         var lease = _session.CaptureLease();
+        var persisted = LoadPersisted(lease);
+        var mphash = ComputeHash(pw, persisted);
+        _session.ThrowIfExpired(lease);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
-        await api.EnableAuthenticatorAsync(
+        _session.ThrowIfExpired(lease);
+        var enabled = await api.EnableAuthenticatorAsync(
             new EnableAuthenticatorRequest(Key: secret, Token: code, MasterPasswordHash: mphash), linked.Token);
+        if (!enabled.Enabled)
+            throw new TwoFactorOperationException("服务器未确认 TOTP 已启用，请稍后重试。");
 
+        try
+        {
+            _session.ThrowIfExpired(lease);
+            var recover = await api.GetRecoverAsync(new PasswordVerifyRequest(mphash), linked.Token);
+            _session.ThrowIfExpired(lease);
+            return string.IsNullOrWhiteSpace(recover.Code)
+                ? TotpActivationResult.EnabledWithoutRecoveryCode()
+                : TotpActivationResult.EnabledWithRecoveryCode(recover.Code);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Enabling TOTP is already committed. Recovery-code retrieval is a
+            // separate, retryable read and must not make activation look failed.
+            return TotpActivationResult.EnabledWithoutRecoveryCode();
+        }
+    }
+
+    public async Task<string> GetRecoveryCodeAsync(string pw, CancellationToken ct = default)
+    {
+        var lease = _session.CaptureLease();
+        var persisted = LoadPersisted(lease);
+        var mphash = ComputeHash(pw, persisted);
+        _session.ThrowIfExpired(lease);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        _session.ThrowIfExpired(lease);
         var recover = await api.GetRecoverAsync(new PasswordVerifyRequest(mphash), linked.Token);
         _session.ThrowIfExpired(lease);
         return recover.Code ?? string.Empty;
@@ -102,10 +134,13 @@ public sealed class TwoFactorService : ITwoFactorService
 
     public async Task<string?> BeginEmailSetupAsync(string pw, CancellationToken ct = default)
     {
-        var mphash = ComputeHash(pw);
         var lease = _session.CaptureLease();
+        var persisted = LoadPersisted(lease);
+        var mphash = ComputeHash(pw, persisted);
+        _session.ThrowIfExpired(lease);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        _session.ThrowIfExpired(lease);
         var response = await api.GetEmailAsync(new PasswordVerifyRequest(mphash), linked.Token);
         _session.ThrowIfExpired(lease);
         return response.Email;
@@ -117,10 +152,13 @@ public sealed class TwoFactorService : ITwoFactorService
 
     public async Task SendEmailAsync(string pw, string email, CancellationToken ct = default)
     {
-        var mphash = ComputeHash(pw);
         var lease = _session.CaptureLease();
+        var persisted = LoadPersisted(lease);
+        var mphash = ComputeHash(pw, persisted);
+        _session.ThrowIfExpired(lease);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        _session.ThrowIfExpired(lease);
         await api.SendEmailAsync(new SendEmailRequest(Email: email, MasterPasswordHash: mphash), linked.Token);
         _session.ThrowIfExpired(lease);
     }
@@ -131,10 +169,13 @@ public sealed class TwoFactorService : ITwoFactorService
 
     public async Task EnableEmailAsync(string pw, string email, string token, CancellationToken ct = default)
     {
-        var mphash = ComputeHash(pw);
         var lease = _session.CaptureLease();
+        var persisted = LoadPersisted(lease);
+        var mphash = ComputeHash(pw, persisted);
+        _session.ThrowIfExpired(lease);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        _session.ThrowIfExpired(lease);
         await api.EnableEmailAsync(
             new EmailVerifyRequest(Email: email, Token: token, MasterPasswordHash: mphash), linked.Token);
         _session.ThrowIfExpired(lease);
@@ -146,10 +187,13 @@ public sealed class TwoFactorService : ITwoFactorService
 
     public async Task DisableAsync(string pw, int type, CancellationToken ct = default)
     {
-        var mphash = ComputeHash(pw);
         var lease = _session.CaptureLease();
+        var persisted = LoadPersisted(lease);
+        var mphash = ComputeHash(pw, persisted);
+        _session.ThrowIfExpired(lease);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        _session.ThrowIfExpired(lease);
         await api.DisableAsync(new DisableTwoFactorRequest(MasterPasswordHash: mphash, Type: type), linked.Token);
         _session.ThrowIfExpired(lease);
     }
@@ -161,23 +205,22 @@ public sealed class TwoFactorService : ITwoFactorService
     /// <summary>
     /// 加载持久化会话，失败则抛 <see cref="TwoFactorOperationException"/>。
     /// </summary>
-    private Core.Models.PersistedSession LoadPersisted()
+    private PersistedSession LoadPersisted(Core.Session.VaultSessionLease lease)
     {
-        if (!_tokenStore.TryLoad(out var persisted))
-            throw new TwoFactorOperationException("无法加载持久化会话，请重新登录后重试。");
+        if (!_tokenStore.TryLoad(out var persisted)
+            || !_session.IsCurrent(lease, persisted))
+            throw new TwoFactorOperationException("持久化会话与当前账户不匹配，请重新登录后重试。");
         return persisted;
     }
 
     /// <summary>
     /// 从持久化会话派生 masterKey，计算 masterPasswordHash，然后无条件清零 masterKey。
     /// </summary>
-    private string ComputeHash(string pw)
+    private string ComputeHash(string pw, PersistedSession persisted)
     {
-        var persisted = LoadPersisted();
-
         var mk = _crypto.DeriveMasterKey(
             pw,
-            persisted.Email,
+            persisted.EffectiveMasterPasswordSalt,
             persisted.KdfType,
             persisted.KdfIterations,
             persisted.KdfMemory,

@@ -95,6 +95,145 @@ public class AuthServiceOfflineTests
         Assert.Equal(Core.Session.VaultState.Locked, session.State);
     }
 
+    [Fact]
+    public async Task UnlockAsync_CacheReadIOException_ContinuesOnlineRefresh()
+    {
+        var fixture = CreateLoginFixture();
+        var tokenStore = new MemoryTokenStore();
+        tokenStore.Save(new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            Email,
+            new ServerOrigin(Server),
+            1,
+            Email,
+            "device-id",
+            "stored-refresh",
+            fixture.ProtectedUserKey,
+            KdfType.Pbkdf2,
+            Iterations,
+            null,
+            null));
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
+            """{"access_token":"new-access","refresh_token":"new-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(
+            HttpStatusCode.OK,
+            FreshSyncJson(fixture.UserKey)));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, DevicesJson()));
+        var session = new VaultSession();
+        session.BeginAccountSession(Email, Email, new ServerOrigin(Server));
+        session.Lock();
+        var store = new FakeCacheStore
+        {
+            BeforeLoad = () => throw new IOException("read failed"),
+        };
+        var cache = new VaultCacheService(store, new VaultDecryptor(_crypto), session);
+        var service = CreateAuthService(handler, session, tokenStore, cache);
+
+        var result = await service.UnlockAsync(
+            Password,
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<AuthResult.Success>(result);
+        Assert.Equal(Core.Session.VaultState.Unlocked, session.State);
+        Assert.NotNull(session.UserKey);
+        Assert.Equal("new-access", session.AccessToken);
+        Assert.Equal("Fresh", Assert.Single(session.Ciphers).Name);
+        Assert.Equal(3, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task UnlockAsync_CacheReadUnauthorizedWhileOffline_ReturnsFailureAndLocks()
+    {
+        var fixture = CreateLoginFixture();
+        var tokenStore = new MemoryTokenStore();
+        tokenStore.Save(new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            Email,
+            new ServerOrigin(Server),
+            1,
+            Email,
+            "device-id",
+            "stored-refresh",
+            fixture.ProtectedUserKey,
+            KdfType.Pbkdf2,
+            Iterations,
+            null,
+            null));
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => throw new HttpRequestException("offline"));
+        var session = new VaultSession();
+        var store = new FakeCacheStore
+        {
+            BeforeLoad = () => throw new UnauthorizedAccessException("read denied"),
+        };
+        var cache = new VaultCacheService(store, new VaultDecryptor(_crypto), session);
+        var service = CreateAuthService(handler, session, tokenStore, cache);
+
+        var result = await service.UnlockAsync(
+            Password,
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<AuthResult.Failure>(result);
+        Assert.Equal(Core.Session.VaultState.Locked, session.State);
+        Assert.Null(session.UserKey);
+        Assert.Null(session.AccessToken);
+        Assert.Null(session.RefreshToken);
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task UnlockAsync_RebindWriteFailsOffline_ReturnsFailureAndCanRetry()
+    {
+        var fixture = CreateLoginFixture();
+        var tokenStore = new MemoryTokenStore();
+        tokenStore.Save(new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            Email,
+            new ServerOrigin(Server),
+            1,
+            Email,
+            "device-id",
+            "stored-refresh",
+            fixture.ProtectedUserKey,
+            KdfType.Pbkdf2,
+            Iterations,
+            null,
+            null));
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => throw new HttpRequestException("offline"));
+        handler.Enqueue(_ => throw new HttpRequestException("offline"));
+        var session = new VaultSession();
+        session.BeginAccountSession(Email, Email, new ServerOrigin(Server));
+        session.Lock();
+        var store = new FakeCacheStore();
+        var cache = PrePopulateCache(store, session, fixture.UserKey, "Cached");
+        var service = CreateAuthService(handler, session, tokenStore, cache);
+        store.BeforeSave = () => throw new IOException("disk full");
+
+        var first = await service.UnlockAsync(
+            Password,
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<AuthResult.Failure>(first);
+        Assert.Equal(Core.Session.VaultState.Locked, session.State);
+        Assert.Null(session.UserKey);
+        Assert.Null(session.RefreshToken);
+        Assert.Equal(1, store.SaveCount);
+        Assert.Single(handler.Requests);
+
+        store.BeforeSave = null;
+        var second = await service.UnlockAsync(
+            Password,
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<AuthResult.Success>(second);
+        Assert.Equal(Core.Session.VaultState.Unlocked, session.State);
+        Assert.NotNull(session.UserKey);
+        Assert.Equal("Cached", Assert.Single(session.Ciphers).Name);
+        Assert.Equal(2, store.SaveCount);
+    }
+
     // B2:离线解锁成功后,必须把持久化 refresh token 种回内存,否则联网后 401 无法触发刷新。
     [Fact]
     public async Task UnlockAsync_OfflineFromCache_SeedsRefreshTokenForLaterRecovery()

@@ -1,5 +1,7 @@
 using Api.Dtos;
+using Core.Enums;
 using Core.Models;
+using Core.Session;
 
 namespace Api;
 
@@ -9,10 +11,20 @@ public interface ISendApiClient : IAuthenticatedApiRole
 {
     Task<SendListResponse> GetSendsAsync(CancellationToken ct = default);
     Task<SendResponseDto> CreateTextSendAsync(SendRequest request, CancellationToken ct = default);
-    Task<SendFileUploadV2Response> CreateFileSendV2Async(SendRequest request, CancellationToken ct = default);
+    Task<AuthenticatedWriteReceipt<SendFileUploadV2Response>> CreateFileSendV2Async(
+        SendRequest request,
+        CancellationToken ct = default);
     // 文件体走 streaming 上传:只接受可流式写入的 StreamUploadContent,绝不接受整份 byte[](见 Task 12)。
-    Task UploadSendFileAsync(string uploadUrl, string encryptedFileName, StreamUploadContent encryptedContent, CancellationToken ct = default);
+    Task UploadSendFileAsync(
+        FileUploadType fileUploadType,
+        string uploadUrl,
+        string sendId,
+        string fileId,
+        string encryptedFileName,
+        StreamUploadContent encryptedContent,
+        CancellationToken ct = default);
     Task<SendResponseDto> UpdateSendAsync(string sendId, SendRequest request, CancellationToken ct = default);
     Task DeleteSendAsync(string sendId, CancellationToken ct = default);
+    Task DeleteSendForReplacementAsync(string sendId, CancellationToken ct = default);
     Task<SendResponseDto> RemoveSendPasswordAsync(string sendId, CancellationToken ct = default);
 }

@@ -33,6 +33,36 @@ public class KdfTests
     }
 
     [Fact]
+    public void DeriveMasterKey_Pbkdf2_UsesExplicitSaltUtf8WithoutNormalization()
+    {
+        const string salt = " Case-Sensitive Salt ";
+        var svc = new CryptoService();
+
+        var actual = svc.DeriveMasterKey(
+            Password,
+            salt,
+            KdfType.Pbkdf2,
+            Iterations,
+            null,
+            null);
+        var expected = Rfc2898DeriveBytes.Pbkdf2(
+            Encoding.UTF8.GetBytes(Password),
+            Encoding.UTF8.GetBytes(salt),
+            Iterations,
+            HashAlgorithmName.SHA256,
+            32);
+        var normalized = Rfc2898DeriveBytes.Pbkdf2(
+            Encoding.UTF8.GetBytes(Password),
+            Encoding.UTF8.GetBytes(salt.Trim().ToLowerInvariant()),
+            Iterations,
+            HashAlgorithmName.SHA256,
+            32);
+
+        Assert.Equal(expected, actual);
+        Assert.NotEqual(normalized, actual);
+    }
+
+    [Fact]
     public void ComputeMasterPasswordHash_MatchesReferenceImpl()
     {
         var svc = new CryptoService();
@@ -93,6 +123,30 @@ public class KdfTests
 
         Assert.Equal(expected, actual);
         Assert.Equal(32, actual.Length);
+    }
+
+    [Fact]
+    public void DeriveMasterKey_Argon2id_HashesExplicitSaltWithoutNormalization()
+    {
+        const string salt = " Case-Sensitive Salt ";
+        var svc = new CryptoService();
+
+        var actual = svc.DeriveMasterKey(
+            Password,
+            salt,
+            KdfType.Argon2id,
+            iterations: 1,
+            memoryMiB: 15,
+            parallelism: 1);
+        using var reference = new Argon2id(Encoding.UTF8.GetBytes(Password))
+        {
+            Salt = SHA256.HashData(Encoding.UTF8.GetBytes(salt)),
+            Iterations = 1,
+            MemorySize = 15 * 1024,
+            DegreeOfParallelism = 1,
+        };
+
+        Assert.Equal(reference.GetBytes(32), actual);
     }
 
     [Fact]
@@ -179,11 +233,28 @@ public class KdfTests
         _ = svc.DeriveMasterKey(Password, Email, KdfType.Pbkdf2, 600_000, null, null);
     }
 
+    [Fact]
+    public void DeriveMasterKey_Pbkdf2_RejectsIterationsAboveDefensiveCeiling()
+    {
+        var svc = new CryptoService();
+
+        Assert.Throws<CryptographicException>(() =>
+            svc.DeriveMasterKey(
+                Password,
+                Email,
+                KdfType.Pbkdf2,
+                10_000_001,
+                null,
+                null));
+    }
+
     [Theory]
     [InlineData(0, 64, 4)]     // iterations < 1
     [InlineData(3, 14, 4)]     // memoryMiB < 15
     [InlineData(3, 1025, 4)]   // memoryMiB > 1024 (DoS 上限)
     [InlineData(3, 64, 0)]     // parallelism < 1
+    [InlineData(11, 64, 4)]    // iterations > 10
+    [InlineData(3, 64, 17)]    // parallelism > 16
     public void DeriveMasterKey_Argon2id_RejectsOutOfBoundsParameters(int iterations, int memoryMiB, int parallelism)
     {
         var svc = new CryptoService();
@@ -195,9 +266,10 @@ public class KdfTests
     public void DeriveMasterKey_Argon2id_AcceptsInBoundsParameters()
     {
         var svc = new CryptoService();
-        // 边界内(iterations>=1, 15<=memory<=1024, parallelism>=1)不抛异常。
+        // In-range parameters are accepted; use inexpensive values to keep CI bounded.
         // 仅用廉价内存参数实际派生,避免 1024MiB 分配拖慢/撑爆 CI。
         _ = svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, 1, 15, 1);
         _ = svc.DeriveMasterKey(Password, Email, KdfType.Argon2id, 3, 64, 4);
     }
+
 }

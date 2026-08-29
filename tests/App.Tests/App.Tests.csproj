@@ -21,6 +21,7 @@
   <!-- 直接链接 App 的纯 C# 源(不依赖 WinUI),绕开 WinUI 打包任务无法在命令行加载的问题 -->
   <ItemGroup>
     <Compile Include="..\..\src\App\ViewModels\Models\CipherListItem.cs" Link="Models\CipherListItem.cs" />
+    <Compile Include="..\..\src\App\ViewModels\Models\RecoveredCipherListItem.cs" Link="Models\RecoveredCipherListItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\VaultListGroup.cs" Link="Models\VaultListGroup.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\CipherDetail.cs" Link="Models\CipherDetail.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\AttachmentItem.cs" Link="Models\AttachmentItem.cs" />
@@ -40,6 +41,7 @@
     <Compile Include="..\..\src\App\Services\DemoVaultSessionService.cs" Link="Services\DemoVaultSessionService.cs" />
     <Compile Include="..\..\src\App\Services\CipherDraftMapper.cs" Link="Services\CipherDraftMapper.cs" />
     <Compile Include="..\..\src\App\Services\CrashLogger.cs" Link="Services\CrashLogger.cs" />
+    <Compile Include="..\..\src\App\Services\CancelWinsTask.cs" Link="Services\CancelWinsTask.cs" />
     <Compile Include="..\..\src\App\Services\UiExceptionPolicy.cs" Link="Services\UiExceptionPolicy.cs" />
     <Compile Include="..\..\src\App\Services\AccountPrefill.cs" Link="Services\AccountPrefill.cs" />
     <Compile Include="..\..\src\App\Services\ClientPeerAuthorizer.cs" Link="Services\ClientPeerAuthorizer.cs" />
@@ -52,10 +54,13 @@
     <Compile Include="..\..\src\App\ViewModels\VaultViewModel.cs" Link="ViewModels\VaultViewModel.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\SendListItem.cs" Link="Models\SendListItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\SendEditorDraft.cs" Link="Models\SendEditorDraft.cs" />
+    <Compile Include="..\..\src\App\ViewModels\Models\SendExpirationSelection.cs" Link="Models\SendExpirationSelection.cs" />
     <Compile Include="..\..\src\App\Views\SendEditorDialogLifecycle.cs" Link="Views\SendEditorDialogLifecycle.cs" />
     <Compile Include="..\..\src\App\Services\ISendUiService.cs" Link="Services\ISendUiService.cs" />
     <Compile Include="..\..\src\App\ViewModels\SendViewModel.cs" Link="ViewModels\SendViewModel.cs" />
     <Compile Include="..\..\src\App\Services\SendUiService.cs" Link="Services\SendUiService.cs" />
+    <Compile Include="..\..\src\App\Services\SendReconciliationExceptions.cs" Link="Services\SendReconciliationExceptions.cs" />
+    <Compile Include="..\..\src\App\Services\SessionBoundOperationStarter.cs" Link="Services\SessionBoundOperationStarter.cs" />
     <Compile Include="..\..\src\App\Services\IAttachmentUiService.cs" Link="Services\IAttachmentUiService.cs" />
     <Compile Include="..\..\src\App\Services\AttachmentUiService.cs" Link="Services\AttachmentUiService.cs" />
     <Compile Include="..\..\src\App\Services\TwoFactorUiService.cs" Link="Services\TwoFactorUiService.cs" />
@@ -94,5 +99,6 @@
     <Compile Include="..\..\src\App\Services\TransientOperationRegistry.cs" Link="Services\TransientOperationRegistry.cs" />
     <Compile Include="..\..\src\App\Services\AppLifecycleCoordinator.cs" Link="Services\AppLifecycleCoordinator.cs" />
     <Compile Include="..\..\src\App\Services\ResponsiveDialogSizing.cs" Link="Services\ResponsiveDialogSizing.cs" />
+    <Compile Include="..\..\src\App\Services\LoginWindowSizing.cs" Link="Services\LoginWindowSizing.cs" />
   </ItemGroup>
 </Project>

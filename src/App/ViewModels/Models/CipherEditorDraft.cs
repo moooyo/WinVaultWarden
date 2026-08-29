@@ -224,4 +224,39 @@ public sealed partial class CustomFieldEditorDraft : ObservableObject
 
     [ObservableProperty]
     public partial bool BooleanValue { get; set; }
+
+    public int TypeIndex
+    {
+        get => Type switch
+        {
+            CipherEditorFieldType.Hidden => 1,
+            CipherEditorFieldType.Boolean => 2,
+            _ => 0,
+        };
+        set
+        {
+            var selectedType = value switch
+            {
+                0 => CipherEditorFieldType.Text,
+                1 => CipherEditorFieldType.Hidden,
+                2 => CipherEditorFieldType.Boolean,
+                _ => (CipherEditorFieldType?)null,
+            };
+
+            if (selectedType is { } type)
+                Type = type;
+        }
+    }
+
+    public bool IsText => Type == CipherEditorFieldType.Text;
+    public bool IsHidden => Type == CipherEditorFieldType.Hidden;
+    public bool IsBoolean => Type == CipherEditorFieldType.Boolean;
+
+    partial void OnTypeChanged(CipherEditorFieldType value)
+    {
+        OnPropertyChanged(nameof(TypeIndex));
+        OnPropertyChanged(nameof(IsText));
+        OnPropertyChanged(nameof(IsHidden));
+        OnPropertyChanged(nameof(IsBoolean));
+    }
 }

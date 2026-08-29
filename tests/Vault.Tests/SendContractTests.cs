@@ -23,8 +23,27 @@ public class SendContractTests
         Assert.IsType<SendPasswordChange.Keep>(draft.PasswordChange);
         Assert.False(draft.Disabled);
         Assert.False(draft.HideEmail);
+        Assert.False(draft.ExistingHasPassword);
         Assert.Null(draft.MaxAccessCount);
         Assert.Null(draft.ExpirationDate);
+    }
+
+    [Fact]
+    public void SendDraftModel_WithId_PreservesExistingPasswordState()
+    {
+        var draft = new SendDraftModel
+        {
+            Id = "old-send",
+            Type = SendType.File,
+            Name = "file",
+            DeletionDate = DateTimeOffset.UtcNow.AddDays(7),
+            ExistingHasPassword = true,
+        };
+
+        var replacementCreate = draft.WithId(null);
+
+        Assert.Null(replacementCreate.Id);
+        Assert.True(replacementCreate.ExistingHasPassword);
     }
 
     [Fact]
@@ -46,7 +65,18 @@ public class SendContractTests
         Assert.Equal("secret.pdf", result.FileName);
         Assert.Equal("https://vault.example/dl", result.FileDownloadUrl);
         Assert.Equal("acc-1", result.AccessId);
-        Assert.Same(seed, result.Seed);
+        var copiedSeed = result.Seed;
+        Assert.Equal(seed, copiedSeed);
+        Assert.NotSame(seed, copiedSeed);
+    }
+
+    [Fact]
+    public void ScopedAccessToken_IsNotPartOfThePublicDomainContract()
+    {
+        Assert.Null(typeof(SendAccessResult).GetProperty("AccessToken"));
+        Assert.Null(typeof(SendAccessResult).GetMethod("StoreAccessToken"));
+        Assert.Null(typeof(SendDownloadLease).GetProperty("AccessToken"));
+        Assert.Null(typeof(SendDownloadLease).GetMethod("StoreAccessToken"));
     }
 
     [Fact]

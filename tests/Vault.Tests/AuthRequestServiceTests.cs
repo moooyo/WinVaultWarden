@@ -25,10 +25,11 @@ public class AuthRequestServiceTests
 
     private const string DeviceId = "device-uuid-1234";
 
-    private MemoryTokenStore MakeTokenStore()
+    private MemoryTokenStore MakeTokenStore(VaultSession session)
     {
+        var lease = session.CaptureLease();
         var store = new MemoryTokenStore();
-        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, "test@example.com", new ServerOrigin("http://10.0.1.20:8080"), 1, "test@example.com",
+        store.Save(new PersistedSession(PersistedSession.CurrentSchemaVersion, lease.AccountId, lease.Endpoints, lease.Generation, "test@example.com",
             DeviceId,
             "rt-token",
             "2.xxx|yyy|zzz",
@@ -47,7 +48,15 @@ public class AuthRequestServiceTests
         return session;
     }
 
-    private VaultSession MakeLockedSession() => new VaultSession(); // UserKey == null
+    private VaultSession MakeLockedSession()
+    {
+        var session = new VaultSession();
+        session.BeginAccountSession(
+            "test-account",
+            "test@example.com",
+            new ServerOrigin("https://vault.example"));
+        return session;
+    }
 
     private readonly FingerprintService _fingerprint = new();
 
@@ -56,11 +65,12 @@ public class AuthRequestServiceTests
         VaultSession? session = null,
         ITokenStore? tokenStore = null)
     {
+        var activeSession = session ?? MakeUnlockedSession();
         return new AuthRequestService(
             FakeVaultApiClientProvider.ForAuthenticated<IAuthRequestApiClient>(api),
             _crypto,
-            session ?? MakeUnlockedSession(),
-            tokenStore ?? MakeTokenStore(),
+            activeSession,
+            tokenStore ?? MakeTokenStore(activeSession),
             _fingerprint);
     }
 
@@ -191,5 +201,36 @@ public class AuthRequestServiceTests
 
         var item = Assert.Single(result);
         Assert.Equal("visitor-precision-relight-irritate-request", item.FingerprintPhrase);
+    }
+
+    [Theory]
+    [InlineData("list")]
+    [InlineData("approve")]
+    [InlineData("deny")]
+    public async Task Operations_RejectPersistedSessionFromAnotherAccount(string operation)
+    {
+        var session = MakeUnlockedSession();
+        var other = new VaultSession();
+        other.BeginAccountSession(
+            "account-b",
+            "b@example.com",
+            new ServerOrigin("https://b.example"));
+        var store = MakeTokenStore(other);
+        var api = new FakeAuthRequestApiClient();
+        var service = MakeService(api, session, store);
+
+        Task invoke = operation switch
+        {
+            "list" => service.ListPendingAsync(TestContext.Current.CancellationToken),
+            "approve" => service.ApproveAsync(
+                "request-id",
+                "unused-public-key",
+                TestContext.Current.CancellationToken),
+            "deny" => service.DenyAsync("request-id", TestContext.Current.CancellationToken),
+            _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+        };
+
+        await Assert.ThrowsAsync<AuthRequestOperationException>(() => invoke);
+        Assert.Empty(api.Calls);
     }
 }

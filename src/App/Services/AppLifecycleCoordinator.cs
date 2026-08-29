@@ -1,3 +1,5 @@
+using Core.Session;
+
 namespace App.Services;
 
 public enum AppLifecycleIntent
@@ -12,8 +14,13 @@ public enum AppLifecycleIntent
 public interface IAppLifecycleCoordinator
 {
     bool IsTransitioning { get; }
-    Task RequestAsync(AppLifecycleIntent intent);
-    void MarkSessionReady();
+    Task RequestAsync(
+        AppLifecycleIntent intent,
+        VaultSessionLease? expectedSession = null);
+    bool MarkSessionReady();
+    bool TryActivateSession(Func<bool> activate) =>
+        MarkSessionReady() && activate();
+    bool TryRunSensitive(Func<bool> action) => false;
     void FailClosedSynchronously();
 }
 
@@ -33,15 +40,14 @@ public sealed record AppLifecycleHooks(
     Action ShowLogin,
     Action ExitProcess,
     Action FailClosedSession,
-    Action<string, Exception> ReportFailure);
+    Action<string, Exception> ReportFailure,
+    Func<VaultSessionLease, Task<bool>>? TryLogoutExpectedSessionAsync = null);
 
 /// <summary>
-/// 全项目唯一的应用生命周期协调器(纯类型,不接 DI/WinUI)。
-/// 固定顺序:block → invalidate → stop → transients → clipboard → sensitive → frames → session action → login/exit。
-/// 调用者取消不能中止清理:一旦启动就会跑完全部步骤,任何单步异常都会被脱敏上报但不阻断后续步骤。
-/// 并发请求共享同一个 transition;intent 只升级不降级(Exit > Logout/CredentialChanged/RemoteLogout > Lock),
-/// 且在共享 transition 期间新到达的更强 intent 不会被丢弃(会在下一轮循环被捕获并处理)。
-/// Exit 是终态意图,不需要 Lock/Logout 会话动作,清理完成后直接进程退出。
+/// Coordinates the application's only security lifecycle transition. A request atomically blocks
+/// new sensitive commits, then invalidates the session without waiting for storage providers.
+/// Already-authorized OS commits may finish independently while keys, background work, clipboard,
+/// and sensitive views are cleared. Concurrent requests share one transition and only upgrade it.
 /// </summary>
 public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
     : IAppLifecycleCoordinator
@@ -49,36 +55,85 @@ public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
     private readonly object _gate = new();
     private Task? _transition;
     private AppLifecycleIntent _requested;
+    private VaultSessionLease? _expectedSession;
     private bool _hasRequest;
+    private bool _sensitiveCommitsAllowed;
 
     public bool IsTransitioning
     {
         get { lock (_gate) return _transition is not null; }
     }
 
-    public Task RequestAsync(AppLifecycleIntent intent)
+    public Task RequestAsync(
+        AppLifecycleIntent intent,
+        VaultSessionLease? expectedSession = null)
     {
         lock (_gate)
         {
+            _sensitiveCommitsAllowed = false;
             if (!_hasRequest || Rank(intent) > Rank(_requested))
+            {
                 _requested = intent;
+                _expectedSession = expectedSession;
+            }
+            else if (Rank(intent) == Rank(_requested)
+                && _expectedSession is not null
+                && (expectedSession is null
+                    || !ReferenceEquals(_expectedSession, expectedSession)))
+            {
+                _requested = intent;
+                _expectedSession = expectedSession;
+            }
             _hasRequest = true;
             return _transition ??= RunAsync();
         }
     }
 
-    public void MarkSessionReady()
+    public bool MarkSessionReady()
+        => TryActivateSession(static () => true);
+
+    public bool TryActivateSession(Func<bool> activate)
     {
+        ArgumentNullException.ThrowIfNull(activate);
         lock (_gate)
         {
-            if (_transition is not null)
-                return;
+            if (_transition is not null || _hasRequest)
+                return false;
+            try
+            {
+                if (!activate())
+                    return false;
+            }
+            catch (Exception ex)
+            {
+                ReportSafely("activate", ex);
+                return false;
+            }
+            _sensitiveCommitsAllowed = true;
+            Safe("allow", hooks.AllowSensitiveOperations);
+            return true;
         }
-        Safe("allow", hooks.AllowSensitiveOperations);
+    }
+
+    public bool TryRunSensitive(Func<bool> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        lock (_gate)
+        {
+            if (!_sensitiveCommitsAllowed || _transition is not null || _hasRequest)
+                return false;
+
+            return action();
+        }
     }
 
     public void FailClosedSynchronously()
     {
+        lock (_gate)
+        {
+            _sensitiveCommitsAllowed = false;
+            _hasRequest = true;
+        }
         Safe("block", hooks.BlockSensitiveOperations);
         Safe("invalidate", hooks.InvalidateSession);
         Safe("transients-sync", hooks.CloseTransientsSynchronously);
@@ -91,8 +146,71 @@ public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
     private async Task RunAsync()
     {
         await Task.Yield();
-        Safe("block", hooks.BlockSensitiveOperations);
-        Safe("invalidate", hooks.InvalidateSession);
+
+        var expectedLogoutClaimed = false;
+        while (true)
+        {
+            AppLifecycleIntent candidateIntent;
+            VaultSessionLease? candidateExpectedSession;
+            lock (_gate)
+            {
+                candidateIntent = _requested;
+                candidateExpectedSession = _expectedSession;
+            }
+
+            Safe("block", hooks.BlockSensitiveOperations);
+            if (candidateExpectedSession is null)
+            {
+                expectedLogoutClaimed = false;
+                Safe("invalidate", hooks.InvalidateSession);
+                break;
+            }
+
+            var claimResult = await TryLogoutExpectedSessionAsync(
+                candidateExpectedSession);
+            var requestChanged = false;
+            lock (_gate)
+            {
+                requestChanged = _requested != candidateIntent
+                    || !ReferenceEquals(_expectedSession, candidateExpectedSession);
+            }
+
+            if (claimResult == ExpectedLogoutClaimResult.Claimed)
+            {
+                expectedLogoutClaimed = true;
+                if (requestChanged)
+                    continue;
+                break;
+            }
+
+            if (claimResult == ExpectedLogoutClaimResult.Faulted)
+            {
+                // A production claim can fault only after its current-session CAS entered the
+                // mutation. Finish fail-closed cleanup and retry the unconditional logout later
+                // instead of mistaking a partial cleanup failure for a stale session.
+                expectedLogoutClaimed = false;
+                Safe("invalidate", hooks.InvalidateSession);
+                break;
+            }
+
+            lock (_gate)
+            {
+                if (!requestChanged)
+                {
+                    _transition = null;
+                    _hasRequest = false;
+                    _expectedSession = null;
+                    _sensitiveCommitsAllowed = true;
+                }
+            }
+
+            if (!requestChanged)
+            {
+                Safe("allow", hooks.AllowSensitiveOperations);
+                return;
+            }
+        }
+
         await SafeAsync("stop", hooks.StopBackgroundAsync);
         await SafeAsync("transients", hooks.CloseTransientsAsync);
         await SafeAsync("clipboard", hooks.ClearClipboardAsync);
@@ -116,7 +234,8 @@ public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
                         await SafeAsync("lock", hooks.LockSessionAsync);
                         break;
                     case 1:
-                        await SafeAsync("logout", hooks.LogoutSessionAsync);
+                        if (!expectedLogoutClaimed)
+                            await SafeAsync("logout", hooks.LogoutSessionAsync);
                         break;
                 }
                 completedRank = targetRank;
@@ -131,6 +250,7 @@ public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
                 {
                     _transition = null;
                     _hasRequest = false;
+                    _expectedSession = null;
                 }
             }
             if (settled)
@@ -159,6 +279,31 @@ public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
     {
         try { hooks.ReportFailure(step, exception); }
         catch { /* 诊断失败不得中断安全清理。 */ }
+    }
+
+    private async Task<ExpectedLogoutClaimResult> TryLogoutExpectedSessionAsync(
+        VaultSessionLease expectedSession)
+    {
+        if (hooks.TryLogoutExpectedSessionAsync is null)
+            return ExpectedLogoutClaimResult.Faulted;
+        try
+        {
+            return await hooks.TryLogoutExpectedSessionAsync(expectedSession)
+                ? ExpectedLogoutClaimResult.Claimed
+                : ExpectedLogoutClaimResult.Stale;
+        }
+        catch (Exception ex)
+        {
+            ReportSafely("logout-expected", ex);
+            return ExpectedLogoutClaimResult.Faulted;
+        }
+    }
+
+    private enum ExpectedLogoutClaimResult
+    {
+        Stale,
+        Claimed,
+        Faulted,
     }
 
     private static int Rank(AppLifecycleIntent intent) => intent switch

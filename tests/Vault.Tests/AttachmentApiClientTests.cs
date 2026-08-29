@@ -1,7 +1,9 @@
 using System.Net;
 using Api;
+using Core.Enums;
 using Core.Models;
 using Api.Dtos;
+using Core.Session;
 using Xunit;
 
 namespace Vault.Tests;
@@ -10,7 +12,15 @@ public class AttachmentApiClientTests
 {
     private static ApiClient NewClient(FakeHttpMessageHandler handler)
     {
-        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
+        var origin = new ServerOrigin("https://vault.example");
+        var auth = new AuthHeaderHandler(
+            origin,
+            () => new AccessTokenBinding("account", origin, 1, "access-token"),
+            _ => Task.FromResult(false))
+        {
+            InnerHandler = handler,
+        };
+        var client = new ApiClient(new HttpClient(auth), origin);
         return client;
     }
 
@@ -47,9 +57,10 @@ public class AttachmentApiClientTests
             """{"attachmentId":"att-1","url":"/ciphers/c-1/attachment/att-1","fileUploadType":0,"object":"attachment-fileUpload","cipherResponse":{"id":"c-1","object":"cipher"}}"""));
         var client = NewClient(handler);
 
-        var resp = await client.CreateAttachmentV2Async(
+        var receipt = await client.CreateAttachmentV2Async(
             "c-1", new AttachmentUploadRequest("2.wrappedKey", "2.encName", 49L),
             TestContext.Current.CancellationToken);
+        var resp = receipt.Value;
 
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
         Assert.Equal("/api/ciphers/c-1/attachment/v2", handler.Requests[0].RequestUri!.AbsolutePath);
@@ -58,25 +69,36 @@ public class AttachmentApiClientTests
         Assert.Contains("\"fileSize\":49", handler.Bodies[0]);
         Assert.Equal("att-1", resp.AttachmentId);
         Assert.Equal("/ciphers/c-1/attachment/att-1", resp.Url);
+        Assert.Equal("access-token", receipt.Authorization.Token);
     }
 
-    [Fact]
-    public async Task UploadAttachmentData_PostsMultipartWithDataPartNamedByEncryptedFileName()
+    [Theory]
+    [InlineData("/ciphers/c-1/attachment/att-1")]
+    [InlineData("c-1/attachment/att-1")]
+    public async Task UploadAttachmentData_NormalizesSupportedDirectUploadPaths(
+        string uploadUrl)
     {
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
         var client = NewClient(handler);
-        var buffer = new byte[] { 2, 9, 9, 9 };
+        var upload = new StreamUploadContent(
+            4,
+            (output, ct) => output.WriteAsync(new byte[] { 2, 9, 9, 9 }, ct).AsTask());
 
         await client.UploadAttachmentDataAsync(
-            "/ciphers/c-1/attachment/att-1", "2.encName", buffer, TestContext.Current.CancellationToken);
+            FileUploadType.Direct,
+            uploadUrl,
+            "c-1",
+            "att-1",
+            "2.encName",
+            upload,
+            TestContext.Current.CancellationToken);
 
         var req = handler.Requests[0];
         Assert.Equal(HttpMethod.Post, req.Method);
-        // 相对 url "/ciphers/..." 不含 /api 前缀,NormalizeServerPath 自动补全。
+        Assert.Equal("access-token", req.Headers.Authorization!.Parameter);
         Assert.Equal("/api/ciphers/c-1/attachment/att-1", req.RequestUri!.AbsolutePath);
         Assert.StartsWith("multipart/form-data", req.Content!.Headers.ContentType!.ToString());
-        // multipart "data" part,filename == 加密后的 fileName。
         Assert.Contains("name=data", handler.Bodies[0].Replace("\"", ""));
         Assert.Contains("filename=2.encName", handler.Bodies[0].Replace("\"", ""));
     }
@@ -95,7 +117,7 @@ public class AttachmentApiClientTests
     }
 
     [Fact]
-    public async Task DownloadAttachmentBytes_GetsBytesFromAbsoluteUrl()
+    public async Task OpenAttachmentDownload_GetsStreamFromAbsoluteUrl()
     {
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.OK)
@@ -104,13 +126,15 @@ public class AttachmentApiClientTests
         });
         var client = NewClient(handler);
 
-        var bytes = await client.DownloadAttachmentBytesAsync(
+        await using var download = await client.OpenAttachmentDownloadAsync(
             "https://files.example/att/att-1?t=tok", TestContext.Current.CancellationToken);
+        using var copy = new MemoryStream();
+        await download.Stream.CopyToAsync(copy, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpMethod.Get, handler.Requests[0].Method);
         Assert.Equal("/att/att-1", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Equal("files.example", handler.Requests[0].RequestUri!.Host);
-        Assert.Equal(new byte[] { 2, 1, 2, 3 }, bytes);
+        Assert.Equal(new byte[] { 2, 1, 2, 3 }, copy.ToArray());
     }
 
     [Fact]

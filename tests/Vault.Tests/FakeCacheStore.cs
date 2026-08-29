@@ -10,6 +10,7 @@ public sealed class FakeCacheStore : ICacheStore
     public int ClearCount { get; private set; }
     public VaultCacheEntry? LastSaved { get; private set; }
     public Action? BeforeSave { get; set; }
+    public Action? BeforeLoad { get; set; }
     public Action? BeforeClear { get; set; }
     public List<string> Operations { get; } = [];
 
@@ -22,7 +23,12 @@ public sealed class FakeCacheStore : ICacheStore
         Operations.Add("save");
     }
 
-    public bool TryLoadVaultCache(out VaultCacheEntry entry) { entry = _entry!; return _entry is not null; }
+    public bool TryLoadVaultCache(out VaultCacheEntry entry)
+    {
+        BeforeLoad?.Invoke();
+        entry = _entry!;
+        return _entry is not null;
+    }
 
     public void ClearVaultCache()
     {

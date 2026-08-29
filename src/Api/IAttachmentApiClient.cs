@@ -1,18 +1,33 @@
 using Api.Dtos;
+using Core.Enums;
+using Core.Models;
+using Core.Session;
 
 namespace Api;
 
-// 附件端点。读 GET api/ciphers/{id} 拿含附件的 CipherDto;两步上传(v2 元数据 + multipart 文件体);
-// 删除 DELETE api/ciphers/{id}/attachment/{attId}。上传 url 与下载 url 由服务端给出(可能为相对路径)。
+// Attachment endpoints use a two-step upload: authenticated metadata creation followed by either
+// a direct multipart transfer or an Azure SAS upload. Upload and download URLs come from the server.
 public interface IAttachmentApiClient : IAuthenticatedApiRole
 {
-    // GET api/ciphers/{id}:返回含新鲜 url 与各附件 key 的单条目。
+    // Returns a fresh attachment URL and key metadata for the cipher.
     Task<CipherDto> GetCipherAsync(string cipherId, CancellationToken ct = default);
-    // 第1步:POST api/ciphers/{cipherId}/attachment/v2,返回 attachmentId 与相对上传 url。
-    Task<AttachmentUploadV2Response> CreateAttachmentV2Async(string cipherId, AttachmentUploadRequest request, CancellationToken ct = default);
-    // 第2步:POST {uploadUrl}(经 NormalizeServerPath 补 api/),multipart 字段名 data,part filename=加密后的 fileName。
-    Task UploadAttachmentDataAsync(string uploadUrl, string encryptedFileName, byte[] encryptedBuffer, CancellationToken ct = default);
+    // Creates attachment metadata and captures the binding used by the successful request.
+    Task<AuthenticatedWriteReceipt<AttachmentUploadV2Response>> CreateAttachmentV2Async(
+        string cipherId,
+        AttachmentUploadRequest request,
+        CancellationToken ct = default);
+    // Streams the encrypted payload without buffering it in memory. Direct uploads use multipart;
+    // Azure uploads use a raw Block Blob PUT.
+    Task UploadAttachmentDataAsync(
+        FileUploadType fileUploadType,
+        string uploadUrl,
+        string cipherId,
+        string attachmentId,
+        string encryptedFileName,
+        StreamUploadContent encryptedContent,
+        CancellationToken ct = default);
     Task DeleteAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default);
-    // GET 附件 url(可能绝对、可能相对)取原始加密字节。
-    Task<byte[]> DownloadAttachmentBytesAsync(string downloadUrl, CancellationToken ct = default);
+    Task<DownloadContent> OpenAttachmentDownloadAsync(
+        string downloadUrl,
+        CancellationToken ct = default);
 }

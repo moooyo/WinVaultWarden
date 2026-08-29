@@ -176,11 +176,17 @@ public class SettingsPageXamlTests
     }
 
     [Fact]
-    public void ChangeKdfDialog_MinimumIs100000()
+    public void ChangeKdfDialog_UsesWriteCompatiblePbkdf2Range()
     {
         var src = LoadCodeBehind();
-        // NumberBox.Minimum = 100000 必须出现在 ChangeKdf 的上下文中
-        Assert.Contains("Minimum = 100000", src, StringComparison.Ordinal);
+        Assert.Contains(
+            "Minimum = KdfParameterPolicy.MinimumPbkdf2WriteIterations",
+            src,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Maximum = KdfParameterPolicy.MaximumPbkdf2WriteIterations",
+            src,
+            StringComparison.Ordinal);
     }
 
     // ── 成功后交由生命周期协调器统一处理(页面内不再直接锁定/导航) ────────────────
@@ -365,5 +371,68 @@ public class SettingsPageXamlTests
     {
         var doc = LoadXaml();
         Assert.Contains("ShowWebsiteIcons", doc.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SettingsControls_HaveAccessibleNames()
+    {
+        var controls = LoadXaml().Descendants()
+            .Where(element => element.Name.LocalName is "ComboBox" or "ToggleSwitch")
+            .ToList();
+
+        Assert.NotEmpty(controls);
+        Assert.All(controls, control => Assert.False(string.IsNullOrWhiteSpace(
+            control.Attributes().FirstOrDefault(attribute =>
+                attribute.Name.LocalName == "AutomationProperties.Name")?.Value)));
+    }
+
+    [Fact]
+    public void SettingsComboBoxes_StretchWithoutFixedMinimumWidth()
+    {
+        var comboBoxes = LoadXaml().Descendants()
+            .Where(element => element.Name.LocalName == "ComboBox")
+            .ToList();
+
+        Assert.NotEmpty(comboBoxes);
+        Assert.All(comboBoxes, comboBox =>
+        {
+            Assert.Equal("0", (string?)comboBox.Attribute("MinWidth"));
+            Assert.Equal("Stretch", (string?)comboBox.Attribute("HorizontalAlignment"));
+        });
+    }
+
+    [Fact]
+    public void SettingsPage_ExposesHeadingHierarchy()
+    {
+        var headings = LoadXaml().Descendants()
+            .Where(element => element.Name.LocalName == "TextBlock")
+            .Select(element => element.Attributes().FirstOrDefault(attribute =>
+                attribute.Name.LocalName == "AutomationProperties.HeadingLevel")?.Value)
+            .Where(value => value is not null)
+            .ToList();
+
+        Assert.Equal(7, headings.Count);
+        Assert.Single(headings, value => value == "Level1");
+        Assert.Equal(6, headings.Count(value => value == "Level2"));
+    }
+
+    [Fact]
+    public void TrayAndHelloToggles_BindDerivedAvailability()
+    {
+        var source = LoadXaml().ToString();
+
+        Assert.Contains("CanConfigureTrayBehavior", source, StringComparison.Ordinal);
+        Assert.Contains("CanToggleWindowsHello", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DisableTwoFactorDialog_DefaultsToCancel()
+    {
+        var source = LoadCodeBehind();
+        var start = source.IndexOf("var disableDialog = new ContentDialog", StringComparison.Ordinal);
+
+        Assert.True(start >= 0);
+        var section = source[start..Math.Min(source.Length, start + 500)];
+        Assert.Contains("DefaultButton = ContentDialogButton.Close", section, StringComparison.Ordinal);
     }
 }

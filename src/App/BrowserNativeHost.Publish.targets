@@ -54,8 +54,18 @@
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <Target Name="RestoreBrowserNativeHost"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(ShipBrowserNativeHost)' == 'true'">
+    <!-- This project is intentionally not a ProjectReference of App, so restore it explicitly. -->
+    <MSBuild Projects="$(BrowserNativeHostProject)"
+             Targets="Restore"
+             BuildInParallel="false"
+             Properties="Configuration=$(Configuration);Platform=$(BrowserNativeHostPlatform);RuntimeIdentifier=$(BrowserNativeHostRid);SelfContained=true;PublishAot=true" />
+  </Target>
+
   <Target Name="PublishBrowserNativeHost"
           BeforeTargets="PrepareForBuild"
+          DependsOnTargets="RestoreBrowserNativeHost"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(ShipBrowserNativeHost)' == 'true'">
     <MSBuild Projects="$(BrowserNativeHostProject)"
              Targets="Publish"

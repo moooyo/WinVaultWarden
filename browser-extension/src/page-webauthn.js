@@ -23,7 +23,7 @@
 
   const bootstrapId = coordinator.randomRequestId();
   let boundChannel = null;
-  const bindWaiters = [];
+  const bindWaiters = new Set();
   const pending = new Map();
 
   function targetOrigin() {
@@ -38,15 +38,23 @@
   function bindChannel(channelId) {
     if (boundChannel) return;
     boundChannel = channelId;
-    for (const waiter of bindWaiters.splice(0)) waiter();
+    const waiters = [...bindWaiters];
+    bindWaiters.clear();
+    for (const waiter of waiters) waiter();
   }
 
   function whenBound(callback) {
     if (boundChannel) {
       callback();
+      return () => {};
     } else {
-      bindWaiters.push(callback);
+      bindWaiters.add(callback);
+      return () => bindWaiters.delete(callback);
     }
+  }
+
+  function failure(id, code) {
+    return { v: 1, id, type: "error", ok: false, error: { code } };
   }
 
   window.addEventListener("message", (event) => {
@@ -82,19 +90,38 @@
 
   function relay(request, signal) {
     return new Promise((resolve, reject) => {
-      let settled = false;
+      let state = "waiting"; // waiting | sent | settled
+      let deadlineTimer = null;
+      let removeBindWaiter = () => {};
       const cleanup = () => {
+        if (deadlineTimer !== null) {
+          clearTimeout(deadlineTimer);
+          deadlineTimer = null;
+        }
+        removeBindWaiter();
         pending.delete(request.id);
         if (signal) signal.removeEventListener("abort", onAbort);
       };
-      function onAbort() {
-        if (settled) return;
-        settled = true;
+      const finish = (response) => {
+        if (state === "settled") return;
+        state = "settled";
         cleanup();
-        if (boundChannel) {
+        resolve(response);
+      };
+      function onAbort() {
+        if (state === "settled") return;
+        const wasSent = state === "sent";
+        state = "settled";
+        cleanup();
+        if (wasSent && boundChannel) {
           postToIsolated({ kind: "cancel", channelId: boundChannel, id: request.id });
         }
         reject(errorMap.toException("operation_aborted"));
+      }
+
+      function onBootstrapDeadline() {
+        if (state !== "waiting") return;
+        finish(failure(request.id, "client_not_handled"));
       }
 
       if (signal) {
@@ -105,14 +132,27 @@
         signal.addEventListener("abort", onAbort, { once: true });
       }
 
-      whenBound(() => {
-        if (settled) return;
-        pending.set(request.id, (response) => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          resolve(response);
-        });
+      const remaining = request.deadlineUnixMs - Date.now();
+      if (remaining <= 0) {
+        onBootstrapDeadline();
+        return;
+      }
+      deadlineTimer = setTimeout(onBootstrapDeadline, remaining);
+
+      removeBindWaiter = whenBound(() => {
+        if (state !== "waiting") return;
+        if (Date.now() >= request.deadlineUnixMs) {
+          onBootstrapDeadline();
+          return;
+        }
+
+        // From this point the request is owned by the extension/native operation, which carries the
+        // same absolute deadline. Clear the bootstrap timer so it cannot turn an in-flight ceremony
+        // into a platform fallback.
+        state = "sent";
+        clearTimeout(deadlineTimer);
+        deadlineTimer = null;
+        pending.set(request.id, finish);
         postToIsolated({ kind: "request", channelId: boundChannel, id: request.id, request });
       });
     });

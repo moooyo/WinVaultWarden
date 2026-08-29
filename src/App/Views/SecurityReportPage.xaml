@@ -20,30 +20,44 @@
                   VerticalScrollBarVisibility="Auto">
         <!-- Grid wrapper works around SettingsExpander expand glitch under a MaxWidth StackPanel (microsoft-ui-xaml#3842) -->
         <Grid>
+        <StackPanel MaxWidth="820" HorizontalAlignment="Stretch">
+
+        <TextBlock Text="安全报告"
+                   Style="{ThemeResource TitleTextBlockStyle}"
+                   Margin="0,0,0,12" />
+
+        <Grid>
 
         <!-- ── 离线分析:加载中 ─────────────────────────────────────────── -->
         <StackPanel x:Name="OfflineLoadingPanel"
                     Spacing="8"
-                    MaxWidth="820"
                     HorizontalAlignment="Stretch"
                     Visibility="{x:Bind ViewModel.ShowOfflineLoading, Mode=OneWay,
                         Converter={StaticResource BoolToVis}}">
-            <ProgressRing IsActive="True"
-                          AutomationProperties.Name="正在分析安全报告" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <ProgressRing Width="24"
+                              Height="24"
+                              IsActive="True"
+                              AutomationProperties.Name="正在分析安全报告" />
+                <TextBlock Text="正在分析安全报告…"
+                           VerticalAlignment="Center"
+                           AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
             <ProgressBar Minimum="0"
                          Maximum="100"
+                         AutomationProperties.Name="安全报告分析进度"
                          Value="{x:Bind ViewModel.OfflineProgress, Mode=OneWay}" />
         </StackPanel>
 
         <!-- ── 离线分析:错误 + 重试 ────────────────────────────────────── -->
         <StackPanel x:Name="OfflineErrorPanel"
                     Spacing="8"
-                    MaxWidth="820"
                     HorizontalAlignment="Stretch"
                     Visibility="{x:Bind ViewModel.ShowOfflineError, Mode=OneWay,
                         Converter={StaticResource BoolToVis}}">
             <InfoBar Severity="Error"
                      IsOpen="True"
+                     AutomationProperties.LiveSetting="Assertive"
                      Message="{x:Bind ViewModel.OfflineError, Mode=OneWay}" />
             <Button x:Name="SecurityReportRetryButton"
                     Content="重试"
@@ -53,21 +67,40 @@
 
         <StackPanel x:Name="OfflineContentPanel"
                     Spacing="4"
-                    MaxWidth="820"
                     HorizontalAlignment="Stretch"
                     Visibility="{x:Bind ViewModel.ShowOfflineContent, Mode=OneWay,
                         Converter={StaticResource BoolToVis}}">
-
-            <!-- 页面标题 -->
-            <TextBlock Text="安全报告"
-                       Style="{ThemeResource TitleTextBlockStyle}"
-                       Margin="0,0,0,12" />
 
             <!-- ── Hero:密码库健康摘要 ─────────────────────────────────────── -->
             <Border Style="{StaticResource CardBorderStyle}"
                     Padding="{StaticResource CardContentPadding}"
                     Margin="0,0,0,12">
-                <Grid ColumnSpacing="16">
+                <Grid x:Name="HealthSummaryGrid" ColumnSpacing="16">
+                    <VisualStateManager.VisualStateGroups>
+                        <VisualStateGroup x:Name="HealthSummaryLayoutStates">
+                            <VisualState x:Name="WideHealthSummary">
+                                <VisualState.StateTriggers>
+                                    <AdaptiveTrigger MinWindowWidth="760" />
+                                </VisualState.StateTriggers>
+                            </VisualState>
+                            <VisualState x:Name="NarrowHealthSummary">
+                                <VisualState.StateTriggers>
+                                    <AdaptiveTrigger MinWindowWidth="0" />
+                                </VisualState.StateTriggers>
+                                <VisualState.Setters>
+                                    <Setter Target="HealthMetricsPanel.(Grid.Row)" Value="1" />
+                                    <Setter Target="HealthMetricsPanel.(Grid.Column)" Value="0" />
+                                    <Setter Target="HealthMetricsPanel.(Grid.ColumnSpan)" Value="3" />
+                                    <Setter Target="HealthMetricsPanel.HorizontalAlignment" Value="Stretch" />
+                                    <Setter Target="HealthMetricsPanel.Margin" Value="0,12,0,0" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateManager.VisualStateGroups>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -78,6 +111,7 @@
                               Glyph="&#xE72E;"
                               FontSize="28"
                               VerticalAlignment="Center"
+                              AutomationProperties.AccessibilityView="Raw"
                               Foreground="{x:Bind ViewModel.OverallSeverity, Mode=OneWay,
                                   Converter={StaticResource SeverityToBrush}}" />
 
@@ -85,39 +119,62 @@
                         <TextBlock Text="密码库健康" Style="{ThemeResource SubtitleTextBlockStyle}" />
                         <TextBlock Text="{x:Bind ViewModel.SummaryText, Mode=OneWay}"
                                    Style="{ThemeResource BodyTextBlockStyle}"
+                                   TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
 
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="20" VerticalAlignment="Center">
-                        <StackPanel Spacing="4" HorizontalAlignment="Center" Width="56">
+                    <Grid x:Name="HealthMetricsPanel"
+                          Grid.Column="2"
+                          ColumnSpacing="12"
+                          HorizontalAlignment="Right"
+                          VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Spacing="4" HorizontalAlignment="Center">
                             <InfoBadge HorizontalAlignment="Center"
                                        Value="{x:Bind ViewModel.ReusedCount, Mode=OneWay}" />
                             <TextBlock Text="重复" HorizontalAlignment="Center"
                                        Style="{ThemeResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
-                        <StackPanel Spacing="4" HorizontalAlignment="Center" Width="56">
+                        <StackPanel Grid.Column="1" Spacing="4" HorizontalAlignment="Center">
                             <InfoBadge HorizontalAlignment="Center"
                                        Value="{x:Bind ViewModel.WeakCount, Mode=OneWay}" />
                             <TextBlock Text="弱" HorizontalAlignment="Center"
                                        Style="{ThemeResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
-                        <StackPanel Spacing="4" HorizontalAlignment="Center" Width="56">
+                        <StackPanel Grid.Column="2" Spacing="4" HorizontalAlignment="Center">
                             <InfoBadge HorizontalAlignment="Center"
                                        Value="{x:Bind ViewModel.UnsecuredCount, Mode=OneWay}" />
                             <TextBlock Text="不安全" HorizontalAlignment="Center"
                                        Style="{ThemeResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
-                        <StackPanel Spacing="4" HorizontalAlignment="Center" Width="56">
-                            <InfoBadge HorizontalAlignment="Center"
-                                       Value="{x:Bind ViewModel.ExposedCount, Mode=OneWay}" />
+                        <StackPanel Grid.Column="3" Spacing="4" HorizontalAlignment="Center">
+                            <Grid HorizontalAlignment="Center">
+                                <InfoBadge HorizontalAlignment="Center"
+                                           Value="{x:Bind ViewModel.ExposedCount, Mode=OneWay}"
+                                           AutomationProperties.Name="{x:Bind ViewModel.ExposureMetricAccessibleName, Mode=OneWay}"
+                                           Visibility="{x:Bind ViewModel.ShowExposedCount, Mode=OneWay,
+                                               Converter={StaticResource BoolToVis}}" />
+                                <TextBlock Text="{x:Bind ViewModel.ExposureStatusLabel, Mode=OneWay}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           AutomationProperties.Name="{x:Bind ViewModel.ExposureMetricAccessibleName, Mode=OneWay}"
+                                           Visibility="{x:Bind ViewModel.ShowExposedCount, Mode=OneWay,
+                                               Converter={StaticResource InverseBoolToVis}}" />
+                            </Grid>
                             <TextBlock Text="暴露" HorizontalAlignment="Center"
                                        Style="{ThemeResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
-                    </StackPanel>
+                    </Grid>
                 </Grid>
             </Border>
 
@@ -230,11 +287,26 @@
                 <tk:SettingsExpander.HeaderIcon>
                     <FontIcon Glyph="&#xEA18;" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                 </tk:SettingsExpander.HeaderIcon>
-                <InfoBadge Value="{x:Bind ViewModel.ExposedCount, Mode=OneWay}" />
+                <Grid>
+                    <InfoBadge Value="{x:Bind ViewModel.ExposedCount, Mode=OneWay}"
+                               AutomationProperties.Name="{x:Bind ViewModel.ExposureMetricAccessibleName, Mode=OneWay}"
+                               Visibility="{x:Bind ViewModel.ShowExposedCount, Mode=OneWay,
+                                   Converter={StaticResource BoolToVis}}" />
+                    <TextBlock Text="{x:Bind ViewModel.ExposureStatusLabel, Mode=OneWay}"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               AutomationProperties.Name="{x:Bind ViewModel.ExposureMetricAccessibleName, Mode=OneWay}"
+                               Visibility="{x:Bind ViewModel.ShowExposedCount, Mode=OneWay,
+                                   Converter={StaticResource InverseBoolToVis}}" />
+                </Grid>
 
                 <tk:SettingsExpander.ItemsHeader>
                     <StackPanel Spacing="8" Padding="16,12,16,4">
-                        <TextBlock Text="仅发送密码哈希前 5 位到 HaveIBeenPwned,绝不发送密码本身"
+                        <TextBlock Text="{x:Bind ViewModel.ExposureStatusMessage, Mode=OneWay}"
+                                   Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <TextBlock Text="仅发送密码哈希前 5 位到 Have I Been Pwned，绝不发送密码本身"
                                    Style="{ThemeResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    Visibility="{x:Bind ViewModel.ExposedChecked, Mode=OneWay,
@@ -248,6 +320,7 @@
                                     Converter={StaticResource InverseBoolToVis}}" />
                         <ProgressRing Width="24" Height="24"
                                       HorizontalAlignment="Left"
+                                      AutomationProperties.Name="正在检查暴露密码"
                                       IsActive="{x:Bind ViewModel.IsCheckingExposed, Mode=OneWay}"
                                       Visibility="{x:Bind ViewModel.IsCheckingExposed, Mode=OneWay,
                                           Converter={StaticResource BoolToVis}}" />
@@ -255,6 +328,7 @@
                                  AutomationProperties.AutomationId="ExposedErrorInfoBar"
                                  IsClosable="False"
                                  Severity="Error"
+                                 AutomationProperties.LiveSetting="Assertive"
                                  IsOpen="{x:Bind ViewModel.HasExposedError, Mode=OneWay}"
                                  Message="{x:Bind ViewModel.ExposedError, Mode=OneWay}" />
                     </StackPanel>
@@ -286,6 +360,8 @@
                 </tk:SettingsExpander.ItemsFooter>
             </tk:SettingsExpander>
 
+        </StackPanel>
+        </Grid>
         </StackPanel>
         </Grid>
     </ScrollViewer>

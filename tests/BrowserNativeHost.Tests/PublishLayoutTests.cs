@@ -6,7 +6,7 @@ namespace BrowserNativeHost.Tests;
 
 public sealed class PublishLayoutTests
 {
-    [Fact]
+    [WindowsFact]
     public void Locator_AlwaysUsesAppBaseDirectoryRoot()
     {
         var path = BrowserNativeHostLocator.Resolve(@"C:\Apps\WinVaultWarden");
@@ -16,7 +16,7 @@ public sealed class PublishLayoutTests
             ignoreCase: true);
     }
 
-    [Fact]
+    [WindowsFact]
     public void Locator_NormalizesTrailingSeparators()
     {
         var path = BrowserNativeHostLocator.Resolve(@"C:\Apps\WinVaultWarden\");

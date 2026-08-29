@@ -10,4 +10,10 @@ public interface ITokenRefresher
     Task<bool> TryRefreshAsync(
         VaultSessionLease lease,
         CancellationToken ct = default);
+
+    Task<bool> TryRefreshAsync(
+        VaultSessionLease lease,
+        AccessTokenBinding failedAuthorization,
+        CancellationToken ct = default) =>
+        TryRefreshAsync(lease, ct);
 }

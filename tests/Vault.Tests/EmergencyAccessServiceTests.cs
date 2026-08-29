@@ -1,6 +1,7 @@
 using Api;
 using Api.Dtos;
 using Core.Models;
+using Core.Services;
 using Crypto;
 using Vault;
 using Xunit;
@@ -16,6 +17,8 @@ public class EmergencyAccessServiceTests
         public EmergencyAccessInviteRequest? LastInvite { get; private set; }
         public EmergencyAccessConfirmRequest? LastConfirm { get; private set; }
         public string? PublicKeyB64 { get; set; }
+        public Func<string, CancellationToken, Task<PublicKeyResponse>>? PublicKeyHandler { get; set; }
+        public Func<string, CancellationToken, Task<EmergencyAccessViewResponse>>? ViewHandler { get; set; }
         public ListResponse<EmergencyAccessGranteeDetailsDto> Trusted { get; set; } = new(Array.Empty<EmergencyAccessGranteeDetailsDto>(), null, null);
 
         // Task 6: grantee-side support
@@ -25,17 +28,17 @@ public class EmergencyAccessServiceTests
 
         public Task<ListResponse<EmergencyAccessGranteeDetailsDto>> GetTrustedAsync(CancellationToken ct = default){ Calls.Add("trusted"); return Task.FromResult(Trusted); }
         public Task<ListResponse<EmergencyAccessGrantorDetailsDto>> GetGrantedAsync(CancellationToken ct = default){ Calls.Add("granted"); return Task.FromResult(new ListResponse<EmergencyAccessGrantorDetailsDto>(Array.Empty<EmergencyAccessGrantorDetailsDto>(), null, null)); }
-        public Task<PublicKeyResponse> GetPublicKeyAsync(string userId, CancellationToken ct = default){ Calls.Add($"pubkey:{userId}"); return Task.FromResult(new PublicKeyResponse{ UserId = userId, PublicKey = PublicKeyB64 }); }
+        public Task<PublicKeyResponse> GetPublicKeyAsync(string userId, CancellationToken ct = default){ Calls.Add($"pubkey:{userId}"); return PublicKeyHandler?.Invoke(userId, ct) ?? Task.FromResult(new PublicKeyResponse{ UserId = userId, PublicKey = PublicKeyB64 }); }
         public Task InviteAsync(EmergencyAccessInviteRequest request, CancellationToken ct = default){ Calls.Add("invite"); LastInvite = request; return Task.CompletedTask; }
         public Task ReinviteAsync(string id, CancellationToken ct = default){ Calls.Add($"reinvite:{id}"); return Task.CompletedTask; }
         public Task AcceptAsync(string id, EmergencyAccessAcceptRequest request, CancellationToken ct = default){ Calls.Add($"accept:{id}"); return Task.CompletedTask; }
-        public Task<EmergencyAccessDto> ConfirmAsync(string id, EmergencyAccessConfirmRequest request, CancellationToken ct = default){ Calls.Add($"confirm:{id}"); LastConfirm = request; return Task.FromResult(new EmergencyAccessDto{ Id = id, Status = 2 }); }
-        public Task<EmergencyAccessDto> UpdateAsync(string id, EmergencyAccessUpdateRequest request, CancellationToken ct = default){ Calls.Add($"update:{id}"); return Task.FromResult(new EmergencyAccessDto{ Id = id }); }
+        public Task ConfirmAsync(string id, EmergencyAccessConfirmRequest request, CancellationToken ct = default){ Calls.Add($"confirm:{id}"); LastConfirm = request; return Task.CompletedTask; }
+        public Task UpdateAsync(string id, EmergencyAccessUpdateRequest request, CancellationToken ct = default){ Calls.Add($"update:{id}"); return Task.CompletedTask; }
         public Task DeleteAsync(string id, CancellationToken ct = default){ Calls.Add($"delete:{id}"); return Task.CompletedTask; }
-        public Task<EmergencyAccessDto> InitiateAsync(string id, CancellationToken ct = default){ Calls.Add($"initiate:{id}"); return Task.FromResult(new EmergencyAccessDto{ Id = id, Status = 3 }); }
-        public Task<EmergencyAccessDto> ApproveAsync(string id, CancellationToken ct = default){ Calls.Add($"approve:{id}"); return Task.FromResult(new EmergencyAccessDto{ Id = id, Status = 4 }); }
-        public Task<EmergencyAccessDto> RejectAsync(string id, CancellationToken ct = default){ Calls.Add($"reject:{id}"); return Task.FromResult(new EmergencyAccessDto{ Id = id, Status = 2 }); }
-        public Task<EmergencyAccessViewResponse> ViewAsync(string id, CancellationToken ct = default){ Calls.Add($"view:{id}"); return Task.FromResult(ViewResult); }
+        public Task InitiateAsync(string id, CancellationToken ct = default){ Calls.Add($"initiate:{id}"); return Task.CompletedTask; }
+        public Task ApproveAsync(string id, CancellationToken ct = default){ Calls.Add($"approve:{id}"); return Task.CompletedTask; }
+        public Task RejectAsync(string id, CancellationToken ct = default){ Calls.Add($"reject:{id}"); return Task.CompletedTask; }
+        public Task<EmergencyAccessViewResponse> ViewAsync(string id, CancellationToken ct = default){ Calls.Add($"view:{id}"); return ViewHandler?.Invoke(id, ct) ?? Task.FromResult(ViewResult); }
         public Task<EmergencyAccessTakeoverResponse> TakeoverAsync(string id, CancellationToken ct = default){ Calls.Add($"takeover:{id}"); return Task.FromResult(TakeoverResult); }
         public Task PasswordAsync(string id, EmergencyAccessPasswordRequest request, CancellationToken ct = default){ Calls.Add($"password:{id}"); LastPassword = request; return Task.CompletedTask; }
         public Task DeleteAccountAsync(DeleteAccountRequest request, CancellationToken ct = default){ Calls.Add("delacct"); return Task.CompletedTask; }
@@ -84,6 +87,20 @@ public class EmergencyAccessServiceTests
         Assert.Equal(7, api.LastInvite.WaitTimeDays);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(32768)]
+    public async Task Invite_InvalidWaitTime_IsRejectedBeforeApiCall(int waitTimeDays)
+    {
+        var api = new FakeEaApi();
+        var svc = new EmergencyAccessService(FakeVaultApiClientProvider.ForAuthenticated<IEmergencyAccessApiClient>(api), new CryptoService(), new VaultDecryptor(new CryptoService()), ActiveSession());
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            svc.InviteAsync("b@x.com", EmergencyAccessType.View, waitTimeDays, TestContext.Current.CancellationToken));
+
+        Assert.DoesNotContain("invite", api.Calls);
+    }
+
     [Fact]
     public async Task Confirm_EncryptsUserKeyToGranteePublicKey()
     {
@@ -111,6 +128,52 @@ public class EmergencyAccessServiceTests
         var api = new FakeEaApi { PublicKeyB64 = "x" };
         var svc = new EmergencyAccessService(FakeVaultApiClientProvider.ForAuthenticated<IEmergencyAccessApiClient>(api), new CryptoService(), new VaultDecryptor(new CryptoService()), new VaultSession());
         await Assert.ThrowsAnyAsync<Exception>(() => svc.ConfirmAsync("e1", "u2", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Confirm_AccountSwitchWhileLoadingPublicKey_DoesNotSendWrappedKey()
+    {
+        using var rsa = RSA.Create(2048);
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<PublicKeyResponse>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var api = new FakeEaApi
+        {
+            PublicKeyHandler = (_, _) =>
+            {
+                entered.TrySetResult();
+                return release.Task;
+            },
+        };
+        var crypto = new CryptoService();
+        var session = UnlockedSession(out _);
+        var service = new EmergencyAccessService(
+            FakeVaultApiClientProvider.ForAuthenticated<IEmergencyAccessApiClient>(api),
+            crypto,
+            new VaultDecryptor(crypto),
+            session);
+
+        var running = service.ConfirmAsync(
+            "e1",
+            "u2",
+            CancellationToken.None);
+        await entered.Task;
+        var next = session.BeginAccountSession(
+            "account-b",
+            "b@example.com",
+            new ServerOrigin("https://b.example"));
+        session.TryCommit(next, () => session.SetUnlockedKey(
+            new SymmetricCryptoKey(
+                Enumerable.Range(64, 64).Select(i => (byte)i).ToArray())));
+        release.TrySetResult(new PublicKeyResponse
+        {
+            UserId = "u2",
+            PublicKey = Convert.ToBase64String(rsa.ExportSubjectPublicKeyInfo()),
+        });
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => running);
+        Assert.DoesNotContain("confirm:e1", api.Calls);
     }
 
     [Fact]
@@ -176,6 +239,50 @@ public class EmergencyAccessServiceTests
     }
 
     [Fact]
+    public async Task View_AccountSwitchWhileAwaitingResponse_DoesNotUseNewSessionKey()
+    {
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<EmergencyAccessViewResponse>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var api = new FakeEaApi
+        {
+            ViewHandler = (_, _) =>
+            {
+                entered.TrySetResult();
+                return release.Task;
+            },
+        };
+        var crypto = new CryptoService();
+        var session = UnlockedSession(out _);
+        var service = new EmergencyAccessService(
+            FakeVaultApiClientProvider.ForAuthenticated<IEmergencyAccessApiClient>(api),
+            crypto,
+            new VaultDecryptor(crypto),
+            session);
+
+        var running = service.ViewAsync(
+            "e1",
+            "a@example.com",
+            CancellationToken.None);
+        await entered.Task;
+        var next = session.BeginAccountSession(
+            "account-b",
+            "b@example.com",
+            new ServerOrigin("https://b.example"));
+        session.TryCommit(next, () => session.SetUnlockedKey(
+            new SymmetricCryptoKey(
+                Enumerable.Range(64, 64).Select(i => (byte)i).ToArray())));
+        release.TrySetResult(new EmergencyAccessViewResponse
+        {
+            KeyEncrypted = "4.invalid",
+            Ciphers = Array.Empty<CipherDto>(),
+        });
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => running);
+    }
+
+    [Fact]
     public async Task Takeover_DerivesNewMasterPasswordAndRewrapsKey()
     {
         var crypto = new CryptoService();
@@ -188,17 +295,79 @@ public class EmergencyAccessServiceTests
         var keyEnc = crypto.EncryptRsa(grantorKey.FullKey, rsa.ExportSubjectPublicKeyInfo()).ToString();
 
         var api = new FakeEaApi();
-        api.TakeoverResult = new EmergencyAccessTakeoverResponse { Kdf = 0, KdfIterations = 600000, KeyEncrypted = keyEnc };
+        api.TakeoverResult = new EmergencyAccessTakeoverResponse { Kdf = 0, KdfIterations = 600000, Salt = "custom-salt", KeyEncrypted = keyEnc };
         var svc = new EmergencyAccessService(FakeVaultApiClientProvider.ForAuthenticated<IEmergencyAccessApiClient>(api), crypto, new VaultDecryptor(crypto), session);
 
         await svc.TakeoverAndResetPasswordAsync("e1", "a@x.com", "New-Pass-1!", TestContext.Current.CancellationToken);
 
         Assert.NotNull(api.LastPassword);
         // 用新密码+授予方邮箱+KDF 还原 newMasterKey，解开 key 应得回 grantorKey.FullKey
-        var newMasterKey = crypto.DeriveMasterKey("New-Pass-1!", "a@x.com", Core.Enums.KdfType.Pbkdf2, 600000, null, null);
+        var newMasterKey = crypto.DeriveMasterKey("New-Pass-1!", "custom-salt", Core.Enums.KdfType.Pbkdf2, 600000, null, null);
         var stretched = crypto.StretchMasterKey(newMasterKey);
         var unwrapped = crypto.DecryptUserKey(stretched, Crypto.EncString.Parse(api.LastPassword!.Key));
         Assert.Equal(grantorKey.FullKey, unwrapped.FullKey);
         Assert.False(string.IsNullOrEmpty(api.LastPassword.NewMasterPasswordHash));
+    }
+
+    [Fact]
+    public async Task Takeover_HistoricalKdf_FailsBeforePasswordWrite()
+    {
+        var crypto = new CryptoService();
+        using var rsa = RSA.Create(2048);
+        var session = UnlockedSession(out var myUserKey);
+        session.SetEncryptedPrivateKey(
+            crypto.Encrypt(rsa.ExportPkcs8PrivateKey(), myUserKey).ToString());
+        using var grantorKey = new SymmetricCryptoKey(
+            Enumerable.Range(2, 64).Select(i => (byte)i).ToArray());
+        var api = new FakeEaApi
+        {
+            TakeoverResult = new EmergencyAccessTakeoverResponse
+            {
+                Kdf = 0,
+                KdfIterations = 5_000,
+                Salt = null,
+                KeyEncrypted = crypto.EncryptRsa(
+                    grantorKey.FullKey,
+                    rsa.ExportSubjectPublicKeyInfo()).ToString(),
+            },
+        };
+        var service = new EmergencyAccessService(
+            FakeVaultApiClientProvider.ForAuthenticated<IEmergencyAccessApiClient>(api),
+            crypto,
+            new VaultDecryptor(crypto),
+            session);
+
+        var error = await Assert.ThrowsAsync<EmergencyAccessOperationException>(() =>
+            service.TakeoverAndResetPasswordAsync(
+                "e1", "a@x.com", "New-Pass-1!", TestContext.Current.CancellationToken));
+
+        Assert.Contains("security floor", error.Message, StringComparison.Ordinal);
+        Assert.Null(api.LastPassword);
+    }
+
+    [Fact]
+    public async Task Takeover_MissingSaltAndEmail_FailsBeforePasswordWrite()
+    {
+        var api = new FakeEaApi
+        {
+            TakeoverResult = new EmergencyAccessTakeoverResponse
+            {
+                Kdf = 0,
+                KdfIterations = 600_000,
+                Salt = null,
+                KeyEncrypted = "4.unused",
+            },
+        };
+        var service = new EmergencyAccessService(
+            FakeVaultApiClientProvider.ForAuthenticated<IEmergencyAccessApiClient>(api),
+            new CryptoService(),
+            new VaultDecryptor(new CryptoService()),
+            ActiveSession());
+
+        await Assert.ThrowsAsync<EmergencyAccessOperationException>(() =>
+            service.TakeoverAndResetPasswordAsync(
+                "e1", " ", "New-Pass-1!", TestContext.Current.CancellationToken));
+
+        Assert.Null(api.LastPassword);
     }
 }

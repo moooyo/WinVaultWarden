@@ -1,4 +1,5 @@
 using Api;
+using Core.Models;
 using Xunit;
 
 namespace Api.Tests;
@@ -51,6 +52,40 @@ public class WebSocketUrlTests
         var url = NotificationsConnection.ToHubUrl("http://10.0.1.20:8080", "x");
         var uri = new Uri(url);
         Assert.Equal("/notifications/hub", uri.AbsolutePath);
+    }
+
+    [Fact]
+    public void SelfHostedWebVaultPath_IsPreserved()
+    {
+        var url = NotificationsConnection.ToHubUrl(
+            "https://vault.example.com/warden", "x");
+
+        Assert.Equal(
+            "wss://vault.example.com/warden/notifications/hub?access_token=x",
+            url);
+    }
+
+    [Fact]
+    public void TypedNotificationsEndpoint_IsNotDerivedTwice()
+    {
+        var url = NotificationsConnection.ToHubUrl(
+            new ServerEndpoint("https://vault.example.com/warden/notifications"),
+            "x");
+
+        Assert.Equal(
+            "wss://vault.example.com/warden/notifications/hub?access_token=x",
+            url);
+    }
+
+    [Fact]
+    public void BitwardenCloud_UsesIndependentNotificationsHost()
+    {
+        var url = NotificationsConnection.ToHubUrl(
+            "https://vault.bitwarden.com", "x");
+
+        Assert.Equal(
+            "wss://notifications.bitwarden.com/hub?access_token=x",
+            url);
     }
 
     [Fact]

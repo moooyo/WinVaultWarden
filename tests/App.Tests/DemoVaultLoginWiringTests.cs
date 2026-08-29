@@ -30,7 +30,10 @@ public class DemoVaultLoginWiringTests
         Assert.Contains("IsTwoFactorStage", RequireElementByName(document, "LoginTwoFactorStage").Attribute("Visibility")?.Value);
         Assert.Contains("IsUnlockStage", RequireElementByName(document, "LoginUnlockStage").Attribute("Visibility")?.Value);
         Assert.Contains("SelectedServerOptionIndex", RequireElementByName(document, "ServerOptionBox").Attribute("SelectedIndex")?.Value);
-        Assert.Contains("HasStatus", RequireElementByName(document, "LoginStatusInfoBar").Attribute("IsOpen")?.Value);
+        var statusBar = RequireElementByName(document, "LoginStatusInfoBar");
+        Assert.Contains("HasStatus", statusBar.Attribute("IsOpen")?.Value);
+        Assert.Contains("StatusKind", statusBar.Attribute("Severity")?.Value);
+        Assert.Contains("LoginStatusKindToInfoBarSeverityConverter", statusBar.Attribute("Severity")?.Value);
 
         var primary = RequireElementByName(document, "PrimaryAuthButton");
         Assert.Equal("OnLogin", primary.Attribute("Click")?.Value);

@@ -1,8 +1,11 @@
+using System.Security.Cryptography;
+using System.Text;
 using Api;
 using Api.Dtos;
 using Core.Abstractions;
 using Core.Enums;
 using Core.Models;
+using Core.Services;
 using Core.Session;
 using Crypto;
 using Vault;
@@ -130,6 +133,117 @@ public class AuthLifecycleOrderingTests
         Assert.False(observedCurrentDuringClear);
         Assert.True(lease.CancellationToken.IsCancellationRequested);
         Assert.Equal(["token-clear", "cache-clear"], order);
+    }
+
+    [Fact]
+    public async Task Login_BootstrapFromACompletesAfterBLogin_DoesNotLockOrClearB()
+    {
+        const string emailA = "a@example.com";
+        var crypto = new CryptoService();
+        var masterKey = crypto.DeriveMasterKey(
+            "password-a",
+            emailA,
+            KdfType.Pbkdf2,
+            600_000,
+            null,
+            null);
+        using var stretchedKey = crypto.StretchMasterKey(masterKey);
+        CryptographicOperations.ZeroMemory(masterKey);
+        using var userKeyA = new SymmetricCryptoKey(
+            Enumerable.Range(0, 64).Select(value => (byte)value).ToArray());
+        var protectedUserKey = crypto.Encrypt(userKeyA.FullKey, stretchedKey).ToString();
+
+        var identity = new ControlledIdentityApiClient(_ =>
+            Task.FromResult<ConnectTokenResult>(new ConnectTokenResult.Success(
+                new TokenResponse(
+                    TestAccessToken("account-a"),
+                    "refresh-a",
+                    3600,
+                    "Bearer",
+                    "api offline_access",
+                    protectedUserKey,
+                    null,
+                    KdfType.Pbkdf2,
+                    600_000))));
+        var syncEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSync = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var read = new ControlledReadonlyApiClient(async _ =>
+        {
+            syncEntered.TrySetResult();
+            await releaseSync.Task;
+            return new SyncResponse(
+                "sync",
+                new ProfileDto("account-a", emailA, "A", null, null),
+                [],
+                []);
+        });
+        var session = new VaultSession();
+        var tokenStore = new MemoryTokenStore();
+        var provider = new FakeVaultApiClientProvider()
+            .AddAnonymous<IIdentityApiClient>(identity)
+            .AddAuthenticated<IReadonlyApiClient>(read);
+        var decryptor = new VaultDecryptor(crypto);
+        var cache = new VaultCacheService(new FakeCacheStore(), decryptor, session);
+        var sync = new SyncService(provider, decryptor, session, cache);
+        var bootstrapper = new VaultBootstrapper(sync, provider, session);
+        var auth = new AuthService(
+            provider,
+            crypto,
+            session,
+            tokenStore,
+            bootstrapper,
+            cache,
+            refresher: null!);
+        var attemptA = auth.BeginAuthenticationAttempt();
+
+        var loginA = auth.LoginAsync(
+            attemptA,
+            "https://a.example",
+            emailA,
+            "password-a",
+            TestContext.Current.CancellationToken);
+        await syncEntered.Task;
+
+        var leaseB = session.BeginAccountSession(
+            "account-b",
+            "b@example.com",
+            new ServerOrigin("https://b.example"));
+        session.SetTokens("access-b", "refresh-b");
+        session.SetUnlockedKey(new SymmetricCryptoKey(
+            Enumerable.Repeat((byte)7, 64).ToArray()));
+        tokenStore.Save(new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            leaseB.AccountId,
+            leaseB.Origin,
+            leaseB.Generation,
+            "b@example.com",
+            "device-b",
+            "refresh-b",
+            "2.protected-b",
+            KdfType.Pbkdf2,
+            600_000,
+            null,
+            null));
+        releaseSync.SetResult();
+
+        Assert.IsType<AuthResult.Failure>(await loginA);
+        Assert.True(session.IsUnlocked(leaseB));
+        Assert.Equal("access-b", session.AccessToken);
+        Assert.True(tokenStore.TryLoad(out var persistedB));
+        Assert.Equal("account-b", persistedB.AccountId);
+    }
+
+    private static string TestAccessToken(string accountId)
+    {
+        static string Encode(string value) =>
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(value))
+                .TrimEnd('=')
+                .Replace('+', '-')
+                .Replace('/', '_');
+
+        return $"{Encode("{\"alg\":\"none\"}")}.{Encode($"{{\"sub\":\"{accountId}\"}}")}.signature";
     }
 
     private sealed class RecordingTokenStore : ITokenStore

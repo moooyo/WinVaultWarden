@@ -40,6 +40,10 @@
     window.postMessage({ source: ISOLATED_SOURCE, ...message }, targetOrigin());
   }
 
+  function failure(id, code) {
+    return { v: 1, id, type: "error", ok: false, error: { code } };
+  }
+
   function publicKeyCredentialsGetAllowed() {
     if (window.top === window) {
       return true;
@@ -64,8 +68,23 @@
     }
 
     if (message.kind === "request") {
-      active.add(message.id);
-      const request = structuredClone(message.request) ?? {};
+      if (active.has(message.id)) {
+        return;
+      }
+      if (!message.request || typeof message.request !== "object" || message.request.id !== message.id) {
+        postToMain({
+          channelId,
+          id: message.id,
+          kind: "response",
+          response: failure(message.id, "security_sender"),
+        });
+        return;
+      }
+
+      const request = structuredClone(message.request);
+      // The envelope id is authoritative throughout the frame relay. Reassign it after cloning so
+      // no outer/inner divergence can cross the runtime port boundary.
+      request.id = message.id;
       delete request.origin;
       delete request.crossOrigin;
       delete request.context;
@@ -74,22 +93,43 @@
         delete request.payload.crossOrigin;
         delete request.payload.context;
       }
-      port.postMessage({
-        kind: "request",
-        request,
-        publicKeyCredentialsGetAllowed: publicKeyCredentialsGetAllowed(),
-      });
+
+      active.add(message.id);
+      try {
+        port.postMessage({
+          kind: "request",
+          id: message.id,
+          request,
+          publicKeyCredentialsGetAllowed: publicKeyCredentialsGetAllowed(),
+        });
+      } catch {
+        active.delete(message.id);
+        postToMain({
+          channelId,
+          id: message.id,
+          kind: "response",
+          response: failure(message.id, "operation_aborted"),
+        });
+      }
     } else if (message.kind === "cancel" && active.delete(message.id)) {
-      port.postMessage({ kind: "cancel", id: message.id });
+      try {
+        port.postMessage({ kind: "cancel", id: message.id });
+      } catch {
+        // Cancellation already revoked response delivery. A concurrently disconnected port needs
+        // no further action and must not surface an exception in the isolated world.
+      }
     }
   });
 
   port.onMessage.addListener((message) => {
-    if (!message || typeof message.id !== "string") {
+    if (!message || typeof message.id !== "string" || !active.delete(message.id)) {
       return;
     }
-    active.delete(message.id);
-    postToMain({ channelId, id: message.id, kind: "response", response: message.response });
+    const response =
+      message.response && typeof message.response === "object"
+        ? { ...message.response, v: 1, id: message.id }
+        : failure(message.id, "internal_error");
+    postToMain({ channelId, id: message.id, kind: "response", response });
   });
 
   port.onDisconnect.addListener(() => {
@@ -101,7 +141,7 @@
         channelId,
         id,
         kind: "response",
-        response: { v: 1, id, type: "error", ok: false, error: { code: "operation_aborted" } },
+        response: failure(id, "operation_aborted"),
       });
     }
     active.clear();

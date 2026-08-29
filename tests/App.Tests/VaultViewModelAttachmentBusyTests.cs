@@ -1,6 +1,7 @@
 using App.Services;
 using App.ViewModels;
 using App.ViewModels.Models;
+using Core.Models;
 using Xunit;
 
 namespace App.Tests;
@@ -19,7 +20,10 @@ public class VaultViewModelAttachmentBusyTests
         public int DeleteCalls { get; private set; }
         public bool ThrowOnRelease { get; set; }
 
-        public async Task<IReadOnlyList<AttachmentItem>> AddAttachmentAsync(string cipherId, byte[] fileBytes, string fileName, CancellationToken ct = default)
+        public async Task<IReadOnlyList<AttachmentItem>> AddAttachmentAsync(
+            string cipherId,
+            ReopenableFileSource file,
+            CancellationToken ct = default)
         {
             AddCalls++;
             await Gate.Task;
@@ -28,13 +32,17 @@ public class VaultViewModelAttachmentBusyTests
             return Array.Empty<AttachmentItem>();
         }
 
-        public async Task<byte[]> DownloadAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default)
+        public async Task<long> DownloadAttachmentAsync(
+            string cipherId,
+            string attachmentId,
+            Stream plaintextDestination,
+            CancellationToken ct = default)
         {
             DownloadCalls++;
             await Gate.Task;
             if (ThrowOnRelease)
                 throw new HttpRequestException("download failed");
-            return Array.Empty<byte>();
+            return 0L;
         }
 
         public async Task<IReadOnlyList<AttachmentItem>> DeleteAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default)
@@ -83,6 +91,11 @@ public class VaultViewModelAttachmentBusyTests
     }
 
     private static Task<string?> NoPrompt(CancellationToken _) => Task.FromResult<string?>(null);
+    private static ReopenableFileSource Source(string fileName, byte[] bytes) =>
+        new(
+            fileName,
+            bytes.LongLength,
+            _ => ValueTask.FromResult<Stream>(new MemoryStream(bytes, writable: false)));
 
     // 方向一:附件下载在途 → 保存条目返回 Busy,SaveCipherAsync 从未被调用。
     [Fact]
@@ -92,7 +105,12 @@ public class VaultViewModelAttachmentBusyTests
         var attachments = new GatedAttachmentUiService();
         var vm = new VaultViewModel(vaultService, attachments: attachments);
 
-        var download = vm.DownloadAttachmentAsync("1", "a1", NoPrompt, CancellationToken.None);
+        var download = vm.DownloadAttachmentAsync(
+            "1",
+            "a1",
+            NoPrompt,
+            new MemoryStream(),
+            CancellationToken.None);
         Assert.Equal(VaultOperationKind.AttachmentDownload, vm.CurrentOperation);
         Assert.Equal("正在下载附件…", vm.BusyMessage);
         Assert.False(vm.CanStartVaultOperation);
@@ -118,7 +136,7 @@ public class VaultViewModelAttachmentBusyTests
         var attachments = new GatedAttachmentUiService();
         var vm = new VaultViewModel(vaultService, attachments: attachments);
 
-        var upload = vm.AddAttachmentAsync("1", new byte[] { 1 }, "f.pdf", CancellationToken.None);
+        var upload = vm.AddAttachmentAsync("1", Source("f.pdf", [1]), CancellationToken.None);
         Assert.Equal(VaultOperationKind.AttachmentUpload, vm.CurrentOperation);
         Assert.Equal("正在上传附件…", vm.BusyMessage);
         Assert.False(vm.CanStartVaultOperation);
@@ -140,7 +158,7 @@ public class VaultViewModelAttachmentBusyTests
         var att = new GatedAttachmentUiService();
         var vm = new VaultViewModel(new MockVaultUiService(), attachments: att);
 
-        var task = vm.AddAttachmentAsync("c1", new byte[] { 1 }, "f.pdf", CancellationToken.None);
+        var task = vm.AddAttachmentAsync("c1", Source("f.pdf", [1]), CancellationToken.None);
 
         Assert.Equal(VaultOperationKind.AttachmentUpload, vm.CurrentOperation);
         Assert.True(vm.IsBusy);
@@ -160,7 +178,12 @@ public class VaultViewModelAttachmentBusyTests
         var att = new GatedAttachmentUiService();
         var vm = new VaultViewModel(new MockVaultUiService(), attachments: att);
 
-        var task = vm.DownloadAttachmentAsync("1", "a1", NoPrompt, CancellationToken.None);
+        var task = vm.DownloadAttachmentAsync(
+            "1",
+            "a1",
+            NoPrompt,
+            new MemoryStream(),
+            CancellationToken.None);
 
         Assert.Equal(VaultOperationKind.AttachmentDownload, vm.CurrentOperation);
         Assert.True(vm.IsBusy);
@@ -198,7 +221,7 @@ public class VaultViewModelAttachmentBusyTests
         var att = new GatedAttachmentUiService { ThrowOnRelease = true };
         var vm = new VaultViewModel(new MockVaultUiService(), attachments: att);
 
-        var task = vm.AddAttachmentAsync("c1", new byte[] { 1 }, "f.pdf", CancellationToken.None);
+        var task = vm.AddAttachmentAsync("c1", Source("f.pdf", [1]), CancellationToken.None);
         Assert.Equal(VaultOperationKind.AttachmentUpload, vm.CurrentOperation);
 
         att.Gate.SetResult(true);
@@ -216,13 +239,18 @@ public class VaultViewModelAttachmentBusyTests
         var att = new GatedAttachmentUiService { ThrowOnRelease = true };
         var vm = new VaultViewModel(new MockVaultUiService(), attachments: att);
 
-        var task = vm.DownloadAttachmentAsync("1", "a1", NoPrompt, CancellationToken.None);
+        var task = vm.DownloadAttachmentAsync(
+            "1",
+            "a1",
+            NoPrompt,
+            new MemoryStream(),
+            CancellationToken.None);
         Assert.Equal(VaultOperationKind.AttachmentDownload, vm.CurrentOperation);
 
         att.Gate.SetResult(true);
         var result = await task;
 
-        Assert.Null(result.Value);
+        Assert.Equal(0L, result.Value);
         Assert.False(vm.IsBusy);
         Assert.Equal("网络请求失败，请检查连接后重试。", vm.OperationError);
     }

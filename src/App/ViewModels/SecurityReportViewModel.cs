@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Api;
 using App.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -6,16 +7,28 @@ using Core.Models;
 
 namespace App.ViewModels;
 
-/// <summary>密码库安全体检的整体严重程度，用于 Hero 卡片配色/图标。</summary>
+/// <summary>Describes the aggregate severity shown by the security report summary.</summary>
 public enum SecuritySeverity
 {
+    Unknown,
     Good,
     Caution,
     Critical
 }
 
+/// <summary>Describes the user-visible lifecycle of the online exposure check.</summary>
+public enum ExposureCheckState
+{
+    NotStarted,
+    Checking,
+    Succeeded,
+    Failed
+}
+
 public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
 {
+    private const string OfflineAnalysisFailureMessage = "无法完成安全报告分析，请稍后重试。";
+    private const string ExposureCheckFailureMessage = "无法完成暴露密码检查，请稍后重试。";
     private readonly IVaultHealthUiService _service;
 
     // ── 离线分析集合 ────────────────────────────────────────────────────────────
@@ -36,18 +49,53 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
 
     // ── 泄露检查状态 ────────────────────────────────────────────────────────────
 
-    /// <summary>泄露检查正在进行中。</summary>
     [ObservableProperty]
-    public partial bool IsCheckingExposed { get; set; }
+    [NotifyPropertyChangedFor(nameof(IsCheckingExposed))]
+    [NotifyPropertyChangedFor(nameof(ExposedChecked))]
+    [NotifyPropertyChangedFor(nameof(ShowExposedCount))]
+    [NotifyPropertyChangedFor(nameof(ExposureStatusLabel))]
+    [NotifyPropertyChangedFor(nameof(ExposureStatusMessage))]
+    [NotifyPropertyChangedFor(nameof(ExposureMetricAccessibleName))]
+    [NotifyPropertyChangedFor(nameof(SummaryText))]
+    [NotifyPropertyChangedFor(nameof(OverallSeverity))]
+    public partial ExposureCheckState ExposureState { get; set; } = ExposureCheckState.NotStarted;
+
+    public bool IsCheckingExposed => ExposureState == ExposureCheckState.Checking;
 
     /// <summary>泄露检查错误信息；非空时表示检查失败。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasExposedError))]
     public partial string? ExposedError { get; set; }
 
-    /// <summary>泄露检查已完成（且成功）。</summary>
-    [ObservableProperty]
-    public partial bool ExposedChecked { get; set; }
+    public bool ExposedChecked => ExposureState == ExposureCheckState.Succeeded;
+
+    public bool ShowExposedCount => ExposedChecked;
+
+    public string ExposureStatusLabel => ExposureState switch
+    {
+        ExposureCheckState.NotStarted => "未检查",
+        ExposureCheckState.Checking => "检查中",
+        ExposureCheckState.Failed => "检查失败",
+        _ => string.Empty,
+    };
+
+    public string ExposureStatusMessage => ExposureState switch
+    {
+        ExposureCheckState.NotStarted => "暴露密码检查尚未运行。",
+        ExposureCheckState.Checking => "正在检查暴露密码。",
+        ExposureCheckState.Succeeded => "暴露密码检查已完成。",
+        ExposureCheckState.Failed => "暴露密码检查失败，请重试。",
+        _ => string.Empty,
+    };
+
+    public string ExposureMetricAccessibleName => ExposureState switch
+    {
+        ExposureCheckState.NotStarted => "暴露密码，尚未检查",
+        ExposureCheckState.Checking => "暴露密码，正在检查",
+        ExposureCheckState.Succeeded => $"暴露密码，{ExposedCount} 项",
+        ExposureCheckState.Failed => "暴露密码，检查失败",
+        _ => "暴露密码",
+    };
 
     public bool HasExposedError => !string.IsNullOrEmpty(ExposedError);
 
@@ -86,13 +134,24 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     public bool HasAnyIssue => TotalIssueCount > 0;
 
     /// <summary>Hero 卡片摘要文案。</summary>
-    public string SummaryText => TotalIssueCount > 0 ? $"发现 {TotalIssueCount} 项可改进" : "未发现问题";
+    public string SummaryText => ExposureState switch
+    {
+        ExposureCheckState.Succeeded when TotalIssueCount == 0 => "未发现问题",
+        ExposureCheckState.Succeeded => $"发现 {TotalIssueCount} 项可改进",
+        ExposureCheckState.NotStarted when TotalIssueCount == 0 => "离线检查未发现问题，暴露检查尚未运行",
+        ExposureCheckState.NotStarted => $"发现 {TotalIssueCount} 项可改进，暴露检查尚未运行",
+        ExposureCheckState.Checking when TotalIssueCount == 0 => "离线检查未发现问题，正在检查暴露密码",
+        ExposureCheckState.Checking => $"发现 {TotalIssueCount} 项可改进，正在检查暴露密码",
+        ExposureCheckState.Failed when TotalIssueCount == 0 => "离线检查未发现问题，暴露检查失败",
+        _ => $"发现 {TotalIssueCount} 项可改进，暴露检查失败",
+    };
 
-    /// <summary>整体严重程度：弱密码/已暴露 视为 Critical；仅重复/不安全 URL 视为 Caution；均无则 Good。</summary>
+    /// <summary>Returns a neutral severity until every required check has completed successfully.</summary>
     public SecuritySeverity OverallSeverity =>
         (WeakCount > 0 || ExposedCount > 0) ? SecuritySeverity.Critical :
         (ReusedCount > 0 || UnsecuredCount > 0) ? SecuritySeverity.Caution :
-        SecuritySeverity.Good;
+        ExposureState == ExposureCheckState.Succeeded ? SecuritySeverity.Good :
+        SecuritySeverity.Unknown;
 
     // ── 离线分析状态机 ──────────────────────────────────────────────────────────
 
@@ -136,6 +195,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(UnsecuredCount)); OnPropertyChanged(nameof(ExposedCount));
         OnPropertyChanged(nameof(TotalIssueCount)); OnPropertyChanged(nameof(HasAnyIssue));
         OnPropertyChanged(nameof(SummaryText)); OnPropertyChanged(nameof(OverallSeverity));
+        OnPropertyChanged(nameof(ExposureMetricAccessibleName));
     }
 
     // ── 离线分析 ────────────────────────────────────────────────────────────────
@@ -177,20 +237,40 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
                 : DataPageState.Content;
             return UiOperationResult<HealthReport>.Success(report);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, token))
         {
             if (requestId != Volatile.Read(ref _offlineRequestId))
                 return UiOperationResult<HealthReport>.Cancelled();
             return UiOperationResult<HealthReport>.Cancelled();
         }
-        catch (VaultHealthUiException ex)
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
         {
             if (requestId == Volatile.Read(ref _offlineRequestId))
             {
-                OfflineError = ex.Message;
+                OfflineError = UiExceptionPolicy.RequestTimeoutMessage;
                 OfflineState = DataPageState.Error;
             }
-            return UiOperationResult<HealthReport>.Failure(ex.Message);
+            return UiOperationResult<HealthReport>.Failure(
+                UiExceptionPolicy.RequestTimeoutMessage);
+        }
+        catch (VaultHealthUiException)
+        {
+            if (requestId == Volatile.Read(ref _offlineRequestId))
+            {
+                OfflineError = OfflineAnalysisFailureMessage;
+                OfflineState = DataPageState.Error;
+            }
+            return UiOperationResult<HealthReport>.Failure(OfflineAnalysisFailureMessage);
+        }
+        catch (Exception)
+        {
+            if (requestId == Volatile.Read(ref _offlineRequestId))
+            {
+                OfflineError = OfflineAnalysisFailureMessage;
+                OfflineState = DataPageState.Error;
+            }
+            return UiOperationResult<HealthReport>.Failure(OfflineAnalysisFailureMessage);
         }
     }
 
@@ -248,10 +328,9 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         _exposedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var token = _exposedCts.Token;
 
-        IsCheckingExposed = true;
         ExposedError = null;
-        ExposedChecked = false;
         ExposedItems.Clear();
+        ExposureState = ExposureCheckState.Checking;
 
         try
         {
@@ -262,21 +341,29 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
             foreach (var f in findings)
                 ExposedItems.Add(f);
 
-            ExposedChecked = true;
+            ExposureState = ExposureCheckState.Succeeded;
         }
-        catch (OperationCanceledException)
-        {
-            // 用户/生命周期取消，静默处理
-        }
-        catch (Exception ex)
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, token))
         {
             if (requestId == Volatile.Read(ref _exposedRequestId))
-                ExposedError = ex.Message;
+                ExposureState = ExposureCheckState.NotStarted;
         }
-        finally
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
         {
             if (requestId == Volatile.Read(ref _exposedRequestId))
-                IsCheckingExposed = false;
+            {
+                ExposedError = UiExceptionPolicy.RequestTimeoutMessage;
+                ExposureState = ExposureCheckState.Failed;
+            }
+        }
+        catch (Exception)
+        {
+            if (requestId == Volatile.Read(ref _exposedRequestId))
+            {
+                ExposedError = ExposureCheckFailureMessage;
+                ExposureState = ExposureCheckState.Failed;
+            }
         }
     }
 
@@ -290,7 +377,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         _exposedCts?.Cancel();
         _exposedCts?.Dispose();
         _exposedCts = null;
-        IsCheckingExposed = false;
+        ExposureState = ExposureCheckState.NotStarted;
     }
 
     // 锁屏/登出时清空安全报告的机密足迹:重复/弱/不安全/已泄露分组与错误。幂等。
