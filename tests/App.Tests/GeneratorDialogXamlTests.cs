@@ -83,8 +83,8 @@ public class GeneratorDialogXamlTests
     {
         var doc = Load();
         var cards = doc.Descendants().Where(e => e.Name.LocalName == "SettingsCard").ToList();
-        // 密码(5) + 密码短语(4) + 用户名(3) + 历史记录入口(1) = 13
-        Assert.Equal(13, cards.Count);
+        // Password (5) + passphrase (4) + username (5) + history entry (1) = 15.
+        Assert.Equal(15, cards.Count);
     }
 
     [Fact]
@@ -129,19 +129,158 @@ public class GeneratorDialogXamlTests
     }
 
     [Fact]
-    public void UsernameType_OnlyPromisesImplementedRandomWordMode()
+    public void UsernameType_UsesExplicitComboBoxWithOnlySupportedOptions()
     {
         var doc = Load();
-        var typeCard = doc.Descendants().Single(e =>
-            e.Name.LocalName == "SettingsCard" && (string?)e.Attribute("Header") == "类型");
+        var comboBox = doc.Descendants().Single(e =>
+            e.Attribute("AutomationProperties.AutomationId")?.Value == "UsernameTypeComboBox");
+        var options = comboBox.Elements()
+            .Where(e => e.Name.LocalName == "ComboBoxItem")
+            .Select(e => (string?)e.Attribute("Content"))
+            .ToArray();
 
-        Assert.Equal("随机单词", (string?)typeCard.Descendants()
-            .Single(e => e.Attribute("AutomationProperties.AutomationId")?.Value == "UsernameTypeText")
-            .Attribute("Text"));
-        Assert.DoesNotContain(typeCard.Descendants(), e => e.Name.LocalName == "ComboBox");
+        Assert.Equal(new[] { "随机单词", "加号邮箱", "全域邮箱" }, options);
+        Assert.Contains("ViewModel.UsernameTypeIndex", comboBox.Attribute("SelectedIndex")?.Value);
+        Assert.Contains("Mode=TwoWay", comboBox.Attribute("SelectedIndex")?.Value);
         Assert.DoesNotContain(doc.ToString(), "转发的电子邮箱别名", StringComparison.Ordinal);
-        Assert.DoesNotContain(doc.ToString(), "Catch-all 电子邮箱", StringComparison.Ordinal);
-        Assert.DoesNotContain(doc.ToString(), "附加地址电子邮箱", StringComparison.Ordinal);
+        Assert.DoesNotContain(doc.ToString(), "ForwardedEmailAlias", StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("UsernameCapitalizeToggle", "ViewModel.ShowUsernameWordOptions")]
+    [InlineData("UsernameIncludeNumberToggle", "ViewModel.ShowUsernameWordOptions")]
+    [InlineData("UsernameEmailTextBox", "ViewModel.ShowUsernameEmail")]
+    [InlineData("UsernameDomainTextBox", "ViewModel.ShowUsernameDomain")]
+    public void UsernameOptionControls_UseModeSpecificVisibility(
+        string automationId,
+        string visibilityProperty)
+    {
+        var control = Load().Descendants().Single(e =>
+            e.Attribute("AutomationProperties.AutomationId")?.Value == automationId);
+        var card = control.Ancestors().First(e => e.Name.LocalName == "SettingsCard");
+
+        Assert.Contains(visibilityProperty, card.Attribute("Visibility")?.Value);
+        Assert.Contains("Converter={StaticResource BoolToVis}", card.Attribute("Visibility")?.Value);
+    }
+
+    [Theory]
+    [InlineData("UsernameEmailTextBox", "ViewModel.UsernameEmail")]
+    [InlineData("UsernameDomainTextBox", "ViewModel.UsernameDomain")]
+    public void UsernameAddressInputs_RegenerateFromTwoWayPropertyChangedBindings(
+        string automationId,
+        string property)
+    {
+        var input = Load().Descendants().Single(e =>
+            e.Attribute("AutomationProperties.AutomationId")?.Value == automationId);
+        var binding = input.Attribute("Text")?.Value;
+
+        Assert.Contains(property, binding);
+        Assert.Contains("Mode=TwoWay", binding);
+        Assert.Contains("UpdateSourceTrigger=PropertyChanged", binding);
+        Assert.Equal("Stretch", (string?)input.Attribute("HorizontalAlignment"));
+        Assert.Equal("0", (string?)input.Attribute("MinWidth"));
+    }
+
+    [Theory]
+    [InlineData("UsernameRegenerateButton")]
+    [InlineData("UsernameCopyButton")]
+    public void UsernameResultActions_AreDisabledWhenGenerationIsInvalid(string automationId)
+    {
+        var button = Load().Descendants().Single(e =>
+            e.Attribute("AutomationProperties.AutomationId")?.Value == automationId);
+
+        Assert.Contains("ViewModel.CanGenerate", button.Attribute("IsEnabled")?.Value);
+        Assert.Contains("Mode=OneWay", button.Attribute("IsEnabled")?.Value);
+    }
+
+    [Fact]
+    public void UsernameWordNumberLabel_StatesFourDigitBehavior()
+    {
+        var card = Load().Descendants().Single(e =>
+            e.Name.LocalName == "SettingsCard"
+            && (string?)e.Attribute("Header") == "包含 4 位数字");
+
+        Assert.Contains(card.Descendants(), e =>
+            e.Attribute("AutomationProperties.AutomationId")?.Value == "UsernameIncludeNumberToggle");
+    }
+
+    [Fact]
+    public void OrganizationPolicyNotice_IsBoundToPolicyState()
+    {
+        var notice = Load().Descendants().Single(e =>
+            e.Name.LocalName == "InfoBar"
+            && e.Attribute("AutomationProperties.AutomationId")?.Value == "GeneratorPolicyNotice");
+
+        Assert.Contains(
+            "ViewModel.HasGeneratorPolicyNotice",
+            notice.Attribute("IsOpen")?.Value);
+        Assert.Contains("Mode=OneWay", notice.Attribute("IsOpen")?.Value);
+        Assert.Contains(
+            "ViewModel.GeneratorPolicyNotice",
+            notice.Attribute("Message")?.Value);
+        Assert.Equal("False", notice.Attribute("IsClosable")?.Value);
+    }
+
+    [Theory]
+    [InlineData("PasswordTab", "ViewModel.CanUsePasswordMode")]
+    [InlineData("PassphraseTab", "ViewModel.CanUsePassphraseMode")]
+    public void PasswordTypeTabs_AreDisabledByOrganizationPolicy(
+        string tabName,
+        string policyProperty)
+    {
+        var xamlName = XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml");
+        var tab = Load().Descendants().Single(e =>
+            e.Name.LocalName == "TabViewItem"
+            && e.Attribute(xamlName)?.Value == tabName);
+
+        Assert.Contains(policyProperty, tab.Attribute("IsEnabled")?.Value);
+        Assert.Contains("Mode=OneWay", tab.Attribute("IsEnabled")?.Value);
+    }
+
+    [Fact]
+    public void UsernameTab_RemainsAvailableWhenPasswordTypeIsOverridden()
+    {
+        var xamlName = XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml");
+        var tab = Load().Descendants().Single(e =>
+            e.Name.LocalName == "TabViewItem"
+            && e.Attribute(xamlName)?.Value == "UsernameTab");
+
+        Assert.Null(tab.Attribute("IsEnabled"));
+    }
+
+    [Theory]
+    [InlineData("IncludeUppercaseCheckBox", "ViewModel.CanToggleUppercase")]
+    [InlineData("IncludeLowercaseCheckBox", "ViewModel.CanToggleLowercase")]
+    [InlineData("IncludeNumbersCheckBox", "ViewModel.CanToggleNumbers")]
+    [InlineData("IncludeSpecialCheckBox", "ViewModel.CanToggleSpecial")]
+    [InlineData("PassphraseCapitalizeToggle", "ViewModel.CanTogglePassphraseCapitalize")]
+    [InlineData("PassphraseIncludeNumberToggle", "ViewModel.CanTogglePassphraseIncludeNumber")]
+    public void RequiredPolicyOptions_CannotBeTurnedOff(
+        string automationId,
+        string policyProperty)
+    {
+        var control = Load().Descendants().Single(e =>
+            e.Attribute("AutomationProperties.AutomationId")?.Value == automationId);
+
+        Assert.Contains(policyProperty, control.Attribute("IsEnabled")?.Value);
+        Assert.Contains("Mode=OneWay", control.Attribute("IsEnabled")?.Value);
+    }
+
+    [Theory]
+    [InlineData("PasswordLengthSlider", "ViewModel.MinimumPasswordLength")]
+    [InlineData("PasswordLengthNumberBox", "ViewModel.MinimumPasswordLength")]
+    [InlineData("MinNumbersNumberBox", "ViewModel.PolicyMinimumNumbers")]
+    [InlineData("MinSpecialNumberBox", "ViewModel.PolicyMinimumSpecial")]
+    [InlineData("PassphraseWordCountNumberBox", "ViewModel.MinimumPassphraseWordCount")]
+    public void NumericInputs_ExposePolicyMinimums(
+        string automationId,
+        string policyProperty)
+    {
+        var control = Load().Descendants().Single(e =>
+            e.Attribute("AutomationProperties.AutomationId")?.Value == automationId);
+
+        Assert.Contains(policyProperty, control.Attribute("Minimum")?.Value);
+        Assert.Contains("Mode=OneWay", control.Attribute("Minimum")?.Value);
     }
 
     [Theory]
@@ -228,6 +367,17 @@ public class GeneratorDialogXamlTests
         Assert.Contains("OnPrimaryButtonClick", src, StringComparison.Ordinal);
         Assert.Contains("OnGeneratorTabSelectionChanged", src, StringComparison.Ordinal);
         Assert.Contains("OnHistoryClick", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CodeBehind_SynchronizesTabsAfterPolicyForcesMode()
+    {
+        var src = LoadCodeBehind();
+
+        Assert.Contains("ViewModel.PropertyChanged += OnViewModelPropertyChanged", src, StringComparison.Ordinal);
+        Assert.Contains("SelectModeTab", src, StringComparison.Ordinal);
+        Assert.Contains("GeneratorMode.Passphrase => 1", src, StringComparison.Ordinal);
+        Assert.Contains("GeneratorMode.Username => 2", src, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -10,11 +10,14 @@ namespace Api;
 /// Protocol layer:
 ///   1. WS upgrade with Bitwarden desktop client headers.
 ///   2. SignalR MessagePack handshake (send HandshakeBytes + 0x1e, receive ack).
-///   3. Binary message loop: accumulate WS fragments, parse via
-///      <see cref="SignalRMessagePack.TryParseInvocation"/>, yield matched messages.
+///   3. Binary message loop: accumulate WS fragments, split every length-prefixed
+///      HubMessage, and yield matched notifications in wire order.
 /// </summary>
 public sealed class NotificationsConnection : INotificationsConnection
 {
+    internal const int MaxHandshakeResponseSize = 16 * 1024;
+    private static readonly byte[] SuccessfulHandshakeResponse = [0x7b, 0x7d, 0x1e];
+
     private ClientWebSocket? _ws;
 
     // ----------------------------------------------------------------
@@ -63,8 +66,8 @@ public sealed class NotificationsConnection : INotificationsConnection
         _ws = new ClientWebSocket();
 
         // Bitwarden client identification headers expected by some server-side logging.
-        _ws.Options.SetRequestHeader("Bitwarden-Client-Name", "desktop");
-        _ws.Options.SetRequestHeader("Bitwarden-Client-Version", "2026.6.0");
+        _ws.Options.SetRequestHeader("Bitwarden-Client-Name", ClientHeadersHandler.ClientName);
+        _ws.Options.SetRequestHeader("Bitwarden-Client-Version", ClientHeadersHandler.ClientVersion);
 
         var endpoint = new ServerEndpoint(notificationsEndpoint);
         await _ws.ConnectAsync(new Uri(ToHubUrl(endpoint, accessToken)), ct)
@@ -83,10 +86,10 @@ public sealed class NotificationsConnection : INotificationsConnection
             cancellationToken: ct).ConfigureAwait(false);
 
         // Receive the server's handshake acknowledgement.
-        // Expected first 3 bytes: {0x7b, 0x7d, 0x1e}  i.e. '{' '}' RS  (empty JSON {}).
+        // The complete response must be {0x7b, 0x7d, 0x1e}, i.e. the empty JSON object plus RS.
         // Accumulate all fragments until EndOfMessage so we handle fragmented frames.
         var ackChunk = new byte[256];
-        var ackStream = new System.IO.MemoryStream();
+        using var ackStream = new MemoryStream();
         WebSocketReceiveResult ackResult;
         do
         {
@@ -97,14 +100,14 @@ public sealed class NotificationsConnection : INotificationsConnection
                 throw new InvalidOperationException(
                     $"SignalR handshake: server closed the connection unexpectedly ({ackResult.CloseStatus}).");
 
-            ackStream.Write(ackChunk, 0, ackResult.Count);
+            AppendHandshakeFragment(
+                ackStream,
+                ackResult.MessageType,
+                ackChunk.AsSpan(0, ackResult.Count));
         }
         while (!ackResult.EndOfMessage);
 
-        var ackBytes = ackStream.ToArray();
-        if (ackBytes.Length < 3 || ackBytes[0] != 0x7b || ackBytes[1] != 0x7d || ackBytes[2] != 0x1e)
-            throw new InvalidOperationException(
-                $"SignalR handshake: unexpected ack bytes: [{string.Join(",", ackBytes.Take(8).Select(b => $"0x{b:x2}"))}]");
+        ValidateHandshakeAcknowledgement(ackStream.ToArray());
     }
 
     /// <inheritdoc />
@@ -114,13 +117,9 @@ public sealed class NotificationsConnection : INotificationsConnection
         if (_ws is null)
             throw new InvalidOperationException("Call ConnectAsync before ReadAsync.");
 
-        // Bound each logical notification frame so a malicious or faulty peer cannot
-        // exhaust memory with an oversized or endless fragmented message.
-        const int MaxFrameBytes = 1 * 1024 * 1024;
-
-        // We grow this buffer on demand.
+        // Accumulate one complete WebSocket message within the protocol receive limit.
         var buf = new byte[4096];
-        var accumulated = new System.IO.MemoryStream();
+        using var accumulated = new MemoryStream();
 
         while (!ct.IsCancellationRequested)
         {
@@ -138,10 +137,11 @@ public sealed class NotificationsConnection : INotificationsConnection
                     if (result.MessageType == WebSocketMessageType.Close)
                         yield break;
 
-                    accumulated.Write(buf, 0, result.Count);
+                    if (result.Count > SignalRMessagePack.MaxReceiveMessageSize - accumulated.Length)
+                        throw new InvalidDataException(
+                            $"SignalR binary message exceeds the {SignalRMessagePack.MaxReceiveMessageSize}-byte receive limit.");
 
-                    if (accumulated.Length > MaxFrameBytes)
-                        yield break;
+                    accumulated.Write(buf, 0, result.Count);
                 }
                 while (!result.EndOfMessage);
             }
@@ -160,15 +160,41 @@ public sealed class NotificationsConnection : INotificationsConnection
             if (result.MessageType != WebSocketMessageType.Binary)
                 continue;
 
-            // Try to parse as a SignalR invocation.
             if (accumulated.Length == 0)
                 continue;
 
-            var frameBytes = accumulated.ToArray();
-            if (SignalRMessagePack.TryParseInvocation(frameBytes, out var msg))
-                yield return msg;
-            // else: ping, handshake remnant, or unknown → silently skip.
+            if (!SignalRMessagePack.TryParseInvocations(
+                    accumulated.ToArray(),
+                    out var notifications))
+                throw new InvalidDataException(
+                    "SignalR binary message contains an invalid or incomplete length-prefixed HubMessage.");
+
+            foreach (var notification in notifications)
+                yield return notification;
         }
+    }
+
+    internal static void AppendHandshakeFragment(
+        MemoryStream destination,
+        WebSocketMessageType messageType,
+        ReadOnlySpan<byte> fragment)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        if (messageType != WebSocketMessageType.Text)
+            throw new InvalidDataException(
+                $"SignalR handshake response must be a text message, not {messageType}.");
+        if (fragment.Length > MaxHandshakeResponseSize - destination.Length)
+            throw new InvalidDataException(
+                $"SignalR handshake response exceeds the {MaxHandshakeResponseSize}-byte limit.");
+
+        destination.Write(fragment);
+    }
+
+    internal static void ValidateHandshakeAcknowledgement(ReadOnlySpan<byte> response)
+    {
+        if (!response.SequenceEqual(SuccessfulHandshakeResponse))
+            throw new InvalidDataException(
+                $"SignalR handshake: unexpected acknowledgement bytes: [{string.Join(",", response[..Math.Min(response.Length, 8)].ToArray().Select(value => $"0x{value:x2}"))}]");
     }
 
     /// <inheritdoc />

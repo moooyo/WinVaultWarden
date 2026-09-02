@@ -12,12 +12,30 @@ public class CryptoService
     public byte[] DeriveMasterKey(string password, string salt, KdfType kdfType, int iterations, int? memoryMiB, int? parallelism)
     {
         ArgumentNullException.ThrowIfNull(password);
+        return DeriveMasterKey(
+            password.AsSpan(),
+            salt,
+            kdfType,
+            iterations,
+            memoryMiB,
+            parallelism);
+    }
+
+    public byte[] DeriveMasterKey(
+        ReadOnlySpan<char> password,
+        string salt,
+        KdfType kdfType,
+        int iterations,
+        int? memoryMiB,
+        int? parallelism)
+    {
         MasterPasswordSaltPolicy.Validate(salt);
         ValidateKdfParameters(kdfType, iterations, memoryMiB, parallelism);
 
-        var pw = Encoding.UTF8.GetBytes(password);
+        var pw = GC.AllocateUninitializedArray<byte>(Encoding.UTF8.GetByteCount(password));
         try
         {
+            Encoding.UTF8.GetBytes(password, pw);
             return kdfType switch
             {
                 KdfType.Pbkdf2 => Rfc2898DeriveBytes.Pbkdf2(
@@ -46,7 +64,7 @@ public class CryptoService
     // KDF 参数安全下限/上限校验。
     // 不可信/MITM 服务端可借 prelogin 下发极弱参数弱化整条派生链；所有派生入口(Login/Unlock/ChangePassword/ChangeKdf)
     // 共用这里的校验。绝不 clamp: clamp 会改写派生出的密钥并导致与服务端 wrappedKey 不匹配。
-    private static void ValidateKdfParameters(KdfType kdfType, int iterations, int? memoryMiB, int? parallelism)
+    public static void ValidateKdfParameters(KdfType kdfType, int iterations, int? memoryMiB, int? parallelism)
     {
         switch (kdfType)
         {
@@ -88,20 +106,42 @@ public class CryptoService
                 }
                 break;
 
-            // 未知 kdfType 不在此处拦截,交由 DeriveMasterKey 主 switch 的 ArgumentOutOfRangeException 处理。
+            default:
+                throw new ArgumentOutOfRangeException(nameof(kdfType));
         }
     }
 
     public string ComputeMasterPasswordHash(byte[] masterKey, string password)
     {
-        // PBKDF2-SHA256(pw = MasterKey, salt = 主密码, iter = 1) → base64
-        var hash = Rfc2898DeriveBytes.Pbkdf2(
-            masterKey,
-            Encoding.UTF8.GetBytes(password),
-            1,
-            HashAlgorithmName.SHA256,
-            32);
-        return Convert.ToBase64String(hash);
+        ArgumentNullException.ThrowIfNull(password);
+        return ComputeMasterPasswordHash(masterKey, password.AsSpan());
+    }
+
+    public string ComputeMasterPasswordHash(
+        byte[] masterKey,
+        ReadOnlySpan<char> password)
+    {
+        ArgumentNullException.ThrowIfNull(masterKey);
+        var passwordBytes = GC.AllocateUninitializedArray<byte>(
+            Encoding.UTF8.GetByteCount(password));
+        byte[]? hash = null;
+        try
+        {
+            Encoding.UTF8.GetBytes(password, passwordBytes);
+            hash = Rfc2898DeriveBytes.Pbkdf2(
+                masterKey,
+                passwordBytes,
+                1,
+                HashAlgorithmName.SHA256,
+                32);
+            return Convert.ToBase64String(hash);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(passwordBytes);
+            if (hash is not null)
+                CryptographicOperations.ZeroMemory(hash);
+        }
     }
 
     // 由 MasterKey 拉伸出 EncKey/MacKey(各一次独立 HKDF-Expand,SHA256)。
@@ -139,9 +179,21 @@ public class CryptoService
     // 用拉伸子钥解开 protected user key,得到真正的 UserKey。
     public virtual SymmetricCryptoKey DecryptUserKey(SymmetricCryptoKey stretchedKey, EncString protectedUserKey)
     {
-        var plain = Decrypt(protectedUserKey, stretchedKey);
-        return new SymmetricCryptoKey(plain);
+        var plain = DecryptUserKeyMaterial(stretchedKey, protectedUserKey);
+        try
+        {
+            return new SymmetricCryptoKey(plain);
+        }
+        catch
+        {
+            CryptographicOperations.ZeroMemory(plain);
+            throw;
+        }
     }
+
+    public virtual byte[] DecryptUserKeyMaterial(
+        SymmetricCryptoKey stretchedKey,
+        EncString protectedUserKey) => Decrypt(protectedUserKey, stretchedKey);
 
     // AES-256-CBC 解密,先验 HMAC(覆盖 IV‖ct)。type 0 无 MAC 跳过验证。
     public byte[] Decrypt(EncString data, SymmetricCryptoKey key)
@@ -194,38 +246,86 @@ public class CryptoService
             return null;
 
         var bytes = Decrypt(EncString.Parse(encStringText), key);
-        return Encoding.UTF8.GetString(bytes);
+        try
+        {
+            return Encoding.UTF8.GetString(bytes);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(bytes);
+        }
     }
 
     // Decrypt an item-level key encrypted by the user key.
     public SymmetricCryptoKey DecryptItemKey(string cipherKeyEnc, SymmetricCryptoKey userKey)
     {
         var bytes = Decrypt(EncString.Parse(cipherKeyEnc), userKey);
-        return new SymmetricCryptoKey(bytes);
+        return CreateSymmetricKeyFromOwnedBytes(bytes);
     }
 
-    // RSA 加密(OAEP-SHA1, encType 4)。publicKeyDer 为 SubjectPublicKeyInfo DER。DecryptRsa 的逆。
+    internal static SymmetricCryptoKey CreateSymmetricKeyFromOwnedBytes(byte[] bytes)
+    {
+        try
+        {
+            return new SymmetricCryptoKey(bytes);
+        }
+        catch
+        {
+            CryptographicOperations.ZeroMemory(bytes);
+            throw;
+        }
+    }
+
+    // New RSA envelopes always use OAEP-SHA1 and encryption type 4.
     public EncString EncryptRsa(byte[] plaintext, byte[] publicKeyDer)
     {
         using var rsa = RSA.Create();
-        rsa.ImportSubjectPublicKeyInfo(publicKeyDer, out _);
+        rsa.ImportSubjectPublicKeyInfo(publicKeyDer, out var bytesRead);
+        if (bytesRead != publicKeyDer.Length || rsa.KeySize != 2048)
+            throw new CryptographicException("RSA public key must be a complete 2048-bit SPKI value.");
         var ct = rsa.Encrypt(plaintext, RSAEncryptionPadding.OaepSHA1);
         return new EncString(EncryptionType.Rsa2048_OaepSha1_B64, Array.Empty<byte>(), ct, null);
     }
 
-    // RSA 解密(OAEP)。type 3 用 SHA256,type 4 用 SHA1。privateKeyDer 为 PKCS8 DER。
+    // Historical type 5/6 MAC fields are structural legacy data. Bitwarden does not authenticate
+    // them during decapsulation because the recipient has no sender-authentication key.
     public byte[] DecryptRsa(EncString data, byte[] privateKeyDer)
     {
+        ArgumentNullException.ThrowIfNull(data);
+        ArgumentNullException.ThrowIfNull(privateKeyDer);
+        ValidateRsaEnvelope(data);
+
         using var rsa = RSA.Create();
-        rsa.ImportPkcs8PrivateKey(privateKeyDer, out _);
+        rsa.ImportPkcs8PrivateKey(privateKeyDer, out var bytesRead);
+        if (bytesRead != privateKeyDer.Length || rsa.KeySize != 2048)
+            throw new CryptographicException("RSA private key must be a complete 2048-bit PKCS#8 value.");
 
         var padding = data.Type switch
         {
-            EncryptionType.Rsa2048_OaepSha256_B64 => RSAEncryptionPadding.OaepSHA256,
-            EncryptionType.Rsa2048_OaepSha1_B64 => RSAEncryptionPadding.OaepSHA1,
-            _ => throw new CryptographicException($"非 RSA encType: {(int)data.Type}"),
+            EncryptionType.Rsa2048_OaepSha256_B64
+                or EncryptionType.Rsa2048_OaepSha256_HmacSha256_B64 =>
+                RSAEncryptionPadding.OaepSHA256,
+            EncryptionType.Rsa2048_OaepSha1_B64
+                or EncryptionType.Rsa2048_OaepSha1_HmacSha256_B64 =>
+                RSAEncryptionPadding.OaepSHA1,
+            _ => throw new CryptographicException(
+                $"Encryption type {(int)data.Type} is not an RSA envelope."),
         };
         return rsa.Decrypt(data.Ct, padding);
+    }
+
+    private static void ValidateRsaEnvelope(EncString data)
+    {
+        const int rsa2048CiphertextLength = 2048 / 8;
+        var expectedMac = data.Type.HasLegacyRsaMac();
+        if (!data.Type.IsRsaEnvelope()
+            || data.Iv.Length != 0
+            || data.Ct.Length != rsa2048CiphertextLength
+            || (expectedMac && data.Mac is not { Length: EncString.LegacyRsaMacLength })
+            || (!expectedMac && data.Mac is not null))
+        {
+            throw new CryptographicException("The RSA envelope structure is invalid.");
+        }
     }
 
     private static byte[] DeriveArgon2idMasterKey(byte[] password, string salt, int iterations, int? memoryMiB, int? parallelism)

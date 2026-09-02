@@ -10,6 +10,16 @@ namespace App.Tests;
 public sealed class AppLifecycleCoordinatorTests
 {
     [Fact]
+    public void ConditionalRequest_IsRequiredInterfaceContract()
+    {
+        var method = typeof(IAppLifecycleCoordinator)
+            .GetMethod(nameof(IAppLifecycleCoordinator.RequestIfAsync));
+
+        Assert.NotNull(method);
+        Assert.True(method!.IsAbstract);
+    }
+
+    [Fact]
     public async Task LockImmediatelyBlocksSensitiveStartsAndCompletesCleanup()
     {
         var invalidated = new TaskCompletionSource(
@@ -138,6 +148,223 @@ public sealed class AppLifecycleCoordinatorTests
         Assert.DoesNotContain("lock", log);
         Assert.DoesNotContain("logout", log);
         Assert.DoesNotContain("login", log);
+        Assert.True(coordinator.IsTransitioning);
+    }
+
+    [Fact]
+    public async Task ExitCompletionPermanentlyRejectsActivationSensitiveWorkAndLowerRankRequests()
+    {
+        var log = new List<string>();
+        var coordinator = Build(log);
+        Assert.True(coordinator.MarkSessionReady());
+        log.Clear();
+
+        var exit = coordinator.RequestAsync(AppLifecycleIntent.Exit);
+        await exit;
+
+        var activationRan = false;
+        var sensitiveRan = false;
+        var predicateRan = false;
+        Assert.True(coordinator.IsTransitioning);
+        Assert.False(coordinator.TryActivateSession(() => activationRan = true));
+        Assert.False(coordinator.TryRunSensitive(() =>
+        {
+            sensitiveRan = true;
+            return true;
+        }));
+        var lowerRank = coordinator.RequestAsync(AppLifecycleIntent.Lock);
+        var conditional = await coordinator.RequestIfAsync(
+            AppLifecycleIntent.Logout,
+            () =>
+            {
+                predicateRan = true;
+                return true;
+            });
+
+        Assert.Same(exit, lowerRank);
+        Assert.False(conditional);
+        Assert.False(activationRan);
+        Assert.False(sensitiveRan);
+        Assert.False(predicateRan);
+        Assert.Equal(1, log.Count(value => value == "exit"));
+        Assert.DoesNotContain("allow", log);
+        Assert.DoesNotContain("lock", log);
+        Assert.DoesNotContain("logout", log);
+        Assert.DoesNotContain("login", log);
+    }
+
+    [Fact]
+    public async Task ThrowingExitHookIsReportedAndPermanentExitLatchRemainsClosed()
+    {
+        var reports = new List<(string Step, Exception Exception)>();
+        var exitFailure = new InvalidOperationException("Injected exit failure.");
+        var coordinator = new AppLifecycleCoordinator(new AppLifecycleHooks(
+            BlockSensitiveOperations: () => { },
+            AllowSensitiveOperations: () => { },
+            InvalidateSession: () => { },
+            StopBackgroundAsync: () => Task.CompletedTask,
+            CloseTransientsAsync: () => Task.CompletedTask,
+            CloseTransientsSynchronously: () => { },
+            ClearClipboardAsync: () => Task.CompletedTask,
+            ClearClipboardSynchronously: () => { },
+            ClearSensitiveState: () => { },
+            ResetFrames: () => { },
+            LockSessionAsync: () => Task.CompletedTask,
+            LogoutSessionAsync: () => Task.CompletedTask,
+            ShowLogin: () => { },
+            ExitProcess: () => throw exitFailure,
+            FailClosedSession: () => { },
+            ReportFailure: (step, exception) => reports.Add((step, exception))));
+
+        var exit = coordinator.RequestAsync(AppLifecycleIntent.Exit);
+        await exit;
+
+        var report = Assert.Single(reports);
+        Assert.Equal("exit", report.Step);
+        Assert.Same(exitFailure, report.Exception);
+        Assert.True(coordinator.IsTransitioning);
+        Assert.False(coordinator.MarkSessionReady());
+        Assert.False(coordinator.TryRunSensitive(static () => true));
+        Assert.Same(exit, coordinator.RequestAsync(AppLifecycleIntent.Logout));
+    }
+
+    [Fact]
+    public async Task ExitTimeoutsHangingAsyncCleanupThenRunsSynchronousFallbacksAndExit()
+    {
+        var log = new List<string>();
+        var reports = new List<(string Step, Exception Exception)>();
+        var never = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var coordinator = new AppLifecycleCoordinator(
+            new AppLifecycleHooks(
+                BlockSensitiveOperations: () => log.Add("block"),
+                AllowSensitiveOperations: () => log.Add("allow"),
+                InvalidateSession: () => log.Add("invalidate"),
+                StopBackgroundAsync: () =>
+                {
+                    log.Add("stop-start");
+                    return never.Task;
+                },
+                CloseTransientsAsync: () =>
+                {
+                    log.Add("transients-start");
+                    return never.Task;
+                },
+                CloseTransientsSynchronously: () => log.Add("transients-sync"),
+                ClearClipboardAsync: () =>
+                {
+                    log.Add("clipboard-start");
+                    return never.Task;
+                },
+                ClearClipboardSynchronously: () => log.Add("clipboard-sync"),
+                ClearSensitiveState: () => log.Add("sensitive"),
+                ResetFrames: () => log.Add("frames"),
+                LockSessionAsync: () => Task.CompletedTask,
+                LogoutSessionAsync: () => Task.CompletedTask,
+                ShowLogin: () => log.Add("login"),
+                ExitProcess: () => log.Add("exit"),
+                FailClosedSession: () => { },
+                ReportFailure: (step, exception) => reports.Add((step, exception))),
+            exitStepTimeout: TimeSpan.FromMilliseconds(20));
+
+        var exit = coordinator.RequestAsync(AppLifecycleIntent.Exit);
+        await exit.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(
+            ["stop", "transients", "clipboard"],
+            reports.Select(report => report.Step));
+        Assert.All(reports, report => Assert.IsType<TimeoutException>(report.Exception));
+        Assert.Contains("transients-sync", log);
+        Assert.Contains("clipboard-sync", log);
+        Assert.True(log.IndexOf("sensitive") > log.IndexOf("clipboard-sync"));
+        Assert.True(log.IndexOf("exit") > log.IndexOf("frames"));
+        Assert.DoesNotContain("login", log);
+        Assert.True(coordinator.IsTransitioning);
+        Assert.False(coordinator.MarkSessionReady());
+        Assert.False(coordinator.TryRunSensitive(static () => true));
+    }
+
+    [Fact]
+    public async Task LockDoesNotApplyExitTimeoutToHangingCleanup()
+    {
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var log = new List<string>();
+        var coordinator = Build(log, async () =>
+        {
+            entered.TrySetResult();
+            await release.Task;
+        });
+
+        var transition = coordinator.RequestAsync(AppLifecycleIntent.Lock);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(50);
+
+        Assert.False(transition.IsCompleted);
+        Assert.DoesNotContain("login", log);
+        release.TrySetResult();
+        await transition.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains("login", log);
+    }
+
+    [Theory]
+    [InlineData(AppLifecycleIntent.Lock, CleanupFailureMode.SynchronousThrow)]
+    [InlineData(AppLifecycleIntent.Lock, CleanupFailureMode.NullTask)]
+    [InlineData(AppLifecycleIntent.Lock, CleanupFailureMode.CompletedFault)]
+    [InlineData(AppLifecycleIntent.Lock, CleanupFailureMode.AsynchronousFault)]
+    [InlineData(AppLifecycleIntent.Exit, CleanupFailureMode.SynchronousThrow)]
+    [InlineData(AppLifecycleIntent.Exit, CleanupFailureMode.NullTask)]
+    [InlineData(AppLifecycleIntent.Exit, CleanupFailureMode.CompletedFault)]
+    [InlineData(AppLifecycleIntent.Exit, CleanupFailureMode.AsynchronousFault)]
+    public async Task FailedTransientAndClipboardCleanupAlwaysRunSynchronousFallbacks(
+        AppLifecycleIntent intent,
+        CleanupFailureMode failureMode)
+    {
+        var log = new List<string>();
+        var reports = new List<(string Step, Exception Exception)>();
+        var coordinator = new AppLifecycleCoordinator(
+            new AppLifecycleHooks(
+                BlockSensitiveOperations: () => log.Add("block"),
+                AllowSensitiveOperations: () => log.Add("allow"),
+                InvalidateSession: () => log.Add("invalidate"),
+                StopBackgroundAsync: () => Task.CompletedTask,
+                CloseTransientsAsync: () => FailedCleanup(failureMode),
+                CloseTransientsSynchronously: () => log.Add("transients-sync"),
+                ClearClipboardAsync: () => FailedCleanup(failureMode),
+                ClearClipboardSynchronously: () => log.Add("clipboard-sync"),
+                ClearSensitiveState: () => log.Add("sensitive"),
+                ResetFrames: () => log.Add("frames"),
+                LockSessionAsync: () => Task.CompletedTask,
+                LogoutSessionAsync: () => Task.CompletedTask,
+                ShowLogin: () => log.Add("login"),
+                ExitProcess: () => log.Add("exit"),
+                FailClosedSession: () => { },
+                ReportFailure: (step, exception) => reports.Add((step, exception))),
+            exitStepTimeout: TimeSpan.FromMilliseconds(100));
+
+        await coordinator.RequestAsync(intent).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(
+            ["transients", "clipboard"],
+            reports.Select(report => report.Step));
+        Assert.Contains("transients-sync", log);
+        Assert.Contains("clipboard-sync", log);
+        Assert.True(log.IndexOf("transients-sync") < log.IndexOf("clipboard-sync"));
+        Assert.True(log.IndexOf("clipboard-sync") < log.IndexOf("sensitive"));
+        if (intent == AppLifecycleIntent.Exit)
+        {
+            Assert.Contains("exit", log);
+            Assert.DoesNotContain("login", log);
+            Assert.True(coordinator.IsTransitioning);
+        }
+        else
+        {
+            Assert.Contains("login", log);
+            Assert.DoesNotContain("exit", log);
+            Assert.False(coordinator.IsTransitioning);
+        }
     }
 
     [Fact]
@@ -156,7 +383,7 @@ public sealed class AppLifecycleCoordinatorTests
 
         Assert.Equal(1, log.Count(value => value == "block"));
         Assert.Contains("exit", log);
-        // 升级到 Exit 后不得再执行 Lock 意图的会话动作,也不得丢失更强 intent。
+        // Upgrading to Exit must skip the Lock session action and preserve the stronger intent.
         Assert.DoesNotContain("lock", log);
         Assert.DoesNotContain("logout", log);
         Assert.DoesNotContain("login", log);
@@ -190,7 +417,7 @@ public sealed class AppLifecycleCoordinatorTests
         var stop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var coordinator = Build(log, () => stop.Task);
 
-        // Exit 请求先到,随后到达的较弱 Lock 请求绝不能使其降级。
+        // A later Lock request must not downgrade an already claimed Exit.
         var first = coordinator.RequestAsync(AppLifecycleIntent.Exit);
         var second = coordinator.RequestAsync(AppLifecycleIntent.Lock);
         Assert.Same(first, second);
@@ -353,6 +580,106 @@ public sealed class AppLifecycleCoordinatorTests
     }
 
     [Fact]
+    public async Task RequestIf_FalsePredicateDoesNotClaimTransition()
+    {
+        var log = new List<string>();
+        var coordinator = Build(log);
+        Assert.True(coordinator.MarkSessionReady());
+        log.Clear();
+
+        var requested = await coordinator.RequestIfAsync(
+            AppLifecycleIntent.Lock,
+            () => false);
+
+        Assert.False(requested);
+        Assert.False(coordinator.IsTransitioning);
+        Assert.Empty(log);
+    }
+
+    [Fact]
+    public async Task RequestIf_ThrowingPredicateDoesNotClaimTransition()
+    {
+        var log = new List<string>();
+        var coordinator = Build(log);
+        Assert.True(coordinator.MarkSessionReady());
+        log.Clear();
+
+        var requested = await coordinator.RequestIfAsync(
+            AppLifecycleIntent.Lock,
+            () => throw new InvalidOperationException("predicate failed"));
+
+        Assert.False(requested);
+        Assert.False(coordinator.IsTransitioning);
+        Assert.Empty(log);
+    }
+
+    [Fact]
+    public async Task RequestIf_ClaimsTransitionBeforeConcurrentSessionActivation()
+    {
+        var log = new List<string>();
+        var predicateEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releasePredicate = new ManualResetEventSlim();
+        var stopEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStop = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var coordinator = Build(log, () =>
+        {
+            stopEntered.TrySetResult();
+            return releaseStop.Task;
+        });
+        Assert.True(coordinator.MarkSessionReady());
+
+        var request = Task.Run(async () => await coordinator.RequestIfAsync(
+            AppLifecycleIntent.Lock,
+            () =>
+            {
+                predicateEntered.TrySetResult();
+                releasePredicate.Wait();
+                return true;
+            }));
+        await predicateEntered.Task;
+
+        var activationRan = false;
+        var activation = Task.Run(() => coordinator.TryActivateSession(() =>
+        {
+            activationRan = true;
+            return true;
+        }));
+        releasePredicate.Set();
+        await stopEntered.Task;
+
+        Assert.False(await activation);
+        Assert.False(activationRan);
+        releaseStop.TrySetResult();
+        Assert.True(await request);
+    }
+
+    [Fact]
+    public async Task RequestIf_WhenSessionBActivatesFirst_DoesNotStartTransition()
+    {
+        var log = new List<string>();
+        var coordinator = Build(log);
+        Assert.True(coordinator.MarkSessionReady());
+        var currentAccount = "A";
+        Assert.True(coordinator.TryActivateSession(() =>
+        {
+            currentAccount = "B";
+            return true;
+        }));
+        log.Clear();
+
+        var requested = await coordinator.RequestIfAsync(
+            AppLifecycleIntent.Lock,
+            () => currentAccount == "A");
+
+        Assert.False(requested);
+        Assert.False(coordinator.IsTransitioning);
+        Assert.Empty(log);
+    }
+
+    [Fact]
     public async Task ConditionalRemoteLogout_ClaimsSessionBeforeSlowCleanup()
     {
         var session = new VaultSession();
@@ -458,6 +785,26 @@ public sealed class AppLifecycleCoordinatorTests
         Assert.True(session.IsUnlocked(leaseB!));
         Assert.Equal(["block", "claim", "allow"], log);
         Assert.False(coordinator.IsTransitioning);
+    }
+
+    [Fact]
+    public async Task NonExitCompletionStillAllowsExplicitSessionRecovery()
+    {
+        var log = new List<string>();
+        var coordinator = Build(log);
+
+        await coordinator.RequestAsync(AppLifecycleIntent.Lock);
+
+        Assert.False(coordinator.IsTransitioning);
+        Assert.True(coordinator.MarkSessionReady());
+        var sensitiveRan = false;
+        Assert.True(coordinator.TryRunSensitive(() =>
+        {
+            sensitiveRan = true;
+            return true;
+        }));
+        Assert.True(sensitiveRan);
+        Assert.Equal("allow", log[^1]);
     }
 
     [Fact]
@@ -733,5 +1080,30 @@ public sealed class AppLifecycleCoordinatorTests
     {
         log.Add(value);
         return Task.CompletedTask;
+    }
+
+    private static Task FailedCleanup(CleanupFailureMode mode) => mode switch
+    {
+        CleanupFailureMode.SynchronousThrow =>
+            throw new InvalidOperationException("Injected synchronous cleanup failure."),
+        CleanupFailureMode.NullTask => null!,
+        CleanupFailureMode.CompletedFault => Task.FromException(
+            new InvalidOperationException("Injected completed cleanup failure.")),
+        CleanupFailureMode.AsynchronousFault => FailCleanupAsynchronously(),
+        _ => throw new ArgumentOutOfRangeException(nameof(mode)),
+    };
+
+    private static async Task FailCleanupAsynchronously()
+    {
+        await Task.Yield();
+        throw new InvalidOperationException("Injected asynchronous cleanup failure.");
+    }
+
+    public enum CleanupFailureMode
+    {
+        SynchronousThrow,
+        NullTask,
+        CompletedFault,
+        AsynchronousFault,
     }
 }

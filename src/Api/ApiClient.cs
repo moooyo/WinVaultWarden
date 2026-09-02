@@ -18,11 +18,14 @@ public sealed class ApiClient :
     IRegistrationApiClient,
     IPublicSendApiClient,
     IPublicAuthRequestApiClient,
+    IServerConfigApiClient,
     IAuthenticatedApiClient,
     IDisposable
 {
     private const int MaxErrorBodyBytes = 64 * 1024;
     private const int MaxRegistrationTokenBytes = 16 * 1024;
+    // Vaultwarden accepts JSON requests up to 20 MiB and create responses echo the cipher.
+    private const int MaxCipherWriteResponseBytes = 20 * 1024 * 1024;
     private readonly HttpClient _http;
     public ServerEndpoints Endpoints { get; }
     public ServerOrigin Origin => Endpoints.WebVault.Origin;
@@ -72,7 +75,20 @@ public sealed class ApiClient :
         if (response.StatusCode == HttpStatusCode.BadRequest
             && string.Equals(error?.ErrorDescription, "Two factor required.", StringComparison.Ordinal))
         {
-            return new ConnectTokenResult.TwoFactorRequired(error?.TwoFactorProviders ?? Array.Empty<int>());
+            return new ConnectTokenResult.TwoFactorRequired(
+                error?.TwoFactorProviders ?? Array.Empty<int>(),
+                error?.SsoEmail2FaSessionToken,
+                error?.Email,
+                error?.TwoFactorProviders2);
+        }
+
+        if (response.StatusCode == HttpStatusCode.BadRequest
+            && string.Equals(
+                error?.ErrorModel?.Message,
+                "new device verification required",
+                StringComparison.Ordinal))
+        {
+            return new ConnectTokenResult.DeviceVerificationRequired();
         }
 
         // 错误文案回退链:error_description(非空) → message → error → HTTP ReasonPhrase。
@@ -90,14 +106,200 @@ public sealed class ApiClient :
             ApiJsonContext.Default.SyncResponse,
             ct);
 
+    public Task<long> GetAccountRevisionDateAsync(CancellationToken ct = default) =>
+        GetReadAsync(
+            "api/accounts/revision-date",
+            ApiJsonContext.Default.Int64,
+            ct);
+
     public Task<ListResponse<DeviceDto>> GetDevicesAsync(CancellationToken ct = default) =>
         GetReadAsync("api/devices", ApiJsonContext.Default.ListResponseDeviceDto, ct);
+
+    public Task<DeviceDto> UpdateTrustedDeviceKeysAsync(
+        string deviceIdentifier,
+        TrustedDeviceKeysRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(deviceIdentifier);
+        ArgumentNullException.ThrowIfNull(request);
+        return SendWriteReadAsync(
+            HttpMethod.Put,
+            $"api/devices/{Uri.EscapeDataString(deviceIdentifier)}/keys",
+            request,
+            ApiJsonContext.Default.TrustedDeviceKeysRequest,
+            ApiJsonContext.Default.DeviceDto,
+            ct);
+    }
+
+    public Task UntrustDevicesAsync(
+        UntrustDevicesRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return SendWriteAsync(
+            HttpMethod.Post,
+            "api/devices/untrust",
+            request,
+            ApiJsonContext.Default.UntrustDevicesRequest,
+            ct);
+    }
+
+    public Task<PostAccountKeysResponse> PostAccountKeysAsync(
+        PostAccountKeysRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return SendWriteReadAsync(
+            HttpMethod.Post,
+            "api/accounts/keys",
+            request,
+            ApiJsonContext.Default.PostAccountKeysRequest,
+            ApiJsonContext.Default.PostAccountKeysResponse,
+            ct);
+    }
+
+    public Task<OrganizationAutoEnrollStatusResponse> GetAutoEnrollStatusAsync(
+        string organizationIdentifier,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(organizationIdentifier);
+        if (organizationIdentifier.Length > 256
+            || organizationIdentifier.Contains('/')
+            || organizationIdentifier.Contains('\\')
+            || organizationIdentifier is "." or "..")
+        {
+            throw new ArgumentException(
+                "The organization identifier is invalid.",
+                nameof(organizationIdentifier));
+        }
+        return GetReadAsync(
+            $"api/organizations/{Uri.EscapeDataString(organizationIdentifier)}/auto-enroll-status",
+            ApiJsonContext.Default.OrganizationAutoEnrollStatusResponse,
+            ct);
+    }
+
+    public Task<OrganizationKeysResponse> GetOrganizationKeysAsync(
+        string organizationId,
+        CancellationToken ct = default)
+    {
+        if (!Guid.TryParseExact(organizationId, "D", out var parsedOrganizationId))
+            throw new ArgumentException("The organization identifier is invalid.", nameof(organizationId));
+        return GetReadAsync(
+            $"api/organizations/{parsedOrganizationId:D}/keys",
+            ApiJsonContext.Default.OrganizationKeysResponse,
+            ct);
+    }
+
+    public Task EnrollResetPasswordAsync(
+        string organizationId,
+        string userId,
+        ResetPasswordEnrollmentRequest request,
+        CancellationToken ct = default)
+    {
+        if (!Guid.TryParseExact(organizationId, "D", out var parsedOrganizationId))
+            throw new ArgumentException("The organization identifier is invalid.", nameof(organizationId));
+        if (!Guid.TryParseExact(userId, "D", out var parsedUserId))
+            throw new ArgumentException("The user identifier is invalid.", nameof(userId));
+        ArgumentNullException.ThrowIfNull(request);
+        return SendWriteAsync(
+            HttpMethod.Put,
+            $"api/organizations/{parsedOrganizationId:D}/users/" +
+            $"{parsedUserId:D}/reset-password-enrollment",
+            request,
+            ApiJsonContext.Default.ResetPasswordEnrollmentRequest,
+            ct);
+    }
 
     public async Task CreateCipherAsync(CipherRequest request, CancellationToken ct = default)
         => await SendWriteAsync(HttpMethod.Post, "api/ciphers", request, ApiJsonContext.Default.CipherRequest, ct);
 
+    public async Task<CipherDto?> CreateCipherWithResponseAsync(
+        CipherRequest request,
+        CancellationToken ct = default) =>
+        await SendBoundedWriteReadAsync(
+            HttpMethod.Post,
+            "api/ciphers",
+            request,
+            ApiJsonContext.Default.CipherRequest,
+            ApiJsonContext.Default.CipherDto,
+            MaxCipherWriteResponseBytes,
+            ct);
+
+    public async Task CreateOrganizationCipherAsync(ShareCipherRequest request, CancellationToken ct = default)
+        => await SendWriteAsync(
+            HttpMethod.Post,
+            "api/ciphers/create",
+            request,
+            ApiJsonContext.Default.ShareCipherRequest,
+            ct);
+
+    public async Task<CipherDto?> CreateOrganizationCipherWithResponseAsync(
+        ShareCipherRequest request,
+        CancellationToken ct = default) =>
+        await SendBoundedWriteReadAsync(
+            HttpMethod.Post,
+            "api/ciphers/create",
+            request,
+            ApiJsonContext.Default.ShareCipherRequest,
+            ApiJsonContext.Default.CipherDto,
+            MaxCipherWriteResponseBytes,
+            ct);
+
     public async Task UpdateCipherAsync(string cipherId, CipherRequest request, CancellationToken ct = default)
         => await SendWriteAsync(HttpMethod.Put, $"api/ciphers/{cipherId}", request, ApiJsonContext.Default.CipherRequest, ct);
+
+    public Task ShareExistingCipherAsync(
+        string cipherId,
+        ShareCipherRequest request,
+        CancellationToken ct = default) =>
+        SendWriteAsync(
+            HttpMethod.Put,
+            $"api/ciphers/{cipherId}/share",
+            request,
+            ApiJsonContext.Default.ShareCipherRequest,
+            ct);
+
+    public Task BulkShareCiphersAsync(
+        BulkShareCiphersRequest request,
+        CancellationToken ct = default) =>
+        SendWriteAsync(
+            HttpMethod.Put,
+            "api/ciphers/share",
+            request,
+            ApiJsonContext.Default.BulkShareCiphersRequest,
+            ct);
+
+    public Task SetCipherCollectionsAsync(
+        string cipherId,
+        CipherCollectionsRequest request,
+        CancellationToken ct = default) =>
+        SendWriteAsync(
+            HttpMethod.Put,
+            $"api/ciphers/{cipherId}/collections_v2",
+            request,
+            ApiJsonContext.Default.CipherCollectionsRequest,
+            ct);
+
+    public Task BulkUpdateCipherCollectionsAsync(
+        BulkCipherCollectionsRequest request,
+        CancellationToken ct = default) =>
+        SendWriteAsync(
+            HttpMethod.Post,
+            "api/ciphers/bulk-collections",
+            request,
+            ApiJsonContext.Default.BulkCipherCollectionsRequest,
+            ct);
+
+    public async Task UpdateCipherPartialAsync(
+        string cipherId,
+        PartialCipherRequest request,
+        CancellationToken ct = default) =>
+        await SendWriteAsync(
+            HttpMethod.Put,
+            $"api/ciphers/{cipherId}/partial",
+            request,
+            ApiJsonContext.Default.PartialCipherRequest,
+            ct);
 
     public async Task SoftDeleteCipherAsync(string cipherId, CancellationToken ct = default)
         => await SendWriteAsync(HttpMethod.Put, $"api/ciphers/{cipherId}/delete", ct);
@@ -107,6 +309,12 @@ public sealed class ApiClient :
 
     public async Task RestoreCipherAsync(string cipherId, CancellationToken ct = default)
         => await SendWriteAsync(HttpMethod.Put, $"api/ciphers/{cipherId}/restore", ct);
+
+    public async Task ArchiveCipherAsync(string cipherId, CancellationToken ct = default)
+        => await SendWriteAsync(HttpMethod.Put, $"api/ciphers/{cipherId}/archive", ct);
+
+    public async Task UnarchiveCipherAsync(string cipherId, CancellationToken ct = default)
+        => await SendWriteAsync(HttpMethod.Put, $"api/ciphers/{cipherId}/unarchive", ct);
 
     public Task BulkSoftDeleteCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
         => SendWriteAsync(HttpMethod.Put, "api/ciphers/delete",
@@ -118,6 +326,14 @@ public sealed class ApiClient :
 
     public Task BulkRestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
         => SendWriteAsync(HttpMethod.Put, "api/ciphers/restore",
+            new CipherIdsRequest { Ids = ids.ToArray() }, ApiJsonContext.Default.CipherIdsRequest, ct);
+
+    public Task BulkArchiveCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Put, "api/ciphers/archive",
+            new CipherIdsRequest { Ids = ids.ToArray() }, ApiJsonContext.Default.CipherIdsRequest, ct);
+
+    public Task BulkUnarchiveCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default)
+        => SendWriteAsync(HttpMethod.Put, "api/ciphers/unarchive",
             new CipherIdsRequest { Ids = ids.ToArray() }, ApiJsonContext.Default.CipherIdsRequest, ct);
 
     public Task BulkMoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default)
@@ -390,8 +606,54 @@ public sealed class ApiClient :
     public Task ChangePasswordAsync(ChangePasswordRequest request, CancellationToken ct = default)
         => SendWriteAsync(HttpMethod.Post, "api/accounts/password", request, ApiJsonContext.Default.ChangePasswordRequest, ct);
 
+    public Task UpdateTemporaryPasswordAsync(
+        UpdateTemporaryPasswordRequest request,
+        CancellationToken ct = default)
+        => SendWriteAsync(
+            HttpMethod.Put,
+            "api/accounts/update-temp-password",
+            request,
+            ApiJsonContext.Default.UpdateTemporaryPasswordRequest,
+            ct);
+
     public Task ChangeKdfAsync(ChangeKdfRequest request, CancellationToken ct = default)
         => SendWriteAsync(HttpMethod.Post, "api/accounts/kdf", request, ApiJsonContext.Default.ChangeKdfRequest, ct);
+
+    public Task RequestAccountDeletionOtpAsync(CancellationToken ct = default) =>
+        SendWriteAsync(HttpMethod.Post, "api/accounts/request-otp", ct);
+
+    public async Task DeleteAccountAsync(
+        DeleteAccountRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        using var httpRequest = new HttpRequestMessage(
+            HttpMethod.Delete,
+            Url("api/accounts"))
+        {
+            Content = JsonContent.Create(
+                request,
+                ApiJsonContext.Default.DeleteAccountRequest),
+        };
+        httpRequest.Options.Set(AuthHeaderHandler.DisableAutomaticRetryKey, true);
+        using var response = await SendControlAsync(httpRequest, ct);
+        if (response.StatusCode is HttpStatusCode.OK or HttpStatusCode.NoContent)
+            return;
+        if (response.IsSuccessStatusCode)
+            throw new AccountDeletionOutcomeUncertainException(response.StatusCode);
+
+        var error = await ReadJsonOrNull(
+            response,
+            ApiJsonContext.Default.WriteErrorResponse,
+            ct);
+        var message = string.IsNullOrWhiteSpace(error?.Message)
+            ? response.ReasonPhrase ?? "Account deletion failed."
+            : error.Message;
+        throw new VaultWriteException(
+            response.StatusCode,
+            message,
+            error?.ValidationErrors);
+    }
 
     public async Task<RegistrationVerificationResult> RequestRegistrationVerificationTokenAsync(
         RegisterVerificationRequest request,
@@ -550,15 +812,6 @@ public sealed class ApiClient :
     public Task PasswordAsync(string id, EmergencyAccessPasswordRequest request, CancellationToken ct = default)
         => SendWriteAsync(HttpMethod.Post, $"api/emergency-access/{id}/password", request, ApiJsonContext.Default.EmergencyAccessPasswordRequest, ct);
 
-    public async Task DeleteAccountAsync(DeleteAccountRequest request, CancellationToken ct = default)
-    {
-        using var req = new HttpRequestMessage(HttpMethod.Delete, Url("api/accounts"))
-        {
-            Content = System.Net.Http.Json.JsonContent.Create(request, ApiJsonContext.Default.DeleteAccountRequest),
-        };
-        await SendWriteCore(req, ct);
-    }
-
     // ===== Two-Factor =====
 
     public Task<TwoFactorProvidersResponse> GetProvidersAsync(CancellationToken ct = default) =>
@@ -587,10 +840,30 @@ public sealed class ApiClient :
 
     // POST api/two-factor/send-email-login — 未认证的登录期发码（vaultwarden email.rs:40 ClientHeaders）。
     // 与已认证的 send-email（设置页）不同：登录尚未拿到 token 时可用。请求体 {email, masterPasswordHash, deviceIdentifier}。
-    public Task SendTwoFactorEmailLoginAsync(string email, string masterPasswordHash, string deviceIdentifier, CancellationToken ct = default)
+    public Task SendTwoFactorEmailLoginAsync(SendEmailLoginRequest request, CancellationToken ct = default)
         => SendWriteAsync(HttpMethod.Post, "api/two-factor/send-email-login",
-            new SendEmailLoginRequest(email, masterPasswordHash, deviceIdentifier),
+            request,
             ApiJsonContext.Default.SendEmailLoginRequest, ct);
+
+    public Task ResendNewDeviceOtpAsync(
+        ResendNewDeviceOtpRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.Email);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.MasterPasswordHash);
+        if (request.Email.Length > 256)
+            throw new ArgumentException("Email cannot exceed 256 characters.", nameof(request));
+        if (request.MasterPasswordHash.Length > 300)
+            throw new ArgumentException("Master password hash cannot exceed 300 characters.", nameof(request));
+
+        return SendWriteAsync(
+            HttpMethod.Post,
+            "api/accounts/resend-new-device-otp",
+            request,
+            ApiJsonContext.Default.ResendNewDeviceOtpRequest,
+            ct);
+    }
 
     // 注意:PUT /api/two-factor/email 的成功响应把 enabled 序列化为字符串字面量 "true"
     // (vaultwarden/src/api/core/two_factor/email.rs:241),与 get-email 的真 bool 不同。
@@ -606,32 +879,197 @@ public sealed class ApiClient :
             HttpMethod.Post, "api/two-factor/get-recover", request,
             ApiJsonContext.Default.PasswordVerifyRequest, ApiJsonContext.Default.RecoverResponse, ct);
 
+    public Task RequestProtectedActionOtpAsync(CancellationToken ct = default) =>
+        SendWriteAsync(HttpMethod.Post, "api/accounts/request-otp", ct);
+
+    public Task<WebAuthnTwoFactorResponse> GetWebAuthnAsync(
+        WebAuthnVerificationRequest request,
+        CancellationToken ct = default) =>
+        SendWriteReadAsync(
+            HttpMethod.Post,
+            "api/two-factor/get-webauthn",
+            request,
+            ApiJsonContext.Default.WebAuthnVerificationRequest,
+            ApiJsonContext.Default.WebAuthnTwoFactorResponse,
+            ct);
+
+    public Task<WebAuthnChallengeResponse> GetWebAuthnChallengeAsync(
+        WebAuthnVerificationRequest request,
+        CancellationToken ct = default) =>
+        SendWriteReadAsync(
+            HttpMethod.Post,
+            "api/two-factor/get-webauthn-challenge",
+            request,
+            ApiJsonContext.Default.WebAuthnVerificationRequest,
+            ApiJsonContext.Default.WebAuthnChallengeResponse,
+            ct);
+
+    public Task<WebAuthnTwoFactorResponse> EnableWebAuthnAsync(
+        EnableWebAuthnRequest request,
+        CancellationToken ct = default) =>
+        SendWriteReadAsync(
+            HttpMethod.Put,
+            "api/two-factor/webauthn",
+            request,
+            ApiJsonContext.Default.EnableWebAuthnRequest,
+            ApiJsonContext.Default.WebAuthnTwoFactorResponse,
+            ct);
+
+    public Task<WebAuthnTwoFactorResponse> DeleteWebAuthnCredentialAsync(
+        DeleteWebAuthnCredentialRequest request,
+        CancellationToken ct = default) =>
+        SendWriteReadAsync(
+            HttpMethod.Delete,
+            "api/two-factor/webauthn",
+            request,
+            ApiJsonContext.Default.DeleteWebAuthnCredentialRequest,
+            ApiJsonContext.Default.WebAuthnTwoFactorResponse,
+            ct);
+
+    public Task DeleteAllWebAuthnCredentialsAsync(
+        DeleteAllWebAuthnCredentialsRequest request,
+        CancellationToken ct = default) =>
+        SendWriteAsync(
+            HttpMethod.Delete,
+            "api/two-factor/webauthn/all",
+            request,
+            ApiJsonContext.Default.DeleteAllWebAuthnCredentialsRequest,
+            ct);
+
     public Task DisableAsync(DisableTwoFactorRequest request, CancellationToken ct = default)
         => SendWriteAsync(HttpMethod.Post, "api/two-factor/disable", request, ApiJsonContext.Default.DisableTwoFactorRequest, ct);
 
     // ===== Auth Requests =====
 
+    public async Task<bool> GetKnownDeviceAsync(
+        string email,
+        string deviceIdentifier,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+        var canonicalDeviceIdentifier = NormalizeRequiredGuid(
+            deviceIdentifier,
+            nameof(deviceIdentifier));
+        var encodedEmail = Convert.ToBase64String(Encoding.UTF8.GetBytes(email))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            Url("api/devices/knowndevice"));
+        request.Headers.TryAddWithoutValidation(
+            "X-Request-Email",
+            encodedEmail);
+        request.Headers.TryAddWithoutValidation(
+            "X-Device-Identifier",
+            canonicalDeviceIdentifier);
+        using var response = await SendControlAsync(request, ct);
+        await EnsureSuccessAsync(response, ct);
+        return await ReadJson(response, ApiJsonContext.Default.Boolean, ct);
+    }
+
+    public Task<AuthRequestResponse> CreateAdminAsync(
+        AuthRequestRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Type != 2)
+            throw new ArgumentException("Administrator auth requests must use type 2.", nameof(request));
+        var normalizedRequest = request with
+        {
+            DeviceIdentifier = NormalizeRequiredGuid(
+                request.DeviceIdentifier,
+                nameof(request.DeviceIdentifier)),
+        };
+        return SendWriteReadAsync(
+            HttpMethod.Post,
+            "api/auth-requests/admin-request",
+            normalizedRequest,
+            ApiJsonContext.Default.AuthRequestRequest,
+            ApiJsonContext.Default.AuthRequestResponse,
+            ct);
+    }
+
+    public Task<AuthRequestResponse> GetAsync(
+        string id,
+        CancellationToken ct = default)
+    {
+        var canonicalId = NormalizeRequiredGuid(id, nameof(id));
+        return GetReadAsync(
+            $"api/auth-requests/{Uri.EscapeDataString(canonicalId)}",
+            ApiJsonContext.Default.AuthRequestResponse,
+            ct);
+    }
+
     public Task<AuthRequestListResponse> GetPendingAsync(CancellationToken ct = default) =>
         GetReadAsync("api/auth-requests/pending", ApiJsonContext.Default.AuthRequestListResponse, ct);
 
-    public Task<AuthRequestResponse> ApproveAsync(string id, AuthResponseRequest request, CancellationToken ct = default)
-        => SendWriteReadAsync(
-            HttpMethod.Put, $"api/auth-requests/{id}", request,
-            ApiJsonContext.Default.AuthResponseRequest, ApiJsonContext.Default.AuthRequestResponse, ct);
+    public Task<AuthRequestResponse> ApproveAsync(
+        string id,
+        AuthResponseRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var canonicalId = NormalizeRequiredGuid(id, nameof(id));
+        var normalizedRequest = request with
+        {
+            DeviceIdentifier = NormalizeRequiredGuid(
+                request.DeviceIdentifier,
+                nameof(request.DeviceIdentifier)),
+        };
+        return SendWriteReadAsync(
+            HttpMethod.Put,
+            $"api/auth-requests/{Uri.EscapeDataString(canonicalId)}",
+            normalizedRequest,
+            ApiJsonContext.Default.AuthResponseRequest,
+            ApiJsonContext.Default.AuthRequestResponse,
+            ct);
+    }
 
-    public Task<AuthRequestResponse> CreateAsync(AuthRequestRequest request, CancellationToken ct = default)
-        => SendWriteReadAsync(
-            HttpMethod.Post, "api/auth-requests", request,
-            ApiJsonContext.Default.AuthRequestRequest, ApiJsonContext.Default.AuthRequestResponse, ct);
+    public async Task<AuthRequestResponse> CreateAsync(
+        AuthRequestRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Type != 0)
+            throw new ArgumentException("Login auth requests must use type 0.", nameof(request));
+        var normalizedRequest = request with
+        {
+            DeviceIdentifier = NormalizeRequiredGuid(
+                request.DeviceIdentifier,
+                nameof(request.DeviceIdentifier)),
+        };
+        using var message = new HttpRequestMessage(
+            HttpMethod.Post,
+            Url("api/auth-requests"))
+        {
+            Content = JsonContent.Create(normalizedRequest, ApiJsonContext.Default.AuthRequestRequest),
+        };
+        message.Headers.TryAddWithoutValidation(
+            "Device-Identifier",
+            normalizedRequest.DeviceIdentifier);
+        message.Headers.TryAddWithoutValidation(
+            "Device-Type",
+            ClientHeadersHandler.DeviceType);
+        return await SendWriteCoreRead(
+            message,
+            ApiJsonContext.Default.AuthRequestResponse,
+            ct);
+    }
 
     public Task<AuthRequestResponse> GetResponseAsync(
         string id,
         string code,
-        CancellationToken ct = default) =>
-        GetReadAsync(
-            $"api/auth-requests/{id}/response?code={Uri.EscapeDataString(code)}",
+        CancellationToken ct = default)
+    {
+        var canonicalId = NormalizeRequiredGuid(id, nameof(id));
+        ArgumentException.ThrowIfNullOrWhiteSpace(code);
+        return GetReadAsync(
+            $"api/auth-requests/{Uri.EscapeDataString(canonicalId)}/response?code={Uri.EscapeDataString(code)}",
             ApiJsonContext.Default.AuthRequestResponse,
             ct);
+    }
 
     // 服务端给出的 url 可能是绝对地址,也可能是以 "/" 开头的相对路径。
     // 绝对地址原样返回;相对路径去掉前导 "/" 交给 Url() 拼到 baseAddress。
@@ -1058,6 +1496,43 @@ public sealed class ApiClient :
         await SendWriteCore(request, ct);
     }
 
+    private async Task<TResult> SendBoundedWriteReadAsync<TBody, TResult>(
+        HttpMethod method,
+        string path,
+        TBody body,
+        JsonTypeInfo<TBody> bodyTypeInfo,
+        JsonTypeInfo<TResult> resultTypeInfo,
+        int maxResponseBytes,
+        CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(method, Url(path))
+        {
+            Content = JsonContent.Create(body, bodyTypeInfo),
+        };
+        using var response = await SendControlAsync(request, ct);
+        if (response.IsSuccessStatusCode)
+        {
+            try
+            {
+                return await ReadBoundedJson(
+                    response,
+                    resultTypeInfo,
+                    maxResponseBytes,
+                    ct);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                throw new CipherCreateSuccessResponseReadException(response.StatusCode, ex);
+            }
+        }
+
+        var error = await ReadJsonOrNull(response, ApiJsonContext.Default.WriteErrorResponse, ct);
+        var message = string.IsNullOrWhiteSpace(error?.Message)
+            ? response.ReasonPhrase ?? "Vault write failed."
+            : error.Message;
+        throw new VaultWriteException(response.StatusCode, message, error?.ValidationErrors);
+    }
+
     private async Task SendWriteAsync(HttpMethod method, string path, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(method, Url(path));
@@ -1167,8 +1642,21 @@ public sealed class ApiClient :
             yield return new("username", request.Username);
         if (!string.IsNullOrEmpty(request.PasswordHash))
             yield return new("password", request.PasswordHash);
+        if (!string.IsNullOrEmpty(request.AuthRequestId))
+            yield return new("authRequest", request.AuthRequestId);
         if (!string.IsNullOrEmpty(request.RefreshToken))
             yield return new("refresh_token", request.RefreshToken);
+        if (!string.IsNullOrEmpty(request.Code))
+            yield return new("code", request.Code);
+        if (!string.IsNullOrEmpty(request.CodeVerifier))
+            yield return new("code_verifier", request.CodeVerifier);
+        if (!string.IsNullOrEmpty(request.RedirectUri))
+            yield return new("redirect_uri", request.RedirectUri);
+        if (string.Equals(request.GrantType, "password", StringComparison.Ordinal)
+            && !string.IsNullOrEmpty(request.NewDeviceOtp))
+        {
+            yield return new("newDeviceOtp", request.NewDeviceOtp);
+        }
         if (request.TwoFactor is { } twoFactor)
         {
             yield return new("twoFactorProvider", twoFactor.Provider.ToString());
@@ -1215,9 +1703,47 @@ public sealed class ApiClient :
         return null;
     }
 
+    private static string NormalizeRequiredGuid(string value, string parameterName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value, parameterName);
+        if (!Guid.TryParseExact(value, "D", out var parsed) || parsed == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "The value must be a non-empty GUID in canonical D format.",
+                parameterName);
+        }
+
+        return parsed.ToString("D");
+    }
+
     private static async Task<T> ReadJson<T>(HttpResponseMessage response, JsonTypeInfo<T> typeInfo, CancellationToken ct)
         => await response.Content.ReadFromJsonAsync(typeInfo, ct)
             ?? throw new JsonException($"Response body is not {typeInfo.Type.Name}.");
+
+    private static async Task<T> ReadBoundedJson<T>(
+        HttpResponseMessage response,
+        JsonTypeInfo<T> typeInfo,
+        int maxBytes,
+        CancellationToken ct)
+    {
+        if (response.Content.Headers.ContentLength is long contentLength
+            && contentLength > maxBytes)
+        {
+            throw new InvalidDataException("Cipher write response is too large.");
+        }
+
+        try
+        {
+            using var buffer = new DiagnosticBufferStream(maxBytes);
+            await response.Content.CopyToAsync(buffer, ct);
+            return JsonSerializer.Deserialize(buffer.WrittenSpan, typeInfo)
+                ?? throw new JsonException($"Response body is not {typeInfo.Type.Name}.");
+        }
+        catch (DiagnosticBodyTooLargeException ex)
+        {
+            throw new InvalidDataException("Cipher write response is too large.", ex);
+        }
+    }
 
     private static async Task<T?> ReadJsonOrNull<T>(HttpResponseMessage response, JsonTypeInfo<T> typeInfo, CancellationToken ct)
     {

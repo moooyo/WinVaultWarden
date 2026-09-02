@@ -1,7 +1,9 @@
+using App.Services;
 using App.ViewModels;
 using Core.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
@@ -13,24 +15,27 @@ public sealed partial class LoginPage : Page
 {
     public LoginViewModel ViewModel { get; }
     private bool _isWindowFitQueued;
+    private bool _isDeactivated;
+    private bool _isQuarantineConfirmationOpen;
+    private bool _isAccountDeletionConfirmationOpen;
+    private bool _isFullLocalResetConfirmationOpen;
+    private CancellationTokenSource? _fullLocalResetConfirmationCancellation;
     private LoginStage? _helloAutoPromptedForStage;
 
     public LoginPage()
     {
         ViewModel = global::App.App.Services.GetRequiredService<LoginViewModel>();
-        ViewModel.SetSuccessCallback(lease =>
-        {
-            if (App.MainWindow is { } window)
-                window.ShowVault(lease);
-        });
+        ViewModel.SetSuccessHandler(lease =>
+            App.MainWindow is { } window && window.ShowVault(lease));
 
         var tokenStore = global::App.App.Services.GetRequiredService<ITokenStore>();
         if (tokenStore.TryLoad(out var session))
-            ViewModel.PrepareUnlock(session.ServerUrl, session.Email);
+            ViewModel.PrepareInitialLoginState(session);
+        else
+            ViewModel.PrepareInitialLoginState(activeSession: null);
 
         InitializeComponent();
         Loaded += OnLoaded;
-        Unloaded += OnUnloaded;
         LoginForm.SizeChanged += OnLoginFormSizeChanged;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
     }
@@ -38,6 +43,149 @@ public sealed partial class LoginPage : Page
     private async void OnLogin(object sender, RoutedEventArgs e)
     {
         await ViewModel.LoginCommand.ExecuteAsync(null);
+    }
+
+    private async void OnClearLoginWithDeviceQuarantineClick(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_isQuarantineConfirmationOpen
+            || !ViewModel.CanClearLoginWithDeviceQuarantine)
+        {
+            return;
+        }
+
+        _isQuarantineConfirmationOpen = true;
+        try
+        {
+            if (await DialogHelper.ConfirmAsync(
+                    XamlRoot,
+                    "清除设备登录隔离？",
+                    "请先检查并撤销其他设备中的可疑会话。清除后，将重新检查此设备是否可使用设备登录。",
+                    "清除隔离")
+                && !_isDeactivated
+                && ViewModel.CanClearLoginWithDeviceQuarantine)
+            {
+                await ViewModel.ClearLoginWithDeviceQuarantineCommand.ExecuteAsync(null);
+            }
+        }
+        finally
+        {
+            _isQuarantineConfirmationOpen = false;
+        }
+    }
+
+    private async void OnClearPendingAccountDeletionClick(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_isAccountDeletionConfirmationOpen
+            || !ViewModel.CanRunAccountDeletionRecoveryAction
+            || !ViewModel.ShowClearPendingAccountDeletion)
+        {
+            return;
+        }
+
+        _isAccountDeletionConfirmationOpen = true;
+        try
+        {
+            if (await DialogHelper.ConfirmAsync(
+                    XamlRoot,
+                    "仅清除此设备上的数据？",
+                    "账户删除请求的服务器结果仍不确定。此前发送的删除请求仍可能稍后在服务器完成。成功后会写入永久安全隔离记录，并在本安装中永久禁用此账户标识与当前服务器端点组合。若日后确认账户仍存在，要在此安装中恢复，只能通过 Windows 应用重置清除此应用的全部本地数据。此操作不会再次向服务器发送删除请求。",
+                    "仅清除此设备")
+                && !_isDeactivated
+                && ViewModel.CanRunAccountDeletionRecoveryAction
+                && ViewModel.ShowClearPendingAccountDeletion)
+            {
+                await ViewModel.ClearPendingAccountDeletionLocalDataAsync();
+            }
+        }
+        finally
+        {
+            _isAccountDeletionConfirmationOpen = false;
+        }
+    }
+
+    private async void OnRequestFullLocalResetClick(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_isFullLocalResetConfirmationOpen
+            || !ViewModel.CanRequestFullLocalReset)
+        {
+            return;
+        }
+
+        _isFullLocalResetConfirmationOpen = true;
+        using var confirmationCancellation = new CancellationTokenSource();
+        _fullLocalResetConfirmationCancellation = confirmationCancellation;
+        var confirmation = new TextBox
+        {
+            Header = "输入 RESET 以确认",
+            PlaceholderText = "RESET",
+            MaxLength = 5,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        AutomationProperties.SetAutomationId(
+            confirmation,
+            "FullLocalResetConfirmationTextBox");
+        var warning = new TextBlock
+        {
+            Text = "此操作现在会记录重置请求并退出应用；所有保存账户、离线密码库、设备密钥、应用偏好和永久删除隔离记录会在下次启动、登录界面出现前完成删除。服务器上的账户和密码库数据不会受到影响。浏览器集成可能需要重新配置。",
+            TextWrapping = TextWrapping.Wrap,
+        };
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(warning);
+        content.Children.Add(confirmation);
+        var dialog = new ContentDialog
+        {
+            Title = "清除全部本机数据并退出？",
+            Content = content,
+            PrimaryButtonText = "清除全部本机数据并退出",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+            IsPrimaryButtonEnabled = false,
+            XamlRoot = XamlRoot,
+        };
+
+        void UpdateConfirmation(object _, TextChangedEventArgs __) =>
+            dialog.IsPrimaryButtonEnabled = string.Equals(
+                confirmation.Text,
+                "RESET",
+                StringComparison.Ordinal);
+
+        confirmation.TextChanged += UpdateConfirmation;
+        try
+        {
+            var result = await DialogHelper.ShowTrackedAsync(
+                dialog,
+                ct: confirmationCancellation.Token);
+            if (ReferenceEquals(
+                    _fullLocalResetConfirmationCancellation,
+                    confirmationCancellation))
+            {
+                _fullLocalResetConfirmationCancellation = null;
+            }
+            if (result == ContentDialogResult.Primary
+                && !_isDeactivated
+                && ViewModel.CanRequestFullLocalReset)
+            {
+                await ViewModel.RequestFullLocalResetCommand.ExecuteAsync(null);
+            }
+        }
+        finally
+        {
+            confirmation.TextChanged -= UpdateConfirmation;
+            confirmation.Text = string.Empty;
+            if (ReferenceEquals(
+                    _fullLocalResetConfirmationCancellation,
+                    confirmationCancellation))
+            {
+                _fullLocalResetConfirmationCancellation = null;
+            }
+            _isFullLocalResetConfirmationOpen = false;
+        }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -50,12 +198,20 @@ public sealed partial class LoginPage : Page
         ViewModel.RequestStageFocus();
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e)
+    private void OnUnloaded(object sender, RoutedEventArgs e) => Deactivate();
+
+    private void Deactivate()
     {
+        if (_isDeactivated)
+            return;
+
+        _isDeactivated = true;
+        _fullLocalResetConfirmationCancellation?.Cancel();
+        _fullLocalResetConfirmationCancellation = null;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         LoginForm.SizeChanged -= OnLoginFormSizeChanged;
         Loaded -= OnLoaded;
-        Unloaded -= OnUnloaded;
+        ViewModel.Deactivate();
     }
 
     public void RequestWindowFit() => QueueFitWindowToContent();
@@ -81,8 +237,14 @@ public sealed partial class LoginPage : Page
         {
             LoginFocusTarget.ServerUrl => ServerUrlTextBox,
             LoginFocusTarget.Email => EmailTextBox,
+            LoginFocusTarget.DeviceVerificationCode => DeviceVerificationCodeTextBox,
             LoginFocusTarget.TwoFactorCode => TwoFactorCodeTextBox,
+            LoginFocusTarget.NewMasterPassword => NewMasterPasswordBox,
             LoginFocusTarget.Pin => PinBox,
+            LoginFocusTarget.LoginWithDeviceCancel => CancelLoginWithDeviceButton,
+            LoginFocusTarget.AccountDeletionRecoveryAction =>
+                ContinueFromAccountDeletionRecoveryButton,
+            LoginFocusTarget.PrimaryAction => PrimaryAuthButton,
             _ when ViewModel.IsUnlockStage => UnlockPasswordBox,
             _ => MasterPasswordBox,
         };
@@ -106,7 +268,7 @@ public sealed partial class LoginPage : Page
     // 下次重新进入(含切换 PIN/主密码)按新 Stage 值再次自动尝试。
     private void TryAutoPromptHello()
     {
-        if (!(ViewModel.IsUnlockStage || ViewModel.IsPinUnlockStage))
+        if (!(ViewModel.ShowUnlockPanel || ViewModel.IsPinUnlockStage))
         {
             _helloAutoPromptedForStage = null;
             return;
@@ -140,6 +302,7 @@ public sealed partial class LoginPage : Page
     private static bool IsLayoutAffectingProperty(string? propertyName) =>
         propertyName is null
         or nameof(LoginViewModel.Stage)
+        or nameof(LoginViewModel.ShowUnlockPanel)
         or nameof(LoginViewModel.ShowCustomServerUrl)
         or nameof(LoginViewModel.ShowHelloUnlock)
         or nameof(LoginViewModel.HasStatus)
@@ -148,11 +311,48 @@ public sealed partial class LoginPage : Page
         or nameof(LoginViewModel.FormTitle)
         or nameof(LoginViewModel.FormSubtitle)
         or nameof(LoginViewModel.StepText)
-        or nameof(LoginViewModel.PrimaryButtonText);
+        or nameof(LoginViewModel.PrimaryButtonText)
+        or nameof(LoginViewModel.IsSsoPending)
+        or nameof(LoginViewModel.ShowCancelSso)
+        or nameof(LoginViewModel.ShowSavedAccounts)
+        or nameof(LoginViewModel.SavedAccounts)
+        or nameof(LoginViewModel.IsLoginWithDeviceAvailable)
+        or nameof(LoginViewModel.ShowLoginWithDeviceQuarantineNotice)
+        or nameof(LoginViewModel.ShowLoginWithDeviceQuarantineClearAction)
+        or nameof(LoginViewModel.LoginWithDeviceQuarantineTitle)
+        or nameof(LoginViewModel.LoginWithDeviceQuarantineMessage)
+        or nameof(LoginViewModel.ShowLoginWithDeviceOption)
+        or nameof(LoginViewModel.IsLoginWithDeviceStage)
+        or nameof(LoginViewModel.HasLoginWithDeviceFingerprint)
+        or nameof(LoginViewModel.LoginWithDeviceFingerprint)
+        or nameof(LoginViewModel.HasLoginWithDeviceExpiry)
+        or nameof(LoginViewModel.LoginWithDeviceExpiryText)
+        or nameof(LoginViewModel.ShowLoginWithDeviceTwoFactorExpiry)
+        or nameof(LoginViewModel.ShowCancelLoginWithDevice)
+        or nameof(LoginViewModel.ShowPrimaryAction)
+        or nameof(LoginViewModel.IsAccountDeletionRecoveryStage)
+        or nameof(LoginViewModel.AccountDeletionRecoveryNotice)
+        or nameof(LoginViewModel.AccountDeletionRecoveryTitle)
+        or nameof(LoginViewModel.AccountDeletionRecoveryMessage)
+        or nameof(LoginViewModel.AccountDeletionRecoveryContinueText)
+        or nameof(LoginViewModel.ShowClearPendingAccountDeletion)
+        or nameof(LoginViewModel.ShowRetryConfirmedAccountDeletionCleanup)
+        or nameof(LoginViewModel.ShowFullLocalResetAction)
+        or nameof(LoginViewModel.CanRequestFullLocalReset)
+        or nameof(LoginViewModel.HasApprovalFingerprint)
+        or nameof(LoginViewModel.ShowCancelDeviceApproval);
 
     private void OnGoToRegisterClick(object sender, RoutedEventArgs e)
     {
+        if (!ViewModel.CanEditServer)
+            return;
         global::App.App.Services.GetRequiredService<global::App.Services.INavigationService>().GoToRegister();
+    }
+
+    private void OnSavedAccountClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is SavedAccountOption account)
+            ViewModel.SelectSavedAccountCommand.Execute(account);
     }
 }
 

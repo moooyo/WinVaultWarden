@@ -39,6 +39,32 @@ public sealed class ApiClientIsolationTests
     }
 
     [Fact]
+    public async Task ServerConfigRole_ResolvesForAnonymousAndAuthenticatedTransports()
+    {
+        var anonymousTransport = new RecordingHandler(_ => Json(HttpStatusCode.OK, "{}"));
+        var anonymousFactory = new ApiClientFactory(_ => anonymousTransport);
+        var anonymous = anonymousFactory.CreateAnonymous<IServerConfigApiClient>(
+            ServerEndpoints.ForSelfHosted("https://vault.example"));
+
+        await anonymous.GetConfigAsync(TestContext.Current.CancellationToken);
+
+        var authenticatedTransport = new RecordingHandler(_ => Json(HttpStatusCode.OK, "{}"));
+        var endpoints = ServerEndpoints.ForSelfHosted("https://vault.example");
+        var authenticatedFactory = new ApiClientFactory(_ => authenticatedTransport);
+        var aggregate = authenticatedFactory.CreateAuthenticated(
+            endpoints,
+            () => new AccessTokenBinding("account", endpoints, 1, "token-a"),
+            (_, _) => Task.FromResult(false));
+        var authenticated = Assert.IsAssignableFrom<IServerConfigApiClient>(aggregate);
+
+        await authenticated.GetConfigAsync(TestContext.Current.CancellationToken);
+
+        Assert.Null(anonymousTransport.Requests.Single().Headers.Authorization);
+        Assert.Equal("token-a", authenticatedTransport.Requests.Single().Headers.Authorization?.Parameter);
+        Assert.Equal("/api/config", authenticatedTransport.Requests.Single().RequestUri!.AbsolutePath);
+    }
+
+    [Fact]
     public async Task AuthenticatedClient_AttachesOnlyToMatchingOrigin()
     {
         var transport = new RecordingHandler(_ => Json(HttpStatusCode.OK, "{}"));

@@ -104,6 +104,8 @@ public class VaultViewModelAttachmentBusyTests
         var vaultService = new GatedVaultUiService();
         var attachments = new GatedAttachmentUiService();
         var vm = new VaultViewModel(vaultService, attachments: attachments);
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.EditorDraft!.Name = "Blocked";
 
         var download = vm.DownloadAttachmentAsync(
             "1",
@@ -115,8 +117,6 @@ public class VaultViewModelAttachmentBusyTests
         Assert.Equal("正在下载附件…", vm.BusyMessage);
         Assert.False(vm.CanStartVaultOperation);
 
-        vm.BeginAdd(VaultItemKind.Login);
-        vm.EditorDraft!.Name = "Blocked";
         var save = await vm.SaveDraftAsync();
 
         Assert.Equal(UiOperationStatus.Busy, save.Status);

@@ -134,17 +134,23 @@ public sealed partial class FieldRow : UserControl
         var clipboard = global::App.App.Services?.GetService<global::App.Services.IClipboardService>();
         if (clipboard is null)
         {
-            // 回退:无 DI(设计时)时直接写,保证不崩。
-            var dp = new DataPackage();
-            dp.SetText(value);
-            Clipboard.SetContent(dp);
+            SetProtectedClipboardText(value);
             return;
         }
 
-        if (IsSecret)
-            clipboard.SetSecretText(value);
-        else
-            clipboard.SetText(value);
+        // Reveal state affects presentation only. Every vault field uses the protected clipboard policy.
+        clipboard.SetText(value);
+    }
+
+    private static void SetProtectedClipboardText(string value)
+    {
+        var package = new DataPackage();
+        package.SetText(value);
+        Clipboard.SetContentWithOptions(package, new ClipboardContentOptions
+        {
+            IsAllowedInHistory = false,
+            IsRoamable = false,
+        });
     }
 
     private async void OnOpen(object sender, RoutedEventArgs e)

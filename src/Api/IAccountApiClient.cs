@@ -7,5 +7,8 @@ public interface IAccountApiClient : IAuthenticatedApiRole
 {
     Task UpdateProfileAsync(ProfileUpdateRequest request, CancellationToken ct = default);
     Task ChangePasswordAsync(ChangePasswordRequest request, CancellationToken ct = default);
+    Task UpdateTemporaryPasswordAsync(UpdateTemporaryPasswordRequest request, CancellationToken ct = default);
     Task ChangeKdfAsync(ChangeKdfRequest request, CancellationToken ct = default);
+    Task RequestAccountDeletionOtpAsync(CancellationToken ct = default);
+    Task DeleteAccountAsync(DeleteAccountRequest request, CancellationToken ct = default);
 }

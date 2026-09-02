@@ -1,5 +1,3 @@
-using System.Text.Json.Serialization;
-
 namespace Api.Dtos;
 
 // ===== 响应（camelCase 由 ApiJsonContext 统一）=====
@@ -86,9 +84,4 @@ public sealed class EmergencyAccessPasswordRequest
 {
     public string NewMasterPasswordHash { get; init; } = string.Empty;
     public string Key { get; init; } = string.Empty;
-}
-
-public sealed class DeleteAccountRequest
-{
-    public string MasterPasswordHash { get; init; } = string.Empty;
 }

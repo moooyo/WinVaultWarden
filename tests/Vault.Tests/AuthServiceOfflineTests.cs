@@ -19,6 +19,8 @@ public class AuthServiceOfflineTests
     private const string Password = "correct horse battery staple";
     private const string Server = "https://vault.example";
     private const int Iterations = 600_000;
+    private const string RefreshedAccessToken =
+        "e30.eyJzdWIiOiJtZUBleGFtcGxlLmNvbSJ9.c2ln";
 
     private readonly CryptoService _crypto = new();
 
@@ -55,7 +57,7 @@ public class AuthServiceOfflineTests
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
-            """{"access_token":"new-access","refresh_token":"new-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
+            """{"access_token":"e30.eyJzdWIiOiJtZUBleGFtcGxlLmNvbSJ9.c2ln","refresh_token":"new-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, FreshSyncJson(fixture.UserKey)));
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, DevicesJson()));
         var session = new VaultSession();
@@ -69,7 +71,7 @@ public class AuthServiceOfflineTests
         Assert.False(session.DataStale);
         var cipher = Assert.Single(session.Ciphers);
         Assert.Equal("Fresh", cipher.Name);
-        Assert.Equal("new-access", session.AccessToken);
+        Assert.Equal(RefreshedAccessToken, session.AccessToken);
         Assert.Equal(2, store.SaveCount); // 预置 1 次 + bootstrap 内 SyncCoreAsync 成功后再写 1 次
     }
 
@@ -115,7 +117,7 @@ public class AuthServiceOfflineTests
             null));
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
-            """{"access_token":"new-access","refresh_token":"new-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
+            """{"access_token":"e30.eyJzdWIiOiJtZUBleGFtcGxlLmNvbSJ9.c2ln","refresh_token":"new-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(
             HttpStatusCode.OK,
             FreshSyncJson(fixture.UserKey)));
@@ -137,7 +139,7 @@ public class AuthServiceOfflineTests
         Assert.IsType<AuthResult.Success>(result);
         Assert.Equal(Core.Session.VaultState.Unlocked, session.State);
         Assert.NotNull(session.UserKey);
-        Assert.Equal("new-access", session.AccessToken);
+        Assert.Equal(RefreshedAccessToken, session.AccessToken);
         Assert.Equal("Fresh", Assert.Single(session.Ciphers).Name);
         Assert.Equal(3, handler.Requests.Count);
     }
@@ -278,14 +280,14 @@ public class AuthServiceOfflineTests
         // 2) 网络恢复:凭回种的 refresh token 触发真实刷新
         var onlineHandler = new FakeHttpMessageHandler();
         onlineHandler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
-            """{"access_token":"recovered-access","refresh_token":"rotated-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
+            """{"access_token":"e30.eyJzdWIiOiJtZUBleGFtcGxlLmNvbSJ9.c2ln","refresh_token":"rotated-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
         var onlineApi = new ApiClient(new HttpClient(onlineHandler), new ServerOrigin("https://vault.example"));
         var refresher = new TokenRefreshService(FakeVaultApiClientProvider.ForAnonymous<IIdentityApiClient>(onlineApi), session, tokenStore);
 
         var refreshed = await refresher.TryRefreshAsync(session.CaptureLease(), TestContext.Current.CancellationToken);
 
         Assert.True(refreshed);
-        Assert.Equal("recovered-access", session.AccessToken);
+        Assert.Equal(RefreshedAccessToken, session.AccessToken);
         Assert.Equal("rotated-refresh", session.RefreshToken);
     }
 
@@ -313,7 +315,10 @@ public class AuthServiceOfflineTests
         return cache;
     }
 
-    private SyncResponse BuildSync(string cipherName, SymmetricCryptoKey userKey)
+    private SyncResponse BuildSync(
+        string cipherName,
+        SymmetricCryptoKey userKey,
+        string? securityStamp = null)
     {
         var name = _crypto.Encrypt(System.Text.Encoding.UTF8.GetBytes(cipherName), userKey).ToString();
         var dto = new CipherDto(
@@ -322,11 +327,20 @@ public class AuthServiceOfflineTests
             SshKey: null, Fields: null, CreationDate: null, RevisionDate: null, DeletedDate: null,
             Attachments: null, PasswordHistory: null);
         // profile.Id 须等于登录/解锁租约 AccountId(过渡期为 Email),否则同步/缓存门禁拒绝。
-        return new SyncResponse("sync", new ProfileDto(Email, Email, "Me", null, null), [], [dto]);
+        return new SyncResponse(
+            "sync",
+            new ProfileDto(Email, Email, "Me", null, null)
+            {
+                SecurityStamp = securityStamp,
+            },
+            [],
+            [dto]);
     }
 
     private string FreshSyncJson(SymmetricCryptoKey userKey) =>
-        JsonSerializer.Serialize(BuildSync("Fresh", userKey), ApiJsonContext.Default.SyncResponse);
+        JsonSerializer.Serialize(
+            BuildSync("Fresh", userKey, "stamp-1"),
+            ApiJsonContext.Default.SyncResponse);
 
     private static string DevicesJson() =>
         """{"data":[{"id":"d1","name":"Desktop","type":6,"identifier":"d1","creationDate":"2026-06-24T00:00:00Z","isTrusted":false,"object":"device"}],"object":"list","continuationToken":null}""";

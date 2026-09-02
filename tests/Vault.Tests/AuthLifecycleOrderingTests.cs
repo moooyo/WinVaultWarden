@@ -39,7 +39,7 @@ public class AuthLifecycleOrderingTests
         session.Logout();
         store.Clear();
         response.SetResult(new ConnectTokenResult.Success(new TokenResponse(
-            "new-a",
+            TestAccessToken("account-a"),
             "new-r",
             3600,
             "Bearer",
@@ -52,6 +52,105 @@ public class AuthLifecycleOrderingTests
         Assert.False(await running);
         Assert.False(store.TryLoad(out _));
         Assert.Null(session.AccessToken);
+    }
+
+    [Fact]
+    public async Task TryRefreshAsync_LockDuringAwaitPreservesRotatedRefreshToken()
+    {
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var response = new TaskCompletionSource<ConnectTokenResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var identity = new ControlledIdentityApiClient(async token =>
+        {
+            entered.TrySetResult();
+            return await response.Task.WaitAsync(token);
+        });
+        var session = SessionWithPersistedTokens(out var lease, out var store);
+        var cache = CreateCache(new FakeCacheStore(), session);
+        var auth = CreateAuthServiceForLifecycle(session, store, cache);
+        var refresher = new TokenRefreshService(
+            FakeVaultApiClientProvider.ForAnonymous<IIdentityApiClient>(identity),
+            session,
+            store);
+
+        var running = refresher.TryRefreshAsync(
+            lease,
+            TestContext.Current.CancellationToken);
+        await entered.Task.WaitAsync(TestContext.Current.CancellationToken);
+        await auth.LockAsync(TestContext.Current.CancellationToken);
+        response.SetResult(new ConnectTokenResult.Success(new TokenResponse(
+            TestAccessToken("account-a"),
+            "new-r",
+            3600,
+            "Bearer",
+            "api offline_access",
+            null,
+            null,
+            KdfType.Pbkdf2,
+            600_000)));
+
+        Assert.False(await running);
+        Assert.Equal(VaultState.Locked, session.State);
+        Assert.Null(session.AccessToken);
+        Assert.Null(session.RefreshToken);
+        Assert.True(store.TryLoad(out var persisted));
+        Assert.Equal("new-r", persisted.RefreshToken);
+        Assert.Equal(session.Generation, persisted.Generation);
+    }
+
+    [Fact]
+    public async Task TryRefreshAsync_OfflineUnlockDescendantAdoptsLateRotation()
+    {
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var response = new TaskCompletionSource<ConnectTokenResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var identity = new ControlledIdentityApiClient(async token =>
+        {
+            entered.TrySetResult();
+            return await response.Task.WaitAsync(token);
+        });
+        var session = SessionWithPersistedTokens(out var lease, out var store);
+        var refresher = new TokenRefreshService(
+            FakeVaultApiClientProvider.ForAnonymous<IIdentityApiClient>(identity),
+            session,
+            store);
+
+        var running = refresher.TryRefreshAsync(
+            lease,
+            TestContext.Current.CancellationToken);
+        await entered.Task.WaitAsync(TestContext.Current.CancellationToken);
+        var lockedLease = Assert.IsType<VaultSessionLease>(session.Lock());
+        Assert.True(session.TryCommit(lockedLease, () =>
+        {
+            Assert.True(store.TryLoad(out var persisted));
+            store.Save(persisted with
+            {
+                Generation = lockedLease.Generation,
+            });
+            session.SetUnlockedKey(new SymmetricCryptoKey(new byte[64]));
+            session.SetRefreshTokenOnly("old-refresh");
+        }));
+        response.SetResult(new ConnectTokenResult.Success(new TokenResponse(
+            TestAccessToken("account-a"),
+            "new-r",
+            3600,
+            "Bearer",
+            "api offline_access",
+            null,
+            null,
+            KdfType.Pbkdf2,
+            600_000)));
+
+        Assert.False(await running);
+        Assert.Equal(VaultState.Unlocked, session.State);
+        Assert.Equal(TestAccessToken("account-a"), session.AccessToken);
+        Assert.Equal("new-r", session.RefreshToken);
+        Assert.True(store.TryLoad(out var updated));
+        Assert.Equal("new-r", updated.RefreshToken);
+        Assert.Equal(lockedLease.Generation, updated.Generation);
+        session.Logout();
     }
 
     [Fact]
@@ -175,7 +274,10 @@ public class AuthLifecycleOrderingTests
             await releaseSync.Task;
             return new SyncResponse(
                 "sync",
-                new ProfileDto("account-a", emailA, "A", null, null),
+                new ProfileDto("account-a", emailA, "A", null, null)
+                {
+                    SecurityStamp = "stamp-1",
+                },
                 [],
                 []);
         });

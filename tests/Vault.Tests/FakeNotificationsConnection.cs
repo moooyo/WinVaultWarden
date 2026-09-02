@@ -50,10 +50,14 @@ public sealed class FakeNotificationsConnection : INotificationsConnection
     /// <summary>记录最近一次 ConnectAsync 收到的 accessToken。</summary>
     public string? LastAccessToken { get; private set; }
 
+    /// <summary>Records access tokens in connection-attempt order.</summary>
+    public List<string> AccessTokens { get; } = [];
+
     public Task ConnectAsync(string serverUrl, string accessToken, CancellationToken ct)
     {
         ConnectCallCount++;
         LastAccessToken = accessToken;
+        AccessTokens.Add(accessToken);
 
         if (ConnectCallCount <= ThrowOnConnectCount)
             throw new InvalidOperationException($"Fake connect failure #{ConnectCallCount}");
@@ -131,11 +135,13 @@ public sealed class FakeNotificationDispatcher : Vault.INotificationDispatcher
 {
     public List<NotificationMessage> Dispatched { get; } = new();
     public List<Core.Session.VaultSessionLease> Leases { get; } = new();
+    public bool ThrowAfterConnectionRebuild { get; init; }
 
     public event Action? VaultChanged;
     public event Action? SendsChanged;
     public event Action? AuthRequestsChanged;
     public event Action? LoggedOut;
+    public event Action? ConnectionRebuildRequested;
 
     public Task DispatchAsync(
         Core.Session.VaultSessionLease lease, NotificationMessage msg, CancellationToken ct)
@@ -157,6 +163,12 @@ public sealed class FakeNotificationDispatcher : Vault.INotificationDispatcher
                 break;
             case Core.Enums.UpdateType.AuthRequest:
                 AuthRequestsChanged?.Invoke();
+                break;
+            case Core.Enums.UpdateType.SyncOrgKeys:
+                ConnectionRebuildRequested?.Invoke();
+                if (ThrowAfterConnectionRebuild)
+                    throw new InvalidOperationException("post-sync UI refresh failed");
+                VaultChanged?.Invoke();
                 break;
             default:
                 VaultChanged?.Invoke();
@@ -210,6 +222,7 @@ public sealed class BlockingFakeConnection : INotificationsConnection
 public sealed class FakeTokenRefresher : Core.Services.ITokenRefresher
 {
     public bool Result { get; init; } = true;
+    public Func<Core.Session.VaultSessionLease, CancellationToken, Task<bool>>? Handler { get; init; }
     public int CallCount { get; private set; }
     public List<Core.Session.VaultSessionLease> Leases { get; } = new();
 
@@ -219,6 +232,8 @@ public sealed class FakeTokenRefresher : Core.Services.ITokenRefresher
     {
         Leases.Add(lease);
         CallCount++;
-        return Task.FromResult(Result);
+        return Handler is null
+            ? Task.FromResult(Result)
+            : Handler(lease, ct);
     }
 }

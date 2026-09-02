@@ -56,6 +56,22 @@ public class VaultPageStateXamlTests
     }
 
     [Fact]
+    public void ListColumn_HasOrganizationUnavailableInfoBar_BoundToDedicatedState()
+    {
+        var document = LoadXaml();
+        var infoBar = document
+            .Descendants(Xaml + "InfoBar")
+            .Single(b => b.Attribute(X + "Name")?.Value == "VaultOrganizationUnavailableInfoBar");
+
+        Assert.Contains(
+            "ViewModel.UnsupportedOrganizationCipherMessage",
+            infoBar.Attribute("Message")?.Value);
+        Assert.Contains(
+            "ViewModel.HasUnsupportedOrganizationCiphers",
+            infoBar.Attribute("IsOpen")?.Value);
+    }
+
+    [Fact]
     public void ListColumn_HasOfflineInfoBar_BoundToGenericStaleState()
     {
         var document = LoadXaml();
@@ -81,7 +97,7 @@ public class VaultPageStateXamlTests
         Assert.Equal("Warning", infoBar.Attribute("Severity")?.Value);
         Assert.Equal("False", infoBar.Attribute("IsClosable")?.Value);
         Assert.Contains("ViewModel.OperationWarning", infoBar.Attribute("Message")?.Value);
-        Assert.Contains("ViewModel.HasOperationWarning", infoBar.Attribute("IsOpen")?.Value);
+        Assert.Contains("ViewModel.ShowOperationWarningInfo", infoBar.Attribute("IsOpen")?.Value);
         Assert.DoesNotContain("OperationError", infoBar.Attribute("Message")?.Value);
     }
 

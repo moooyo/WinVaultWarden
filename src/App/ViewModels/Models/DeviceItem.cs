@@ -6,4 +6,5 @@ public sealed record DeviceItem(
     string Name,
     string Glyph,
     string LastActive,
-    bool IsCurrent);
+    bool IsCurrent,
+    bool IsTrusted = false);

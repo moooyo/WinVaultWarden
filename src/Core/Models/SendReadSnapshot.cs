@@ -22,4 +22,5 @@ public sealed record SendObservation(
 public sealed record SendReadSnapshot(
     IReadOnlyList<SendObservation> Observations,
     VaultSessionLease? SessionLease = null,
-    bool IsComplete = true);
+    bool IsComplete = true,
+    bool IsStale = false);

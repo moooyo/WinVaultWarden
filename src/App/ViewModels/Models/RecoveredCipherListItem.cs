@@ -42,6 +42,9 @@ public sealed class RecoveredCipherListItem
         CipherType.Card => "卡片",
         CipherType.Identity => "身份",
         CipherType.SshKey => "SSH 密钥",
+        CipherType.BankAccount => "银行账户",
+        CipherType.DriversLicense => "驾驶证",
+        CipherType.Passport => "护照",
         _ => "其他条目",
     };
 
@@ -50,6 +53,9 @@ public sealed class RecoveredCipherListItem
         CipherType.Login => Normalize(cipher.Login?.Username),
         CipherType.Card => Normalize(cipher.Card?.Brand),
         CipherType.SshKey => Normalize(cipher.Ssh?.Fingerprint),
+        CipherType.BankAccount => Normalize(cipher.BankAccount?.BankName),
+        CipherType.DriversLicense => Normalize(cipher.DriversLicense?.IssuingCountry),
+        CipherType.Passport => Normalize(cipher.Passport?.IssuingCountry),
         _ => string.Empty,
     };
 

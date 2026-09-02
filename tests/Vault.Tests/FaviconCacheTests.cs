@@ -136,11 +136,14 @@ public class FaviconCacheTests : IDisposable
     private sealed class GatedHandler : HttpMessageHandler
     {
         private readonly TaskCompletionSource _gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly Func<HttpRequestMessage, HttpResponseMessage> _fn;
         public GatedHandler(Func<HttpRequestMessage, HttpResponseMessage> fn) => _fn = fn;
+        public Task Started => _started.Task;
         public void Release() => _gate.TrySetResult();
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage r, CancellationToken ct)
         {
+            _started.TrySetResult();
             await _gate.Task; // 卡住共享抓取,直到测试放行,确保 WaitAsync 观察到的是"未完成"的任务
             return _fn(r);
         }
@@ -179,6 +182,42 @@ public class FaviconCacheTests : IDisposable
 
         Assert.Empty(Directory.EnumerateFileSystemEntries(_dir));
         Assert.Equal(0, handler.Calls); // Clear 不触网
+    }
+
+    [Fact]
+    public void ClearForAccountDeletion_DeletesAllFilesAndReportsOutcome()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllBytes(Path.Combine(_dir, "icon.png"), [1, 2, 3]);
+        File.WriteAllBytes(Path.Combine(_dir, "icon.png.tmp"), [4]);
+        var cache = new FaviconCache(
+            new HttpClient(new StubHandler(_ => Png([1]))),
+            Session(),
+            _dir);
+
+        Assert.Equal(
+            Core.Services.FaviconCacheClearStatus.Cleared,
+            cache.ClearForAccountDeletion());
+        Assert.Empty(Directory.EnumerateFileSystemEntries(_dir));
+        Assert.Equal(
+            Core.Services.FaviconCacheClearStatus.Absent,
+            cache.ClearForAccountDeletion());
+    }
+
+    [Fact]
+    public async Task ClearForAccountDeletion_PreventsInflightFetchFromRepopulatingDisk()
+    {
+        var handler = new GatedHandler(_ => Png([1, 2, 3]));
+        var cache = new FaviconCache(new HttpClient(handler), Session(), _dir);
+        var fetch = cache.GetAsync("late.example", TestContext.Current.CancellationToken);
+        await handler.Started.WaitAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            Core.Services.FaviconCacheClearStatus.Absent,
+            cache.ClearForAccountDeletion());
+        handler.Release();
+        Assert.Equal([1, 2, 3], await fetch);
+        Assert.False(Directory.Exists(_dir));
     }
 
     [Fact]

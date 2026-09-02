@@ -26,7 +26,11 @@ public sealed record BwItem(
     BwSecureNote? SecureNote,
     BwSshKey? SshKey,
     IReadOnlyList<BwField>? Fields,
-    IReadOnlyList<BwPasswordHistory>? PasswordHistory);
+    IReadOnlyList<BwPasswordHistory>? PasswordHistory,
+    BwBankAccount? BankAccount = null,
+    BwDriversLicense? DriversLicense = null,
+    BwPassport? Passport = null,
+    DateTimeOffset? ArchivedDate = null);
 
 public sealed record BwLogin(
     string? Username,
@@ -87,7 +91,47 @@ public sealed record BwSecureNote(int Type);
 
 public sealed record BwSshKey(string? PrivateKey, string? PublicKey, string? KeyFingerprint);
 
-public sealed record BwField(string? Name, string? Value, int Type);
+public sealed record BwBankAccount(
+    string? BankName,
+    string? NameOnAccount,
+    string? AccountType,
+    string? AccountNumber,
+    string? RoutingNumber,
+    string? BranchNumber,
+    string? Pin,
+    string? SwiftCode,
+    string? Iban,
+    string? BankContactPhone);
+
+public sealed record BwDriversLicense(
+    string? FirstName,
+    string? MiddleName,
+    string? LastName,
+    string? DateOfBirth,
+    string? LicenseNumber,
+    string? IssuingCountry,
+    string? IssuingState,
+    string? IssueDate,
+    string? ExpirationDate,
+    string? IssuingAuthority,
+    string? LicenseClass);
+
+public sealed record BwPassport(
+    string? Surname,
+    string? GivenName,
+    string? DateOfBirth,
+    string? Sex,
+    string? BirthPlace,
+    string? Nationality,
+    string? IssuingCountry,
+    string? PassportNumber,
+    string? PassportType,
+    string? NationalIdentificationNumber,
+    string? IssuingAuthority,
+    string? IssueDate,
+    string? ExpirationDate);
+
+public sealed record BwField(string? Name, string? Value, int Type, int? LinkedId = null);
 
 public sealed record BwPasswordHistory(string? Password, string? LastUsedDate);
 

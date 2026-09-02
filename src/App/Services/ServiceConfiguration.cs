@@ -27,8 +27,23 @@ public static class ServiceConfiguration
             sp.GetRequiredService<SessionTerminationSignal>());
         services.AddSingleton<CryptoService>();
         services.AddSingleton<FingerprintService>();
-        services.AddSingleton<ITokenStore, DpapiTokenStore>();
-        services.AddSingleton<ICacheStore, DpapiVaultCacheStore>();
+        services.AddSingleton<IAccountDeletionCoordinationGate,
+            FileAccountDeletionCoordinationGate>();
+        services.AddSingleton<IAccountDeletionTombstoneStore,
+            DpapiAccountDeletionTombstoneStore>();
+        services.AddSingleton<IAccountDeletionLocalWriteGuard,
+            AccountDeletionLocalWriteGuard>();
+        services.AddSingleton<ITokenStore>(sp => new DpapiTokenStore(
+            sp.GetRequiredService<IAccountDeletionLocalWriteGuard>()));
+        services.AddSingleton<IDeviceIdentifierProvider, PersistentDeviceIdentifierProvider>();
+        services.AddSingleton<IDeviceKeyStore>(sp => new DpapiDeviceKeyStore(
+            sp.GetRequiredService<IAccountDeletionLocalWriteGuard>()));
+        services.AddSingleton<ISavedAccountService>(sp =>
+            new SavedAccountService(
+                sp.GetRequiredService<ITokenStore>(),
+                sp.GetRequiredService<IAccountDeletionService>()));
+        services.AddSingleton<ICacheStore>(sp => new DpapiVaultCacheStore(
+            sp.GetRequiredService<IAccountDeletionLocalWriteGuard>()));
         services.AddSingleton<IApiClientFactory, ApiClientFactory>();
         // 会话绑定的 Api client 供给器:匿名角色按 origin、认证角色按当前 lease 解析。
         // 401 刷新回调绑定显式 lease(Task 7),仅当租约仍当前时提交轮换后的 token。
@@ -39,6 +54,10 @@ public static class ServiceConfiguration
                 (lease, failed, ct) => sp.GetRequiredService<ITokenRefresher>()
                     .TryRefreshAsync(lease, failed, ct)));
         services.AddSingleton<CipherEncryptor>();
+        services.AddSingleton<OrganizationKeyResolver>();
+        services.AddSingleton<ICipherCreatePendingStore>(sp =>
+            new DpapiCipherCreatePendingStore(
+                sp.GetRequiredService<IAccountDeletionLocalWriteGuard>()));
         services.AddSingleton<IVaultWriteService, Vault.VaultWriteService>();
         services.AddSingleton<VaultDecryptor>();
         services.AddSingleton<VaultCacheService>();
@@ -51,6 +70,24 @@ public static class ServiceConfiguration
         // 必须单例:401 并发去重依赖 TokenRefreshService 实例级 SemaphoreSlim + 双检
         // (见 Vault/TokenRefreshService.cs)。改为 transient 会让每个 401 各自刷新,破坏去重。
         services.AddSingleton<ITokenRefresher, Vault.TokenRefreshService>();
+        services.AddSingleton<IKeyConnectorClient, KeyConnectorClient>();
+        services.AddSingleton<TrustedDeviceCrypto>();
+        services.AddSingleton<IDeviceTrustCompensationClient, DeviceTrustCompensationClient>();
+        services.AddSingleton<IDeviceTrustService, DeviceTrustService>();
+        services.AddSingleton<ITrustedDeviceApprovalStore>(sp =>
+            new DpapiTrustedDeviceApprovalStore(
+                sp.GetRequiredService<IAccountDeletionLocalWriteGuard>()));
+        services.AddSingleton<ITrustedDeviceApprovalService, TrustedDeviceApprovalService>();
+        services.AddSingleton<ITdeV2JitPendingStore>(sp =>
+            new DpapiTdeV2JitPendingStore(
+                sp.GetRequiredService<IAccountDeletionLocalWriteGuard>()));
+        services.AddSingleton<ITdeV2JitProvisioningService, TdeV2JitProvisioningService>();
+        services.AddSingleton<ILoginWithDeviceQuarantineStore,
+            DpapiLoginWithDeviceQuarantineStore>();
+        services.AddSingleton<IAccountDeletionService, Vault.AccountDeletionService>();
+        services.AddSingleton<AccountDeletionRecoveryHost>();
+        services.AddSingleton<ILocalDataResetService, LocalDataResetService>();
+        services.AddSingleton<ILoginWithDeviceService, LoginWithDeviceService>();
         services.AddSingleton<IAuthService, Vault.AuthService>();
         services.AddSingleton<Vault.SyncService>();
         services.AddSingleton<ISyncService>(sp => sp.GetRequiredService<Vault.SyncService>());
@@ -84,6 +121,15 @@ public static class ServiceConfiguration
         services.AddSingleton<IPinService, Vault.PinService>();
         services.AddSingleton<IHelloUnlockService, HelloUnlockService>();
         services.AddSingleton<IWindowsHelloAuthenticator, WindowsHelloAuthenticator>();
+        services.AddSingleton<IExternalUriLauncher, WindowsExternalUriLauncher>();
+        services.AddSingleton<ISsoAuthorizationService, LoopbackSsoAuthorizationService>();
+        services.AddSingleton<IWebAuthnWindowHandleProvider, MainWindowWebAuthnHandleProvider>();
+        services.AddSingleton<WindowsWebAuthnTwoFactorService>();
+        services.AddSingleton<IWebAuthnTwoFactorService>(sp =>
+            sp.GetRequiredService<WindowsWebAuthnTwoFactorService>());
+        services.AddSingleton<IWebAuthnTwoFactorRegistrationService>(sp =>
+            sp.GetRequiredService<WindowsWebAuthnTwoFactorService>());
+        services.AddSingleton<IDuoTwoFactorService, DuoWebViewTwoFactorService>();
         services.AddSingleton<ITwoFactorUiService>(sp =>
             new TwoFactorUiService(sp.GetRequiredService<ITwoFactorService>()));
         services.AddSingleton<IAuthRequestUiService>(sp =>
@@ -138,6 +184,15 @@ public static class ServiceConfiguration
             sp.GetRequiredService<AccountPrefill>(),
             sp.GetRequiredService<IWindowsHelloAuthenticator>(),
             sp.GetRequiredService<IHelloUnlockService>(),
+            sp.GetRequiredService<ISavedAccountService>(),
+            sp.GetRequiredService<ISsoAuthorizationService>(),
+            sp.GetRequiredService<IWebAuthnTwoFactorService>(),
+            sp.GetRequiredService<IDuoTwoFactorService>(),
+            sp.GetRequiredService<ITokenStore>(),
+            sp.GetRequiredService<ITrustedDeviceApprovalService>(),
+            sp.GetRequiredService<IAccountDeletionService>(),
+            sp.GetRequiredService<AccountDeletionRecoveryHost>(),
+            sp.GetRequiredService<ILocalDataResetService>(),
             sp.GetRequiredService<IAppLifecycleCoordinator>())));
         services.AddTransient<VaultViewModel>(sp =>
             TrackSensitive(sp, ActivatorUtilities.CreateInstance<VaultViewModel>(sp)));
@@ -156,7 +211,11 @@ public static class ServiceConfiguration
                 sp.GetRequiredService<IWindowsHelloAuthenticator>(),
                 sp.GetRequiredService<IHelloUnlockService>(),
                 sp.GetRequiredService<IAppLifecycleCoordinator>(),
-                browserIntegrationSupported: !AboutInfo.IsPackaged));
+                browserIntegrationSupported: !AboutInfo.IsPackaged,
+                vault: sp.GetRequiredService<IVaultService>(),
+                deviceTrust: sp.GetRequiredService<IDeviceTrustService>(),
+                webAuthnRegistration: sp.GetRequiredService<IWebAuthnTwoFactorRegistrationService>(),
+                accountDeletion: sp.GetRequiredService<IAccountDeletionService>()));
         services.AddTransient<DevicesViewModel>(sp =>
             new DevicesViewModel(
                 sp.GetRequiredService<IDeviceUiService>(),
@@ -168,6 +227,7 @@ public static class ServiceConfiguration
             new PasswordStrengthEvaluator(
                 new Omnimatch(
                     new DictionaryMatcher(FrequencyDictionaries.Load()))));
+        services.AddSingleton<MasterPasswordPolicyEvaluator>();
         services.AddSingleton<IPwnedPasswordsClient>(_ =>
             new PwnedPasswordsClient(new HttpClient()));
         services.AddSingleton<IVaultHealthService, Vault.VaultHealthService>();
@@ -192,13 +252,17 @@ public static class ServiceConfiguration
                 sp.GetRequiredService<VaultDecryptor>(),
                 sp.GetRequiredService<VaultSession>(),
                 sp.GetRequiredService<ISyncService>(),
-                sp.GetRequiredService<ISessionTerminationSink>()));
+                sp.GetRequiredService<ISessionTerminationSink>(),
+                sp.GetRequiredService<IDeviceIdentifierProvider>(),
+                sp.GetRequiredService<ITokenStore>(),
+                sp.GetRequiredService<VaultCacheService>()));
         services.AddSingleton<INotificationsService>(sp =>
             new NotificationsService(
                 () => new NotificationsConnection(),
                 sp.GetRequiredService<INotificationDispatcher>(),
                 sp.GetRequiredService<VaultSession>(),
-                sp.GetRequiredService<ITokenRefresher>()));
+                sp.GetRequiredService<ITokenRefresher>(),
+                sp.GetRequiredService<ISyncService>()));
         // ── 导航服务 ──────────────────────────────────────────────────────────
         // 单例:MainWindow 解析具体类型注入 Frame,页面解析接口下沉导航动作。
         services.AddSingleton<FrameNavigationService>();
@@ -213,12 +277,12 @@ public static class ServiceConfiguration
             var ui = sp.GetRequiredService<IUiDispatcher>();
 
             void Dispatch(Microsoft.UI.Dispatching.DispatcherQueueHandler handler)
-                => ui.Enqueue(() => handler());
+                => _ = ui.Enqueue(() => handler());
 
             return new NotificationsHost(
                 svc,
                 onVaultChanged: () => Dispatch(() =>
-                    global::App.App.MainWindow?.RefreshVaultList()),
+                    global::App.App.MainWindow?.RefreshVaultSnapshot()),
                 onSendsChanged: () => Dispatch(() =>
                     global::App.App.MainWindow?.RefreshSendList()),
                 onAuthRequestsChanged: () => Dispatch(() =>
@@ -229,13 +293,53 @@ public static class ServiceConfiguration
         services.AddSingleton<SessionTerminationHost>(sp =>
             new SessionTerminationHost(
                 sp.GetRequiredService<ISessionTerminationSource>(),
-                notice => sp.GetRequiredService<IUiDispatcher>().Enqueue(() =>
+                (intent, notice) =>
                 {
-                    _ = sp.GetRequiredService<IAppLifecycleCoordinator>()
-                        .RequestAsync(
-                            AppLifecycleIntent.RemoteLogout,
-                            notice.InvalidatedSession);
-                })));
+                    var lifecycle = sp.GetRequiredService<IAppLifecycleCoordinator>();
+                    void FailClosed()
+                    {
+                        try
+                        {
+                            sp.GetRequiredService<IAuthService>()
+                                .LogoutAsync(
+                                    notice.InvalidatedSession,
+                                    CancellationToken.None)
+                                .GetAwaiter()
+                                .GetResult();
+                        }
+                        catch (Exception exception)
+                        {
+                            CrashLogger.WriteRedacted(
+                                "Lifecycle:termination-durable-purge",
+                                exception);
+                        }
+
+                        lifecycle.FailClosedSynchronously();
+                    }
+
+                    var queued = false;
+                    try
+                    {
+                        queued = sp.GetRequiredService<IUiDispatcher>().Enqueue(() =>
+                        {
+                            try
+                            {
+                                _ = lifecycle.RequestAsync(
+                                    intent,
+                                    notice.InvalidatedSession);
+                            }
+                            catch
+                            {
+                                FailClosed();
+                            }
+                        });
+                    }
+                    finally
+                    {
+                        if (!queued)
+                            FailClosed();
+                    }
+                }));
 
         // ── 生命周期协调:唯一注册点 ──────────────────────────────────────────
         // 先注册两个 registry(弱引用敏感状态 / 强引用瞬态操作),再注册全项目唯一的协调器。
@@ -277,7 +381,13 @@ public static class ServiceConfiguration
                     sp.GetRequiredService<IFaviconCache>().Clear();
                 },
                 ShowLogin: () => global::App.App.MainWindow?.ShowLoginAfterLifecycle(),
-                ExitProcess: () => global::App.App.MainWindow?.ExitAfterLifecycle(),
+                ExitProcess: () =>
+                {
+                    var window = global::App.App.MainWindow
+                        ?? throw new InvalidOperationException(
+                            "The main window is unavailable during process exit.");
+                    window.ExitAfterLifecycle();
+                },
                 FailClosedSession: () => session.Lock(),
                 ReportFailure: (step, ex) =>
                     CrashLogger.WriteRedacted($"Lifecycle:{step}", ex),

@@ -58,7 +58,11 @@ public class AttachmentApiClientTests
         var client = NewClient(handler);
 
         var receipt = await client.CreateAttachmentV2Async(
-            "c-1", new AttachmentUploadRequest("2.wrappedKey", "2.encName", 49L),
+            "c-1", new AttachmentUploadRequest(
+                "2.wrappedKey",
+                "2.encName",
+                49L,
+                new DateTime(2026, 6, 24, 1, 2, 3, 456, DateTimeKind.Utc)),
             TestContext.Current.CancellationToken);
         var resp = receipt.Value;
 
@@ -67,6 +71,9 @@ public class AttachmentApiClientTests
         Assert.Contains("\"key\":\"2.wrappedKey\"", handler.Bodies[0]);
         Assert.Contains("\"fileName\":\"2.encName\"", handler.Bodies[0]);
         Assert.Contains("\"fileSize\":49", handler.Bodies[0]);
+        Assert.Contains(
+            "\"lastKnownRevisionDate\":\"2026-06-24T01:02:03.456Z\"",
+            handler.Bodies[0]);
         Assert.Equal("att-1", resp.AttachmentId);
         Assert.Equal("/ciphers/c-1/attachment/att-1", resp.Url);
         Assert.Equal("access-token", receipt.Authorization.Token);
@@ -147,7 +154,11 @@ public class AttachmentApiClientTests
 
         var ex = await Assert.ThrowsAsync<VaultWriteException>(() =>
             client.CreateAttachmentV2Async(
-                "c-1", new AttachmentUploadRequest("2.k", "2.encName", 49L),
+                "c-1", new AttachmentUploadRequest(
+                    "2.k",
+                    "2.encName",
+                    49L,
+                    new DateTime(2026, 6, 24, 0, 0, 0, DateTimeKind.Utc)),
                 TestContext.Current.CancellationToken));
 
         Assert.Equal("Cipher not found", ex.Message);

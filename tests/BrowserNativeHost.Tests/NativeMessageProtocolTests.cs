@@ -181,6 +181,45 @@ public class NativeMessageProtocolTests
         Assert.Equal("BQYH", Assert.Single(payload.ExcludeCredentials).Id);
     }
 
+    [Theory]
+    [InlineData("passkey.get", "allowCredentials")]
+    [InlineData("passkey.create", "excludeCredentials")]
+    public void PasskeyRequestParser_RejectsNonCanonicalCredentialIds(
+        string requestType,
+        string descriptorProperty)
+    {
+        var payload = requestType == "passkey.get"
+            ? $$"""
+              {
+                "origin": "https://example.com",
+                "rpId": "example.com",
+                "challenge": "AQIDBA",
+                "{{descriptorProperty}}": [{ "id": "b64.AQIDBA", "type": "public-key", "transports": [] }]
+              }
+              """
+            : $$"""
+              {
+                "origin": "https://example.com",
+                "rpId": "example.com",
+                "challenge": "AQIDBA",
+                "{{descriptorProperty}}": [{ "id": "AQIDBA=", "type": "public-key", "transports": [] }],
+                "pubKeyCredParams": [{ "type": "public-key", "alg": -7 }],
+                "rp": { "id": "example.com", "name": "Example" },
+                "user": { "id": "CAkK", "name": "octo@example.com", "displayName": "Octo" }
+              }
+              """;
+        using var document = JsonDocument.Parse(payload);
+
+        var parsed = PasskeyRequestParser.TryParse(
+            new BrowserPasskeyRequest("bad-id", requestType, document.RootElement),
+            out var result,
+            out var error);
+
+        Assert.False(parsed);
+        Assert.Null(result);
+        Assert.Equal("invalid_request", error?.Code);
+    }
+
     private sealed class FakeAppPasskeyBridgeClient : IAppPasskeyBridgeClient
     {
         public BrowserPasskeyRequest? Request { get; private set; }

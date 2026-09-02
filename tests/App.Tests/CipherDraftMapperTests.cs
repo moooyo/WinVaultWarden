@@ -2,6 +2,7 @@ using App.Services;
 using App.ViewModels.Models;
 using Core.Enums;
 using Core.Models;
+using Core.Services;
 using Xunit;
 
 namespace App.Tests;
@@ -70,6 +71,7 @@ public class CipherDraftMapperTests
             Id = "edit-1",
             Type = CipherType.Login,
             OrganizationId = "org-1",
+            CollectionIds = ["collection-1"],
             Key = "2.wrapped-item-key",
             Name = "Old",
             CreationDate = DateTimeOffset.UnixEpoch,
@@ -83,12 +85,141 @@ public class CipherDraftMapperTests
 
         Assert.Equal("edit-1", updated.Id);
         Assert.Equal("org-1", updated.OrganizationId);
+        Assert.Equal("collection-1", draft.CollectionId);
+        Assert.Equal(["collection-1"], updated.CollectionIds);
         // 编辑必须保留原条目的包裹密钥,供 CipherEncryptor 复用同一条目密钥(不轮换),否则损坏既有附件(R1)。
         Assert.Equal("2.wrapped-item-key", updated.Key);
         Assert.Equal("New", updated.Name);
         Assert.Equal(original.CreationDate, updated.CreationDate);
         Assert.Equal(original.RevisionDate, updated.RevisionDate);
         Assert.Equal("cred", Assert.Single(updated.Login!.Fido2Credentials).CredentialId);
+    }
+
+    [Fact]
+    public void ToDraft_CapturesImmutableEditBaseline()
+    {
+        var collections = new[] { "collection-1", "collection-2" };
+        var original = new Cipher
+        {
+            Id = "edit-1",
+            Type = CipherType.Login,
+            OrganizationId = "org-1",
+            CollectionIds = collections,
+            Key = "2.wrapped-item-key",
+            Name = "Old",
+            RevisionDate = DateTimeOffset.Parse("2026-08-01T12:00:00Z"),
+            Login = new CipherLogin("old", "secret", null, []),
+        };
+
+        var draft = CipherDraftMapper.ToDraft(original);
+        collections[0] = "mutated";
+
+        var baseline = Assert.IsType<CipherEditBaseline>(draft.EditBaseline);
+        Assert.Equal("edit-1", baseline.CipherId);
+        Assert.Equal(CipherType.Login, baseline.CipherType);
+        Assert.Equal(original.RevisionDate, baseline.RevisionDate);
+        Assert.Equal("org-1", baseline.OrganizationId);
+        Assert.Equal("2.wrapped-item-key", baseline.Key);
+        Assert.Equal(["collection-1", "collection-2"], baseline.CollectionIds);
+        Assert.Throws<NotSupportedException>(() =>
+            ((IList<string>)baseline.CollectionIds).Add("collection-3"));
+    }
+
+    [Fact]
+    public void ToCipher_EditWithNewerSnapshotRevision_IsRejectedInsteadOfUsingNewRevision()
+    {
+        var opened = new Cipher
+        {
+            Id = "edit-1",
+            Type = CipherType.Login,
+            Name = "Opened",
+            RevisionDate = DateTimeOffset.Parse("2026-08-01T12:00:00Z"),
+            Login = new CipherLogin("old", "secret", null, []),
+        };
+        var draft = CipherDraftMapper.ToDraft(opened);
+        draft.Name = "Local edit";
+        var refreshed = new Cipher
+        {
+            Id = opened.Id,
+            Type = opened.Type,
+            Name = "Remote edit",
+            RevisionDate = opened.RevisionDate.AddMinutes(1),
+            Login = opened.Login,
+        };
+
+        Assert.Throws<CipherEditConflictException>(() =>
+            CipherDraftMapper.ToCipher(draft, refreshed));
+        Assert.Equal(opened.RevisionDate, draft.EditBaseline!.RevisionDate);
+    }
+
+    [Fact]
+    public void ToCipher_EditWithChangedDraftType_IsRejected()
+    {
+        var original = new Cipher
+        {
+            Id = "edit-1",
+            Type = CipherType.Login,
+            Name = "Opened",
+            RevisionDate = DateTimeOffset.Parse("2026-08-01T12:00:00Z"),
+            Login = new CipherLogin("user", "secret", null, []),
+        };
+        var draft = CipherDraftMapper.ToDraft(original);
+        draft.Type = VaultItemKind.Card;
+
+        Assert.Throws<CipherEditConflictException>(() =>
+            CipherDraftMapper.ToCipher(draft, original));
+    }
+
+    [Fact]
+    public void ToCipher_EditUsesOpeningOwnershipKeyCollectionsAndRevision()
+    {
+        var original = new Cipher
+        {
+            Id = "edit-1",
+            Type = CipherType.Login,
+            OrganizationId = "org-1",
+            CollectionIds = ["collection-1", "collection-2"],
+            Key = "2.wrapped-item-key",
+            Name = "Opened",
+            RevisionDate = DateTimeOffset.Parse("2026-08-01T12:00:00Z"),
+            Login = new CipherLogin("old", "secret", null, []),
+        };
+        var draft = CipherDraftMapper.ToDraft(original);
+        draft.OrganizationId = "other-org";
+        draft.CollectionId = "other-collection";
+
+        var updated = CipherDraftMapper.ToCipher(draft, original);
+
+        Assert.Equal(original.OrganizationId, updated.OrganizationId);
+        Assert.Equal(original.CollectionIds, updated.CollectionIds);
+        Assert.Equal(original.Key, updated.Key);
+        Assert.Equal(original.RevisionDate, updated.RevisionDate);
+    }
+
+    [Fact]
+    public void ToCipher_NewOrganizationDraft_MapsDestination()
+    {
+        var draft = LoginDraft();
+        draft.OrganizationId = "org-1";
+        draft.CollectionId = "collection-1";
+
+        var cipher = CipherDraftMapper.ToCipher(draft, original: null);
+
+        Assert.Equal("org-1", cipher.OrganizationId);
+        Assert.Equal(["collection-1"], cipher.CollectionIds);
+    }
+
+    [Fact]
+    public void ToCipher_NewOrganizationDraft_MapsMultipleCollections()
+    {
+        var draft = LoginDraft();
+        draft.OrganizationId = "org-1";
+        draft.ReplaceCollectionIds(["collection-1", "collection-2"]);
+
+        var cipher = CipherDraftMapper.ToCipher(draft, original: null);
+
+        Assert.Equal("org-1", cipher.OrganizationId);
+        Assert.Equal(["collection-1", "collection-2"], cipher.CollectionIds);
     }
 
     [Fact]
@@ -131,6 +262,59 @@ public class CipherDraftMapperTests
     }
 
     [Fact]
+    public void ToDraft_ThenToCipher_RoundTripsNewCipherTypes()
+    {
+        var ciphers = new[]
+        {
+            new Cipher { Id = "b", Type = CipherType.BankAccount, Name = "Bank", BankAccount = new CipherBankAccount("Example", "Ada", "Checking", "123", "456", "001", "7890", "SWIFT", "IBAN", "555") },
+            new Cipher { Id = "d", Type = CipherType.DriversLicense, Name = "License", DriversLicense = new CipherDriversLicense("Ada", "M", "Lovelace", "1815", "DL-1", "GB", "London", "2025", "2030", "DVLA", "B") },
+            new Cipher { Id = "p", Type = CipherType.Passport, Name = "Passport", Passport = new CipherPassport("Lovelace", "Ada", "1815", "F", "London", "British", "GB", "P-1", "P", "N-1", "HMPO", "2025", "2035") },
+        };
+
+        var bank = CipherDraftMapper.ToCipher(CipherDraftMapper.ToDraft(ciphers[0]), ciphers[0]);
+        var license = CipherDraftMapper.ToCipher(CipherDraftMapper.ToDraft(ciphers[1]), ciphers[1]);
+        var passport = CipherDraftMapper.ToCipher(CipherDraftMapper.ToDraft(ciphers[2]), ciphers[2]);
+
+        Assert.Equal("123", bank.BankAccount!.AccountNumber);
+        Assert.Equal("DL-1", license.DriversLicense!.LicenseNumber);
+        Assert.Equal("P-1", passport.Passport!.PassportNumber);
+    }
+
+    [Fact]
+    public void HiddenPasswordCipher_CannotEnterOrLeaveAnEditorDraft()
+    {
+        var protectedCiphers = new Cipher[]
+        {
+            new()
+            {
+                Id = "login", Type = CipherType.Login, Name = "Login", CanViewPassword = false,
+                Notes = "protected-notes",
+                Login = new CipherLogin("user", "password", "totp", []),
+                Fields = [new CipherField("Secret", "hidden-custom-value", CipherFieldType.Hidden)],
+            },
+            new() { Id = "card", Type = CipherType.Card, Name = "Card", CanViewPassword = false, Card = new CipherCard("Ada", "4111111111111111", "12", "2030", "123", "Visa") },
+            new() { Id = "identity", Type = CipherType.Identity, Name = "Identity", CanViewPassword = false, Identity = new CipherIdentity(null, "Ada", null, "Lovelace", null, null, "ssn", "passport", "license", null, null, null, null, null, null, null, null, null) },
+            new() { Id = "ssh", Type = CipherType.SshKey, Name = "SSH", CanViewPassword = false, Ssh = new CipherSsh("private", "public", "fingerprint") },
+            new() { Id = "bank", Type = CipherType.BankAccount, Name = "Bank", CanViewPassword = false, BankAccount = new CipherBankAccount("Example", "Ada", "Checking", "account", "routing", "branch", "pin", "swift", "iban", null) },
+            new() { Id = "license", Type = CipherType.DriversLicense, Name = "License", CanViewPassword = false, DriversLicense = new CipherDriversLicense("Ada", null, "Lovelace", "birth", "number", "GB", null, "issued", "expires", null, null) },
+            new() { Id = "passport", Type = CipherType.Passport, Name = "Passport", CanViewPassword = false, Passport = new CipherPassport("Lovelace", "Ada", "birth", "F", "London", "British", "GB", "number", "P", "national-id", null, "issued", "expires") },
+        };
+
+        foreach (var cipher in protectedCiphers)
+        {
+            Assert.Throws<OrganizationCipherOperationException>(() => CipherDraftMapper.ToDraft(cipher));
+            Assert.Throws<OrganizationCipherOperationException>(() =>
+                CipherDraftMapper.ToCipher(CipherEditorDraft.CreateDefault(KindFor(cipher.Type)), cipher));
+        }
+
+        Assert.Throws<OrganizationCipherOperationException>(() =>
+            CipherDraftMapper.BuildPasswordHistory(
+                CipherEditorDraft.CreateDefault(VaultItemKind.Login),
+                protectedCiphers[0],
+                DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
     public void ToDraft_BooleanField_RestoresBooleanValue()
     {
         var cipher = new Cipher
@@ -148,6 +332,45 @@ public class CipherDraftMapperTests
     }
 
     [Fact]
+    public void ToDraft_ThenToCipher_PreservesLinkedAndUnknownFields()
+    {
+        var original = new Cipher
+        {
+            Id = "c",
+            Type = CipherType.Login,
+            Name = "n",
+            Login = new CipherLogin("user", "password", null, []),
+            Fields =
+            [
+                new CipherField("", null, CipherFieldType.Linked, LinkedId: 101),
+                new CipherField("Future", "opaque", CipherFieldType.Unsupported, LinkedId: 999, RawType: 97),
+            ],
+        };
+
+        var draft = CipherDraftMapper.ToDraft(original);
+        var result = CipherDraftMapper.ToCipher(draft, original);
+
+        Assert.Collection(
+            draft.CustomFields,
+            field =>
+            {
+                Assert.Equal(CipherEditorFieldType.Linked, field.Type);
+                Assert.Equal(101, field.LinkedId);
+                Assert.True(field.PreserveWhenNameBlank);
+            },
+            field =>
+            {
+                Assert.Equal(CipherEditorFieldType.Unsupported, field.Type);
+                Assert.Equal(97, field.RawType);
+            });
+        Assert.Equal(2, result.Fields.Count);
+        Assert.Equal(CipherFieldType.Linked, result.Fields[0].Type);
+        Assert.Equal(101, result.Fields[0].LinkedId);
+        Assert.Equal(97, result.Fields[1].WireType);
+        Assert.Equal("opaque", result.Fields[1].Value);
+    }
+
+    [Fact]
     public void ToCipher_PreservesWhitespaceInSecretAndNotesValues()
     {
         var draft = new CipherEditorDraft { Type = VaultItemKind.Login, Name = "  Trim Me  ", Notes = "  keep\n  indent  " };
@@ -161,6 +384,19 @@ public class CipherDraftMapperTests
         Assert.Equal("  otp  ", cipher.Login.Totp);
         Assert.Equal("  keep\n  indent  ", cipher.Notes);   // 备注原样保留
     }
+
+    private static VaultItemKind KindFor(CipherType type) => type switch
+    {
+        CipherType.Login => VaultItemKind.Login,
+        CipherType.Card => VaultItemKind.Card,
+        CipherType.Identity => VaultItemKind.Identity,
+        CipherType.SecureNote => VaultItemKind.Note,
+        CipherType.SshKey => VaultItemKind.Ssh,
+        CipherType.BankAccount => VaultItemKind.BankAccount,
+        CipherType.DriversLicense => VaultItemKind.DriversLicense,
+        CipherType.Passport => VaultItemKind.Passport,
+        _ => throw new ArgumentOutOfRangeException(nameof(type)),
+    };
 }
 
 public class CipherDraftMapperPasswordHistoryTests

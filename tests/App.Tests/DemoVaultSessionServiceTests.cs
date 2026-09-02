@@ -33,6 +33,7 @@ public class DemoVaultSessionServiceTests
         var localPasskey = Assert.Single(session.Ciphers, c => c.Id == "demo-local-passkey");
         var credential = Assert.Single(localPasskey.Login!.Fido2Credentials);
         Assert.Equal("localhost", credential.RpId);
+        Assert.StartsWith(CredentialId.Base64Prefix, credential.CredentialId);
         Assert.False(string.IsNullOrWhiteSpace(
             WebAuthnAssertionService.CreateAssertion(
                 credential,

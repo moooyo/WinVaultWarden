@@ -26,6 +26,50 @@ public interface ITwoFactorUiService
     /// <summary>完成 Email 两步验证启用。</summary>
     Task EnableEmailAsync(string pw, string email, string token, CancellationToken ct = default);
 
+    Task<WebAuthnTwoFactorDetails> GetWebAuthnAsync(
+        string pw,
+        CancellationToken ct = default);
+
+    Task<WebAuthnTwoFactorDetails> GetWebAuthnAsync(
+        TwoFactorUserVerification verification,
+        CancellationToken ct = default);
+
+    Task RequestProtectedActionOtpAsync(CancellationToken ct = default);
+
+    Task<WebAuthnRegistrationChallenge> GetWebAuthnChallengeAsync(
+        string pw,
+        CancellationToken ct = default);
+
+    Task<WebAuthnRegistrationChallenge> GetWebAuthnChallengeAsync(
+        TwoFactorUserVerification verification,
+        CancellationToken ct = default);
+
+    Task<WebAuthnRegistrationOutcome> CompleteWebAuthnRegistrationAsync(
+        string pw,
+        int id,
+        string name,
+        WebAuthnRegistrationChallenge challenge,
+        WebAuthnRegistrationDeviceResponse deviceResponse,
+        CancellationToken ct = default);
+
+    Task<WebAuthnRegistrationOutcome> CompleteWebAuthnRegistrationAsync(
+        TwoFactorUserVerification verification,
+        int id,
+        string name,
+        WebAuthnRegistrationChallenge challenge,
+        WebAuthnRegistrationDeviceResponse deviceResponse,
+        CancellationToken ct = default);
+
+    Task<WebAuthnTwoFactorDetails> DeleteWebAuthnCredentialAsync(
+        string pw,
+        int id,
+        CancellationToken ct = default);
+
+    Task<WebAuthnTwoFactorDetails> DeleteWebAuthnCredentialAsync(
+        TwoFactorUserVerification verification,
+        int id,
+        CancellationToken ct = default);
+
     /// <summary>禁用指定类型的两步验证提供者。</summary>
     Task DisableAsync(string pw, int type, CancellationToken ct = default);
 }
@@ -66,6 +110,71 @@ public sealed class TwoFactorUiService : ITwoFactorUiService
 
     public Task EnableEmailAsync(string pw, string email, string token, CancellationToken ct = default) =>
         Require().EnableEmailAsync(pw, email, token, ct);
+
+    public Task<WebAuthnTwoFactorDetails> GetWebAuthnAsync(
+        string pw,
+        CancellationToken ct = default) =>
+        Require().GetWebAuthnAsync(pw, ct);
+
+    public Task<WebAuthnTwoFactorDetails> GetWebAuthnAsync(
+        TwoFactorUserVerification verification,
+        CancellationToken ct = default) =>
+        Require().GetWebAuthnAsync(verification, ct);
+
+    public Task RequestProtectedActionOtpAsync(CancellationToken ct = default) =>
+        Require().RequestProtectedActionOtpAsync(ct);
+
+    public Task<WebAuthnRegistrationChallenge> GetWebAuthnChallengeAsync(
+        string pw,
+        CancellationToken ct = default) =>
+        Require().GetWebAuthnChallengeAsync(pw, ct);
+
+    public Task<WebAuthnRegistrationChallenge> GetWebAuthnChallengeAsync(
+        TwoFactorUserVerification verification,
+        CancellationToken ct = default) =>
+        Require().GetWebAuthnChallengeAsync(verification, ct);
+
+    public Task<WebAuthnRegistrationOutcome> CompleteWebAuthnRegistrationAsync(
+        string pw,
+        int id,
+        string name,
+        WebAuthnRegistrationChallenge challenge,
+        WebAuthnRegistrationDeviceResponse deviceResponse,
+        CancellationToken ct = default) =>
+        Require().CompleteWebAuthnRegistrationAsync(
+            pw,
+            id,
+            name,
+            challenge,
+            deviceResponse,
+            ct);
+
+    public Task<WebAuthnRegistrationOutcome> CompleteWebAuthnRegistrationAsync(
+        TwoFactorUserVerification verification,
+        int id,
+        string name,
+        WebAuthnRegistrationChallenge challenge,
+        WebAuthnRegistrationDeviceResponse deviceResponse,
+        CancellationToken ct = default) =>
+        Require().CompleteWebAuthnRegistrationAsync(
+            verification,
+            id,
+            name,
+            challenge,
+            deviceResponse,
+            ct);
+
+    public Task<WebAuthnTwoFactorDetails> DeleteWebAuthnCredentialAsync(
+        string pw,
+        int id,
+        CancellationToken ct = default) =>
+        Require().DeleteWebAuthnCredentialAsync(pw, id, ct);
+
+    public Task<WebAuthnTwoFactorDetails> DeleteWebAuthnCredentialAsync(
+        TwoFactorUserVerification verification,
+        int id,
+        CancellationToken ct = default) =>
+        Require().DeleteWebAuthnCredentialAsync(verification, id, ct);
 
     public Task DisableAsync(string pw, int type, CancellationToken ct = default) =>
         Require().DisableAsync(pw, type, ct);

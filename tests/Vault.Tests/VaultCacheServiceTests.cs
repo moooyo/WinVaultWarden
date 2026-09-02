@@ -5,6 +5,7 @@ using Api.Dtos;
 using Core.Models;
 using Core.Session;
 using Crypto;
+using Crypto.V2;
 using Vault;
 using Xunit;
 
@@ -27,7 +28,14 @@ public class VaultCacheServiceTests
             Favorite: false, Reprompt: 0, Login: null, Card: null, Identity: null, SecureNote: null,
             SshKey: null, Fields: null, CreationDate: null, RevisionDate: null, DeletedDate: null,
             Attachments: null, PasswordHistory: null);
-        return new SyncResponse("sync", new ProfileDto(profileId, Email, "Me", null, null), [], [dto]);
+        return new SyncResponse(
+            "sync",
+            new ProfileDto(profileId, Email, "Me", null, null)
+            {
+                SecurityStamp = "stamp-1",
+            },
+            [],
+            [dto]);
     }
 
     private static (VaultCacheService svc, VaultSession session, FakeCacheStore store) New()
@@ -59,6 +67,120 @@ public class VaultCacheServiceTests
         var c = Assert.Single(session.Ciphers);
         Assert.Equal("Cached", c.Name);
         Assert.True(session.DataStale);
+    }
+
+    [Fact]
+    public void SaveThenTryLoadInto_RestoresSyncSendsDomainsAndEffectivePolicies()
+    {
+        var crypto = new CryptoService();
+        var sendCrypto = new SendCryptoService(crypto);
+        var seed = sendCrypto.GenerateSeed();
+        using var sendKey = sendCrypto.DeriveCryptoKey(seed);
+        var send = new SendResponseDto(
+            "send-1",
+            "access-1",
+            0,
+            sendCrypto.EncryptField("Cached Send", sendKey),
+            null,
+            new SendTextDto(sendCrypto.EncryptField("cached secret", sendKey), false),
+            null,
+            sendCrypto.WrapSeed(seed, UserKey),
+            null,
+            0,
+            null,
+            (int)Core.Enums.SendAuthType.None,
+            false,
+            false,
+            DateTimeOffset.UnixEpoch,
+            null,
+            DateTimeOffset.UnixEpoch.AddDays(1),
+            "send");
+        var sync = BuildSync(crypto) with
+        {
+            Sends = [send],
+            Domains = new DomainsDto([["example.com", "example.net"]], [], "domains"),
+            PoliciesNew =
+            [
+                new OrganizationPolicyDto(
+                    "policy-1",
+                    "org-1",
+                    (int)Core.Enums.OrganizationPolicyType.DisableSend,
+                    true,
+                    default),
+            ],
+            Profile = BuildSync(crypto).Profile! with
+            {
+                OrganizationsNew =
+                [
+                    new ProfileOrganizationDto("org-1", "Team", null, 1, 2),
+                ],
+            },
+        };
+        var (service, session, _) = New();
+        var lease = Unlock(session);
+
+        Assert.True(service.Save(lease, sync, DateTimeOffset.UnixEpoch));
+        Assert.True(service.TryLoadInto(lease, UserKey));
+
+        Assert.True(session.DataStale);
+        Assert.Equal("Cached Send", Assert.Single(session.Sends).Name);
+        Assert.Equal("cached secret", Assert.Single(session.Sends).Text!.Content);
+        Assert.Equal("example.net", session.Domains!.EquivalentDomains[0][1]);
+        Assert.Equal(1, Assert.Single(session.PolicyOrganizations).Status);
+        Assert.Equal("policy-1", Assert.Single(session.Policies).Id);
+    }
+
+    [Fact]
+    public void SaveThenTryLoadInto_RedactsSecurityStampAndDoesNotRestoreBaseline()
+    {
+        var (service, session, store) = New();
+        var lease = Unlock(session);
+        var sync = BuildSync(new CryptoService());
+
+        service.Save(lease, sync, DateTimeOffset.UnixEpoch);
+
+        var persisted = JsonSerializer.Deserialize(
+            store.LastSaved!.SyncResponseJson,
+            ApiJsonContext.Default.SyncResponse);
+        Assert.Equal("stamp-1", sync.Profile!.SecurityStamp);
+        Assert.Null(persisted!.Profile!.SecurityStamp);
+        Assert.True(service.TryLoadInto(lease, UserKey));
+        Assert.Equal(
+            SecurityStampComparison.NoBaseline,
+            session.CompareSecurityStamp(lease, "stamp-2"));
+    }
+
+    [Fact]
+    public void SaveThenTryLoadInto_AccountKeysOnly_CommitsCanonicalWrappedPrivateKey()
+    {
+        var crypto = new CryptoService();
+        var wrappedPrivateKey = crypto.Encrypt([1, 2, 3, 4], UserKey).ToString();
+        using var accountKeys = JsonDocument.Parse($$"""
+        {
+          "publicKeyEncryptionKeyPair": {
+            "wrappedPrivateKey": {{JsonSerializer.Serialize(wrappedPrivateKey)}},
+            "publicKey": "v1-public-key"
+          },
+          "signatureKeyPair": null,
+          "securityState": null
+        }
+        """);
+        var sync = BuildSync(crypto) with
+        {
+            Profile = BuildSync(crypto).Profile! with
+            {
+                PrivateKey = null,
+                AccountKeys = accountKeys.RootElement.Clone(),
+            },
+        };
+        var (service, session, _) = New();
+        var lease = Unlock(session);
+
+        service.Save(lease, sync, DateTimeOffset.UnixEpoch);
+        var loaded = service.TryLoadInto(lease, UserKey);
+
+        Assert.True(loaded);
+        Assert.Equal(wrappedPrivateKey, session.EncryptedPrivateKey);
     }
 
     [Fact]
@@ -203,6 +325,46 @@ public class VaultCacheServiceTests
             VaultCacheService.SchemaVersion, AccountId, new ServerOrigin(Server), lease.Generation,
             Email, DateTimeOffset.UnixEpoch, "{not valid json"));
         Assert.False(svc.TryLoadInto(lease, UserKey));
+    }
+
+    [Fact]
+    public void TryLoadInto_V2InvalidAccountKeys_ReturnsFalse()
+    {
+        var crypto = new CryptoService();
+        var store = new FakeCacheStore();
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession(
+            AccountId,
+            Email,
+            new ServerOrigin(Server));
+        var sessionKey = V2UserKey.Generate();
+        var transport = sessionKey.ExportTransport();
+        V2UserKey loadKey;
+        try
+        {
+            loadKey = V2UserKey.ImportTransport(transport);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(transport);
+        }
+        session.SetUnlockedKey(sessionKey);
+        using var invalidAccountKeys = JsonDocument.Parse("{}");
+        var sync = new SyncResponse(
+            "sync",
+            new ProfileDto(AccountId, Email, "Me", null, null)
+            {
+                AccountKeys = invalidAccountKeys.RootElement.Clone(),
+            });
+        var service = new VaultCacheService(
+            store,
+            new VaultDecryptor(crypto),
+            session);
+        service.Save(lease, sync, DateTimeOffset.UnixEpoch);
+
+        using (loadKey)
+            Assert.False(service.TryLoadInto(lease, loadKey));
+        session.Lock();
     }
 
     [Fact]

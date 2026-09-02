@@ -20,6 +20,21 @@ public class SendPageXamlTests
         Assert.Equal("OnDeleteSendClick", delete.Attribute("Click")?.Value);
     }
 
+    [Fact]
+    public void SendPage_OfflineSnapshotShowsWarningAndDisablesCreate()
+    {
+        var document = LoadXaml();
+        var info = document.Descendants(Xaml + "InfoBar")
+            .Single(element => element.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value
+                == "SendOfflineInfoBar");
+        var add = document.Descendants(Xaml + "Button")
+            .Single(element => element.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value
+                == "AddSendButton");
+
+        Assert.Contains("ShowStaleInfo", info.Attribute("IsOpen")?.Value);
+        Assert.Contains("CanCreateSend", add.Attribute("IsEnabled")?.Value);
+    }
+
     private static XDocument LoadXaml()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

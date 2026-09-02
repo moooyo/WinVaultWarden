@@ -1,6 +1,8 @@
 using Api;
 using App.Services;
 using App.ViewModels;
+using App.ViewModels.Models;
+using Core.Enums;
 using Core.Models;
 using Core.Services;
 using Core.Session;
@@ -20,6 +22,25 @@ namespace App.Tests;
 [Collection(TestCollectionNames.AppPreferences)]
 public class SettingsViewModelTwoFactorTests : AppPreferencesTestBase
 {
+    [Theory]
+    [InlineData(TwoFactorProviderType.Authenticator, "TOTP 验证器")]
+    [InlineData(TwoFactorProviderType.Email, "邮箱验证码")]
+    [InlineData(TwoFactorProviderType.Duo, "Duo")]
+    [InlineData(TwoFactorProviderType.YubiKey, "YubiKey OTP")]
+    [InlineData(TwoFactorProviderType.U2f, "U2F 安全密钥")]
+    [InlineData(TwoFactorProviderType.Remember, "已记住的设备")]
+    [InlineData(TwoFactorProviderType.OrganizationDuo, "组织 Duo")]
+    [InlineData(TwoFactorProviderType.WebAuthn, "安全密钥 / Windows Hello")]
+    [InlineData(TwoFactorProviderType.RecoveryCode, "恢复代码")]
+    public void ProviderDisplayName_UsesCanonicalEnumValue(
+        TwoFactorProviderType provider,
+        string expected)
+    {
+        Assert.Equal(
+            expected,
+            SettingsViewModel.GetTwoFactorProviderDisplayName((int)provider));
+    }
+
     // -----------------------------------------------------------------------
     // FakeTwoFactorService：记录调用并可控抛出
     // -----------------------------------------------------------------------
@@ -47,6 +68,23 @@ public class SettingsViewModelTwoFactorTests : AppPreferencesTestBase
         public string? LastRecoveryPassword { get; private set; }
         public (string pw, string email, string token)? LastEnableEmail { get; private set; }
         public (string pw, int type)? LastDisable { get; private set; }
+        public (TwoFactorUserVerificationKind kind, int id, string name)? LastWebAuthnRegistration { get; private set; }
+        public (TwoFactorUserVerificationKind kind, int id)? LastWebAuthnDeletion { get; private set; }
+        public TwoFactorUserVerificationKind? LastWebAuthnVerificationKind { get; private set; }
+        public int RequestProtectedActionOtpCalls { get; private set; }
+        public int WebAuthnChallengeCalls { get; private set; }
+        public int WebAuthnRegistrationCalls { get; private set; }
+
+        public WebAuthnTwoFactorDetails WebAuthnDetails { get; set; } = new(
+            enabled: true,
+            [new WebAuthnTwoFactorCredential(1, "Primary key", false)]);
+
+        public WebAuthnRegistrationOutcome RegistrationOutcome { get; set; } =
+            new WebAuthnRegistrationOutcome.Confirmed(
+                new WebAuthnTwoFactorDetails(
+                    enabled: true,
+                    [new WebAuthnTwoFactorCredential(1, "Primary key", false)]),
+                Reconciled: false);
 
         public IReadOnlyList<TwoFactorProvider> Providers { get; set; } =
         [
@@ -110,6 +148,104 @@ public class SettingsViewModelTwoFactorTests : AppPreferencesTestBase
             return Task.CompletedTask;
         }
 
+        public Task<WebAuthnTwoFactorDetails> GetWebAuthnAsync(
+            string pw,
+            CancellationToken ct = default)
+        {
+            if (Failure is { } failure) throw failure;
+            LastPw = pw;
+            return Task.FromResult(WebAuthnDetails);
+        }
+
+        public Task<WebAuthnTwoFactorDetails> GetWebAuthnAsync(
+            TwoFactorUserVerification verification,
+            CancellationToken ct = default)
+        {
+            if (Failure is { } failure) throw failure;
+            LastWebAuthnVerificationKind = verification.Kind;
+            return Task.FromResult(WebAuthnDetails);
+        }
+
+        public Task RequestProtectedActionOtpAsync(CancellationToken ct = default)
+        {
+            if (Failure is { } failure) throw failure;
+            RequestProtectedActionOtpCalls++;
+            return Task.CompletedTask;
+        }
+
+        public Task<WebAuthnRegistrationChallenge> GetWebAuthnChallengeAsync(
+            string pw,
+            CancellationToken ct = default)
+        {
+            if (Failure is { } failure) throw failure;
+            LastPw = pw;
+            WebAuthnChallengeCalls++;
+            return Task.FromResult(CreateWebAuthnChallenge());
+        }
+
+        public Task<WebAuthnRegistrationChallenge> GetWebAuthnChallengeAsync(
+            TwoFactorUserVerification verification,
+            CancellationToken ct = default)
+        {
+            if (Failure is { } failure) throw failure;
+            LastWebAuthnVerificationKind = verification.Kind;
+            WebAuthnChallengeCalls++;
+            return Task.FromResult(CreateWebAuthnChallenge());
+        }
+
+        public Task<WebAuthnRegistrationOutcome> CompleteWebAuthnRegistrationAsync(
+            string pw,
+            int id,
+            string name,
+            WebAuthnRegistrationChallenge challenge,
+            WebAuthnRegistrationDeviceResponse deviceResponse,
+            CancellationToken ct = default) =>
+            CompleteWebAuthnRegistrationAsync(
+                TwoFactorUserVerification.FromMasterPassword(pw),
+                id,
+                name,
+                challenge,
+                deviceResponse,
+                ct);
+
+        public Task<WebAuthnRegistrationOutcome> CompleteWebAuthnRegistrationAsync(
+            TwoFactorUserVerification verification,
+            int id,
+            string name,
+            WebAuthnRegistrationChallenge challenge,
+            WebAuthnRegistrationDeviceResponse deviceResponse,
+            CancellationToken ct = default)
+        {
+            if (Failure is { } failure) throw failure;
+            LastWebAuthnVerificationKind = verification.Kind;
+            LastWebAuthnRegistration = (verification.Kind, id, name);
+            WebAuthnRegistrationCalls++;
+            return Task.FromResult(RegistrationOutcome);
+        }
+
+        public Task<WebAuthnTwoFactorDetails> DeleteWebAuthnCredentialAsync(
+            string pw,
+            int id,
+            CancellationToken ct = default) =>
+            DeleteWebAuthnCredentialAsync(
+                TwoFactorUserVerification.FromMasterPassword(pw),
+                id,
+                ct);
+
+        public Task<WebAuthnTwoFactorDetails> DeleteWebAuthnCredentialAsync(
+            TwoFactorUserVerification verification,
+            int id,
+            CancellationToken ct = default)
+        {
+            if (Failure is { } failure) throw failure;
+            LastWebAuthnVerificationKind = verification.Kind;
+            LastWebAuthnDeletion = (verification.Kind, id);
+            WebAuthnDetails = new WebAuthnTwoFactorDetails(
+                WebAuthnDetails.Credentials.Count > 1,
+                WebAuthnDetails.Credentials.Where(credential => credential.Id != id).ToArray());
+            return Task.FromResult(WebAuthnDetails);
+        }
+
         public Task DisableAsync(string pw, int type, CancellationToken ct = default)
         {
             if (Failure is { } failure) throw failure;
@@ -120,6 +256,45 @@ public class SettingsViewModelTwoFactorTests : AppPreferencesTestBase
             if (ThrowOnDisable) throw new TwoFactorOperationException("disable failed");
             LastDisable = (pw, type);
             return Task.CompletedTask;
+        }
+
+        private static WebAuthnRegistrationChallenge CreateWebAuthnChallenge() => new(
+            challenge: "AQID",
+            origin: "https://vault.example.com",
+            rpId: "vault.example.com",
+            rpName: "Vault",
+            userId: [1, 2, 3],
+            userName: "user@example.com",
+            userDisplayName: "User",
+            publicKeyCredentialParameters: [new WebAuthnPublicKeyCredentialParameter("public-key", -7)],
+            excludeCredentials: [],
+            timeoutMilliseconds: 60_000,
+            authenticatorAttachment: null,
+            residentKey: "discouraged",
+            requireResidentKey: false,
+            userVerification: "discouraged",
+            attestation: "none",
+            userVerificationToken: null);
+    }
+
+    private sealed class FakeWebAuthnRegistrationService : IWebAuthnTwoFactorRegistrationService
+    {
+        public bool IsSupported { get; set; } = true;
+        public bool Cancel { get; set; }
+        public int Calls { get; private set; }
+
+        public Task<WebAuthnRegistrationDeviceResponse> CreateCredentialAsync(
+            WebAuthnRegistrationChallenge challenge,
+            CancellationToken ct = default)
+        {
+            Calls++;
+            if (Cancel)
+                throw new WebAuthnTwoFactorCancelledException();
+            return Task.FromResult(new WebAuthnRegistrationDeviceResponse(
+                credentialId: [1, 2, 3],
+                attestationObject: [4, 5, 6],
+                clientDataJson: [7, 8, 9],
+                transports: ["usb"]));
         }
     }
 
@@ -147,6 +322,188 @@ public class SettingsViewModelTwoFactorTests : AppPreferencesTestBase
         };
         var ui = new TwoFactorUiService(svc);
         return (new SettingsViewModel(twoFactorUi: ui), svc);
+    }
+
+    private static (
+        SettingsViewModel vm,
+        FakeTwoFactorService service,
+        FakeWebAuthnRegistrationService registration) BuildWebAuthn()
+    {
+        var service = new FakeTwoFactorService();
+        var registration = new FakeWebAuthnRegistrationService();
+        var viewModel = new SettingsViewModel(
+            new TwoFactorUiService(service),
+            registration);
+        return (viewModel, service, registration);
+    }
+
+    [Fact]
+    public async Task LoadWebAuthn_MapsCredentialDetails()
+    {
+        var (viewModel, service, _) = BuildWebAuthn();
+        service.WebAuthnDetails = new WebAuthnTwoFactorDetails(
+            enabled: true,
+            [
+                new WebAuthnTwoFactorCredential(2, "Office key", false),
+                new WebAuthnTwoFactorCredential(7, "Legacy key", true),
+            ]);
+
+        var result = await viewModel.LoadWebAuthnAsync("master-password");
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.Enabled);
+        Assert.Collection(
+            result.Value.Credentials,
+            credential => Assert.Equal((2, "Office key", false),
+                (credential.Id, credential.Name, credential.Migrated)),
+            credential => Assert.Equal((7, "Legacy key", true),
+                (credential.Id, credential.Name, credential.Migrated)));
+        Assert.Equal(DataPageState.Content, viewModel.WebAuthnState);
+    }
+
+    [Fact]
+    public async Task UnsupportedPlatform_CanStillLoadExistingWebAuthnCredentials()
+    {
+        var (viewModel, _, registration) = BuildWebAuthn();
+        registration.IsSupported = false;
+
+        var result = await viewModel.LoadWebAuthnAsync("master-password");
+
+        Assert.False(viewModel.CanRegisterWebAuthn);
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value!.Credentials);
+    }
+
+    [Fact]
+    public async Task AddWebAuthn_UsesSingleChallengeAndPlatformCeremony()
+    {
+        var (viewModel, service, registration) = BuildWebAuthn();
+
+        var result = await viewModel.AddWebAuthnCredentialAsync(
+            "master-password",
+            3,
+            "  Travel key  ");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, service.WebAuthnChallengeCalls);
+        Assert.Equal(1, registration.Calls);
+        Assert.Equal(1, service.WebAuthnRegistrationCalls);
+        Assert.Equal(
+            (TwoFactorUserVerificationKind.MasterPassword, 3, "Travel key"),
+            service.LastWebAuthnRegistration);
+    }
+
+    [Fact]
+    public async Task AddWebAuthnWithDetails_PreservesOtpModeAndReturnsServerSnapshot()
+    {
+        var (viewModel, service, _) = BuildWebAuthn();
+        var verification = TwoFactorUserVerification.FromOtp("123456");
+
+        var result = await viewModel.AddWebAuthnCredentialWithDetailsAsync(
+            verification,
+            3,
+            "Travel key");
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Value);
+        Assert.Single(result.Value.Credentials);
+        Assert.Equal(TwoFactorUserVerificationKind.Otp, service.LastWebAuthnVerificationKind);
+        Assert.Equal(
+            (TwoFactorUserVerificationKind.Otp, 3, "Travel key"),
+            service.LastWebAuthnRegistration);
+    }
+
+    [Fact]
+    public async Task AddWebAuthn_UserCancellation_DoesNotSubmitAttestation()
+    {
+        var (viewModel, service, registration) = BuildWebAuthn();
+        registration.Cancel = true;
+
+        var result = await viewModel.AddWebAuthnCredentialAsync(
+            "master-password",
+            2,
+            "Security key");
+
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
+        Assert.Equal(1, service.WebAuthnChallengeCalls);
+        Assert.Equal(1, registration.Calls);
+        Assert.Equal(0, service.WebAuthnRegistrationCalls);
+        Assert.Empty(viewModel.OperationError);
+    }
+
+    [Fact]
+    public async Task AddWebAuthn_UncertainOutcome_DoesNotRetryChallenge()
+    {
+        var (viewModel, service, registration) = BuildWebAuthn();
+        service.RegistrationOutcome = new WebAuthnRegistrationOutcome.OutcomeUncertain();
+
+        var result = await viewModel.AddWebAuthnCredentialAsync(
+            "master-password",
+            2,
+            "Security key");
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal(1, service.WebAuthnChallengeCalls);
+        Assert.Equal(1, registration.Calls);
+        Assert.Equal(1, service.WebAuthnRegistrationCalls);
+        Assert.Contains("不要立即重复添加", result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DeleteWebAuthn_DelegatesCredentialIdAndRefreshesEmptyState()
+    {
+        var (viewModel, service, _) = BuildWebAuthn();
+
+        var result = await viewModel.DeleteWebAuthnCredentialAsync(
+            "master-password",
+            1);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal((TwoFactorUserVerificationKind.MasterPassword, 1), service.LastWebAuthnDeletion);
+        Assert.False(result.Value!.Enabled);
+        Assert.Empty(result.Value.Credentials);
+        Assert.Equal(DataPageState.Empty, viewModel.WebAuthnState);
+    }
+
+    [Theory]
+    [InlineData(WebAuthnVerificationMethod.MasterPassword, TwoFactorUserVerificationKind.MasterPassword)]
+    [InlineData(WebAuthnVerificationMethod.EmailOtp, TwoFactorUserVerificationKind.Otp)]
+    [InlineData(WebAuthnVerificationMethod.AuthRequestAccessCode, TwoFactorUserVerificationKind.AuthRequestAccessCode)]
+    public async Task LoadWebAuthn_UsesExplicitVerificationMethod(
+        WebAuthnVerificationMethod method,
+        TwoFactorUserVerificationKind expectedKind)
+    {
+        var (viewModel, service, _) = BuildWebAuthn();
+        var verification = SettingsViewModel.CreateWebAuthnVerification(method, "verification-value");
+
+        var result = await viewModel.LoadWebAuthnAsync(verification);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expectedKind, service.LastWebAuthnVerificationKind);
+    }
+
+    [Fact]
+    public async Task RequestWebAuthnOtp_DelegatesOnce()
+    {
+        var (viewModel, service, _) = BuildWebAuthn();
+
+        var result = await viewModel.RequestWebAuthnVerificationOtpAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, service.RequestProtectedActionOtpCalls);
+    }
+
+    [Fact]
+    public void WebAuthnSnapshot_SelectsFirstAvailablePositiveId()
+    {
+        var snapshot = new WebAuthnManagementSnapshot(
+            Enabled: true,
+            [
+                new WebAuthnCredentialListItem(1, "One", false),
+                new WebAuthnCredentialListItem(3, "Three", false),
+            ]);
+
+        Assert.Equal(2, snapshot.GetNextCredentialId());
     }
 
     // -----------------------------------------------------------------------
@@ -774,6 +1131,27 @@ public class SettingsViewModelTests : AppPreferencesTestBase
         {
             Requests.Add(intent);
             return Task.CompletedTask;
+        }
+        public async Task<bool> RequestIfAsync(
+            AppLifecycleIntent intent,
+            Func<bool> predicate)
+        {
+            ArgumentNullException.ThrowIfNull(predicate);
+            bool accepted;
+            try
+            {
+                accepted = predicate();
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (!accepted)
+                return false;
+
+            await RequestAsync(intent);
+            return true;
         }
         public bool MarkSessionReady() => true;
         public void FailClosedSynchronously() { }

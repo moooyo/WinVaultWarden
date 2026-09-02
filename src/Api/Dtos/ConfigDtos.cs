@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Api.Dtos;
@@ -7,7 +8,11 @@ namespace Api.Dtos;
 public sealed record ConfigResponse(
     [property: JsonPropertyName("version")] string? Version,
     [property: JsonPropertyName("gitHash")] string? GitHash,
-    [property: JsonPropertyName("server")] ServerInfo? Server);
+    [property: JsonPropertyName("server")] ServerInfo? Server)
+{
+    [JsonPropertyName("featureStates")]
+    public Dictionary<string, JsonElement>? FeatureStates { get; init; }
+}
 
 public sealed record ServerInfo(
     [property: JsonPropertyName("name")] string? Name,

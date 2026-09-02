@@ -35,6 +35,34 @@ public interface ITwoFactorApiClient : IAuthenticatedApiRole
     // POST api/two-factor/get-recover — 获取恢复码，需主密码哈希。
     Task<RecoverResponse> GetRecoverAsync(PasswordVerifyRequest request, CancellationToken ct = default);
 
+    // POST api/accounts/request-otp - sends a protected-action verification code.
+    Task RequestProtectedActionOtpAsync(CancellationToken ct = default);
+
+    // POST api/two-factor/get-webauthn - returns registered WebAuthn two-factor credentials.
+    Task<WebAuthnTwoFactorResponse> GetWebAuthnAsync(
+        WebAuthnVerificationRequest request,
+        CancellationToken ct = default);
+
+    // POST api/two-factor/get-webauthn-challenge - starts a make-credential ceremony.
+    Task<WebAuthnChallengeResponse> GetWebAuthnChallengeAsync(
+        WebAuthnVerificationRequest request,
+        CancellationToken ct = default);
+
+    // PUT api/two-factor/webauthn - verifies and registers one credential.
+    Task<WebAuthnTwoFactorResponse> EnableWebAuthnAsync(
+        EnableWebAuthnRequest request,
+        CancellationToken ct = default);
+
+    // DELETE api/two-factor/webauthn - removes one credential by numeric slot id.
+    Task<WebAuthnTwoFactorResponse> DeleteWebAuthnCredentialAsync(
+        DeleteWebAuthnCredentialRequest request,
+        CancellationToken ct = default);
+
+    // DELETE api/two-factor/webauthn/all - disables the official server provider atomically.
+    Task DeleteAllWebAuthnCredentialsAsync(
+        DeleteAllWebAuthnCredentialsRequest request,
+        CancellationToken ct = default);
+
     // POST api/two-factor/disable — 禁用指定类型的两步验证。
     Task DisableAsync(DisableTwoFactorRequest request, CancellationToken ct = default);
 }

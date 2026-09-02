@@ -1,27 +1,33 @@
 using System.Security.Cryptography;
+using System.Net;
+using System.Text.Json;
 using Api;
 using Api.Dtos;
 using Core.Abstractions;
+using Core.Enums;
 using Core.Models;
+using Core.Passkeys;
 using Core.Services;
 using Crypto;
 
 namespace Vault;
 
 /// <summary>
-/// 两步验证管理编排层，实现 <see cref="ITwoFactorService"/>。
+/// Coordinates account-level two-factor provider management.
 /// <para>
-/// 所有写操作（BeginTotpSetup / EnableTotp / BeginEmailSetup / SendEmail / EnableEmail / Disable）
-/// 均需提供当前主密码。服务内部从持久化会话读取 Email + KDF 参数，派生主密钥哈希后发给服务端验证。
-/// 主密钥在 finally 中无条件清零，不落盘、不写日志。
+/// Password-backed operations derive the master-password hash from the persisted KDF settings
+/// and clear the temporary master key. WebAuthn management additionally supports the mutually
+/// exclusive protected-action OTP and auth-request access-code proofs accepted by compatible servers.
 /// </para>
 /// <para>
-/// 注意：此服务不需要 vault 已解锁（不依赖 VaultSession.UserKey），
-/// 因为两步验证管理走的是 /api/two-factor 系列端点，服务端用 masterPasswordHash 验证身份即可。
+/// These operations do not require the vault user key because the server verifies the selected
+/// proof on the account-level two-factor endpoints.
 /// </para>
 /// </summary>
 public sealed class TwoFactorService : ITwoFactorService
 {
+    private const int MaxWebAuthnCredentialNameLength = 256;
+
     private readonly CryptoService _crypto;
     private readonly IVaultApiClientProvider _clients;
     private readonly VaultSession _session;
@@ -181,6 +187,235 @@ public sealed class TwoFactorService : ITwoFactorService
         _session.ThrowIfExpired(lease);
     }
 
+    public Task<WebAuthnTwoFactorDetails> GetWebAuthnAsync(
+        string pw,
+        CancellationToken ct = default) =>
+        GetWebAuthnAsync(TwoFactorUserVerification.FromMasterPassword(pw), ct);
+
+    public async Task<WebAuthnTwoFactorDetails> GetWebAuthnAsync(
+        TwoFactorUserVerification verification,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(verification);
+        var lease = _session.CaptureLease();
+        var request = CreateVerificationRequest(verification, lease);
+        _session.ThrowIfExpired(lease);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        _session.ThrowIfExpired(lease);
+        var response = await api.GetWebAuthnAsync(request, linked.Token);
+        _session.ThrowIfExpired(lease);
+        return MapWebAuthnDetails(response);
+    }
+
+    public async Task RequestProtectedActionOtpAsync(CancellationToken ct = default)
+    {
+        var lease = _session.CaptureLease();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        await api.RequestProtectedActionOtpAsync(linked.Token);
+        _session.ThrowIfExpired(lease);
+    }
+
+    public Task<WebAuthnRegistrationChallenge> GetWebAuthnChallengeAsync(
+        string pw,
+        CancellationToken ct = default) =>
+        GetWebAuthnChallengeAsync(TwoFactorUserVerification.FromMasterPassword(pw), ct);
+
+    public async Task<WebAuthnRegistrationChallenge> GetWebAuthnChallengeAsync(
+        TwoFactorUserVerification verification,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(verification);
+        var lease = _session.CaptureLease();
+        var initialVerification = CreateVerificationRequest(verification, lease);
+        _session.ThrowIfExpired(lease);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        _session.ThrowIfExpired(lease);
+
+        var verificationResponse = await api.GetWebAuthnAsync(
+            initialVerification,
+            linked.Token);
+        _session.ThrowIfExpired(lease);
+        var current = MapWebAuthnDetails(verificationResponse);
+
+        var response = await api.GetWebAuthnChallengeAsync(
+            CreateContinuationVerification(initialVerification, verificationResponse.UserVerificationToken),
+            linked.Token);
+        _session.ThrowIfExpired(lease);
+        if (response.Options is not JsonElement options)
+            throw new TwoFactorOperationException("The server did not return a WebAuthn registration challenge.");
+
+        var challenge = WebAuthnTwoFactorRegistrationProtocol.ParseChallenge(
+            options,
+            lease.Endpoints,
+            verificationResponse.UserVerificationToken);
+        challenge.BindTo(
+            lease.AccountId,
+            lease.Generation,
+            lease.Endpoints,
+            current.Credentials.Select(static credential => credential.Id));
+        return challenge;
+    }
+
+    public Task<WebAuthnRegistrationOutcome> CompleteWebAuthnRegistrationAsync(
+        string pw,
+        int id,
+        string name,
+        WebAuthnRegistrationChallenge challenge,
+        WebAuthnRegistrationDeviceResponse deviceResponse,
+        CancellationToken ct = default) =>
+        CompleteWebAuthnRegistrationAsync(
+            TwoFactorUserVerification.FromMasterPassword(pw),
+            id,
+            name,
+            challenge,
+            deviceResponse,
+            ct);
+
+    public async Task<WebAuthnRegistrationOutcome> CompleteWebAuthnRegistrationAsync(
+        TwoFactorUserVerification verification,
+        int id,
+        string name,
+        WebAuthnRegistrationChallenge challenge,
+        WebAuthnRegistrationDeviceResponse deviceResponse,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(verification);
+        ArgumentNullException.ThrowIfNull(challenge);
+        ArgumentNullException.ThrowIfNull(deviceResponse);
+        if (id <= 0)
+            throw new TwoFactorOperationException("The WebAuthn credential identifier is invalid.");
+        var normalizedName = name?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedName)
+            || normalizedName.Length > MaxWebAuthnCredentialNameLength)
+        {
+            throw new TwoFactorOperationException("The WebAuthn credential name is invalid.");
+        }
+
+        var lease = _session.CaptureLease();
+        if (!challenge.IsBoundTo(lease.AccountId, lease.Generation, lease.Endpoints))
+            throw new TwoFactorOperationException("The WebAuthn registration challenge is no longer current.");
+        if (challenge.CredentialIdExistedAtIssue(id))
+            throw new TwoFactorOperationException("The WebAuthn credential identifier is already in use.");
+
+        var initialVerification = CreateVerificationRequest(verification, lease);
+        var continuationVerification = CreateContinuationVerification(
+            initialVerification,
+            challenge.UserVerificationToken);
+        WebAuthnTwoFactorRegistrationProtocol.ValidateDeviceResponse(challenge, deviceResponse);
+        ct.ThrowIfCancellationRequested();
+        _session.ThrowIfExpired(lease);
+        if (!challenge.TryConsume())
+            throw new TwoFactorOperationException("The WebAuthn registration challenge has already been used.");
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+        var credentialId = WebAuthnCrypto.EncodeBase64Url(deviceResponse.CredentialId);
+        var request = EnableWebAuthnRequest.Create(
+            id,
+            normalizedName,
+            new WebAuthnRegistrationCredential(
+                credentialId,
+                credentialId,
+                new WebAuthnAttestationResponse(
+                    WebAuthnCrypto.EncodeBase64Url(deviceResponse.AttestationObject),
+                    WebAuthnCrypto.EncodeBase64Url(deviceResponse.ClientDataJson),
+                    deviceResponse.Transports.ToArray())),
+            continuationVerification);
+
+        try
+        {
+            var response = await api.EnableWebAuthnAsync(request, linked.Token);
+            _session.ThrowIfExpired(lease);
+            var details = MapWebAuthnDetails(response);
+            if (!ContainsRegistration(details, id, normalizedName))
+                throw new InvalidDataException("The WebAuthn registration response did not contain the new credential.");
+            return new WebAuthnRegistrationOutcome.Confirmed(details, Reconciled: false);
+        }
+        catch (Exception exception) when (IsPotentiallyCommittedWrite(exception))
+        {
+            var observed = await TryReconcileWebAuthnAsync(
+                api,
+                lease,
+                initialVerification);
+            return observed is not null && ContainsRegistration(observed, id, normalizedName)
+                ? new WebAuthnRegistrationOutcome.Confirmed(observed, Reconciled: true)
+                : new WebAuthnRegistrationOutcome.OutcomeUncertain(observed);
+        }
+    }
+
+    public Task<WebAuthnTwoFactorDetails> DeleteWebAuthnCredentialAsync(
+        string pw,
+        int id,
+        CancellationToken ct = default) =>
+        DeleteWebAuthnCredentialAsync(TwoFactorUserVerification.FromMasterPassword(pw), id, ct);
+
+    public async Task<WebAuthnTwoFactorDetails> DeleteWebAuthnCredentialAsync(
+        TwoFactorUserVerification verification,
+        int id,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(verification);
+        if (id <= 0)
+            throw new TwoFactorOperationException("The WebAuthn credential identifier is invalid.");
+
+        var lease = _session.CaptureLease();
+        var initialVerification = CreateVerificationRequest(verification, lease);
+        _session.ThrowIfExpired(lease);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<ITwoFactorApiClient>(lease);
+
+        var verificationResponse = await api.GetWebAuthnAsync(
+            initialVerification,
+            linked.Token);
+        _session.ThrowIfExpired(lease);
+        var before = MapWebAuthnDetails(verificationResponse);
+        if (!before.Credentials.Any(credential => credential.Id == id))
+            throw new TwoFactorOperationException("The WebAuthn credential was not found.");
+
+        if (before.Credentials.Count == 1
+            && !string.IsNullOrWhiteSpace(verificationResponse.UserVerificationToken))
+        {
+            return await DeleteAllOfficialWebAuthnCredentialsAsync(
+                api,
+                lease,
+                initialVerification,
+                verificationResponse.UserVerificationToken,
+                linked.Token);
+        }
+
+        var continuationVerification = CreateContinuationVerification(
+            initialVerification,
+            verificationResponse.UserVerificationToken);
+        var details = await DeleteOneWebAuthnCredentialAsync(
+            api,
+            lease,
+            id,
+            initialVerification,
+            continuationVerification,
+            linked.Token);
+        if (details.Credentials.Count == 0 && details.Enabled)
+        {
+            if (!string.IsNullOrWhiteSpace(verificationResponse.UserVerificationToken))
+            {
+                return await DeleteAllOfficialWebAuthnCredentialsAsync(
+                    api,
+                    lease,
+                    initialVerification,
+                    verificationResponse.UserVerificationToken,
+                    lease.CancellationToken);
+            }
+            return await DisableVaultwardenWebAuthnProviderAsync(
+                api,
+                lease,
+                initialVerification,
+                lease.CancellationToken);
+        }
+        return details;
+    }
+
     // -----------------------------------------------------------------------
     // DisableAsync — 禁用指定类型的两步验证提供者
     // -----------------------------------------------------------------------
@@ -234,5 +469,182 @@ public sealed class TwoFactorService : ITwoFactorService
         {
             CryptographicOperations.ZeroMemory(mk);
         }
+    }
+
+    private WebAuthnVerificationRequest CreateVerificationRequest(
+        TwoFactorUserVerification verification,
+        Core.Session.VaultSessionLease lease) => verification.Kind switch
+    {
+        TwoFactorUserVerificationKind.MasterPassword =>
+            WebAuthnVerificationRequest.FromMasterPasswordHash(
+                ComputeHash(verification.Secret, LoadPersisted(lease))),
+        TwoFactorUserVerificationKind.Otp =>
+            WebAuthnVerificationRequest.FromOtp(verification.Secret),
+        TwoFactorUserVerificationKind.AuthRequestAccessCode =>
+            WebAuthnVerificationRequest.FromAuthRequestAccessCode(verification.Secret),
+        _ => throw new ArgumentOutOfRangeException(nameof(verification)),
+    };
+
+    private static WebAuthnVerificationRequest CreateContinuationVerification(
+        WebAuthnVerificationRequest initialVerification,
+        string? userVerificationToken) =>
+        string.IsNullOrWhiteSpace(userVerificationToken)
+            ? initialVerification
+            : WebAuthnVerificationRequest.FromUserVerificationToken(userVerificationToken);
+
+    private async Task<WebAuthnTwoFactorDetails> DeleteOneWebAuthnCredentialAsync(
+        ITwoFactorApiClient api,
+        Core.Session.VaultSessionLease lease,
+        int id,
+        WebAuthnVerificationRequest initialVerification,
+        WebAuthnVerificationRequest continuationVerification,
+        CancellationToken ct)
+    {
+        WebAuthnTwoFactorDetails details;
+        try
+        {
+            var response = await api.DeleteWebAuthnCredentialAsync(
+                DeleteWebAuthnCredentialRequest.Create(id, continuationVerification),
+                ct);
+            _session.ThrowIfExpired(lease);
+            details = MapWebAuthnDetails(response);
+        }
+        catch (Exception exception) when (IsPotentiallyCommittedWrite(exception))
+        {
+            details = await TryReconcileWebAuthnAsync(api, lease, initialVerification)
+                ?? throw new TwoFactorOperationException(
+                    "The WebAuthn credential deletion result could not be confirmed.");
+        }
+
+        if (details.Credentials.Any(credential => credential.Id == id))
+            throw new TwoFactorOperationException(
+                "The WebAuthn credential deletion result could not be confirmed.");
+        return details;
+    }
+
+    private async Task<WebAuthnTwoFactorDetails> DeleteAllOfficialWebAuthnCredentialsAsync(
+        ITwoFactorApiClient api,
+        Core.Session.VaultSessionLease lease,
+        WebAuthnVerificationRequest initialVerification,
+        string userVerificationToken,
+        CancellationToken ct)
+    {
+        try
+        {
+            await api.DeleteAllWebAuthnCredentialsAsync(
+                DeleteAllWebAuthnCredentialsRequest.FromUserVerificationToken(userVerificationToken),
+                ct);
+            _session.ThrowIfExpired(lease);
+            return EmptyWebAuthnDetails();
+        }
+        catch (Exception exception) when (IsPotentiallyCommittedWrite(exception))
+        {
+            var observed = await TryReconcileWebAuthnAsync(api, lease, initialVerification);
+            if (observed is not null && !observed.Enabled && observed.Credentials.Count == 0)
+                return observed;
+            throw new TwoFactorOperationException(
+                "The WebAuthn provider deletion result could not be confirmed.");
+        }
+    }
+
+    private async Task<WebAuthnTwoFactorDetails> DisableVaultwardenWebAuthnProviderAsync(
+        ITwoFactorApiClient api,
+        Core.Session.VaultSessionLease lease,
+        WebAuthnVerificationRequest initialVerification,
+        CancellationToken ct)
+    {
+        try
+        {
+            await api.DisableAsync(CreateDisableWebAuthnRequest(initialVerification), ct);
+            _session.ThrowIfExpired(lease);
+            return EmptyWebAuthnDetails();
+        }
+        catch (Exception exception) when (IsPotentiallyCommittedWrite(exception))
+        {
+            var observed = await TryReconcileWebAuthnAsync(api, lease, initialVerification);
+            if (observed is not null && !observed.Enabled && observed.Credentials.Count == 0)
+                return observed;
+            throw new TwoFactorOperationException(
+                "The WebAuthn provider disable result could not be confirmed.");
+        }
+    }
+
+    private static DisableTwoFactorRequest CreateDisableWebAuthnRequest(
+        WebAuthnVerificationRequest verification) =>
+        new(
+            verification.MasterPasswordHash,
+            (int)TwoFactorProviderType.WebAuthn,
+            verification.Otp,
+            verification.AuthRequestAccessCode);
+
+    private async Task<WebAuthnTwoFactorDetails?> TryReconcileWebAuthnAsync(
+        ITwoFactorApiClient api,
+        Core.Session.VaultSessionLease lease,
+        WebAuthnVerificationRequest initialVerification)
+    {
+        if (!_session.IsCurrent(lease))
+            return null;
+
+        try
+        {
+            var response = await api.GetWebAuthnAsync(
+                initialVerification,
+                lease.CancellationToken);
+            _session.ThrowIfExpired(lease);
+            return MapWebAuthnDetails(response);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return null;
+        }
+    }
+
+    private static WebAuthnTwoFactorDetails EmptyWebAuthnDetails() =>
+        new(false, Array.Empty<WebAuthnTwoFactorCredential>());
+
+    private static WebAuthnTwoFactorDetails MapWebAuthnDetails(WebAuthnTwoFactorResponse response)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        if (response.Keys is null || response.Keys.Count > 256)
+            throw new InvalidDataException("The WebAuthn credential list is invalid.");
+
+        var credentials = new List<WebAuthnTwoFactorCredential>(response.Keys.Count);
+        var ids = new HashSet<int>();
+        foreach (var item in response.Keys)
+        {
+            var name = item.Name?.Trim() ?? string.Empty;
+            if (item.Id <= 0
+                || !ids.Add(item.Id)
+                || name.Length > MaxWebAuthnCredentialNameLength)
+            {
+                throw new InvalidDataException("The WebAuthn credential list is invalid.");
+            }
+            credentials.Add(new WebAuthnTwoFactorCredential(item.Id, name, item.Migrated));
+        }
+        return new WebAuthnTwoFactorDetails(response.Enabled, credentials);
+    }
+
+    private static bool ContainsRegistration(
+        WebAuthnTwoFactorDetails details,
+        int id,
+        string name) =>
+        details.Credentials.Any(credential =>
+            credential.Id == id
+            && string.Equals(credential.Name, name, StringComparison.Ordinal));
+
+    private static bool IsPotentiallyCommittedWrite(Exception exception)
+    {
+        if (exception is VaultWriteException writeException)
+        {
+            return writeException.StatusCode == HttpStatusCode.RequestTimeout
+                || writeException.StatusCode is { } statusCode && (int)statusCode >= 500;
+        }
+
+        return exception is HttpRequestException
+            or IOException
+            or OperationCanceledException
+            or TimeoutException
+            or JsonException
+            or InvalidDataException;
     }
 }

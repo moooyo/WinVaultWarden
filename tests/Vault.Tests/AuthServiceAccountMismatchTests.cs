@@ -36,7 +36,7 @@ public class AuthServiceAccountMismatchTests
         var handler = new FakeHttpMessageHandler();
         // token 刷新成功
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
-            """{"access_token":"new-access","refresh_token":"new-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
+            """{"access_token":"e30.eyJzdWIiOiJtZUBleGFtcGxlLmNvbSJ9.c2ln","refresh_token":"new-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
         // 同步返回 profile.id = UUID（不匹配 lease.AccountId = email）
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, MismatchedSyncJson()));
         var session = new VaultSession();
@@ -64,7 +64,7 @@ public class AuthServiceAccountMismatchTests
         });
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
-            """{"access_token":"new-access","refresh_token":"new-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
+            """{"access_token":"e30.eyJzdWIiOiJtZUBleGFtcGxlLmNvbSJ9.c2ln","refresh_token":"new-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, MismatchedSyncJson()));
         var session = new VaultSession();
         var decryptor = new VaultDecryptor(_crypto);
@@ -95,7 +95,7 @@ public class AuthServiceAccountMismatchTests
         });
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
-            """{"access_token":"new-access","refresh_token":"new-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
+            """{"access_token":"e30.eyJzdWIiOiJtZUBleGFtcGxlLmNvbSJ9.c2ln","refresh_token":"new-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, MismatchedSyncJson()));
         var session = new VaultSession();
         var decryptor = new VaultDecryptor(_crypto);
@@ -120,7 +120,7 @@ public class AuthServiceAccountMismatchTests
             fixture.ProtectedUserKey, KdfType.Pbkdf2, Iterations, null, null));
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
-            """{"access_token":"new-access","refresh_token":"new-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
+            """{"access_token":"e30.eyJzdWIiOiJtZUBleGFtcGxlLmNvbSJ9.c2ln","refresh_token":"new-refresh","expires_in":3600,"token_type":"Bearer","scope":"api offline_access"}"""));
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, MismatchedSyncJson()));
         var session = new VaultSession();
         var store = new FakeCacheStore();
@@ -192,7 +192,7 @@ public class AuthServiceAccountMismatchTests
 
     // profile.id 为 UUID，触发 SyncService 的账户错配门禁（InvalidDataException）。
     private static string MismatchedSyncJson() =>
-        $$"""{"object":"sync","profile":{"id":"{{MismatchedProfileId}}","email":"{{Email}}","name":"Me"},"folders":[],"ciphers":[]}""";
+        $$"""{"object":"sync","profile":{"id":"{{MismatchedProfileId}}","email":"{{Email}}","name":"Me","securityStamp":"stamp-1"},"folders":[],"ciphers":[]}""";
 
     private sealed record LoginFixture(SymmetricCryptoKey UserKey, string ProtectedUserKey);
     private sealed record PinFixture(SymmetricCryptoKey UserKey, string ProtectedUserKey, string PinProtectedUserKey);

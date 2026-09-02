@@ -1,6 +1,7 @@
+using Core.Session;
+
 namespace App.Services;
 
-// 空闲/最小化/系统锁屏 → 决策并抛 TimeoutRequested;不依赖 WinUI/auth,由 MainWindow 执行动作。
 public sealed class VaultTimeoutService
 {
     private readonly Func<DateTimeOffset> _now;
@@ -24,14 +25,41 @@ public sealed class VaultTimeoutService
         if (t - _lastActivity >= ActivityThrottle) _lastActivity = t;
     }
 
-    public void Tick(int minutes, VaultTimeoutAction idleAction)
+    public void Tick(
+        IVaultSnapshot snapshot,
+        int sessionTimeoutIndex,
+        int timeoutActionIndex)
     {
         if (!_armed) return;
-        if (IdleTimeoutPolicy.IsExpired(_lastActivity, _now(), minutes))
+        var timeout = IdleTimeoutPolicy.Resolve(
+            snapshot,
+            sessionTimeoutIndex,
+            timeoutActionIndex);
+        if (IdleTimeoutPolicy.IsExpired(_lastActivity, _now(), timeout))
         {
             _armed = false;
-            TimeoutRequested?.Invoke(this, idleAction);
+            TimeoutRequested?.Invoke(this, timeout.Action);
         }
+    }
+
+    public void HandleSystemLock(
+        IVaultSnapshot snapshot,
+        int sessionTimeoutIndex,
+        int timeoutActionIndex)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (!_armed) return;
+
+        var timeout = IdleTimeoutPolicy.Resolve(
+            snapshot,
+            sessionTimeoutIndex,
+            timeoutActionIndex);
+        _armed = false;
+        TimeoutRequested?.Invoke(
+            this,
+            timeout.Trigger == VaultTimeoutTrigger.OnSystemLock
+                ? timeout.Action
+                : VaultTimeoutAction.Lock);
     }
 
     public void LockNow()

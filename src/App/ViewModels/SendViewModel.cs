@@ -5,6 +5,7 @@ using App.ViewModels.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Core.Models;
+using Core.Services;
 using Core.Session;
 
 namespace App.ViewModels;
@@ -37,6 +38,11 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
 
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanCreateSend))]
+    [NotifyPropertyChangedFor(nameof(ShowStaleInfo))]
+    public partial bool IsReadOnly { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowLoading))]
@@ -87,6 +93,8 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     public bool ShowError => LoadState == DataPageState.Error;
     public bool ShowEmpty => LoadState == DataPageState.Empty;
     public bool ShowContent => LoadState == DataPageState.Content;
+    public bool CanCreateSend => !IsReadOnly;
+    public bool ShowStaleInfo => IsReadOnly;
     public bool HasReceivedText => !string.IsNullOrEmpty(ReceivedText);
     public bool HasReceivedFile => !string.IsNullOrEmpty(ReceivedFileName);
 
@@ -129,6 +137,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
                     return false;
                 LoadState = DataPageState.Loading;
                 Error = null;
+                IsReadOnly = IsExpectedSessionDataStale(expectedSession);
                 return true;
             }))
         {
@@ -149,6 +158,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
                     UpdateReconciliationNotice();
                     LoadState = Items.Count == 0 ? DataPageState.Empty : DataPageState.Content;
                     LoadedSession = expectedSession;
+                    IsReadOnly = IsExpectedSessionDataStale(expectedSession);
                     return true;
                 }))
             {
@@ -188,6 +198,21 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
                 return UiOperationResult<IReadOnlyList<SendListItem>>.Cancelled();
             }
             return UiOperationResult<IReadOnlyList<SendListItem>>.Failure(message);
+        }
+        catch (OrganizationPolicyException ex)
+        {
+            if (!TryCommitForExpectedSession(expectedSession, () =>
+                {
+                    if (requestId != Volatile.Read(ref _loadRequestId))
+                        return false;
+                    Error = ex.Message;
+                    LoadState = DataPageState.Error;
+                    return true;
+                }))
+            {
+                return UiOperationResult<IReadOnlyList<SendListItem>>.Cancelled();
+            }
+            return UiOperationResult<IReadOnlyList<SendListItem>>.Failure(ex.Message);
         }
         catch (HttpRequestException)
         {
@@ -299,6 +324,13 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         return accepted && committed;
     }
 
+    private bool IsExpectedSessionDataStale(VaultSessionLease? expectedSession)
+    {
+        if (_session is null || expectedSession is null)
+            return false;
+        return _session.IsDataStale(expectedSession);
+    }
+
     partial void OnSelectedFilterTagChanged(string value) => ApplyFilter();
 
     private void ApplyFilter()
@@ -365,6 +397,8 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
             }
             catch (Exception ex) when (
                 ex is ArgumentOutOfRangeException
+                    or Vault.SendStateStaleException
+                    or OrganizationPolicyException
                     or UnauthorizedAccessException
                     or IOException
                     or InvalidDataException
@@ -475,6 +509,8 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
             }
             catch (Exception ex) when (
                 ex is ArgumentOutOfRangeException
+                    or Vault.SendStateStaleException
+                    or OrganizationPolicyException
                     or UnauthorizedAccessException
                     or IOException
                     or InvalidDataException
@@ -517,6 +553,8 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         return exception switch
         {
             ArgumentOutOfRangeException => "文件超过 500 MiB 上限。",
+            Vault.SendStateStaleException => "离线数据为只读。请先成功同步密码库，再修改 Send。",
+            OrganizationPolicyException => exception.Message,
             UnauthorizedAccessException => "没有读取所选文件的权限。",
             IOException => "读取或上传文件失败，请确认文件仍可访问后重试。",
             InvalidDataException => "文件在读取或上传过程中已被修改，请重新选择文件后重试。",
@@ -534,6 +572,8 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         || exception is HttpRequestException
             or IOException
             or UnauthorizedAccessException
+            or Vault.SendStateStaleException
+            or OrganizationPolicyException
             or SendMutationInProgressException;
 
     private static string SafeDeleteError(Exception exception)
@@ -547,6 +587,8 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         return exception switch
         {
             UnauthorizedAccessException => "没有删除此 Send 的权限，请重新登录或联系管理员后重试。",
+            Vault.SendStateStaleException => "离线数据为只读。请先成功同步密码库，再删除 Send。",
+            OrganizationPolicyException => exception.Message,
             SendMutationInProgressException => "另一项 Send 操作仍在进行，请稍后重试。",
             _ => "删除 Send 失败，请刷新列表后重试。",
         };
@@ -636,7 +678,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         }
     }
 
-    public bool CanModifySend(SendListItem? item) => item?.CanModify == true;
+    public bool CanModifySend(SendListItem? item) => !IsReadOnly && item?.CanModify == true;
 
     private void UpsertCommittedItem(SendListItem committed, string? replacedId)
     {
@@ -898,6 +940,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         Items.Clear();
         FilteredItems.Clear();
         LoadedSession = null;
+        IsReadOnly = false;
         LoadState = DataPageState.Loading;
     }
 }

@@ -19,5 +19,4 @@ public interface IEmergencyAccessApiClient : IAuthenticatedApiRole
     Task<EmergencyAccessViewResponse> ViewAsync(string id, CancellationToken ct = default);
     Task<EmergencyAccessTakeoverResponse> TakeoverAsync(string id, CancellationToken ct = default);
     Task PasswordAsync(string id, EmergencyAccessPasswordRequest request, CancellationToken ct = default);
-    Task DeleteAccountAsync(DeleteAccountRequest request, CancellationToken ct = default);
 }

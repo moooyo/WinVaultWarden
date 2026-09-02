@@ -7,7 +7,11 @@ public sealed record PersistedSession
 {
     public const int LegacySchemaVersion = 2;
     private const int EndpointSchemaVersion = 3;
-    public const int CurrentSchemaVersion = 4;
+    private const int MasterPasswordSaltSchemaVersion = 4;
+    private const int KeyConnectorSchemaVersion = 5;
+    private const int UnlockMethodSchemaVersion = 6;
+    private const int AccountMetadataSchemaVersion = 7;
+    public const int CurrentSchemaVersion = 8;
     public const long MaxPersistedGeneration = long.MaxValue - 1;
 
     [JsonConstructor]
@@ -25,7 +29,12 @@ public sealed record PersistedSession
         int kdfIterations,
         int? kdfMemory,
         int? kdfParallelism,
-        string? masterPasswordSalt = null)
+        string? masterPasswordSalt = null,
+        PersistedSessionUnlockMethod unlockMethod = PersistedSessionUnlockMethod.MasterPassword,
+        string? keyConnectorUrl = null,
+        int userKeySecurityVersion = 1,
+        string? userKeyId = null,
+        PersistedAccountCryptographicState? accountCryptographicState = null)
     {
         SchemaVersion = schemaVersion;
         AccountId = accountId;
@@ -41,6 +50,11 @@ public sealed record PersistedSession
         KdfMemory = kdfMemory;
         KdfParallelism = kdfParallelism;
         MasterPasswordSalt = masterPasswordSalt;
+        UnlockMethod = unlockMethod;
+        KeyConnectorUrl = keyConnectorUrl;
+        UserKeySecurityVersion = userKeySecurityVersion;
+        UserKeyId = userKeyId;
+        AccountCryptographicState = accountCryptographicState;
     }
 
     public PersistedSession(
@@ -56,7 +70,12 @@ public sealed record PersistedSession
         int kdfIterations,
         int? kdfMemory,
         int? kdfParallelism,
-        string? masterPasswordSalt = null)
+        string? masterPasswordSalt = null,
+        PersistedSessionUnlockMethod unlockMethod = PersistedSessionUnlockMethod.MasterPassword,
+        string? keyConnectorUrl = null,
+        int userKeySecurityVersion = 1,
+        string? userKeyId = null,
+        PersistedAccountCryptographicState? accountCryptographicState = null)
         : this(
             schemaVersion,
             accountId,
@@ -71,7 +90,12 @@ public sealed record PersistedSession
             kdfIterations,
             kdfMemory,
             kdfParallelism,
-            ResolveTrustedConstructorSalt(schemaVersion, email, masterPasswordSalt))
+            ResolveTrustedConstructorSalt(schemaVersion, email, masterPasswordSalt),
+            unlockMethod,
+            keyConnectorUrl,
+            userKeySecurityVersion,
+            userKeyId,
+            accountCryptographicState)
     {
     }
 
@@ -88,7 +112,12 @@ public sealed record PersistedSession
         int KdfIterations,
         int? KdfMemory,
         int? KdfParallelism,
-        string? MasterPasswordSalt = null)
+        string? MasterPasswordSalt = null,
+        PersistedSessionUnlockMethod UnlockMethod = PersistedSessionUnlockMethod.MasterPassword,
+        string? KeyConnectorUrl = null,
+        int UserKeySecurityVersion = 1,
+        string? UserKeyId = null,
+        PersistedAccountCryptographicState? AccountCryptographicState = null)
         : this(
             SchemaVersion,
             AccountId,
@@ -103,7 +132,12 @@ public sealed record PersistedSession
             KdfIterations,
             KdfMemory,
             KdfParallelism,
-            ResolveTrustedConstructorSalt(SchemaVersion, Email, MasterPasswordSalt))
+            ResolveTrustedConstructorSalt(SchemaVersion, Email, MasterPasswordSalt),
+            UnlockMethod,
+            KeyConnectorUrl,
+            UserKeySecurityVersion,
+            UserKeyId,
+            AccountCryptographicState)
     {
     }
 
@@ -121,6 +155,13 @@ public sealed record PersistedSession
     public int? KdfMemory { get; init; }
     public int? KdfParallelism { get; init; }
     public string? MasterPasswordSalt { get; init; }
+    public PersistedSessionUnlockMethod UnlockMethod { get; init; }
+    public string? KeyConnectorUrl { get; init; }
+    public bool? HasMasterPassword { get; init; }
+    public bool SupportsDeviceTrust { get; init; }
+    public int UserKeySecurityVersion { get; init; } = 1;
+    public string? UserKeyId { get; init; }
+    public PersistedAccountCryptographicState? AccountCryptographicState { get; init; }
 
     [JsonIgnore]
     public string EffectiveMasterPasswordSalt =>
@@ -131,7 +172,8 @@ public sealed record PersistedSession
         SchemaVersion == CurrentSchemaVersion
         && HasValidLegacyIdentity()
         && HasValidEndpointBinding()
-        && MasterPasswordSaltPolicy.IsValid(MasterPasswordSalt);
+        && HasValidUnlockBinding()
+        && HasValidAccountCryptographicBinding();
 
     public string ServerUrl => Endpoints?.WebVault.Value ?? string.Empty;
 
@@ -164,6 +206,13 @@ public sealed record PersistedSession
                     SchemaVersion = CurrentSchemaVersion,
                     Endpoints = ServerEndpoints.FromWebVault(Origin.Value),
                     MasterPasswordSalt = MasterPasswordSaltPolicy.NormalizeEmail(Email),
+                    UnlockMethod = PersistedSessionUnlockMethod.MasterPassword,
+                    KeyConnectorUrl = null,
+                    HasMasterPassword = null,
+                    SupportsDeviceTrust = false,
+                    UserKeySecurityVersion = 1,
+                    UserKeyId = null,
+                    AccountCryptographicState = null,
                 };
                 return migrated.HasValidBinding;
             }
@@ -174,6 +223,81 @@ public sealed record PersistedSession
                 {
                     SchemaVersion = CurrentSchemaVersion,
                     MasterPasswordSalt = MasterPasswordSaltPolicy.NormalizeEmail(Email),
+                    UnlockMethod = PersistedSessionUnlockMethod.MasterPassword,
+                    KeyConnectorUrl = null,
+                    HasMasterPassword = null,
+                    SupportsDeviceTrust = false,
+                    UserKeySecurityVersion = 1,
+                    UserKeyId = null,
+                    AccountCryptographicState = null,
+                };
+                return migrated.HasValidBinding;
+            }
+
+            if (SchemaVersion == MasterPasswordSaltSchemaVersion
+                && HasValidEndpointBinding()
+                && MasterPasswordSaltPolicy.IsValid(MasterPasswordSalt))
+            {
+                migrated = this with
+                {
+                    SchemaVersion = CurrentSchemaVersion,
+                    UnlockMethod = PersistedSessionUnlockMethod.MasterPassword,
+                    KeyConnectorUrl = null,
+                    HasMasterPassword = null,
+                    SupportsDeviceTrust = false,
+                    UserKeySecurityVersion = 1,
+                    UserKeyId = null,
+                    AccountCryptographicState = null,
+                };
+                return migrated.HasValidBinding;
+            }
+
+            if (SchemaVersion == KeyConnectorSchemaVersion
+                && HasValidEndpointBinding()
+                && MasterPasswordSaltPolicy.IsValid(MasterPasswordSalt))
+            {
+                migrated = this with
+                {
+                    SchemaVersion = CurrentSchemaVersion,
+                    UnlockMethod = string.IsNullOrWhiteSpace(KeyConnectorUrl)
+                        ? PersistedSessionUnlockMethod.MasterPassword
+                        : PersistedSessionUnlockMethod.KeyConnector,
+                    HasMasterPassword = null,
+                    SupportsDeviceTrust = false,
+                    UserKeySecurityVersion = 1,
+                    UserKeyId = null,
+                    AccountCryptographicState = null,
+                };
+                return migrated.HasValidBinding;
+            }
+
+            if (SchemaVersion == UnlockMethodSchemaVersion
+                && HasValidEndpointBinding()
+                && HasValidUnlockBinding())
+            {
+                migrated = this with
+                {
+                    SchemaVersion = CurrentSchemaVersion,
+                    HasMasterPassword = null,
+                    SupportsDeviceTrust = false,
+                    UserKeySecurityVersion = 1,
+                    UserKeyId = null,
+                    AccountCryptographicState = null,
+                };
+                return migrated.HasValidBinding;
+            }
+
+            if (SchemaVersion == AccountMetadataSchemaVersion
+                && HasValidEndpointBinding()
+                && HasValidUnlockBinding())
+            {
+                migrated = this with
+                {
+                    SchemaVersion = CurrentSchemaVersion,
+                    SupportsDeviceTrust = false,
+                    UserKeySecurityVersion = 1,
+                    UserKeyId = null,
+                    AccountCryptographicState = null,
                 };
                 return migrated.HasValidBinding;
             }
@@ -205,6 +329,67 @@ public sealed record PersistedSession
         && Endpoints.SendWeb.IsInitialized
         && Origin == Endpoints.WebVault.Origin;
 
+    private bool HasValidUnlockBinding()
+    {
+        if (!MasterPasswordSaltPolicy.IsValid(MasterPasswordSalt)
+            || string.IsNullOrWhiteSpace(RefreshToken))
+            return false;
+        return UnlockMethod switch
+        {
+            PersistedSessionUnlockMethod.MasterPassword =>
+                string.IsNullOrWhiteSpace(KeyConnectorUrl)
+                && !string.IsNullOrWhiteSpace(ProtectedUserKey),
+            PersistedSessionUnlockMethod.KeyConnector =>
+                KeyConnectorEndpointPolicy.TryNormalize(KeyConnectorUrl, out var normalized)
+                && string.Equals(normalized, KeyConnectorUrl, StringComparison.Ordinal)
+                && !string.IsNullOrWhiteSpace(ProtectedUserKey),
+            PersistedSessionUnlockMethod.TrustedDeviceSso =>
+                string.IsNullOrWhiteSpace(KeyConnectorUrl)
+                && !string.IsNullOrWhiteSpace(RefreshToken)
+                && Guid.TryParseExact(DeviceIdentifier, "D", out _),
+            _ => false,
+        };
+    }
+
+    private bool HasValidAccountCryptographicBinding()
+    {
+        if (!HasCanonicalUserKeyId(UserKeyId))
+            return false;
+
+        return UserKeySecurityVersion switch
+        {
+            1 => AccountCryptographicState is null
+                || AccountCryptographicState is
+                {
+                    SecurityVersion: 1,
+                    HasValidShape: true,
+                },
+            2 => AccountCryptographicState is
+            {
+                SecurityVersion: 2,
+                HasValidShape: true,
+            },
+            _ => false,
+        };
+    }
+
+    private static bool HasCanonicalUserKeyId(string? value)
+    {
+        if (value is null)
+            return true;
+        if (value.Length != 32)
+            return false;
+        foreach (var character in value)
+        {
+            if (character is not (>= '0' and <= '9')
+                and not (>= 'a' and <= 'f'))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static string? ResolveTrustedConstructorSalt(
         int schemaVersion,
         string email,
@@ -216,7 +401,12 @@ public sealed record PersistedSession
     private static ServerEndpoints? CreateCompatibilityEndpoints(
         int schemaVersion,
         ServerOrigin origin) =>
-        schemaVersion is EndpointSchemaVersion or CurrentSchemaVersion
+        schemaVersion is EndpointSchemaVersion
+            or MasterPasswordSaltSchemaVersion
+            or KeyConnectorSchemaVersion
+            or UnlockMethodSchemaVersion
+            or AccountMetadataSchemaVersion
+            or CurrentSchemaVersion
             && origin.IsInitialized
             ? ServerEndpoints.FromWebVault(origin.Value)
             : null;

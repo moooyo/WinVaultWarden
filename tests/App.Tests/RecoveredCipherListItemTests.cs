@@ -13,6 +13,9 @@ public class RecoveredCipherListItemTests
     [InlineData(CipherType.Card, "卡片")]
     [InlineData(CipherType.Identity, "身份")]
     [InlineData(CipherType.SshKey, "SSH 密钥")]
+    [InlineData(CipherType.BankAccount, "银行账户")]
+    [InlineData(CipherType.DriversLicense, "驾驶证")]
+    [InlineData(CipherType.Passport, "护照")]
     public void FromCipher_UsesLocalizedTypeLabels(CipherType type, string expected)
     {
         var item = RecoveredCipherListItem.FromCipher(new Cipher
@@ -85,13 +88,49 @@ public class RecoveredCipherListItemTests
             Notes = "secret-note-body",
             SecureNote = new CipherSecureNote(0),
         });
+        var bank = RecoveredCipherListItem.FromCipher(new Cipher
+        {
+            Name = "Checking",
+            Type = CipherType.BankAccount,
+            BankAccount = new CipherBankAccount(
+                "Example Bank", "Secret Name", "Checking", "secret-account", "secret-routing",
+                "secret-branch", "secret-pin", "secret-swift", "secret-iban", "secret-phone"),
+        });
+        var license = RecoveredCipherListItem.FromCipher(new Cipher
+        {
+            Name = "License",
+            Type = CipherType.DriversLicense,
+            DriversLicense = new CipherDriversLicense(
+                "Secret", null, "Name", "secret-birth-date", "secret-license-number", "US", "CA",
+                "secret-issue-date", "secret-expiration", "Secret Authority", "secret-class"),
+        });
+        var passport = RecoveredCipherListItem.FromCipher(new Cipher
+        {
+            Name = "Passport",
+            Type = CipherType.Passport,
+            Passport = new CipherPassport(
+                "Secret Surname", "Secret Given", "secret-birth-date", "secret-sex", "secret-place",
+                "secret-nationality", "GB", "secret-passport-number", "secret-type", "secret-national-id",
+                "Secret Authority", "secret-issue-date", "secret-expiration"),
+        });
 
         Assert.Equal("卡片 · Visa", card.Subtitle);
         Assert.Equal("身份", identity.Subtitle);
         Assert.Equal("SSH 密钥 · SHA256:safe-fingerprint", ssh.Subtitle);
         Assert.Equal("安全笔记", note.Subtitle);
+        Assert.Equal("银行账户 · Example Bank", bank.Subtitle);
+        Assert.Equal("驾驶证 · US", license.Subtitle);
+        Assert.Equal("护照 · GB", passport.Subtitle);
 
-        var visibleText = string.Join("|", VisibleText(card), VisibleText(identity), VisibleText(ssh), VisibleText(note));
+        var visibleText = string.Join(
+            "|",
+            VisibleText(card),
+            VisibleText(identity),
+            VisibleText(ssh),
+            VisibleText(note),
+            VisibleText(bank),
+            VisibleText(license),
+            VisibleText(passport));
         Assert.DoesNotContain("4111111111111111", visibleText);
         Assert.DoesNotContain("123", visibleText);
         Assert.DoesNotContain("Secret Holder", visibleText);
@@ -106,6 +145,12 @@ public class RecoveredCipherListItemTests
         Assert.DoesNotContain("secret-private-key", visibleText);
         Assert.DoesNotContain("secret-public-key", visibleText);
         Assert.DoesNotContain("secret-note-body", visibleText);
+        Assert.DoesNotContain("secret-account", visibleText);
+        Assert.DoesNotContain("secret-routing", visibleText);
+        Assert.DoesNotContain("secret-pin", visibleText);
+        Assert.DoesNotContain("secret-license-number", visibleText);
+        Assert.DoesNotContain("secret-passport-number", visibleText);
+        Assert.DoesNotContain("secret-national-id", visibleText);
     }
 
     [Fact]

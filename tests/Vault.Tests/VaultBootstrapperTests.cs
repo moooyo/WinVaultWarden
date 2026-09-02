@@ -44,9 +44,11 @@ public class VaultBootstrapperTests
     {
         var crypto = new CryptoService();
         var userKey = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
-        const string fakePrivateKey = "2.fakeEncryptedPrivateKey|iv|mac";
+        var wrappedPrivateKey = crypto.Encrypt([1, 2, 3, 4], userKey).ToString();
         var handler = new FakeHttpMessageHandler();
-        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, SyncJsonWithPrivateKey(crypto, userKey, fakePrivateKey)));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(
+            HttpStatusCode.OK,
+            SyncJsonWithPrivateKey(crypto, userKey, wrappedPrivateKey)));
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
             """{"data":[{"id":"d1","name":"Desktop","type":6,"identifier":"d1","creationDate":"2026-06-24T00:00:00Z","isTrusted":false,"object":"device"}],"object":"list","continuationToken":null}"""));
         var api = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
@@ -60,7 +62,7 @@ public class VaultBootstrapperTests
 
         await bootstrapper.BootstrapAsync(lease, TestContext.Current.CancellationToken);
 
-        Assert.Equal(fakePrivateKey, session.EncryptedPrivateKey);
+        Assert.Equal(wrappedPrivateKey, session.EncryptedPrivateKey);
     }
 
     private static string SyncJsonWithPrivateKey(CryptoService crypto, SymmetricCryptoKey key, string privateKey)
@@ -71,7 +73,14 @@ public class VaultBootstrapperTests
         return JsonSerializer.Serialize(new
         {
             @object = "sync",
-            profile = new { id = "u1", email = "me@example.com", name = "Me", privateKey },
+            profile = new
+            {
+                id = "u1",
+                email = "me@example.com",
+                name = "Me",
+                privateKey,
+                securityStamp = "stamp-1",
+            },
             folders = new[]
             {
                 new { id = "f1", name = Enc(crypto, key, "Work"), revisionDate = "2026-06-24T00:00:00Z" },
@@ -99,7 +108,13 @@ public class VaultBootstrapperTests
         return JsonSerializer.Serialize(new
         {
             @object = "sync",
-            profile = new { id = "u1", email = "me@example.com", name = "Me" },
+            profile = new
+            {
+                id = "u1",
+                email = "me@example.com",
+                name = "Me",
+                securityStamp = "stamp-1",
+            },
             folders = new[]
             {
                 new { id = "f1", name = Enc(crypto, key, "Work"), revisionDate = "2026-06-24T00:00:00Z" },

@@ -27,8 +27,14 @@ public class DemoVaultLoginWiringTests
 
         Assert.Contains("IsAccountStage", RequireElementByName(document, "LoginAccountStage").Attribute("Visibility")?.Value);
         Assert.Contains("IsPasswordStage", RequireElementByName(document, "LoginPasswordStage").Attribute("Visibility")?.Value);
+        Assert.Contains("IsDeviceVerificationStage", RequireElementByName(document, "LoginDeviceVerificationStage").Attribute("Visibility")?.Value);
+        Assert.Contains("IsPasswordChangeRequiredStage", RequireElementByName(document, "LoginPasswordChangeRequiredStage").Attribute("Visibility")?.Value);
         Assert.Contains("IsTwoFactorStage", RequireElementByName(document, "LoginTwoFactorStage").Attribute("Visibility")?.Value);
-        Assert.Contains("IsUnlockStage", RequireElementByName(document, "LoginUnlockStage").Attribute("Visibility")?.Value);
+        Assert.Contains("DeviceVerificationCode", RequireElementByName(document, "DeviceVerificationCodeTextBox").Attribute("Text")?.Value);
+        Assert.Contains("ResendNewDeviceCodeCommand", RequireElementByName(document, "ResendNewDeviceCodeButton").Attribute("Command")?.Value);
+        Assert.Contains("NewMasterPassword", RequireElementByName(document, "NewMasterPasswordBox").Attribute("Password")?.Value);
+        Assert.Contains("ConfirmNewMasterPassword", RequireElementByName(document, "ConfirmNewMasterPasswordBox").Attribute("Password")?.Value);
+        Assert.Contains("ShowUnlockPanel", RequireElementByName(document, "LoginUnlockStage").Attribute("Visibility")?.Value);
         Assert.Contains("SelectedServerOptionIndex", RequireElementByName(document, "ServerOptionBox").Attribute("SelectedIndex")?.Value);
         var statusBar = RequireElementByName(document, "LoginStatusInfoBar");
         Assert.Contains("HasStatus", statusBar.Attribute("IsOpen")?.Value);
@@ -43,6 +49,74 @@ public class DemoVaultLoginWiringTests
         Assert.Contains("SwitchAccountCommand", RequireElementByName(document, "SwitchAccountButton").Attribute("Command")?.Value);
         Assert.Equal("0", RequireElementByName(document, "LoginForm").Attribute("Spacing")?.Value);
         Assert.Equal("0,18,0,0", RequireElementByName(document, "LoginAccountStage").Attribute("Margin")?.Value);
+    }
+
+    [Fact]
+    public void LoginPage_WiresYubiKeyLengthAndRecoveryCodeWarning()
+    {
+        var document = LoadXaml("LoginPage.xaml");
+        var code = RequireElementByName(document, "TwoFactorCodeTextBox");
+        var warning = RequireElementByName(document, "RecoveryCodeWarningInfoBar");
+        var switchButton = RequireElementByName(document, "RecoveryCodeModeButton");
+
+        Assert.Equal("128", code.Attribute("MaxLength")?.Value);
+        Assert.Contains("TwoFactorInputHeader", code.Attribute("Header")?.Value);
+        Assert.Contains("TwoFactorInputPlaceholder", code.Attribute("PlaceholderText")?.Value);
+        Assert.Contains("ShowTwoFactorCodeInput", code.Attribute("Visibility")?.Value);
+        Assert.Equal("Warning", warning.Attribute("Severity")?.Value);
+        Assert.Contains("ShowRecoveryCodeWarning", warning.Attribute("IsOpen")?.Value);
+        Assert.Contains("ToggleRecoveryCodeModeCommand", switchButton.Attribute("Command")?.Value);
+        Assert.Contains("ShowRecoveryCodeSwitch", switchButton.Attribute("Visibility")?.Value);
+    }
+
+    [Fact]
+    public void LoginPage_ExposesSavedAccountPickerAndPinStageSwitchAction()
+    {
+        var document = LoadXaml("LoginPage.xaml");
+        var accounts = RequireElementByName(document, "SavedAccountsPanel");
+        var pinSwitch = RequireElementByName(document, "PinSwitchAccountButton");
+
+        Assert.Contains("ShowSavedAccounts", accounts.Attribute("Visibility")?.Value);
+        Assert.Contains(accounts.Descendants(),
+            element => element.Attribute("Click")?.Value == "OnSavedAccountClick");
+        Assert.Contains("SwitchAccountCommand", pinSwitch.Attribute("Command")?.Value);
+    }
+
+    [Fact]
+    public void LoginPage_ExposesTrustedDeviceApprovalFingerprintAndCancellation()
+    {
+        var document = LoadXaml("LoginPage.xaml");
+        var stage = RequireElementByName(document, "LoginTrustedDeviceApprovalStage");
+        var fingerprint = RequireElementByName(document, "DeviceApprovalFingerprintBox");
+
+        Assert.Contains("IsTrustedDeviceApprovalStage", stage.Attribute("Visibility")?.Value);
+        Assert.Equal("True", fingerprint.Attribute("IsReadOnly")?.Value);
+        Assert.Contains("ApprovalFingerprint", fingerprint.Attribute("Text")?.Value);
+        Assert.Contains(
+            stage.Descendants(),
+            element => element.Attribute("Command")?.Value?.Contains(
+                "CancelTrustedDeviceApprovalCommand",
+                StringComparison.Ordinal) == true);
+        Assert.Contains(
+            stage.Descendants(),
+            element => element.Attribute("IsChecked")?.Value?.Contains(
+                "TrustCurrentDeviceAfterApproval",
+                StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public void LoginPage_WiresSsoStartAndCancelActions()
+    {
+        var document = LoadXaml("LoginPage.xaml");
+        var start = RequireElementByName(document, "SsoLoginButton");
+        var cancel = RequireElementByName(document, "CancelSsoButton");
+        var register = RequireElementByName(document, "GoToRegisterButton");
+
+        Assert.Contains("LoginWithSsoCommand", start.Attribute("Command")?.Value);
+        Assert.Contains("CanUseSso", start.Attribute("IsEnabled")?.Value);
+        Assert.Contains("CancelSsoCommand", cancel.Attribute("Command")?.Value);
+        Assert.Contains("ShowCancelSso", cancel.Attribute("Visibility")?.Value);
+        Assert.Contains("CanEditServer", register.Attribute("IsEnabled")?.Value);
     }
 
     [Fact]

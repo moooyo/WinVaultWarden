@@ -7,6 +7,8 @@ public sealed record AccountInfo(
     string Initial,
     string KdfSummary)
 {
+    public bool? UserIsClaimedByOrganization { get; init; }
+
     public AccountInfo(
         string id,
         string email,

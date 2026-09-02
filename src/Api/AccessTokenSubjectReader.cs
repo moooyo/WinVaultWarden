@@ -5,8 +5,17 @@ namespace Api;
 public static class AccessTokenSubjectReader
 {
     public static bool TryReadAccountId(string? accessToken, out string accountId)
+        => TryReadStringClaim(accessToken, "sub", out accountId);
+
+    public static bool TryReadEmail(string? accessToken, out string email)
+        => TryReadStringClaim(accessToken, "email", out email);
+
+    private static bool TryReadStringClaim(
+        string? accessToken,
+        string claimName,
+        out string value)
     {
-        accountId = string.Empty;
+        value = string.Empty;
         if (string.IsNullOrWhiteSpace(accessToken))
             return false;
 
@@ -21,11 +30,11 @@ public static class AccessTokenSubjectReader
                 payload.Length + (4 - payload.Length % 4) % 4,
                 '=');
             using var json = JsonDocument.Parse(Convert.FromBase64String(payload));
-            if (!json.RootElement.TryGetProperty("sub", out var sub)
-                || sub.ValueKind != JsonValueKind.String
-                || string.IsNullOrWhiteSpace(sub.GetString()))
+            if (!json.RootElement.TryGetProperty(claimName, out var claim)
+                || claim.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(claim.GetString()))
                 return false;
-            accountId = sub.GetString()!;
+            value = claim.GetString()!;
             return true;
         }
         catch (Exception ex) when (ex is FormatException or JsonException)

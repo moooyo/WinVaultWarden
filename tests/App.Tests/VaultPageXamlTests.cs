@@ -50,6 +50,57 @@ public class VaultPageXamlTests
         Assert.Equal("OnCipherSelectionChanged", list.Attribute("SelectionChanged")?.Value);
     }
 
+    [Fact]
+    public void Vault_OrganizationPlacement_HasDetailActionsAndEditorCollectionCheckboxes()
+    {
+        var document = LoadXaml();
+        var x = XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml");
+
+        var transfer = document.Descendants(Xaml + "Button")
+            .Single(button => button.Attribute(x + "Name")?.Value == "TransferCipherToOrganizationButton");
+        var manage = document.Descendants(Xaml + "Button")
+            .Single(button => button.Attribute(x + "Name")?.Value == "ManageCipherCollectionsButton");
+        var collectionCheckbox = document.Descendants(Xaml + "CheckBox")
+            .Single(box => (box.Attribute("IsChecked")?.Value ?? "").Contains("IsSelected"));
+
+        Assert.Equal("OnTransferCipherToOrganizationClick", transfer.Attribute("Click")?.Value);
+        Assert.Equal("OnManageCipherCollectionsClick", manage.Attribute("Click")?.Value);
+        Assert.Contains("CanSelect", collectionCheckbox.Attribute("IsEnabled")?.Value ?? "");
+    }
+
+    [Fact]
+    public void Vault_OrganizationPlacementDialog_LocksReadOnlyAssignments()
+    {
+        var code = LoadCodeBehind();
+
+        Assert.Contains("lockReadOnlyAssignments: true", code, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled = option.CanSelect", code, StringComparison.Ordinal);
+        Assert.Contains("请选择至少一个集合", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Vault_PendingCreateAbandonment_IsSessionBoundAndNeverResubmitsDraft()
+    {
+        var code = LoadCodeBehind();
+        var start = code.IndexOf(
+            "private async void OnAbandonPendingCipherCreateClick",
+            StringComparison.Ordinal);
+        var end = code.IndexOf(
+            "private void OnCipherEditorTypeChanged",
+            start,
+            StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start);
+        var handler = code[start..end];
+
+        Assert.Contains("CapturePendingCipherCreate()", handler, StringComparison.Ordinal);
+        Assert.Contains(".CaptureLease()", handler, StringComparison.Ordinal);
+        Assert.Contains("DialogHelper.ConfirmAsync(", handler, StringComparison.Ordinal);
+        Assert.Contains("lease,", handler, StringComparison.Ordinal);
+        Assert.Contains("AbandonPendingCipherCreateAsync(expected)", handler, StringComparison.Ordinal);
+        Assert.Contains("服务器已经返回成功", handler, StringComparison.Ordinal);
+        Assert.DoesNotContain("SaveDraftAsync", handler, StringComparison.Ordinal);
+    }
+
     private static XDocument LoadXaml()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -61,5 +112,18 @@ public class VaultPageXamlTests
             directory = directory.Parent;
         }
         throw new FileNotFoundException("Could not find VaultPage.xaml from the test output directory.");
+    }
+
+    private static string LoadCodeBehind()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var path = Path.Combine(directory.FullName, "src", "App", "Views", "VaultPage.xaml.cs");
+            if (File.Exists(path))
+                return File.ReadAllText(path);
+            directory = directory.Parent;
+        }
+        throw new FileNotFoundException("Could not find VaultPage.xaml.cs from the test output directory.");
     }
 }

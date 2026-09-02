@@ -39,7 +39,13 @@ public class WebAuthnRegistrationServiceTests
         Assert.False(string.IsNullOrWhiteSpace(result.Credential.KeyValue));
         Assert.False(string.IsNullOrWhiteSpace(result.Credential.CredentialId));
 
-        Assert.Equal(result.Credential.CredentialId, result.Payload.CredentialId);
+        Assert.StartsWith(CredentialId.Base64Prefix, result.Credential.CredentialId);
+        Assert.False(result.Payload.CredentialId.StartsWith(
+            CredentialId.Base64Prefix,
+            StringComparison.Ordinal));
+        Assert.True(CredentialId.StorageIdEqualsWire(
+            result.Credential.CredentialId,
+            result.Payload.CredentialId));
         Assert.Equal(-7, result.Payload.PublicKeyAlgorithm);
         Assert.Contains("internal", result.Payload.Transports);
         Assert.False(string.IsNullOrWhiteSpace(result.Payload.AttestationObject));
@@ -53,6 +59,13 @@ public class WebAuthnRegistrationServiceTests
         // attestationObject parses.
         var r = new System.Formats.Cbor.CborReader(WebAuthnCrypto.DecodeBase64Url(result.Payload.AttestationObject));
         Assert.Equal(3, r.ReadStartMap());
+
+        var authData = WebAuthnCrypto.DecodeBase64Url(result.Payload.AuthData);
+        var credentialIdLength = System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(
+            authData.AsSpan(53, 2));
+        Assert.Equal(
+            CredentialId.DecodeWire(result.Payload.CredentialId),
+            authData.AsSpan(55, credentialIdLength).ToArray());
     }
 
     [Fact]

@@ -10,9 +10,9 @@ using Xunit;
 
 namespace Vault.Tests;
 
-// Task 10: VaultWriteService.SaveCipherAsync(cipher, lease, ct) 必须以调用方传入的原始 lease 门禁。
-// 当该 lease 在写操作跨 await 期间因 Lock/切换账户失效时,不得用新账户的 lease 同步、不得提交,
-// 且最终抛 OperationCanceledException。防止陈旧 passkey 写请求把凭据落到已切换的账户上(A 不能写 B)。
+// Lease-bound writes must never synchronize or publish state under a replacement session.
+// A create that may already have been dispatched still attempts reconciliation with its original
+// lease and reports an uncertain outcome when that lease has expired.
 public class VaultWriteServiceLeaseTests
 {
     private static SymmetricCryptoKey NewKey() =>
@@ -36,6 +36,7 @@ public class VaultWriteServiceLeaseTests
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public List<string> Calls { get; } = new();
+        public CipherRequest? LastCipher { get; private set; }
 
         public void Release() => _release.TrySetResult();
 
@@ -47,7 +48,11 @@ public class VaultWriteServiceLeaseTests
             await _release.Task;
         }
 
-        public Task CreateCipherAsync(CipherRequest request, CancellationToken ct = default) => BlockAsync("create");
+        public Task CreateCipherAsync(CipherRequest request, CancellationToken ct = default)
+        {
+            LastCipher = request;
+            return BlockAsync("create");
+        }
         public Task UpdateCipherAsync(string cipherId, CipherRequest request, CancellationToken ct = default) => BlockAsync("update");
 
         public Task SoftDeleteCipherAsync(string cipherId, CancellationToken ct = default) => throw new NotSupportedException();
@@ -69,11 +74,12 @@ public class VaultWriteServiceLeaseTests
         public List<VaultSessionLease?> Leases { get; } = new();
         public int Calls => Leases.Count;
         public Exception? Failure { get; init; }
+        public Func<IReadOnlyList<Cipher>>? ResultFactory { get; set; }
 
         public Task<IReadOnlyList<Cipher>> SyncAsync(CancellationToken ct = default)
         {
             Leases.Add(null);
-            return Task.FromResult<IReadOnlyList<Cipher>>(Array.Empty<Cipher>());
+            return Task.FromResult(ResultFactory?.Invoke() ?? (IReadOnlyList<Cipher>)Array.Empty<Cipher>());
         }
 
         public Task<IReadOnlyList<Cipher>> SyncAsync(VaultSessionLease lease, CancellationToken ct = default)
@@ -81,7 +87,7 @@ public class VaultWriteServiceLeaseTests
             Leases.Add(lease);
             if (Failure is not null)
                 throw Failure;
-            return Task.FromResult<IReadOnlyList<Cipher>>(Array.Empty<Cipher>());
+            return Task.FromResult(ResultFactory?.Invoke() ?? (IReadOnlyList<Cipher>)Array.Empty<Cipher>());
         }
     }
 
@@ -110,7 +116,8 @@ public class VaultWriteServiceLeaseTests
             FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(api),
             new CipherEncryptor(new CryptoService()),
             sync,
-            session);
+            session,
+            cipherCreateStore: new FakeCipherCreatePendingStore());
 
     [Fact]
     public async Task SaveCipher_WithLease_StaleBeforeCall_A_CannotWriteB()
@@ -141,7 +148,7 @@ public class VaultWriteServiceLeaseTests
     }
 
     [Fact]
-    public async Task SaveCipher_WithLease_LockDuringWrite_DoesNotSync_ThrowsCancelled()
+    public async Task SaveCipher_WithLease_LockDuringWrite_ReconcilesOriginalLeaseAndStaysUncertain()
     {
         var session = new VaultSession();
         var lease = session.BeginAccountSession("account-a", "a@test.com", new ServerOrigin("https://vault.example"));
@@ -152,19 +159,19 @@ public class VaultWriteServiceLeaseTests
         var service = NewService(session, api, sync);
 
         var running = service.SaveCipherAsync(NewLogin(), lease, CancellationToken.None);
-        await api.Entered.Task;
+        await api.Entered.Task.WaitAsync(TestContext.Current.CancellationToken);
         session.Lock();
         api.Release();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() => running);
+        var exception = await Assert.ThrowsAsync<CipherCreateOutcomeUncertainException>(() => running);
 
-        // 写请求已发出(create 记录),但锁定后不得再同步。
+        Assert.True(exception.Pending.CommitConfirmed);
         Assert.Equal("create", Assert.Single(api.Calls));
-        Assert.Equal(0, sync.Calls);
+        Assert.Same(lease, Assert.Single(sync.Leases));
     }
 
     [Fact]
-    public async Task SaveCipher_WithLease_SwitchAccountDuringWrite_DoesNotSyncUnderNewLease()
+    public async Task SaveCipher_WithLease_SwitchAccountDuringWrite_ReconcilesOnlyOriginalLease()
     {
         var session = new VaultSession();
         var leaseA = session.BeginAccountSession("account-a", "a@test.com", new ServerOrigin("https://vault.example"));
@@ -175,16 +182,17 @@ public class VaultWriteServiceLeaseTests
         var service = NewService(session, api, sync);
 
         var running = service.SaveCipherAsync(NewLogin(), leaseA, CancellationToken.None);
-        await api.Entered.Task;
+        await api.Entered.Task.WaitAsync(TestContext.Current.CancellationToken);
 
         // 阻塞期间切换到账户 B。
         session.BeginAccountSession("account-b", "b@test.com", new ServerOrigin("https://vault.example"));
         session.SetUnlockedKey(NewKey());
         api.Release();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() => running);
+        var exception = await Assert.ThrowsAsync<CipherCreateOutcomeUncertainException>(() => running);
 
-        Assert.Equal(0, sync.Calls);
+        Assert.True(exception.Pending.CommitConfirmed);
+        Assert.Same(leaseA, Assert.Single(sync.Leases));
     }
 
     [Fact]
@@ -196,10 +204,20 @@ public class VaultWriteServiceLeaseTests
 
         var api = new BlockingWriteApi();
         var sync = new RecordingSync();
+        sync.ResultFactory = () =>
+        [
+            new Cipher
+            {
+                Id = "created-1",
+                Type = CipherType.Login,
+                Key = api.LastCipher!.Key,
+                Name = "Item",
+            },
+        ];
         var service = NewService(session, api, sync);
 
         var running = service.SaveCipherAsync(NewLogin(), lease, CancellationToken.None);
-        await api.Entered.Task;
+        await api.Entered.Task.WaitAsync(TestContext.Current.CancellationToken);
         api.Release();
         await running;
 
@@ -243,7 +261,8 @@ public class VaultWriteServiceLeaseTests
             new SwitchingProvider(session, api),
             new CipherEncryptor(new CryptoService()),
             sync,
-            session);
+            session,
+            cipherCreateStore: new FakeCipherCreatePendingStore());
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             service.SaveFolderAsync(

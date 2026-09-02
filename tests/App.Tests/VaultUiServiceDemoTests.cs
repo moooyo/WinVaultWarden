@@ -80,6 +80,30 @@ public class VaultUiServiceDemoTests
     }
 
     [Fact]
+    public async Task ArchiveAndUnarchiveCipherAsync_InDemoMode_UpdateSessionWithoutHittingNetwork()
+    {
+        var session = DemoSessionWith(LoginCipher("c1"));
+        var svc = DemoService(session);
+
+        await svc.ArchiveCipherAsync("c1");
+        Assert.True(session.Ciphers.First(c => c.Id == "c1").IsArchived);
+
+        await svc.UnarchiveCipherAsync("c1");
+        Assert.False(session.Ciphers.First(c => c.Id == "c1").IsArchived);
+    }
+
+    [Fact]
+    public async Task SetFavoriteAsync_InDemoMode_UpdatesSessionWithoutHittingNetwork()
+    {
+        var session = DemoSessionWith(LoginCipher("c1"));
+        var svc = DemoService(session);
+
+        await svc.SetFavoriteAsync("c1", favorite: true);
+
+        Assert.True(session.Ciphers.First(c => c.Id == "c1").Favorite);
+    }
+
+    [Fact]
     public async Task DeleteCipherAsync_InDemoMode_Permanent_RemovesFromSessionStore()
     {
         var session = DemoSessionWith(LoginCipher("c1"));
@@ -148,6 +172,19 @@ public class VaultUiServiceDemoTests
         await svc.RestoreCiphersAsync(new[] { "c1" });
 
         Assert.False(session.Ciphers.First(c => c.Id == "c1").IsDeleted);
+    }
+
+    [Fact]
+    public async Task ArchiveAndUnarchiveCiphersAsync_InDemoMode_UpdateAllItems()
+    {
+        var session = DemoSessionWith(LoginCipher("c1"), LoginCipher("c2"));
+        var svc = DemoService(session);
+
+        await svc.ArchiveCiphersAsync(new[] { "c1", "c2" });
+        Assert.All(session.Ciphers, cipher => Assert.True(cipher.IsArchived));
+
+        await svc.UnarchiveCiphersAsync(new[] { "c1", "c2" });
+        Assert.All(session.Ciphers, cipher => Assert.False(cipher.IsArchived));
     }
 
     [Fact]

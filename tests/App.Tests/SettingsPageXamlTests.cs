@@ -236,6 +236,62 @@ public class SettingsPageXamlTests
     }
 
     [Fact]
+    public void TwoFactorCard_AdvertisesSecurityKeyManagement()
+    {
+        var card = LoadXaml().Descendants()
+            .First(element => element.Name.LocalName == "SettingsCard"
+                && element.Attributes().Any(attribute =>
+                    attribute.Name.LocalName == "AutomationProperties.AutomationId"
+                    && attribute.Value == "TwoFactorCard"));
+
+        Assert.Contains("安全密钥", (string?)card.Attribute("Description"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TwoFactorDialog_ExposesWebAuthnManagementAction()
+    {
+        var source = LoadCodeBehind();
+
+        Assert.Contains("TwoFactorManageWebAuthnButton", source, StringComparison.Ordinal);
+        Assert.Contains("ShowManageWebAuthnDialogAsync", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WebAuthnManagement_DeclaresAccessibleCredentialControls()
+    {
+        var source = LoadCodeBehind();
+
+        Assert.Contains("WebAuthnVerificationMethodCombo", source, StringComparison.Ordinal);
+        Assert.Contains("WebAuthnVerificationInputBox", source, StringComparison.Ordinal);
+        Assert.Contains("WebAuthnRequestOtpButton", source, StringComparison.Ordinal);
+        Assert.Contains("RequestWebAuthnVerificationOtpAsync", source, StringComparison.Ordinal);
+        Assert.Contains("WebAuthnCredentialList", source, StringComparison.Ordinal);
+        Assert.Contains("WebAuthnCredentialNameBox", source, StringComparison.Ordinal);
+        Assert.Contains("WebAuthnDeleteCredentialButton_", source, StringComparison.Ordinal);
+        Assert.Contains("WebAuthnManagementStatusBar", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WebAuthnManagement_HandlesLastCredentialAsProviderDisable()
+    {
+        var source = LoadCodeBehind();
+
+        Assert.Contains("snapshot.Credentials.Count == 1", source, StringComparison.Ordinal);
+        Assert.Contains("将关闭 WebAuthn 双重验证", source, StringComparison.Ordinal);
+        Assert.Contains("DeleteWebAuthnCredentialAsync", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TwoFactorProviderLabels_UseCanonicalEnumValues()
+    {
+        var source = LoadCodeBehind();
+
+        Assert.Contains("GetTwoFactorProviderDisplayName", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("4 => \"FIDO2/WebAuthn", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("5 => \"Duo", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TwoFactorCard_InSecuritySection()
     {
         var doc = LoadXaml();

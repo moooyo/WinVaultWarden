@@ -3,6 +3,8 @@ using System.Text.Json;
 using Api.Dtos;
 using Core.Enums;
 using Core.Models;
+using Core.Passkeys;
+using Core.Services;
 using Crypto;
 using Vault;
 using Xunit;
@@ -17,9 +19,11 @@ public class CipherEncryptorTests
     private CipherEncryptor NewEncryptor() => new(_crypto);
 
     // Encrypt a domain cipher, push it across the wire shape, and decrypt it back.
-    private Cipher RoundTrip(Cipher source)
+    private Cipher RoundTrip(Cipher source, VaultCapabilities? capabilities = null)
     {
-        var request = NewEncryptor().Encrypt(source, _userKey);
+        var request = capabilities is null
+            ? NewEncryptor().Encrypt(source, _userKey)
+            : NewEncryptor().Encrypt(source, _userKey, capabilities);
         var json = JsonSerializer.Serialize(request, Web);
         var dto = JsonSerializer.Deserialize<CipherDto>(json, Web)!;
         var sync = new SyncResponse("sync", new ProfileDto("u", "me@x", "Me", null, null), [], [dto]);
@@ -39,7 +43,7 @@ public class CipherEncryptorTests
         {
             Fido2Credentials =
             [
-                new CipherFido2Credential("cred-id", "public-key", "ECDSA", "P-256", "priv-val",
+                new CipherFido2Credential("AQIDBA", "public-key", "ECDSA", "P-256", "priv-val",
                     "github.com", "user-handle", "octo@x", 42, "GitHub", "Octo", true,
                     DateTimeOffset.Parse("2026-06-24T00:00:00Z")),
             ],
@@ -49,6 +53,32 @@ public class CipherEncryptorTests
             new CipherField("Plain", "v1", CipherFieldType.Text),
             new CipherField("Secret", "v2", CipherFieldType.Hidden),
         ],
+    };
+
+    private static Cipher NewCipherTypeSource(CipherType type) => type switch
+    {
+        CipherType.BankAccount => new Cipher
+        {
+            Type = type,
+            Name = "Bank",
+            BankAccount = new CipherBankAccount(
+                "Example", "Ada", "Checking", "123", "456", "001", "7890", "SWIFT", "IBAN", "555"),
+        },
+        CipherType.DriversLicense => new Cipher
+        {
+            Type = type,
+            Name = "License",
+            DriversLicense = new CipherDriversLicense(
+                "Ada", "M", "Lovelace", "1815", "DL-1", "GB", "London", "2025", "2030", "DVLA", "B"),
+        },
+        CipherType.Passport => new Cipher
+        {
+            Type = type,
+            Name = "Passport",
+            Passport = new CipherPassport(
+                "Lovelace", "Ada", "1815", "F", "London", "British", "GB", "P-1", "P", "N-1", "HMPO", "2025", "2035"),
+        },
+        _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };
 
     [Fact]
@@ -72,14 +102,50 @@ public class CipherEncryptorTests
     }
 
     [Fact]
+    public void Encrypt_Fields_RoundTripsLinkedAndUnknownWireMetadata()
+    {
+        var source = LoginSource();
+        source = new Cipher
+        {
+            Type = source.Type,
+            Name = source.Name,
+            Login = source.Login,
+            Fields =
+            [
+                new CipherField("Linked password", null, CipherFieldType.Linked, LinkedId: 101),
+                new CipherField("Future", "opaque", CipherFieldType.Unsupported, LinkedId: 999, RawType: 97),
+            ],
+        };
+
+        var request = NewEncryptor().Encrypt(source, _userKey);
+
+        Assert.Collection(
+            request.Fields!,
+            field =>
+            {
+                Assert.Equal(3, field.Type);
+                Assert.Equal(101, field.LinkedId);
+            },
+            field =>
+            {
+                Assert.Equal(97, field.Type);
+                Assert.Equal(999, field.LinkedId);
+            });
+
+        var result = RoundTrip(source);
+        Assert.Equal(CipherFieldType.Linked, result.Fields[0].Type);
+        Assert.Equal(101, result.Fields[0].LinkedId);
+        Assert.Equal(CipherFieldType.Unsupported, result.Fields[1].Type);
+        Assert.Equal(97, result.Fields[1].WireType);
+    }
+
+    [Fact]
     public void Encrypt_Login_RoundTripsFido2Credentials()
     {
-        // K4 守卫测试:CipherFido2Credential 的全部 13 个字段都必须在
-        // 加密(EncFido2)→解密(DecryptFido2Credentials)往返后与原值一致,
-        // 这是 K5 passkey 保存链路的前置保证。
+        // A legacy unprefixed credential ID is normalized while every other field round-trips.
         var credential = Assert.Single(RoundTrip(LoginSource()).Login!.Fido2Credentials);
 
-        Assert.Equal("cred-id", credential.CredentialId);
+        Assert.Equal(CredentialId.Base64Prefix + "AQIDBA", credential.CredentialId);
         Assert.Equal("public-key", credential.KeyType);
         Assert.Equal("ECDSA", credential.KeyAlgorithm);
         Assert.Equal("P-256", credential.KeyCurve);
@@ -157,6 +223,157 @@ public class CipherEncryptorTests
         Assert.Equal("priv", ssh.PrivateKey);
         Assert.Equal("pub", ssh.PublicKey);
         Assert.Equal("fp", ssh.Fingerprint);
+    }
+
+    [Fact]
+    public void Encrypt_ArchivedCipher_PreservesArchivedDateInWriteRequest()
+    {
+        var archivedDate = new DateTimeOffset(2026, 8, 1, 12, 30, 0, TimeSpan.Zero);
+        var source = new Cipher
+        {
+            Type = CipherType.Login,
+            Name = "Archived",
+            ArchivedDate = archivedDate,
+            Login = new CipherLogin(null, null, null, []),
+        };
+
+        var request = NewEncryptor().Encrypt(source, _userKey);
+
+        Assert.Equal(archivedDate, request.ArchivedDate);
+    }
+
+    [Theory]
+    [InlineData(CipherType.BankAccount)]
+    [InlineData(CipherType.DriversLicense)]
+    [InlineData(CipherType.Passport)]
+    [InlineData((CipherType)999)]
+    public void Encrypt_TypeWithoutNegotiatedWriteSupport_Throws(CipherType type)
+    {
+        var source = new Cipher
+        {
+            Type = type,
+            Name = "Unsupported",
+        };
+
+        var exception = Assert.Throws<UnsupportedCipherTypeWriteException>(
+            () => NewEncryptor().Encrypt(source, _userKey));
+
+        Assert.Equal(type, exception.CipherType);
+        Assert.Contains(((int)type).ToString(), exception.Message, StringComparison.Ordinal);
+        Assert.Contains("JSON", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(CipherType.BankAccount)]
+    [InlineData(CipherType.DriversLicense)]
+    [InlineData(CipherType.Passport)]
+    public void Encrypt_NegotiatedNewCipherType_RoundTrips(CipherType type)
+    {
+        var capabilities = new VaultCapabilities(true, false, false);
+
+        var result = RoundTrip(NewCipherTypeSource(type), capabilities);
+
+        Assert.Equal(type, result.Type);
+        Assert.NotNull(type switch
+        {
+            CipherType.BankAccount => result.BankAccount,
+            CipherType.DriversLicense => result.DriversLicense,
+            CipherType.Passport => result.Passport,
+            _ => null,
+        });
+    }
+
+    [Theory]
+    [InlineData(CipherType.BankAccount)]
+    [InlineData(CipherType.DriversLicense)]
+    [InlineData(CipherType.Passport)]
+    public void Encrypt_NegotiatedNewCipherTypeWithoutMatchingChild_Throws(CipherType type)
+    {
+        var exception = Assert.Throws<InvalidCipherWriteShapeException>(() =>
+            NewEncryptor().Encrypt(
+                new Cipher { Type = type, Name = "Missing typed child" },
+                _userKey,
+                new VaultCapabilities(true, false, false)));
+
+        Assert.Equal(type, exception.CipherType);
+    }
+
+    [Fact]
+    public void Encrypt_NegotiatedNewCipherTypeWithAdditionalChild_Throws()
+    {
+        var source = NewCipherTypeSource(CipherType.BankAccount);
+        var malformed = new Cipher
+        {
+            Type = source.Type,
+            Name = source.Name,
+            BankAccount = source.BankAccount,
+            Login = new CipherLogin(null, null, null, []),
+        };
+
+        Assert.Throws<InvalidCipherWriteShapeException>(() =>
+            NewEncryptor().Encrypt(
+                malformed,
+                _userKey,
+                new VaultCapabilities(true, false, false)));
+    }
+
+    [Fact]
+    public void Encrypt_UnknownTypeIsRejectedEvenWhenNewCipherTypesAreEnabled()
+    {
+        Assert.Throws<UnsupportedCipherTypeWriteException>(() =>
+            NewEncryptor().Encrypt(
+                new Cipher { Type = (CipherType)999, Name = "Unknown" },
+                _userKey,
+                new VaultCapabilities(true, false, false)));
+    }
+
+    [Theory]
+    [InlineData(CipherType.Login)]
+    [InlineData(CipherType.SecureNote)]
+    [InlineData(CipherType.Card)]
+    [InlineData(CipherType.Identity)]
+    [InlineData(CipherType.SshKey)]
+    public void Encrypt_SupportedTypeWithoutMatchingChild_Throws(CipherType type)
+    {
+        var exception = Assert.Throws<InvalidCipherWriteShapeException>(() =>
+            NewEncryptor().Encrypt(
+                new Cipher { Type = type, Name = "Missing typed child" },
+                _userKey));
+
+        Assert.Equal(type, exception.CipherType);
+    }
+
+    [Fact]
+    public void Encrypt_NonMatchingTypedChild_Throws()
+    {
+        var exception = Assert.Throws<InvalidCipherWriteShapeException>(() =>
+            NewEncryptor().Encrypt(
+                new Cipher
+                {
+                    Type = CipherType.Card,
+                    Name = "Mismatched",
+                    Login = new CipherLogin(null, null, null, []),
+                },
+                _userKey));
+
+        Assert.Equal(CipherType.Card, exception.CipherType);
+    }
+
+    [Fact]
+    public void Encrypt_AdditionalNonMatchingTypedChild_Throws()
+    {
+        var exception = Assert.Throws<InvalidCipherWriteShapeException>(() =>
+            NewEncryptor().Encrypt(
+                new Cipher
+                {
+                    Type = CipherType.Login,
+                    Name = "Ambiguous",
+                    Login = new CipherLogin(null, null, null, []),
+                    Card = new CipherCard(null, null, null, null, null, null),
+                },
+                _userKey));
+
+        Assert.Equal(CipherType.Login, exception.CipherType);
     }
 
     [Fact]
@@ -283,5 +500,106 @@ public class CipherEncryptorTests
             using var resolvedAttKey = attCrypto.UnwrapKey(wrappedAttKey, resolvedItemKey);
             Assert.Equal("secret.txt", attCrypto.DecryptFileName(encName, resolvedAttKey));
         }
+    }
+
+    [Fact]
+    public void EncryptForOrganizationTransfer_RewrapsExistingItemKeyAndPreservesAttachmentKey()
+    {
+        using var organizationKey = new SymmetricCryptoKey(
+            Enumerable.Range(160, 64).Select(i => (byte)i).ToArray());
+        var attachmentCrypto = new AttachmentCryptoService(_crypto);
+        var (itemKey, wrappedItemKey) = IssueItemKey(32);
+        using (itemKey)
+        using (var attachmentKey = attachmentCrypto.GenerateAttachmentKey())
+        {
+            var wrappedAttachmentKey = attachmentCrypto.WrapKey(attachmentKey, itemKey);
+            var encryptedAttachmentName = attachmentCrypto.EncryptFileName("transfer.txt", attachmentKey);
+            var revision = new DateTimeOffset(2026, 8, 29, 19, 30, 0, TimeSpan.FromHours(8));
+            var source = new Cipher
+            {
+                Id = "c-transfer",
+                Key = wrappedItemKey,
+                Type = CipherType.Login,
+                Name = "Organization login",
+                Notes = "private note",
+                RevisionDate = revision,
+                Login = new CipherLogin("octo", "secret", null, Array.Empty<CipherLoginUri>()),
+                Attachments = [new CipherAttachment("att-1", "transfer.txt", 42, "42 Bytes")],
+            };
+
+            var request = NewEncryptor().EncryptForOrganizationTransfer(
+                source,
+                _userKey,
+                organizationKey,
+                "org-1");
+
+            Assert.Equal("org-1", request.OrganizationId);
+            Assert.NotNull(request.Key);
+            Assert.NotEqual(wrappedItemKey, request.Key);
+            Assert.Equal(revision.ToUniversalTime(), DateTimeOffset.Parse(request.LastKnownRevisionDate!));
+
+            using var transferredItemKey = _crypto.DecryptItemKey(request.Key!, organizationKey);
+            Assert.Equal(itemKey.FullKey, transferredItemKey.FullKey);
+            Assert.Equal("Organization login", _crypto.DecryptToString(request.Name, transferredItemKey));
+            Assert.Equal("secret", _crypto.DecryptToString(request.Login!.Password, transferredItemKey));
+
+            using var transferredAttachmentKey = attachmentCrypto.UnwrapKey(
+                wrappedAttachmentKey,
+                transferredItemKey);
+            Assert.Equal(
+                "transfer.txt",
+                attachmentCrypto.DecryptFileName(encryptedAttachmentName, transferredAttachmentKey));
+        }
+    }
+
+    [Fact]
+    public void EncryptForOrganizationTransfer_LegacyCipherWithoutAttachmentsUsesOrganizationKey()
+    {
+        using var organizationKey = new SymmetricCryptoKey(
+            Enumerable.Range(64, 64).Select(i => (byte)i).ToArray());
+        var source = new Cipher
+        {
+            Id = "legacy",
+            Type = CipherType.Login,
+            Name = "Legacy login",
+            Login = new CipherLogin("user", "password", null, Array.Empty<CipherLoginUri>()),
+        };
+
+        var request = NewEncryptor().EncryptForOrganizationTransfer(
+            source,
+            _userKey,
+            organizationKey,
+            "org-2");
+
+        Assert.Equal("org-2", request.OrganizationId);
+        Assert.Null(request.Key);
+        Assert.Equal("Legacy login", _crypto.DecryptToString(request.Name, organizationKey));
+        Assert.Equal("password", _crypto.DecryptToString(request.Login!.Password, organizationKey));
+        Assert.Throws<CryptographicException>(() => _crypto.DecryptToString(request.Name, _userKey));
+    }
+
+    [Fact]
+    public void EncryptForOrganizationTransfer_LegacyCipherWithAttachmentsThrowsBeforeEncryption()
+    {
+        using var organizationKey = new SymmetricCryptoKey(
+            Enumerable.Range(96, 64).Select(i => (byte)i).ToArray());
+        var source = new Cipher
+        {
+            Id = "legacy-with-attachment",
+            Type = CipherType.Login,
+            Name = "Legacy login",
+            Login = new CipherLogin("user", "password", null, Array.Empty<CipherLoginUri>()),
+            Attachments = [new CipherAttachment("att-1", "legacy.txt", 10, "10 Bytes")],
+        };
+
+        var exception = Assert.Throws<LegacyCipherAttachmentTransferException>(() =>
+            NewEncryptor().EncryptForOrganizationTransfer(
+                source,
+                _userKey,
+                organizationKey,
+                "org-3"));
+
+        Assert.Equal(source.Id, exception.CipherId);
+        Assert.Contains("undecryptable", exception.Message, StringComparison.Ordinal);
     }
 }

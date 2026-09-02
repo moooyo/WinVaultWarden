@@ -240,6 +240,27 @@ public sealed class SendSessionOwnershipTests
         public bool IsTransitioning => false;
         public Task RequestAsync(AppLifecycleIntent intent, VaultSessionLease? expectedSession = null) =>
             Task.CompletedTask;
+        public async Task<bool> RequestIfAsync(
+            AppLifecycleIntent intent,
+            Func<bool> predicate)
+        {
+            ArgumentNullException.ThrowIfNull(predicate);
+            bool accepted;
+            try
+            {
+                accepted = predicate();
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (!accepted)
+                return false;
+
+            await RequestAsync(intent);
+            return true;
+        }
         public bool MarkSessionReady() => true;
         public bool TryRunSensitive(Func<bool> action)
         {

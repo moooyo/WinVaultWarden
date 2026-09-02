@@ -1,5 +1,8 @@
 using App.Services;
+using Core.Models;
 using Core.Services;
+using Core.Session;
+using Vault;
 using Xunit;
 
 namespace App.Tests;
@@ -191,6 +194,39 @@ public class NotificationsHostTests
         // 不应抛出
         var ex = Record.Exception(() => svc.RaiseVaultChanged());
         Assert.Null(ex);
+    }
+
+    [Theory]
+    [InlineData(SessionTerminationReason.InvalidRefreshToken, AppLifecycleIntent.RemoteLogout)]
+    [InlineData(SessionTerminationReason.InvalidSecurityStamp, AppLifecycleIntent.RemoteLogout)]
+    [InlineData(SessionTerminationReason.RequiredPasswordChange, AppLifecycleIntent.RemoteLogout)]
+    [InlineData(SessionTerminationReason.RemoteLogout, AppLifecycleIntent.RemoteLogout)]
+    [InlineData(SessionTerminationReason.PinPolicyEnforcementFailed, AppLifecycleIntent.RemoteLogout)]
+    public void SessionTerminationHost_MapsReasonToLifecycleIntent(
+        SessionTerminationReason reason,
+        AppLifecycleIntent expected)
+    {
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession(
+            "account-a",
+            "a@example.com",
+            ServerEndpoints.ForSelfHosted("https://vault.example"));
+        var signal = new SessionTerminationSignal();
+        AppLifecycleIntent? observedIntent = null;
+        SessionTerminationNotice? observedNotice = null;
+        using var host = new SessionTerminationHost(
+            signal,
+            (intent, notice) =>
+            {
+                observedIntent = intent;
+                observedNotice = notice;
+            });
+        var expectedNotice = new SessionTerminationNotice(reason, lease);
+
+        signal.Request(expectedNotice);
+
+        Assert.Equal(expected, observedIntent);
+        Assert.Same(expectedNotice, observedNotice);
     }
 
     // ── 抛异常的假服务 ────────────────────────────────────────────────────────

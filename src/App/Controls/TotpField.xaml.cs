@@ -71,9 +71,13 @@ public sealed partial class TotpField : UserControl
         var clipboard = global::App.App.Services?.GetService<global::App.Services.IClipboardService>();
         if (clipboard is null)
         {
-            var dp = new DataPackage();
-            dp.SetText(code);
-            Clipboard.SetContent(dp);
+            var package = new DataPackage();
+            package.SetText(code);
+            Clipboard.SetContentWithOptions(package, new ClipboardContentOptions
+            {
+                IsAllowedInHistory = false,
+                IsRoamable = false,
+            });
             return;
         }
 

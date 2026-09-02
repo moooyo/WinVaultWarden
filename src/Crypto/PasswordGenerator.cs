@@ -32,7 +32,9 @@ public enum UsernameGenerationType
 public sealed record UsernameGenerationOptions(
     UsernameGenerationType Type = UsernameGenerationType.RandomWord,
     bool Capitalize = false,
-    bool IncludeNumber = false);
+    bool IncludeNumber = false,
+    string? Email = null,
+    string? Domain = null);
 
 public static class PasswordGenerator
 {
@@ -44,9 +46,12 @@ public static class PasswordGenerator
     private const string UppercaseUnmistakable = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     private const string LowercaseUnmistakable = "abcdefghijkmnpqrstuvwxyz";
     private const string NumbersUnmistakable = "23456789";
+    private const string UsernameCharacters = "abcdefghijklmnopqrstuvwxyz1234567890";
+    private const int UsernameRandomPartLength = 8;
+    private const int UsernameNumberLength = 4;
 
-    // EFF long wordlist (7776 词,与 Bitwarden 一致),内嵌资源加载。
-    // 每词 log2(7776)=12.925 bits;默认 6 词口令 ≈ 77.5 bits(旧 22 词表仅 ~27 bits)。
+    // Embedded EFF long wordlist with 7,776 entries, matching Bitwarden.
+    // Each word provides about 12.925 bits; the default six-word phrase provides about 77.5 bits.
     private static readonly string[] Words = LoadWordlist();
 
     private static string[] LoadWordlist()
@@ -122,14 +127,94 @@ public static class PasswordGenerator
     public static string GenerateUsername(UsernameGenerationOptions? options = null)
     {
         options ??= new UsernameGenerationOptions();
-        if (options.Type != UsernameGenerationType.RandomWord)
-            throw new NotSupportedException($"Username generation type '{options.Type}' is not implemented.");
+        return options.Type switch
+        {
+            UsernameGenerationType.RandomWord => GenerateRandomWordUsername(options),
+            UsernameGenerationType.CatchAllEmail => GenerateCatchAllEmail(options.Domain),
+            UsernameGenerationType.PlusAddressedEmail => GeneratePlusAddressedEmail(options.Email),
+            UsernameGenerationType.ForwardedEmailAlias => throw new NotSupportedException(
+                "Forwarded email alias generation requires an external forwarding service."),
+            _ => throw new NotSupportedException(
+                $"Username generation type '{options.Type}' is not implemented."),
+        };
+    }
 
+    private static string GenerateRandomWordUsername(UsernameGenerationOptions options)
+    {
         var value = PickWord(options.Capitalize);
-        if (options.IncludeNumber)
-            value += RandomNumberGenerator.GetInt32(10, 100).ToString();
+        return options.IncludeNumber
+            ? value + GenerateDigits(UsernameNumberLength)
+            : value;
+    }
 
-        return value;
+    private static string GeneratePlusAddressedEmail(string? email)
+    {
+        var (localPart, domain) = ParseEmail(email);
+        if (localPart[0] == '+' || localPart[^1] == '+')
+            throw new ArgumentException("The email must contain a non-empty local part and subaddress.", nameof(email));
+
+        var separator = localPart.Contains('+') ? string.Empty : "+";
+        return $"{localPart}{separator}{GenerateUsernameCharacters(UsernameRandomPartLength)}@{domain}";
+    }
+
+    private static string GenerateCatchAllEmail(string? domain)
+    {
+        ValidateDomain(domain);
+        return $"{GenerateUsernameCharacters(UsernameRandomPartLength)}@{domain}";
+    }
+
+    private static (string LocalPart, string Domain) ParseEmail(string? email)
+    {
+        if (string.IsNullOrEmpty(email)
+            || ContainsWhitespaceOrControl(email))
+        {
+            throw new ArgumentException("A valid email address is required.", nameof(email));
+        }
+
+        var separator = email.IndexOf('@');
+        if (separator <= 0
+            || separator != email.LastIndexOf('@')
+            || separator == email.Length - 1)
+        {
+            throw new ArgumentException("A valid email address is required.", nameof(email));
+        }
+
+        var localPart = email[..separator];
+        var domain = email[(separator + 1)..];
+        ValidateDomain(domain);
+        return (localPart, domain);
+    }
+
+    private static void ValidateDomain(string? domain)
+    {
+        if (string.IsNullOrEmpty(domain)
+            || domain.Length > 253
+            || domain[0] == '@'
+            || domain.Contains('@')
+            || ContainsWhitespaceOrControl(domain)
+            || Uri.CheckHostName(domain) != UriHostNameType.Dns)
+        {
+            throw new ArgumentException("A valid email domain is required.", nameof(domain));
+        }
+    }
+
+    private static bool ContainsWhitespaceOrControl(string value) =>
+        value.Any(character => char.IsWhiteSpace(character) || char.IsControl(character));
+
+    private static string GenerateDigits(int length)
+    {
+        var result = new char[length];
+        for (var index = 0; index < result.Length; index++)
+            result[index] = (char)('0' + RandomNumberGenerator.GetInt32(10));
+        return new string(result);
+    }
+
+    private static string GenerateUsernameCharacters(int length)
+    {
+        var result = new char[length];
+        for (var index = 0; index < result.Length; index++)
+            result[index] = Pick(UsernameCharacters);
+        return new string(result);
     }
 
     private static IEnumerable<(string Characters, int Minimum)> BuildGroups(

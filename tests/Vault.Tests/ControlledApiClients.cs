@@ -7,15 +7,23 @@ using Core.Session;
 namespace Vault.Tests;
 
 public sealed class ControlledReadonlyApiClient(
-    Func<CancellationToken, Task<SyncResponse>> getSync) : IReadonlyApiClient
+    Func<CancellationToken, Task<SyncResponse>> getSync) : IReadonlyApiClient, IServerConfigApiClient
 {
+    public Func<CancellationToken, Task<ConfigResponse>> GetConfig { get; init; } =
+        _ => throw new NotSupportedException();
     public Func<CancellationToken, Task<ListResponse<DeviceDto>>> GetDevices { get; init; } =
+        _ => throw new NotSupportedException();
+    public Func<CancellationToken, Task<long>> GetAccountRevisionDate { get; init; } =
         _ => throw new NotSupportedException();
     public Func<string, CancellationToken, Task<FolderDto>> GetFolder { get; init; } =
         (_, _) => throw new NotSupportedException();
 
     public Task<SyncResponse> GetSyncAsync(CancellationToken ct = default) =>
         getSync(ct);
+    public Task<ConfigResponse> GetConfigAsync(CancellationToken ct = default) =>
+        GetConfig(ct);
+    public Task<long> GetAccountRevisionDateAsync(CancellationToken ct = default) =>
+        GetAccountRevisionDate(ct);
     public Task<ListResponse<DeviceDto>> GetDevicesAsync(CancellationToken ct = default) =>
         GetDevices(ct);
     public Task<FolderDto> GetFolderAsync(string folderId, CancellationToken ct = default) =>
@@ -28,6 +36,7 @@ public sealed class ControlledIdentityApiClient(
     Func<CancellationToken, Task<ConnectTokenResult>> connect) : IIdentityApiClient
 {
     public int ConnectCallCount { get; private set; }
+    public List<ConnectTokenRequest> ConnectRequests { get; } = [];
     public PreloginResponse PreloginResult { get; init; } =
         new(Core.Enums.KdfType.Pbkdf2, 600_000, null, null);
 
@@ -40,12 +49,11 @@ public sealed class ControlledIdentityApiClient(
         ConnectTokenRequest request, CancellationToken ct = default)
     {
         ConnectCallCount++;
+        ConnectRequests.Add(request);
         return connect(ct);
     }
     public Task SendTwoFactorEmailLoginAsync(
-        string email,
-        string masterPasswordHash,
-        string deviceIdentifier,
+        SendEmailLoginRequest request,
         CancellationToken ct = default) =>
         Task.CompletedTask;
 }
@@ -59,8 +67,16 @@ public sealed class BlockingAccountApiClient(
     public Task ChangePasswordAsync(
         ChangePasswordRequest request, CancellationToken ct = default) =>
         changePassword(ct);
+    public Task UpdateTemporaryPasswordAsync(
+        UpdateTemporaryPasswordRequest request, CancellationToken ct = default) =>
+        throw new NotSupportedException();
     public Task ChangeKdfAsync(
         ChangeKdfRequest request, CancellationToken ct = default) =>
+        throw new NotSupportedException();
+    public Task RequestAccountDeletionOtpAsync(CancellationToken ct = default) =>
+        throw new NotSupportedException();
+    public Task DeleteAccountAsync(
+        DeleteAccountRequest request, CancellationToken ct = default) =>
         throw new NotSupportedException();
 }
 

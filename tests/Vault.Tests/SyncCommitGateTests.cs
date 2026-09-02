@@ -34,7 +34,10 @@ public sealed class SyncCommitGateTests
         session.Lock();
         pending.SetResult(new SyncResponse(
             "sync",
-            new ProfileDto("account-a", "a@example.com", "A", null, "2.private"),
+            new ProfileDto("account-a", "a@example.com", "A", null, "2.private")
+            {
+                SecurityStamp = "stamp-1",
+            },
             [],
             []));
 
@@ -50,7 +53,10 @@ public sealed class SyncCommitGateTests
         var api = new ControlledReadonlyApiClient(_ => Task.FromResult(
             new SyncResponse(
                 "sync",
-                new ProfileDto("account-b", "b@example.com", "B", null, "2.private"),
+                new ProfileDto("account-b", "b@example.com", "B", null, "2.private")
+                {
+                    SecurityStamp = "stamp-1",
+                },
                 [],
                 [])));
         var session = NewUnlockedSession(out var lease);
@@ -99,7 +105,10 @@ public sealed class SyncCommitGateTests
         var api = new ControlledReadonlyApiClient(_ => Task.FromResult(
             new SyncResponse(
                 "sync",
-                new ProfileDto("account-a", "a@example.com", "A", null, null),
+                new ProfileDto("account-a", "a@example.com", "A", null, null)
+                {
+                    SecurityStamp = "stamp-1",
+                },
                 [],
                 [])))
         {

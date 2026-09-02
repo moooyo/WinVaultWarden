@@ -5,6 +5,7 @@ using Core.Models;
 using Core.Services;
 using Core.Session;
 using Crypto;
+using Crypto.V2;
 using Vault;
 using Xunit;
 
@@ -17,13 +18,30 @@ public class SendWriteServiceTests
         new TransferIdleTimeoutPolicy(Timeout.InfiniteTimeSpan);
 
     private static (SendWriteService service, FakeSendApiClient api, SendCryptoService crypto, SymmetricCryptoKey userKey, VaultSessionLease lease) NewService(
-        ITransferIdleTimeoutPolicy? timeoutPolicy = null)
+        ITransferIdleTimeoutPolicy? timeoutPolicy = null,
+        bool disableSend = false)
     {
         var userKey = new SymmetricCryptoKey(UserKeyBytes);
         var session = new VaultSession();
         var lease = session.BeginAccountSession("test-account", "test@test.com", new ServerOrigin("https://vault.test"));
         session.SetUnlockedKey(userKey);
         session.SetTokens("access-token", "refresh-token");
+        if (disableSend)
+        {
+            session.SetSnapshot(new DecryptedVault(session.Account, [], [], 0, 0)
+            {
+                Organizations = [new VaultOrganization("org-1", "Team", 2, 2, true)],
+                Policies =
+                [
+                    new VaultOrganizationPolicy(
+                        "policy-1",
+                        "org-1",
+                        (int)OrganizationPolicyType.DisableSend,
+                        true,
+                        "{}"),
+                ],
+            });
+        }
         var crypto = new SendCryptoService(new CryptoService());
         var api = new FakeSendApiClient();
         return (new SendWriteService(
@@ -93,6 +111,20 @@ public class SendWriteServiceTests
     }
 
     [Fact]
+    public async Task SaveTextSend_DisableSendPolicy_RejectsBeforeApiCall()
+    {
+        var (service, api, _, _, lease) = NewService(disableSend: true);
+
+        await Assert.ThrowsAsync<OrganizationPolicyException>(() =>
+            service.SaveTextSendAsync(
+                TextDraft(),
+                lease,
+                TestContext.Current.CancellationToken));
+
+        Assert.Empty(api.Calls);
+    }
+
+    [Fact]
     public async Task SaveTextSend_NoPassword_PasswordProofNull()
     {
         var (service, api, _, _, lease) = NewService();
@@ -132,6 +164,85 @@ public class SendWriteServiceTests
         Assert.Equal(SendMutationKind.Update, receipt.Kind);
         Assert.Equal("s-7", api.LastUpdateId);
         Assert.Equal((int)SendType.Text, api.LastUpdate!.Type);
+    }
+
+    [Fact]
+    public async Task SaveTextSend_OfflineSnapshotFailsBeforeApiCall()
+    {
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession(
+            "test-account",
+            "test@test.com",
+            new ServerOrigin("https://vault.test"));
+        session.SetUnlockedKey(new SymmetricCryptoKey(UserKeyBytes));
+        session.SetSnapshot(
+            new DecryptedVault(session.Account, [], [], 0, 0),
+            dataStale: true);
+        var api = new FakeSendApiClient();
+        var service = new SendWriteService(
+            FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(api),
+            new SendCryptoService(new CryptoService()),
+            session,
+            new FakeSendCompensationClient(),
+            NoIdleTimeout);
+
+        await Assert.ThrowsAsync<SendStateStaleException>(() =>
+            service.SaveTextSendAsync(
+                TextDraft(),
+                lease,
+                TestContext.Current.CancellationToken));
+
+        Assert.Empty(api.Calls);
+    }
+
+    [Fact]
+    public async Task SaveTextSend_V2UserKeyWritesType7Seed()
+    {
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession(
+            "test-account",
+            "test@test.com",
+            new ServerOrigin("https://vault.test"));
+        var userKey = V2UserKey.Generate();
+        session.SetUnlockedKey(userKey);
+        session.SetTokens("access-token", "refresh-token");
+        var api = new FakeSendApiClient
+        {
+            CreateTextResult = new SendResponseDto(
+                "created-v2",
+                "access-v2",
+                0,
+                "2.name",
+                null,
+                null,
+                null,
+                "7.key",
+                null,
+                0,
+                null,
+                (int)SendAuthType.None,
+                false,
+                false,
+                DateTimeOffset.UnixEpoch,
+                null,
+                DateTimeOffset.UnixEpoch.AddDays(1),
+                "send"),
+        };
+        var sendCrypto = new SendCryptoService(new CryptoService());
+        var service = new SendWriteService(
+            FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(api),
+            sendCrypto,
+            session,
+            new FakeSendCompensationClient(),
+            NoIdleTimeout);
+
+        await service.SaveTextSendAsync(
+            TextDraft(),
+            lease,
+            TestContext.Current.CancellationToken);
+
+        Assert.StartsWith("7.", api.LastCreateText!.Key);
+        Assert.Equal(16, sendCrypto.UnwrapSeed(api.LastCreateText.Key, userKey).Length);
     }
 
     [Theory]

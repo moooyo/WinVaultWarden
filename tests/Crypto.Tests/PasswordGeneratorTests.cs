@@ -172,13 +172,135 @@ public class PasswordGeneratorTests
         Assert.DoesNotContain("@", username);
     }
 
-    [Theory]
-    [InlineData(UsernameGenerationType.ForwardedEmailAlias)]
-    [InlineData(UsernameGenerationType.CatchAllEmail)]
-    [InlineData(UsernameGenerationType.PlusAddressedEmail)]
-    public void GenerateUsername_UnsupportedType_Throws(UsernameGenerationType type)
+    [Fact]
+    public void GenerateUsername_RandomWordWithNumber_AppendsFourDigits()
     {
-        var options = new UsernameGenerationOptions(Type: type);
+        var username = PasswordGenerator.GenerateUsername(
+            new UsernameGenerationOptions(
+                Type: UsernameGenerationType.RandomWord,
+                IncludeNumber: true));
+
+        Assert.True(username.Length > 4);
+        Assert.All(username[^4..], character => Assert.True(char.IsAsciiDigit(character)));
+        Assert.DoesNotContain(username[..^4], char.IsDigit);
+    }
+
+    [Fact]
+    public void GenerateUsername_LegacyPositionalConstruction_RemainsCompatible()
+    {
+        var options = new UsernameGenerationOptions(
+            UsernameGenerationType.RandomWord,
+            true,
+            true);
+
+        var username = PasswordGenerator.GenerateUsername(options);
+
+        Assert.True(char.IsUpper(username[0]));
+        Assert.All(username[^4..], character => Assert.True(char.IsAsciiDigit(character)));
+        Assert.Null(options.Email);
+        Assert.Null(options.Domain);
+    }
+
+    [Fact]
+    public void GenerateUsername_PlusAddress_AppendsEightRandomCharacters()
+    {
+        var username = PasswordGenerator.GenerateUsername(new UsernameGenerationOptions(
+            Type: UsernameGenerationType.PlusAddressedEmail,
+            Email: "user@example.com"));
+
+        const string prefix = "user+";
+        const string suffix = "@example.com";
+        Assert.StartsWith(prefix, username, StringComparison.Ordinal);
+        Assert.EndsWith(suffix, username, StringComparison.Ordinal);
+        AssertUsernameRandomPart(username[prefix.Length..^suffix.Length]);
+    }
+
+    [Fact]
+    public void GenerateUsername_PlusAddress_ExtendsExistingSubaddress()
+    {
+        var username = PasswordGenerator.GenerateUsername(new UsernameGenerationOptions(
+            Type: UsernameGenerationType.PlusAddressedEmail,
+            Email: "user+existing@example.com"));
+
+        const string prefix = "user+existing";
+        const string suffix = "@example.com";
+        Assert.StartsWith(prefix, username, StringComparison.Ordinal);
+        Assert.EndsWith(suffix, username, StringComparison.Ordinal);
+        AssertUsernameRandomPart(username[prefix.Length..^suffix.Length]);
+    }
+
+    [Fact]
+    public void GenerateUsername_CatchAll_UsesEightCharacterLocalPart()
+    {
+        var username = PasswordGenerator.GenerateUsername(new UsernameGenerationOptions(
+            Type: UsernameGenerationType.CatchAllEmail,
+            Domain: "example.com"));
+
+        var parts = username.Split('@');
+        Assert.Equal(2, parts.Length);
+        Assert.Equal("example.com", parts[1]);
+        AssertUsernameRandomPart(parts[0]);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("@example.com")]
+    [InlineData("user@")]
+    [InlineData("user@@example.com")]
+    [InlineData("user @example.com")]
+    [InlineData("user@exam\tple.com")]
+    [InlineData("user@example.com\n")]
+    [InlineData("+tag@example.com")]
+    [InlineData("user+@example.com")]
+    [InlineData("user@example.com/path")]
+    [InlineData("user@.")]
+    public void GenerateUsername_PlusAddress_RejectsInvalidEmail(string? email)
+    {
+        var options = new UsernameGenerationOptions(
+            Type: UsernameGenerationType.PlusAddressedEmail,
+            Email: email);
+
+        Assert.Throws<ArgumentException>(() => PasswordGenerator.GenerateUsername(options));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("@")]
+    [InlineData("@example.com")]
+    [InlineData("example.com@")]
+    [InlineData("example@com")]
+    [InlineData("exam ple.com")]
+    [InlineData("example.com\r")]
+    [InlineData("example.com/path")]
+    [InlineData(".")]
+    public void GenerateUsername_CatchAll_RejectsInvalidDomain(string? domain)
+    {
+        var options = new UsernameGenerationOptions(
+            Type: UsernameGenerationType.CatchAllEmail,
+            Domain: domain);
+
+        Assert.Throws<ArgumentException>(() => PasswordGenerator.GenerateUsername(options));
+    }
+
+    [Fact]
+    public void GenerateUsername_CatchAll_RejectsDomainLongerThanDnsLimit()
+    {
+        var options = new UsernameGenerationOptions(
+            Type: UsernameGenerationType.CatchAllEmail,
+            Domain: new string('a', 254));
+
+        Assert.Throws<ArgumentException>(() => PasswordGenerator.GenerateUsername(options));
+    }
+
+    [Fact]
+    public void GenerateUsername_ForwardedEmailAlias_RemainsUnsupported()
+    {
+        var options = new UsernameGenerationOptions(
+            Type: UsernameGenerationType.ForwardedEmailAlias,
+            Email: "user@example.com",
+            Domain: "example.com");
 
         Assert.Throws<NotSupportedException>(() => PasswordGenerator.GenerateUsername(options));
     }
@@ -215,5 +337,12 @@ public class PasswordGeneratorTests
             MinSpecial: 0);
 
         Assert.Throws<ArgumentException>(() => PasswordGenerator.Generate(options));
+    }
+
+    private static void AssertUsernameRandomPart(string value)
+    {
+        const string allowed = "abcdefghijklmnopqrstuvwxyz1234567890";
+        Assert.Equal(8, value.Length);
+        Assert.All(value, character => Assert.Contains(character, allowed));
     }
 }

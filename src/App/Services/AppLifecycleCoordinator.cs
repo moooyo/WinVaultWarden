@@ -17,6 +17,15 @@ public interface IAppLifecycleCoordinator
     Task RequestAsync(
         AppLifecycleIntent intent,
         VaultSessionLease? expectedSession = null);
+    /// <summary>
+    /// Evaluates <paramref name="predicate"/> and claims the lifecycle transition atomically
+    /// with respect to <see cref="TryActivateSession"/>. Implementations must use the same
+    /// synchronization boundary for both operations; a false or throwing predicate must not
+    /// claim a transition.
+    /// </summary>
+    Task<bool> RequestIfAsync(
+        AppLifecycleIntent intent,
+        Func<bool> predicate);
     bool MarkSessionReady();
     bool TryActivateSession(Func<bool> activate) =>
         MarkSessionReady() && activate();
@@ -49,10 +58,16 @@ public sealed record AppLifecycleHooks(
 /// Already-authorized OS commits may finish independently while keys, background work, clipboard,
 /// and sensitive views are cleared. Concurrent requests share one transition and only upgrade it.
 /// </summary>
-public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
+public sealed class AppLifecycleCoordinator(
+    AppLifecycleHooks hooks,
+    TimeSpan? exitStepTimeout = null)
     : IAppLifecycleCoordinator
 {
+    private static readonly TimeSpan DefaultExitStepTimeout = TimeSpan.FromSeconds(5);
     private readonly object _gate = new();
+    private readonly TimeSpan _exitStepTimeout = ValidateExitStepTimeout(exitStepTimeout);
+    private readonly TaskCompletionSource _exitRequested =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task? _transition;
     private AppLifecycleIntent _requested;
     private VaultSessionLease? _expectedSession;
@@ -69,24 +84,42 @@ public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
         VaultSessionLease? expectedSession = null)
     {
         lock (_gate)
+            return ClaimRequestNoLock(intent, expectedSession);
+    }
+
+    public Task<bool> RequestIfAsync(
+        AppLifecycleIntent intent,
+        Func<bool> predicate)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+        Task? transition = null;
+        Exception? predicateFailure = null;
+        lock (_gate)
         {
-            _sensitiveCommitsAllowed = false;
-            if (!_hasRequest || Rank(intent) > Rank(_requested))
+            if (_hasRequest && Rank(_requested) == Rank(AppLifecycleIntent.Exit))
+                return Task.FromResult(false);
+
+            try
             {
-                _requested = intent;
-                _expectedSession = expectedSession;
+                if (!predicate())
+                    return Task.FromResult(false);
             }
-            else if (Rank(intent) == Rank(_requested)
-                && _expectedSession is not null
-                && (expectedSession is null
-                    || !ReferenceEquals(_expectedSession, expectedSession)))
+            catch (Exception ex)
             {
-                _requested = intent;
-                _expectedSession = expectedSession;
+                predicateFailure = ex;
             }
-            _hasRequest = true;
-            return _transition ??= RunAsync();
+
+            if (predicateFailure is null)
+                transition = ClaimRequestNoLock(intent, expectedSession: null);
         }
+
+        if (predicateFailure is not null)
+        {
+            ReportSafely("request-predicate", predicateFailure);
+            return Task.FromResult(false);
+        }
+
+        return AwaitConditionalRequestAsync(transition!);
     }
 
     public bool MarkSessionReady()
@@ -143,6 +176,36 @@ public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
         Safe("session-sync", hooks.FailClosedSession);
     }
 
+    private Task ClaimRequestNoLock(
+        AppLifecycleIntent intent,
+        VaultSessionLease? expectedSession)
+    {
+        _sensitiveCommitsAllowed = false;
+        if (!_hasRequest || Rank(intent) > Rank(_requested))
+        {
+            _requested = intent;
+            _expectedSession = expectedSession;
+        }
+        else if (Rank(intent) == Rank(_requested)
+            && _expectedSession is not null
+            && (expectedSession is null
+                || !ReferenceEquals(_expectedSession, expectedSession)))
+        {
+            _requested = intent;
+            _expectedSession = expectedSession;
+        }
+        _hasRequest = true;
+        if (Rank(_requested) == Rank(AppLifecycleIntent.Exit))
+            _exitRequested.TrySetResult();
+        return _transition ??= RunAsync();
+    }
+
+    private static async Task<bool> AwaitConditionalRequestAsync(Task transition)
+    {
+        await transition;
+        return true;
+    }
+
     private async Task RunAsync()
     {
         await Task.Yield();
@@ -186,8 +249,8 @@ public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
             if (claimResult == ExpectedLogoutClaimResult.Faulted)
             {
                 // A production claim can fault only after its current-session CAS entered the
-                // mutation. Finish fail-closed cleanup and retry the unconditional logout later
-                // instead of mistaking a partial cleanup failure for a stale session.
+                // mutation. Finish fail-closed cleanup and retry the matching unconditional
+                // session action instead of mistaking a partial cleanup failure for a stale session.
                 expectedLogoutClaimed = false;
                 Safe("invalidate", hooks.InvalidateSession);
                 break;
@@ -211,9 +274,11 @@ public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
             }
         }
 
-        await SafeAsync("stop", hooks.StopBackgroundAsync);
-        await SafeAsync("transients", hooks.CloseTransientsAsync);
-        await SafeAsync("clipboard", hooks.ClearClipboardAsync);
+        await SafeCleanupAsync("stop", hooks.StopBackgroundAsync);
+        if (await SafeCleanupAsync("transients", hooks.CloseTransientsAsync))
+            Safe("transients-sync", hooks.CloseTransientsSynchronously);
+        if (await SafeCleanupAsync("clipboard", hooks.ClearClipboardAsync))
+            Safe("clipboard-sync", hooks.ClearClipboardSynchronously);
         Safe("sensitive", hooks.ClearSensitiveState);
         Safe("frames", hooks.ResetFrames);
 
@@ -227,7 +292,7 @@ public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
             var targetRank = Rank(target);
             if (targetRank > completedRank)
             {
-                // Exit(rank 2) 是终态:没有对应的会话动作,清理完毕即退出进程。
+                // Exit (rank 2) is terminal and has no additional session action.
                 switch (targetRank)
                 {
                     case 0:
@@ -248,8 +313,20 @@ public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
                 settled = Rank(_requested) <= completedRank;
                 if (settled)
                 {
-                    _transition = null;
-                    _hasRequest = false;
+                    if (completedRank == Rank(AppLifecycleIntent.Exit))
+                    {
+                        // Exit is a permanent process-local latch. Keep the completed transition
+                        // published so no delayed authentication or lower-rank request can reopen
+                        // sensitive commits if the platform exit hook returns or fails.
+                        _requested = AppLifecycleIntent.Exit;
+                        _hasRequest = true;
+                        _sensitiveCommitsAllowed = false;
+                    }
+                    else
+                    {
+                        _transition = null;
+                        _hasRequest = false;
+                    }
                     _expectedSession = null;
                 }
             }
@@ -269,6 +346,69 @@ public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
         catch (Exception ex) { ReportSafely(step, ex); }
     }
 
+    private async Task<bool> SafeCleanupAsync(string step, Func<Task> action)
+    {
+        Task cleanup;
+        try
+        {
+            cleanup = action()
+                ?? throw new InvalidOperationException(
+                    $"The {step} cleanup hook returned no task.");
+        }
+        catch (Exception exception)
+        {
+            ReportSafely(step, exception);
+            return true;
+        }
+
+        if (!_exitRequested.Task.IsCompleted)
+        {
+            var completed = await Task.WhenAny(cleanup, _exitRequested.Task);
+            if (ReferenceEquals(completed, cleanup))
+                return await ObserveCleanupAsync(step, cleanup);
+        }
+
+        try
+        {
+            await cleanup.WaitAsync(_exitStepTimeout);
+            return false;
+        }
+        catch (TimeoutException exception)
+        {
+            ReportSafely(step, exception);
+            ObserveLateFailure(cleanup);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            ReportSafely(step, exception);
+            return true;
+        }
+    }
+
+    private async Task<bool> ObserveCleanupAsync(string step, Task cleanup)
+    {
+        try
+        {
+            await cleanup;
+            return false;
+        }
+        catch (Exception exception)
+        {
+            ReportSafely(step, exception);
+            return true;
+        }
+    }
+
+    private static void ObserveLateFailure(Task cleanup)
+    {
+        _ = cleanup.ContinueWith(
+            static completed => _ = completed.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
     private void Safe(string step, Action action)
     {
         try { action(); }
@@ -278,7 +418,7 @@ public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
     private void ReportSafely(string step, Exception exception)
     {
         try { hooks.ReportFailure(step, exception); }
-        catch { /* 诊断失败不得中断安全清理。 */ }
+        catch { /* Diagnostic failure must not interrupt security cleanup. */ }
     }
 
     private async Task<ExpectedLogoutClaimResult> TryLogoutExpectedSessionAsync(
@@ -313,4 +453,12 @@ public sealed class AppLifecycleCoordinator(AppLifecycleHooks hooks)
             or AppLifecycleIntent.RemoteLogout => 1,
         _ => 0,
     };
+
+    private static TimeSpan ValidateExitStepTimeout(TimeSpan? timeout)
+    {
+        var value = timeout ?? DefaultExitStepTimeout;
+        if (value <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException("exitStepTimeout");
+        return value;
+    }
 }

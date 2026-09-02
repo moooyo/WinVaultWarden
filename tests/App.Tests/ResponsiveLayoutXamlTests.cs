@@ -13,10 +13,27 @@ public sealed class ResponsiveLayoutXamlTests
         Assert.Contains("x:Name=\"NarrowList\"", text);
         Assert.Contains("x:Name=\"NarrowDetail\"", text);
         Assert.Contains("VaultNarrowBackButton", text);
+        Assert.Contains("Target=\"PendingCipherCreateActions.Orientation\" Value=\"Horizontal\"", text);
+        Assert.Equal(
+            2,
+            CountOccurrences(
+                text,
+                "Target=\"PendingCipherCreateActions.Orientation\" Value=\"Vertical\""));
+        Assert.Equal(
+            2,
+            CountOccurrences(
+                text,
+                "Target=\"PendingCipherCreateCheckButton.HorizontalAlignment\" Value=\"Stretch\""));
+        Assert.Equal(
+            2,
+            CountOccurrences(
+                text,
+                "Target=\"PendingCipherCreateAbandonButton.HorizontalAlignment\" Value=\"Stretch\""));
         var source = ReadCodeBehind("VaultPage.xaml.cs");
         Assert.Contains("VaultWideThreshold = 800", source);
         Assert.Contains("previousState == \"NarrowList\" && state == \"NarrowDetail\"", source);
         Assert.Contains("VaultNarrowBackButton.Focus(FocusState.Programmatic)", source);
+        Assert.Contains("if (!ViewModel.CanCancelEditor)", source);
         Assert.Contains("CipherList.ContainerFromItem(item)", source);
         Assert.Contains("CipherList.Focus(FocusState.Programmatic)", source);
     }
@@ -94,4 +111,7 @@ public sealed class ResponsiveLayoutXamlTests
         }
         throw new FileNotFoundException(file);
     }
+
+    private static int CountOccurrences(string text, string value) =>
+        text.Split(value, StringSplitOptions.None).Length - 1;
 }

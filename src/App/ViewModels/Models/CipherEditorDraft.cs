@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Core.Enums;
 
 namespace App.ViewModels.Models;
 
@@ -8,10 +9,45 @@ public enum CipherEditorFieldType
     Text,
     Hidden,
     Boolean,
+    Linked,
+    Unsupported,
+}
+
+public sealed class CipherEditBaseline
+{
+    private readonly IReadOnlyList<string> _collectionIds;
+
+    public CipherEditBaseline(
+        string cipherId,
+        CipherType cipherType,
+        DateTimeOffset revisionDate,
+        string? organizationId,
+        string? key,
+        IEnumerable<string> collectionIds)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(cipherId);
+        ArgumentNullException.ThrowIfNull(collectionIds);
+
+        CipherId = cipherId;
+        CipherType = cipherType;
+        RevisionDate = revisionDate;
+        OrganizationId = organizationId;
+        Key = key;
+        _collectionIds = Array.AsReadOnly(collectionIds.ToArray());
+    }
+
+    public string CipherId { get; }
+    public CipherType CipherType { get; }
+    public DateTimeOffset RevisionDate { get; }
+    public string? OrganizationId { get; }
+    public string? Key { get; }
+    public IReadOnlyList<string> CollectionIds => _collectionIds;
 }
 
 public sealed partial class CipherEditorDraft : ObservableObject
 {
+    public CipherEditBaseline? EditBaseline { get; private set; }
+
     [ObservableProperty]
     public partial VaultItemKind Type { get; set; }
 
@@ -20,6 +56,14 @@ public sealed partial class CipherEditorDraft : ObservableObject
 
     [ObservableProperty]
     public partial string? FolderId { get; set; }
+
+    [ObservableProperty]
+    public partial string? OrganizationId { get; set; }
+
+    [ObservableProperty]
+    public partial string? CollectionId { get; set; }
+
+    public ObservableCollection<string> CollectionIds { get; } = new();
 
     [ObservableProperty]
     public partial bool Favorite { get; set; }
@@ -35,6 +79,9 @@ public sealed partial class CipherEditorDraft : ObservableObject
     public IdentityEditorDraft Identity { get; } = new();
     public SecureNoteEditorDraft SecureNote { get; } = new();
     public SshKeyEditorDraft SshKey { get; } = new();
+    public BankAccountEditorDraft BankAccount { get; } = new();
+    public DriversLicenseEditorDraft DriversLicense { get; } = new();
+    public PassportEditorDraft Passport { get; } = new();
     public ObservableCollection<CustomFieldEditorDraft> CustomFields { get; } = new();
 
     public bool IsLogin => Type == VaultItemKind.Login;
@@ -42,8 +89,31 @@ public sealed partial class CipherEditorDraft : ObservableObject
     public bool IsIdentity => Type == VaultItemKind.Identity;
     public bool IsSecureNote => Type == VaultItemKind.Note;
     public bool IsSshKey => Type == VaultItemKind.Ssh;
+    public bool IsBankAccount => Type == VaultItemKind.BankAccount;
+    public bool IsDriversLicense => Type == VaultItemKind.DriversLicense;
+    public bool IsPassport => Type == VaultItemKind.Passport;
 
     public static CipherEditorDraft CreateDefault(VaultItemKind type) => new() { Type = type };
+
+    internal void SetEditBaseline(CipherEditBaseline baseline)
+    {
+        ArgumentNullException.ThrowIfNull(baseline);
+        if (EditBaseline is not null)
+            throw new InvalidOperationException("The edit baseline has already been captured.");
+        EditBaseline = baseline;
+    }
+
+    public void ReplaceCollectionIds(IEnumerable<string> collectionIds)
+    {
+        ArgumentNullException.ThrowIfNull(collectionIds);
+        CollectionIds.Clear();
+        foreach (var collectionId in collectionIds)
+        {
+            if (!string.IsNullOrWhiteSpace(collectionId))
+                CollectionIds.Add(collectionId);
+        }
+        CollectionId = CollectionIds.FirstOrDefault();
+    }
 
     public IReadOnlyList<string> Validate()
     {
@@ -51,6 +121,14 @@ public sealed partial class CipherEditorDraft : ObservableObject
 
         if (string.IsNullOrWhiteSpace(Name))
             errors.Add("项目名称为必填项。");
+
+        if (!string.IsNullOrWhiteSpace(OrganizationId))
+        {
+            if (CollectionIds.Count == 0 && string.IsNullOrWhiteSpace(CollectionId))
+                errors.Add("组织条目至少需要选择一个集合。");
+            if (CollectionIds.Distinct(StringComparer.Ordinal).Count() != CollectionIds.Count)
+                errors.Add("不能重复选择同一个集合。");
+        }
 
         if (Type == VaultItemKind.Ssh)
         {
@@ -74,6 +152,9 @@ public sealed partial class CipherEditorDraft : ObservableObject
         OnPropertyChanged(nameof(IsIdentity));
         OnPropertyChanged(nameof(IsSecureNote));
         OnPropertyChanged(nameof(IsSshKey));
+        OnPropertyChanged(nameof(IsBankAccount));
+        OnPropertyChanged(nameof(IsDriversLicense));
+        OnPropertyChanged(nameof(IsPassport));
     }
 }
 
@@ -211,6 +292,52 @@ public sealed partial class SshKeyEditorDraft : ObservableObject
     public partial string KeyFingerprint { get; set; } = string.Empty;
 }
 
+public sealed partial class BankAccountEditorDraft : ObservableObject
+{
+    [ObservableProperty] public partial string BankName { get; set; } = string.Empty;
+    [ObservableProperty] public partial string NameOnAccount { get; set; } = string.Empty;
+    [ObservableProperty] public partial string AccountType { get; set; } = string.Empty;
+    [ObservableProperty] public partial string AccountNumber { get; set; } = string.Empty;
+    [ObservableProperty] public partial string RoutingNumber { get; set; } = string.Empty;
+    [ObservableProperty] public partial string BranchNumber { get; set; } = string.Empty;
+    [ObservableProperty] public partial string Pin { get; set; } = string.Empty;
+    [ObservableProperty] public partial string SwiftCode { get; set; } = string.Empty;
+    [ObservableProperty] public partial string Iban { get; set; } = string.Empty;
+    [ObservableProperty] public partial string BankContactPhone { get; set; } = string.Empty;
+}
+
+public sealed partial class DriversLicenseEditorDraft : ObservableObject
+{
+    [ObservableProperty] public partial string FirstName { get; set; } = string.Empty;
+    [ObservableProperty] public partial string MiddleName { get; set; } = string.Empty;
+    [ObservableProperty] public partial string LastName { get; set; } = string.Empty;
+    [ObservableProperty] public partial string DateOfBirth { get; set; } = string.Empty;
+    [ObservableProperty] public partial string LicenseNumber { get; set; } = string.Empty;
+    [ObservableProperty] public partial string IssuingCountry { get; set; } = string.Empty;
+    [ObservableProperty] public partial string IssuingState { get; set; } = string.Empty;
+    [ObservableProperty] public partial string IssueDate { get; set; } = string.Empty;
+    [ObservableProperty] public partial string ExpirationDate { get; set; } = string.Empty;
+    [ObservableProperty] public partial string IssuingAuthority { get; set; } = string.Empty;
+    [ObservableProperty] public partial string LicenseClass { get; set; } = string.Empty;
+}
+
+public sealed partial class PassportEditorDraft : ObservableObject
+{
+    [ObservableProperty] public partial string Surname { get; set; } = string.Empty;
+    [ObservableProperty] public partial string GivenName { get; set; } = string.Empty;
+    [ObservableProperty] public partial string DateOfBirth { get; set; } = string.Empty;
+    [ObservableProperty] public partial string Sex { get; set; } = string.Empty;
+    [ObservableProperty] public partial string BirthPlace { get; set; } = string.Empty;
+    [ObservableProperty] public partial string Nationality { get; set; } = string.Empty;
+    [ObservableProperty] public partial string IssuingCountry { get; set; } = string.Empty;
+    [ObservableProperty] public partial string PassportNumber { get; set; } = string.Empty;
+    [ObservableProperty] public partial string PassportType { get; set; } = string.Empty;
+    [ObservableProperty] public partial string NationalIdentificationNumber { get; set; } = string.Empty;
+    [ObservableProperty] public partial string IssuingAuthority { get; set; } = string.Empty;
+    [ObservableProperty] public partial string IssueDate { get; set; } = string.Empty;
+    [ObservableProperty] public partial string ExpirationDate { get; set; } = string.Empty;
+}
+
 public sealed partial class CustomFieldEditorDraft : ObservableObject
 {
     [ObservableProperty]
@@ -225,12 +352,21 @@ public sealed partial class CustomFieldEditorDraft : ObservableObject
     [ObservableProperty]
     public partial bool BooleanValue { get; set; }
 
+    [ObservableProperty]
+    public partial int? LinkedId { get; set; }
+
+    public int? RawType { get; init; }
+
+    public bool PreserveWhenNameBlank { get; init; }
+
     public int TypeIndex
     {
         get => Type switch
         {
             CipherEditorFieldType.Hidden => 1,
             CipherEditorFieldType.Boolean => 2,
+            CipherEditorFieldType.Linked => 3,
+            CipherEditorFieldType.Unsupported => 4,
             _ => 0,
         };
         set
@@ -240,6 +376,7 @@ public sealed partial class CustomFieldEditorDraft : ObservableObject
                 0 => CipherEditorFieldType.Text,
                 1 => CipherEditorFieldType.Hidden,
                 2 => CipherEditorFieldType.Boolean,
+                3 when LinkedId is not null => CipherEditorFieldType.Linked,
                 _ => (CipherEditorFieldType?)null,
             };
 
@@ -251,6 +388,8 @@ public sealed partial class CustomFieldEditorDraft : ObservableObject
     public bool IsText => Type == CipherEditorFieldType.Text;
     public bool IsHidden => Type == CipherEditorFieldType.Hidden;
     public bool IsBoolean => Type == CipherEditorFieldType.Boolean;
+    public bool IsLinked => Type == CipherEditorFieldType.Linked;
+    public bool IsUnsupported => Type == CipherEditorFieldType.Unsupported;
 
     partial void OnTypeChanged(CipherEditorFieldType value)
     {
@@ -258,5 +397,7 @@ public sealed partial class CustomFieldEditorDraft : ObservableObject
         OnPropertyChanged(nameof(IsText));
         OnPropertyChanged(nameof(IsHidden));
         OnPropertyChanged(nameof(IsBoolean));
+        OnPropertyChanged(nameof(IsLinked));
+        OnPropertyChanged(nameof(IsUnsupported));
     }
 }

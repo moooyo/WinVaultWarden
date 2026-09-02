@@ -5,6 +5,7 @@ using Core.Abstractions;
 using Core.Models;
 using Core.Services;
 using Crypto;
+using Crypto.V2;
 using Vault;
 using Xunit;
 
@@ -122,6 +123,68 @@ public class AuthRequestServiceTests
         Assert.Empty(api.Calls);
     }
 
+    [Fact]
+    public async Task Approve_V2WrapsPaddedCoseUserKeyInTypeFourEnvelope()
+    {
+        using var rsa = RSA.Create(2048);
+        var publicKey = rsa.ExportSubjectPublicKeyInfo();
+        var privateKey = rsa.ExportPkcs8PrivateKey();
+        var session = new VaultSession();
+        session.BeginAccountSession(
+            "test-account",
+            "test@example.com",
+            new ServerOrigin("https://vault.example"));
+        var v2UserKey = V2UserKey.Generate();
+        var expectedKeyId = v2UserKey.KeyIdHex;
+        session.SetUnlockedKey(v2UserKey);
+        var api = new FakeAuthRequestApiClient();
+        var service = MakeService(api, session, MakeTokenStore(session));
+
+        await service.ApproveAsync(
+            "req-v2",
+            Convert.ToBase64String(publicKey),
+            TestContext.Current.CancellationToken);
+
+        var encrypted = EncString.Parse(api.LastApproveRequest!.Key);
+        Assert.Equal(Core.Enums.EncryptionType.Rsa2048_OaepSha1_B64, encrypted.Type);
+        var transport = _crypto.DecryptRsa(encrypted, privateKey);
+        try
+        {
+            Assert.True(transport.Length > 64);
+            using var recovered = V2UserKey.ImportTransport(transport);
+            Assert.Equal(expectedKeyId, recovered.KeyIdHex);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(publicKey);
+            CryptographicOperations.ZeroMemory(privateKey);
+            CryptographicOperations.ZeroMemory(transport);
+        }
+    }
+
+    [Fact]
+    public async Task Approve_RejectsWeakOrTrailingPublicKeyData()
+    {
+        var api = new FakeAuthRequestApiClient();
+        var service = MakeService(api);
+        using var weakRsa = RSA.Create(1024);
+        using var validRsa = RSA.Create(2048);
+        var trailing = validRsa.ExportSubjectPublicKeyInfo().Append((byte)0).ToArray();
+
+        await Assert.ThrowsAsync<AuthRequestOperationException>(() =>
+            service.ApproveAsync(
+                "req-weak",
+                Convert.ToBase64String(weakRsa.ExportSubjectPublicKeyInfo()),
+                TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<AuthRequestOperationException>(() =>
+            service.ApproveAsync(
+                "req-trailing",
+                Convert.ToBase64String(trailing),
+                TestContext.Current.CancellationToken));
+
+        Assert.Empty(api.Calls);
+    }
+
     // ── (c) DenyAsync：发送 RequestApproved=false，Key 为空字符串 ────────────────
     [Fact]
     public async Task Deny_SendsRequestApprovedFalse_WithEmptyKey()
@@ -172,19 +235,19 @@ public class AuthRequestServiceTests
         Assert.Equal("pubKeyBase64==", item.PublicKey);
     }
 
-    // ── (e) ListPendingAsync 应用 (登录邮箱 + 请求方公钥) 派生指纹短语 ────────────
-    // 邮箱取自持久化会话("test@example.com"); publicKey = 256 个 0 字节。
-    // 端到端向量 → "visitor-precision-relight-irritate-request"。
+    // Fingerprinting and approval must use the same validated RSA-2048 SPKI.
     [Fact]
     public async Task ListPending_DerivesFingerprintPhrase_FromSessionEmailAndPublicKey()
     {
-        var pk256 = Convert.ToBase64String(new byte[256]);
+        using var rsa = RSA.Create(2048);
+        var publicKey = rsa.ExportSubjectPublicKeyInfo();
+        var publicKeyBase64 = Convert.ToBase64String(publicKey);
         var resp = new AuthRequestListResponse(
             Data: new List<AuthRequestResponse>
             {
                 new(
                     Id: "req-fp",
-                    PublicKey: pk256,
+                    PublicKey: publicKeyBase64,
                     RequestDeviceType: "Android",
                     RequestIpAddress: "10.0.0.9",
                     Key: null,
@@ -200,7 +263,9 @@ public class AuthRequestServiceTests
         var result = await service.ListPendingAsync(TestContext.Current.CancellationToken);
 
         var item = Assert.Single(result);
-        Assert.Equal("visitor-precision-relight-irritate-request", item.FingerprintPhrase);
+        Assert.Equal(
+            _fingerprint.GetFingerprintPhrase(publicKey, "test@example.com"),
+            item.FingerprintPhrase);
     }
 
     [Theory]

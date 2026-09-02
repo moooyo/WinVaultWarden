@@ -25,21 +25,25 @@ public sealed class VaultHealthService : IVaultHealthService
     private IEnumerable<Cipher> ActiveLogins() =>
         _vault.GetCiphers().Where(c => !c.IsDeleted && c.Login is not null);
 
+    private static IEnumerable<Cipher> AnalyzablePasswordLogins(IEnumerable<Cipher> logins) =>
+        logins
+            .Where(cipher => cipher.CanViewPassword)
+            .Where(cipher => !string.IsNullOrEmpty(cipher.Login!.Password));
+
     private static HealthItemRef Ref(Cipher c) => new(c.Id, c.Name, c.Login?.Username);
 
     public HealthReport AnalyzeOffline()
     {
         var logins = ActiveLogins().ToList();
+        var passwordLogins = AnalyzablePasswordLogins(logins).ToList();
 
-        var reused = logins
-            .Where(c => !string.IsNullOrEmpty(c.Login!.Password))
+        var reused = passwordLogins
             .GroupBy(c => c.Login!.Password!, StringComparer.Ordinal)
             .Where(g => g.Count() >= 2)
             .Select(g => new ReusedGroup(g.Count(), g.Select(Ref).ToArray()))
             .ToArray();
 
-        var weak = logins
-            .Where(c => !string.IsNullOrEmpty(c.Login!.Password))
+        var weak = passwordLogins
             .Select(c => (c, score: _evaluator.Evaluate(c.Login!.Password!).Score))
             .Where(x => x.score <= 2)
             .Select(x => new WeakFinding(Ref(x.c), x.score))
@@ -61,8 +65,7 @@ public sealed class VaultHealthService : IVaultHealthService
         // 视为全部唯一密码均"成功"查询完成。
         if (_session?.IsDemo == true)
         {
-            var demoLogins = ActiveLogins()
-                .Where(cipher => !string.IsNullOrEmpty(cipher.Login!.Password))
+            var demoLogins = AnalyzablePasswordLogins(ActiveLogins())
                 .ToArray();
             var demo = demoLogins
                 .Where(cipher => DemoBreachCounts.ContainsKey(cipher.Login!.Password!))
@@ -80,7 +83,7 @@ public sealed class VaultHealthService : IVaultHealthService
                 0);
         }
 
-        var logins = ActiveLogins().Where(cipher => !string.IsNullOrEmpty(cipher.Login!.Password)).ToList();
+        var logins = AnalyzablePasswordLogins(ActiveLogins()).ToList();
         var unique = logins
             .Select(cipher => cipher.Login!.Password!)
             .Distinct(StringComparer.Ordinal)

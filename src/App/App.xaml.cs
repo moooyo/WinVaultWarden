@@ -23,7 +23,7 @@ public partial class App : Application
         Services = ServiceConfiguration.Build();
     }
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         // 全局兜底:UI 层遍布的 async void 处理器一旦抛出未捕获异常(如 ContentDialog 重入 COMException、
         // 附件文件 I/O),会直接终止整个进程且无任何日志。这里先记一条脱敏诊断,再按白名单区分:
@@ -31,6 +31,25 @@ public partial class App : Application
         // 交由系统终止进程,绝不带着已损坏的状态继续跑(见 OnUnhandledException)。
         UnhandledException += OnUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+
+        try
+        {
+            Services.GetRequiredService<IClipboardService>().ClearSecretsNow();
+        }
+        catch (Exception exception)
+        {
+            CrashLogger.WriteRedacted("ClipboardStartupClear", exception);
+        }
+
+        try
+        {
+            await Services.GetRequiredService<AccountDeletionRecoveryHost>()
+                .ResumeConfirmedCleanupAsync();
+        }
+        catch
+        {
+            // Startup recovery is best effort. The login guard remains authoritative on failure.
+        }
 
         MainWindow = new MainWindow();
         ThemeManager.Apply(AppPreferences.Current.ThemeIndex);

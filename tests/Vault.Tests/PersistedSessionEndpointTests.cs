@@ -84,6 +84,81 @@ public sealed class PersistedSessionEndpointTests
     }
 
     [Fact]
+    public void SchemaSixMigrationLeavesMasterPasswordMetadataUnknown()
+    {
+        var legacy = new PersistedSession(
+            schemaVersion: 6,
+            accountId: "account",
+            endpoints: ServerEndpoints.ForSelfHosted("https://vault.example"),
+            generation: 1,
+            email: "me@example.com",
+            deviceIdentifier: "device",
+            refreshToken: "refresh",
+            protectedUserKey: "2.key",
+            kdfType: KdfType.Pbkdf2,
+            kdfIterations: 600_000,
+            kdfMemory: null,
+            kdfParallelism: null,
+            masterPasswordSalt: "me@example.com",
+            unlockMethod: PersistedSessionUnlockMethod.KeyConnector,
+            keyConnectorUrl: "https://keys.example")
+        {
+            HasMasterPassword = true,
+        };
+
+        Assert.True(legacy.TryMigrate(out var migrated));
+        Assert.Equal(PersistedSession.CurrentSchemaVersion, migrated.SchemaVersion);
+        Assert.Equal(PersistedSessionUnlockMethod.KeyConnector, migrated.UnlockMethod);
+        Assert.Null(migrated.HasMasterPassword);
+        Assert.True(migrated.HasValidBinding);
+    }
+
+    [Fact]
+    public void SchemaFiveKeyConnectorUrlRestoresKeyConnectorUnlockMethod()
+    {
+        var legacy = new PersistedSession(
+            schemaVersion: 5,
+            accountId: "account",
+            endpoints: ServerEndpoints.ForSelfHosted("https://vault.example"),
+            generation: 1,
+            email: "me@example.com",
+            deviceIdentifier: "device",
+            refreshToken: "refresh",
+            protectedUserKey: "2.key",
+            kdfType: KdfType.Pbkdf2,
+            kdfIterations: 600_000,
+            kdfMemory: null,
+            kdfParallelism: null,
+            masterPasswordSalt: "me@example.com",
+            keyConnectorUrl: "https://keys.example");
+
+        Assert.True(legacy.TryMigrate(out var migrated));
+        Assert.Equal(PersistedSessionUnlockMethod.KeyConnector, migrated.UnlockMethod);
+        Assert.Equal("https://keys.example", migrated.KeyConnectorUrl);
+        Assert.True(migrated.HasValidBinding);
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(7)]
+    public void LegacySchemas_MigrateOnlyAsV1AndClearCryptographicState(int schemaVersion)
+    {
+        var legacy = CreateLegacyWithInjectedV2State(schemaVersion);
+
+        Assert.True(legacy.TryMigrate(out var migrated));
+        Assert.Equal(PersistedSession.CurrentSchemaVersion, migrated.SchemaVersion);
+        Assert.Equal(1, migrated.UserKeySecurityVersion);
+        Assert.Null(migrated.UserKeyId);
+        Assert.Null(migrated.AccountCryptographicState);
+        Assert.False(migrated.SupportsDeviceTrust);
+        Assert.True(migrated.HasValidBinding);
+    }
+
+    [Fact]
     public void SchemaFourMissingSalt_IsRejected()
     {
         var endpoints = ServerEndpoints.ForSelfHosted("https://vault.example");
@@ -157,6 +232,108 @@ public sealed class PersistedSessionEndpointTests
     }
 
     [Fact]
+    public void UnknownSchemaVersion_RemainsRejected()
+    {
+        var persisted = CreateCurrentWithExplicitSalt("me@example.com") with
+        {
+            SchemaVersion = PersistedSession.CurrentSchemaVersion + 1,
+        };
+
+        Assert.False(persisted.HasValidBinding);
+        Assert.False(persisted.TryMigrate(out _));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    public void CurrentSchema_RejectsUnknownUserKeySecurityVersion(int securityVersion)
+    {
+        var persisted = CreateCurrentWithExplicitSalt("me@example.com") with
+        {
+            UserKeySecurityVersion = securityVersion,
+        };
+
+        Assert.False(persisted.HasValidBinding);
+    }
+
+    [Fact]
+    public void CurrentSchema_V2RequiresMatchingAccountCryptographicState()
+    {
+        var persisted = CreateCurrentWithExplicitSalt("me@example.com") with
+        {
+            UserKeySecurityVersion = 2,
+            UserKeyId = "00112233445566778899aabbccddeeff",
+        };
+
+        Assert.False(persisted.HasValidBinding);
+        Assert.False((persisted with
+        {
+            UserKeySecurityVersion = 1,
+            AccountCryptographicState = CreateV2AccountCryptographicState(),
+        }).HasValidBinding);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("00112233445566778899AABBCCDDEEFF")]
+    [InlineData("00112233445566778899aabbccddeef")]
+    [InlineData("00112233445566778899aabbccddeezz")]
+    public void CurrentSchema_RejectsNonCanonicalUserKeyId(string userKeyId)
+    {
+        var persisted = CreateCurrentWithExplicitSalt("me@example.com") with
+        {
+            UserKeyId = userKeyId,
+        };
+
+        Assert.False(persisted.HasValidBinding);
+    }
+
+    [Fact]
+    public void AccountCryptographicState_HasStrictBoundedShape()
+    {
+        Assert.True(new PersistedAccountCryptographicState(1, "2.wrapped").HasValidShape);
+        Assert.False(new PersistedAccountCryptographicState(
+            1,
+            "2.wrapped",
+            PublicKey: "unexpected").HasValidShape);
+        Assert.True(new PersistedAccountCryptographicState(
+            2,
+            "7.wrapped",
+            WrappedSigningKey: "7.signing",
+            SignedSecurityState: "signed-state").HasValidShape);
+        Assert.True(new PersistedAccountCryptographicState(
+            2,
+            "7.wrapped",
+            PublicKey: "public",
+            SignedPublicKey: "signed-public",
+            WrappedSigningKey: "7.signing",
+            VerifyingKey: "verifying",
+            SignedSecurityState: "signed-state").HasValidShape);
+        Assert.False(new PersistedAccountCryptographicState(
+            2,
+            "7.wrapped",
+            PublicKey: string.Empty,
+            WrappedSigningKey: "7.signing",
+            SignedSecurityState: "signed-state").HasValidShape);
+        Assert.False(new PersistedAccountCryptographicState(
+            2,
+            "7.wrapped",
+            SignedPublicKey: new string(
+                'x',
+                PersistedAccountCryptographicState.MaximumEncodedValueLength + 1),
+            WrappedSigningKey: "7.signing",
+            SignedSecurityState: "signed-state").HasValidShape);
+        Assert.False(new PersistedAccountCryptographicState(
+            2,
+            "7.wrapped",
+            SignedSecurityState: "signed-state").HasValidShape);
+        Assert.False(new PersistedAccountCryptographicState(
+            1,
+            new string('x', PersistedAccountCryptographicState.MaximumEncodedValueLength + 1))
+            .HasValidShape);
+    }
+
+    [Fact]
     public void Restore_SameAuthorityDifferentBasePath_RotatesLease()
     {
         var session = new VaultSession();
@@ -219,4 +396,39 @@ public sealed class PersistedSessionEndpointTests
         600_000,
         null,
         null);
+
+    private static PersistedSession CreateLegacyWithInjectedV2State(int schemaVersion)
+    {
+        var endpoints = ServerEndpoints.ForSelfHosted("https://vault.example");
+        return new PersistedSession(
+            schemaVersion,
+            "account",
+            endpoints.WebVault.Origin,
+            schemaVersion == PersistedSession.LegacySchemaVersion ? null : endpoints,
+            1,
+            "me@example.com",
+            "device",
+            "refresh",
+            "2.key",
+            KdfType.Pbkdf2,
+            600_000,
+            null,
+            null,
+            schemaVersion >= 4 ? "me@example.com" : null)
+        {
+            SupportsDeviceTrust = true,
+            UserKeySecurityVersion = 2,
+            UserKeyId = "00112233445566778899aabbccddeeff",
+            AccountCryptographicState = CreateV2AccountCryptographicState(),
+        };
+    }
+
+    private static PersistedAccountCryptographicState CreateV2AccountCryptographicState() => new(
+        2,
+        "7.wrapped-private-key",
+        "public-key",
+        "signed-public-key",
+        "7.wrapped-signing-key",
+        "verifying-key",
+        "signed-security-state");
 }

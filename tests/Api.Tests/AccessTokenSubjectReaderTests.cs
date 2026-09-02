@@ -13,6 +13,15 @@ public sealed class AccessTokenSubjectReaderTests
         Assert.Equal("user-42", accountId);
     }
 
+    [Fact]
+    public void TryReadEmail_ReadsNonEmptyEmailClaim()
+    {
+        var token = Jwt("{\"sub\":\"user-42\",\"email\":\"sso@example.com\"}");
+
+        Assert.True(AccessTokenSubjectReader.TryReadEmail(token, out var email));
+        Assert.Equal("sso@example.com", email);
+    }
+
     [Theory]
     [InlineData("opaque-token")]
     [InlineData("e30.e30.signature")]

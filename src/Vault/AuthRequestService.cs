@@ -1,5 +1,6 @@
 using Api;
 using Api.Dtos;
+using System.Security.Cryptography;
 using Core.Abstractions;
 using Core.Models;
 using Core.Services;
@@ -71,9 +72,17 @@ public sealed class AuthRequestService : IAuthRequestService
         if (string.IsNullOrEmpty(email)) return string.Empty;
         try
         {
-            return _fingerprint.GetFingerprintPhrase(Convert.FromBase64String(publicKeyBase64), email);
+            var publicKey = NormalizePublicKey(publicKeyBase64);
+            try
+            {
+                return _fingerprint.GetFingerprintPhrase(publicKey, email);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(publicKey);
+            }
         }
-        catch (FormatException)
+        catch (Exception ex) when (ex is FormatException or CryptographicException)
         {
             return string.Empty;
         }
@@ -84,15 +93,36 @@ public sealed class AuthRequestService : IAuthRequestService
     {
         var lease = CaptureLeaseForApproval();
         var persisted = LoadPersisted(lease);
-        if (!_session.TryCopyUserKey(lease, out var copiedKey) || copiedKey is null)
+        if (!_session.TryCopyUserKeyMaterial(lease, out var copiedKey) || copiedKey is null)
             throw new AuthRequestOperationException("请先解锁密码库。");
 
         // 用发起方公钥（SPKI DER）加密完整 UserKey（64 字节），得到 encType=4 的 EncString
         string encKey;
         using (copiedKey)
         {
-            var publicKeyDer = Convert.FromBase64String(publicKey);
-            encKey = _crypto.EncryptRsa(copiedKey.FullKey, publicKeyDer).ToString();
+            byte[]? userKeyPayload = null;
+            byte[] publicKeyDer;
+            try
+            {
+                publicKeyDer = NormalizePublicKey(publicKey);
+            }
+            catch (Exception ex) when (ex is FormatException or CryptographicException)
+            {
+                throw new AuthRequestOperationException("请求设备公钥无效。");
+            }
+            try
+            {
+                userKeyPayload = copiedKey.IsV2
+                    ? copiedKey.V2!.ExportTransport()
+                    : copiedKey.Legacy!.FullKey.ToArray();
+                encKey = _crypto.EncryptRsa(userKeyPayload, publicKeyDer).ToString();
+            }
+            finally
+            {
+                if (userKeyPayload is not null)
+                    CryptographicOperations.ZeroMemory(userKeyPayload);
+                CryptographicOperations.ZeroMemory(publicKeyDer);
+            }
         }
 
         _session.ThrowIfExpired(lease);
@@ -108,6 +138,23 @@ public sealed class AuthRequestService : IAuthRequestService
                 RequestApproved: true),
             linked.Token);
         _session.ThrowIfExpired(lease);
+    }
+
+    private static byte[] NormalizePublicKey(string publicKeyBase64)
+    {
+        var encoded = Convert.FromBase64String(publicKeyBase64);
+        try
+        {
+            using var rsa = RSA.Create();
+            rsa.ImportSubjectPublicKeyInfo(encoded, out var bytesRead);
+            if (bytesRead != encoded.Length || rsa.KeySize != 2048)
+                throw new CryptographicException("The auth-request public key is invalid.");
+            return rsa.ExportSubjectPublicKeyInfo();
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(encoded);
+        }
     }
 
     /// <inheritdoc />

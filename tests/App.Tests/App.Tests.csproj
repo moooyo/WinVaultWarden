@@ -4,6 +4,7 @@
     <Platforms>x64;arm64</Platforms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
@@ -26,8 +27,10 @@
     <Compile Include="..\..\src\App\ViewModels\Models\CipherDetail.cs" Link="Models\CipherDetail.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\AttachmentItem.cs" Link="Models\AttachmentItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\CipherEditorDraft.cs" Link="Models\CipherEditorDraft.cs" />
+    <Compile Include="..\..\src\App\ViewModels\Models\CipherDestinationOption.cs" Link="Models\CipherDestinationOption.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\FilterNode.cs" Link="Models\FilterNode.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\DeviceItem.cs" Link="Models\DeviceItem.cs" />
+    <Compile Include="..\..\src\App\ViewModels\Models\WebAuthnCredentialListItem.cs" Link="Models\WebAuthnCredentialListItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\VaultFolderNavigationItem.cs" Link="Models\VaultFolderNavigationItem.cs" />
     <Compile Include="..\..\src\App\Services\MockVaultUiService.cs" Link="Services\MockVaultUiService.cs" />
     <Compile Include="..\..\src\App\Services\MockDeviceUiService.cs" Link="Services\MockDeviceUiService.cs" />
@@ -35,7 +38,24 @@
     <Compile Include="..\..\src\App\Services\DeviceUiService.cs" Link="Services\DeviceUiService.cs" />
     <Compile Include="..\..\src\App\Services\AccountUiService.cs" Link="Services\AccountUiService.cs" />
     <Compile Include="..\..\src\App\Services\DpapiTokenStore.cs" Link="Services\DpapiTokenStore.cs" />
+    <Compile Include="..\..\src\App\Services\PersistedSessionStorageModels.cs" Link="Services\PersistedSessionStorageModels.cs" />
     <Compile Include="..\..\src\App\Services\DpapiVaultCacheStore.cs" Link="Services\DpapiVaultCacheStore.cs" />
+    <Compile Include="..\..\src\App\Services\DpapiDeviceKeyStore.cs" Link="Services\DpapiDeviceKeyStore.cs" />
+    <Compile Include="..\..\src\App\Services\PersistedDeviceKeyModels.cs" Link="Services\PersistedDeviceKeyModels.cs" />
+    <Compile Include="..\..\src\App\Services\DpapiCipherCreatePendingStore.cs" Link="Services\DpapiCipherCreatePendingStore.cs" />
+    <Compile Include="..\..\src\App\Services\PersistedCipherCreatePendingModels.cs" Link="Services\PersistedCipherCreatePendingModels.cs" />
+    <Compile Include="..\..\src\App\Services\DpapiTrustedDeviceApprovalStore.cs" Link="Services\DpapiTrustedDeviceApprovalStore.cs" />
+    <Compile Include="..\..\src\App\Services\PersistedTrustedDeviceApprovalModels.cs" Link="Services\PersistedTrustedDeviceApprovalModels.cs" />
+    <Compile Include="..\..\src\App\Services\DpapiTdeV2JitPendingStore.cs" Link="Services\DpapiTdeV2JitPendingStore.cs" />
+    <Compile Include="..\..\src\App\Services\PersistedTdeV2JitPendingModels.cs" Link="Services\PersistedTdeV2JitPendingModels.cs" />
+    <Compile Include="..\..\src\App\Services\DpapiLoginWithDeviceQuarantineStore.cs" Link="Services\DpapiLoginWithDeviceQuarantineStore.cs" />
+    <Compile Include="..\..\src\App\Services\PersistedLoginWithDeviceQuarantineModels.cs" Link="Services\PersistedLoginWithDeviceQuarantineModels.cs" />
+    <Compile Include="..\..\src\App\Services\DpapiAccountDeletionTombstoneStore.cs" Link="Services\DpapiAccountDeletionTombstoneStore.cs" />
+    <Compile Include="..\..\src\App\Services\PersistedAccountDeletionTombstoneModels.cs" Link="Services\PersistedAccountDeletionTombstoneModels.cs" />
+    <Compile Include="..\..\src\App\Services\FileAccountDeletionCoordinationGate.cs" Link="Services\FileAccountDeletionCoordinationGate.cs" />
+    <Compile Include="..\..\src\App\Services\AccountDeletionLocalWriteGuard.cs" Link="Services\AccountDeletionLocalWriteGuard.cs" />
+    <Compile Include="..\..\src\App\Services\LocalDataResetService.cs" Link="Services\LocalDataResetService.cs" />
+    <Compile Include="..\..\src\App\Services\PersistentDeviceIdentifierProvider.cs" Link="Services\PersistentDeviceIdentifierProvider.cs" />
     <Compile Include="..\..\src\App\Services\AppJsonContext.cs" Link="Services\AppJsonContext.cs" />
     <Compile Include="..\..\src\App\Services\AppPreferences.cs" Link="Services\AppPreferences.cs" />
     <Compile Include="..\..\src\App\Services\DemoVaultSessionService.cs" Link="Services\DemoVaultSessionService.cs" />
@@ -44,6 +64,11 @@
     <Compile Include="..\..\src\App\Services\CancelWinsTask.cs" Link="Services\CancelWinsTask.cs" />
     <Compile Include="..\..\src\App\Services\UiExceptionPolicy.cs" Link="Services\UiExceptionPolicy.cs" />
     <Compile Include="..\..\src\App\Services\AccountPrefill.cs" Link="Services\AccountPrefill.cs" />
+    <Compile Include="..\..\src\App\Services\SavedAccountService.cs" Link="Services\SavedAccountService.cs" />
+    <Compile Include="..\..\src\App\Services\AccountDeletionRecoveryHost.cs" Link="Services\AccountDeletionRecoveryHost.cs" />
+    <Compile Include="..\..\src\App\Services\LoopbackSsoAuthorizationService.cs" Link="Services\LoopbackSsoAuthorizationService.cs" />
+    <Compile Include="..\..\src\App\Services\WindowsWebAuthnTwoFactorService.cs" Link="Services\WindowsWebAuthnTwoFactorService.cs" />
+    <Compile Include="..\..\src\App\Services\WindowsWebAuthnTwoFactorRegistrationService.cs" Link="Services\WindowsWebAuthnTwoFactorRegistrationService.cs" />
     <Compile Include="..\..\src\App\Services\ClientPeerAuthorizer.cs" Link="Services\ClientPeerAuthorizer.cs" />
     <Compile Include="..\..\src\App\Services\PasskeyBridgeServer.cs" Link="Services\PasskeyBridgeServer.cs" />
     <Compile Include="..\..\src\App\ViewModels\LoginViewModel.cs" Link="ViewModels\LoginViewModel.cs" />

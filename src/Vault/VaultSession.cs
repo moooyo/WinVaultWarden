@@ -1,6 +1,7 @@
 using Core.Models;
 using Core.Session;
 using Crypto;
+using Crypto.V2;
 
 namespace Vault;
 
@@ -11,6 +12,17 @@ public sealed class VaultSession : IVaultSnapshot
     private IReadOnlyList<Folder> _folders = Array.Empty<Folder>();
     private IReadOnlyList<DeviceInfo> _devices = Array.Empty<DeviceInfo>();
     private IReadOnlyList<Send> _sends = Array.Empty<Send>();
+    private IReadOnlyList<VaultOrganization> _organizations = Array.Empty<VaultOrganization>();
+    private IReadOnlyList<VaultCollection> _collections = Array.Empty<VaultCollection>();
+    private IReadOnlyList<VaultOrganizationPolicy> _policies = Array.Empty<VaultOrganizationPolicy>();
+    private IReadOnlyList<VaultOrganizationPolicyContext> _policyOrganizations =
+        Array.Empty<VaultOrganizationPolicyContext>();
+    private VaultDomainSettings? _domains;
+    private VaultCapabilities _capabilities = VaultCapabilities.None;
+    private readonly Dictionary<(string AccountId, ServerEndpoints Endpoints), string>
+        _securityStamps = [];
+    private readonly LinkedList<(string AccountId, ServerEndpoints Endpoints)>
+        _securityStampRecency = [];
 
     // Generation/stamp/CTS 是本会话身份轮换的唯一真源(见类尾 lease 相关方法)。
     private long _generation;
@@ -25,12 +37,31 @@ public sealed class VaultSession : IVaultSnapshot
     public VaultState State { get; private set; } = VaultState.LoggedOut;
     public string? AccessToken { get; private set; }
     public string? RefreshToken { get; private set; }
-    public SymmetricCryptoKey? UserKey { get; private set; }
+    private VaultUserKey? _userKey;
+    public SymmetricCryptoKey? UserKey
+    {
+        get { lock (_gate) return _userKey?.Legacy; }
+    }
+    public bool UsesV2UserKey
+    {
+        get { lock (_gate) return _userKey?.IsV2 == true; }
+    }
+    public int SecurityVersion
+    {
+        get { lock (_gate) return _userKey?.SecurityVersion ?? 0; }
+    }
     public string? EncryptedPrivateKey { get; private set; }
     public AccountInfo Account { get; private set; } = AccountInfo.Empty;
     public int SkippedCipherCount { get; private set; }
     public int SkippedFolderCount { get; private set; }
+    public int SkippedSendCount { get; private set; }
+    public int UnsupportedOrganizationCipherCount { get; private set; }
+    public int UnsupportedProviderOrganizationCount { get; private set; }
     public bool DataStale { get; private set; }
+    public VaultCapabilities Capabilities
+    {
+        get { lock (_gate) return _capabilities; }
+    }
 
     public long Generation
     {
@@ -57,6 +88,31 @@ public sealed class VaultSession : IVaultSnapshot
         get { lock (_gate) return _devices; }
     }
 
+    public IReadOnlyList<VaultOrganization> Organizations
+    {
+        get { lock (_gate) return _organizations; }
+    }
+
+    public IReadOnlyList<VaultCollection> Collections
+    {
+        get { lock (_gate) return _collections; }
+    }
+
+    public IReadOnlyList<VaultOrganizationPolicy> Policies
+    {
+        get { lock (_gate) return _policies; }
+    }
+
+    public IReadOnlyList<VaultOrganizationPolicyContext> PolicyOrganizations
+    {
+        get { lock (_gate) return _policyOrganizations; }
+    }
+
+    public VaultDomainSettings? Domains
+    {
+        get { lock (_gate) return _domains; }
+    }
+
     // 演示/离线会话的 Send 列表(明文领域模型,仅存内存,不落盘/发日志——与 ShareUrl/Key 同约束)。
     // 在线会话不使用此列表:Send 始终经 SendService 实时从 /api/sends 拉取并解密。
     public IReadOnlyList<Send> Sends
@@ -77,7 +133,7 @@ public sealed class VaultSession : IVaultSnapshot
     {
         lock (_gate)
         {
-            if (UserKey is not null)
+            if (_userKey is not null)
                 State = VaultState.Unlocked;
         }
     }
@@ -101,9 +157,59 @@ public sealed class VaultSession : IVaultSnapshot
 
     public void SetUnlockedKey(SymmetricCryptoKey userKey)
     {
+        ArgumentNullException.ThrowIfNull(userKey);
+        if (userKey.IsDisposed)
+            throw new ObjectDisposedException(nameof(userKey));
         lock (_gate)
         {
-            UserKey = userKey;
+            if (ReferenceEquals(_userKey?.Legacy, userKey))
+            {
+                State = VaultState.Unlocked;
+                return;
+            }
+            _userKey?.Dispose();
+            _userKey = VaultUserKey.TakeOwnership(userKey);
+            State = VaultState.Unlocked;
+        }
+    }
+
+    public void SetUnlockedKey(V2UserKey userKey)
+    {
+        ArgumentNullException.ThrowIfNull(userKey);
+        _ = userKey.KeyIdHex;
+        lock (_gate)
+        {
+            if (ReferenceEquals(_userKey?.V2, userKey))
+            {
+                State = VaultState.Unlocked;
+                return;
+            }
+            _userKey?.Dispose();
+            _userKey = VaultUserKey.TakeOwnership(userKey);
+            State = VaultState.Unlocked;
+        }
+    }
+
+    public void SetUnlockedKey(VaultUserKey userKey)
+    {
+        ArgumentNullException.ThrowIfNull(userKey);
+        _ = userKey.SecurityVersion;
+        lock (_gate)
+        {
+            if (ReferenceEquals(_userKey, userKey))
+            {
+                State = VaultState.Unlocked;
+                return;
+            }
+            if (_userKey?.SharesBackingKeyWith(userKey) == true)
+            {
+                userKey.RelinquishBackingKeyOwnership();
+                State = VaultState.Unlocked;
+                return;
+            }
+
+            _userKey?.Dispose();
+            _userKey = userKey;
             State = VaultState.Unlocked;
         }
     }
@@ -115,21 +221,68 @@ public sealed class VaultSession : IVaultSnapshot
     }
 
     /// <summary>写入快照。返回是否实际应用(false 表示会话已被并发 Lock/Clear,快照被丢弃)。</summary>
-    public bool SetSnapshot(DecryptedVault vault, bool dataStale = false)
+    public bool SetSnapshot(
+        DecryptedVault vault,
+        bool dataStale = false,
+        VaultCapabilities? capabilities = null)
     {
+        ArgumentNullException.ThrowIfNull(vault);
         lock (_gate)
         {
             // 并发锁定/登出防护(S6):若在途同步期间已被 Lock()/Clear()(UserKey 已在同一 _gate 下清零置空),
             // 不得把解密后的明文条目回灌进已锁定会话——否则会出现 State=Locked 却仍能读到整库明文的矛盾态。
-            if (UserKey is null)
+            if (_userKey is null)
                 return false;
             Account = vault.Account;
             _folders = vault.Folders;
             _ciphers = vault.Ciphers;
+            _sends = vault.Sends;
+            _organizations = vault.Organizations;
+            _collections = vault.Collections;
+            _policies = vault.Policies;
+            _policyOrganizations = vault.PolicyOrganizations
+                ?? vault.Organizations.Select(organization =>
+                    new VaultOrganizationPolicyContext(
+                        organization.Id,
+                        organization.Status,
+                        organization.Type,
+                        organization.Enabled,
+                        UsePolicies: true,
+                        IsProviderUser: organization.IsProviderUser
+                            || organization.IsProviderOrganization)).ToArray();
+            _domains = vault.Domains;
             SkippedCipherCount = vault.SkippedCipherCount;
             SkippedFolderCount = vault.SkippedFolderCount;
+            SkippedSendCount = vault.SkippedSendCount;
+            UnsupportedOrganizationCipherCount = vault.UnsupportedOrganizationCipherCount;
+            UnsupportedProviderOrganizationCount = vault.UnsupportedProviderOrganizationCount;
+            _capabilities = capabilities ?? VaultCapabilities.None;
             DataStale = dataStale;
             return true;
+        }
+    }
+
+    public bool TrySetCapabilities(VaultSessionLease lease, VaultCapabilities capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(capabilities);
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease))
+                return false;
+            _capabilities = capabilities;
+            return true;
+        }
+    }
+
+    public VaultCapabilities GetCapabilities(VaultSessionLease lease)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease))
+                throw new OperationCanceledException(lease.CancellationToken);
+            return _capabilities;
         }
     }
 
@@ -242,6 +395,51 @@ public sealed class VaultSession : IVaultSnapshot
     {
         lock (_gate)
             _sends = sends;
+    }
+
+    public bool TrySetSends(VaultSessionLease lease, IReadOnlyList<Send> sends)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(sends);
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease) || _userKey is null)
+                return false;
+            _sends = sends;
+            return true;
+        }
+    }
+
+    public bool TryGetSendSnapshot(
+        VaultSessionLease lease,
+        out IReadOnlyList<Send> sends,
+        out bool dataStale)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease) || _userKey is null)
+            {
+                sends = Array.Empty<Send>();
+                dataStale = false;
+                return false;
+            }
+
+            sends = _sends;
+            dataStale = DataStale;
+            return true;
+        }
+    }
+
+    public bool IsDataStale(VaultSessionLease lease)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease) || _userKey is null)
+                throw new OperationCanceledException(lease.CancellationToken);
+            return DataStale;
+        }
     }
 
     // copy-on-write 插入/替换(按 Id),与 UpsertCipher/UpsertFolder 一致的健壮策略。
@@ -377,6 +575,37 @@ public sealed class VaultSession : IVaultSnapshot
         }
     }
 
+    internal bool TryClearMatchingAccountForAuthentication(
+        AuthenticationAttemptLease attempt,
+        string accountId,
+        ServerEndpoints endpoints)
+    {
+        ArgumentNullException.ThrowIfNull(attempt);
+        ArgumentException.ThrowIfNullOrWhiteSpace(accountId);
+        ArgumentNullException.ThrowIfNull(endpoints);
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(attempt))
+                return false;
+            if (_accountId != accountId || _endpoints != endpoints)
+                return true;
+
+            try
+            {
+                RotateLeaseNoLock(null, null, persistedGeneration: null);
+            }
+            finally
+            {
+                RemoveSecurityStampNoLock((accountId, endpoints));
+                ClearSensitiveState();
+                Account = AccountInfo.Empty;
+                State = VaultState.LoggedOut;
+            }
+
+            return true;
+        }
+    }
+
     /// <summary>
     /// 以给定账户身份开启一个新会话:轮换 generation、取消旧租约、清空敏感状态,
     /// 并返回绑定新 generation 的租约供调用方随后 TryCommit 写入解密后的数据。
@@ -461,7 +690,7 @@ public sealed class VaultSession : IVaultSnapshot
         lock (_gate)
             return IsCurrentNoLock(lease)
                 && State == VaultState.Unlocked
-                && UserKey is not null;
+                && _userKey is not null;
     }
 
     public bool TryRunIfUnlocked(VaultSessionLease lease, Action action)
@@ -472,7 +701,7 @@ public sealed class VaultSession : IVaultSnapshot
         {
             if (!IsCurrentNoLock(lease)
                 || State != VaultState.Unlocked
-                || UserKey is null)
+                || _userKey is null)
                 return false;
             action();
             return true;
@@ -503,17 +732,57 @@ public sealed class VaultSession : IVaultSnapshot
         }
     }
 
+    public bool TryMarkDataStale(VaultSessionLease lease)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease) || _userKey is null)
+                return false;
+            DataStale = true;
+            return true;
+        }
+    }
+
+    public bool TryMarkDataFresh(VaultSessionLease lease)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease) || _userKey is null)
+                return false;
+            DataStale = false;
+            return true;
+        }
+    }
+
     /// <summary>租约仍当前时返回 UserKey 的独立拷贝(调用方拥有其生命周期),否则返回 false。</summary>
     public bool TryCopyUserKey(VaultSessionLease lease, out SymmetricCryptoKey? key)
     {
         lock (_gate)
         {
-            if (!IsCurrentNoLock(lease) || UserKey is null)
+            if (!IsCurrentNoLock(lease) || _userKey?.Legacy is not { } legacy)
             {
                 key = null;
                 return false;
             }
-            key = new SymmetricCryptoKey(UserKey.FullKey.ToArray());
+            key = new SymmetricCryptoKey(legacy.FullKey.ToArray());
+            return true;
+        }
+    }
+
+    /// <summary>Returns an owned copy of the active V1 or V2 user key.</summary>
+    public bool TryCopyUserKeyMaterial(VaultSessionLease lease, out VaultUserKey? key)
+    {
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease) || _userKey is null)
+            {
+                key = null;
+                return false;
+            }
+
+            key = _userKey.Copy();
             return true;
         }
     }
@@ -530,7 +799,7 @@ public sealed class VaultSession : IVaultSnapshot
         {
             if (!IsCurrentNoLock(lease)
                 || State != VaultState.Unlocked
-                || UserKey is null)
+                || _userKey is null)
             {
                 encryptedPrivateKey = null;
                 return false;
@@ -581,6 +850,58 @@ public sealed class VaultSession : IVaultSnapshot
             }
             accessToken = AccessToken;
             refreshToken = RefreshToken;
+            return true;
+        }
+    }
+
+    internal SecurityStampComparison CompareSecurityStamp(
+        VaultSessionLease lease,
+        string securityStamp)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentException.ThrowIfNullOrWhiteSpace(securityStamp);
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease))
+                return SecurityStampComparison.StaleLease;
+
+            var binding = (lease.AccountId, lease.Endpoints);
+            if (!_securityStamps.TryGetValue(binding, out var current))
+                return SecurityStampComparison.NoBaseline;
+            return string.Equals(current, securityStamp, StringComparison.Ordinal)
+                ? SecurityStampComparison.Match
+                : SecurityStampComparison.Mismatch;
+        }
+    }
+
+    internal bool TryCommitSecurityStamp(
+        VaultSessionLease lease,
+        string securityStamp) =>
+        TryCommitSecurityStamp(lease, securityStamp, static () => { });
+
+    internal bool TryCommitSecurityStamp(
+        VaultSessionLease lease,
+        string securityStamp,
+        Action mutation)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentException.ThrowIfNullOrWhiteSpace(securityStamp);
+        ArgumentNullException.ThrowIfNull(mutation);
+        lock (_gate)
+        {
+            if (!IsCurrentNoLock(lease))
+                return false;
+
+            var binding = (lease.AccountId, lease.Endpoints);
+            if (_securityStamps.TryGetValue(binding, out var current)
+                && !string.Equals(current, securityStamp, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            mutation();
+
+            SetSecurityStampNoLock(binding, securityStamp);
             return true;
         }
     }
@@ -655,6 +976,8 @@ public sealed class VaultSession : IVaultSnapshot
     {
         lock (_gate)
         {
+            var accountId = _accountId;
+            var endpoints = _endpoints;
             try
             {
                 RotateAuthenticationAttemptNoLock(createCurrent: false);
@@ -662,6 +985,10 @@ public sealed class VaultSession : IVaultSnapshot
             }
             finally
             {
+                if (accountId is not null && endpoints is not null)
+                {
+                    RemoveSecurityStampNoLock((accountId, endpoints));
+                }
                 ClearSensitiveState();
                 Account = AccountInfo.Empty;
                 State = VaultState.LoggedOut;
@@ -675,6 +1002,7 @@ public sealed class VaultSession : IVaultSnapshot
         ServerEndpoints endpoints)
     {
         RotateLeaseNoLock(accountId, endpoints, persistedGeneration: null);
+        RemoveSecurityStampNoLock((accountId, endpoints));
         ClearSensitiveState();
         Account = new AccountInfo(
             accountId,
@@ -687,13 +1015,18 @@ public sealed class VaultSession : IVaultSnapshot
 
     private void RestorePersistedSessionNoLock(PersistedSession persisted)
     {
+        var binding = (persisted.AccountId, persisted.Endpoints!);
         if (_accountId == persisted.AccountId
             && _endpoints == persisted.Endpoints
             && _generation == persisted.Generation
             && _leaseCts is { IsCancellationRequested: false })
+        {
+            TouchSecurityStampNoLock(binding);
             return;
+        }
 
         RotateLeaseNoLock(persisted.AccountId, persisted.Endpoints!, persisted.Generation);
+        TouchSecurityStampNoLock(binding);
         ClearSensitiveState();
         Account = new AccountInfo(
             persisted.AccountId,
@@ -702,6 +1035,39 @@ public sealed class VaultSession : IVaultSnapshot
             persisted.Email.Trim()[..1].ToUpperInvariant(),
             string.Empty);
         State = VaultState.Locked;
+    }
+
+    private void SetSecurityStampNoLock(
+        (string AccountId, ServerEndpoints Endpoints) binding,
+        string securityStamp)
+    {
+        if (!_securityStamps.ContainsKey(binding)
+            && _securityStamps.Count >= PersistedSessionCollection.MaximumSessions)
+        {
+            var oldest = _securityStampRecency.First
+                ?? throw new InvalidOperationException("Security stamp recency state is inconsistent.");
+            _securityStamps.Remove(oldest.Value);
+            _securityStampRecency.RemoveFirst();
+        }
+
+        _securityStamps[binding] = securityStamp;
+        TouchSecurityStampNoLock(binding);
+    }
+
+    private void TouchSecurityStampNoLock(
+        (string AccountId, ServerEndpoints Endpoints) binding)
+    {
+        if (!_securityStamps.ContainsKey(binding))
+            return;
+        _securityStampRecency.Remove(binding);
+        _securityStampRecency.AddLast(binding);
+    }
+
+    private void RemoveSecurityStampNoLock(
+        (string AccountId, ServerEndpoints Endpoints) binding)
+    {
+        _securityStamps.Remove(binding);
+        _securityStampRecency.Remove(binding);
     }
 
     private void RotateAuthenticationAttemptNoLock(bool createCurrent)
@@ -801,8 +1167,8 @@ public sealed class VaultSession : IVaultSnapshot
 
     private void ClearSensitiveState()
     {
-        // Dispose 清零 UserKey 的 FullKey/EncKey/MacKey 全部支撑数组(等价于原逐一 ZeroMemory,更简洁)。
-        UserKey?.Dispose();
+        // The discriminated owner clears all backing arrays for either V1 or V2 user keys.
+        _userKey?.Dispose();
 
         // 【已知残余风险 — 托管明文残留】锁定/登出这里只能清零 UserKey 的字节数组(可变 byte[],
         // 可就地 ZeroMemory)。而解密后的 Cipher 字段明文(用户名/密码/备注等)是不可变的
@@ -813,15 +1179,32 @@ public sealed class VaultSession : IVaultSnapshot
         // (如需进一步缓解可在锁定后 GC.Collect(),但不能根除,本批不引入。)
         AccessToken = null;
         RefreshToken = null;
-        UserKey = null;
+        _userKey = null;
         _ciphers = Array.Empty<Cipher>();
         _folders = Array.Empty<Folder>();
         _devices = Array.Empty<DeviceInfo>();
         _sends = Array.Empty<Send>();
+        _organizations = Array.Empty<VaultOrganization>();
+        _collections = Array.Empty<VaultCollection>();
+        _policies = Array.Empty<VaultOrganizationPolicy>();
+        _policyOrganizations = Array.Empty<VaultOrganizationPolicyContext>();
+        _domains = null;
+        _capabilities = VaultCapabilities.None;
         IsDemo = false;
         EncryptedPrivateKey = null;
         SkippedCipherCount = 0;
         SkippedFolderCount = 0;
+        SkippedSendCount = 0;
+        UnsupportedOrganizationCipherCount = 0;
+        UnsupportedProviderOrganizationCount = 0;
         DataStale = false;
     }
+}
+
+internal enum SecurityStampComparison
+{
+    StaleLease,
+    NoBaseline,
+    Match,
+    Mismatch,
 }

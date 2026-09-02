@@ -54,12 +54,14 @@ public class NotificationsServiceTests
         INotificationDispatcher dispatcher,
         VaultSession session,
         ITokenRefresher? refresher = null,
+        ISyncService? sync = null,
         TimeSpan? baseBackoff = null) =>
         new(
             factory,
             dispatcher,
             session,
             refresher ?? new FakeTokenRefresher(),
+            sync ?? new FakeNotificationSyncService(),
             baseBackoff ?? TimeSpan.FromMilliseconds(10));
 
     /// <summary>有界等待谓词成立，超时抛 <see cref="OperationCanceledException"/>。</summary>
@@ -106,8 +108,8 @@ public class NotificationsServiceTests
         await svc.StopAsync();
 
         Assert.Equal(3, dispatcher.Dispatched.Count);
-        Assert.Equal(1, vaultChangedCount);
-        Assert.Equal(1, sendsChangedCount);
+        Assert.True(vaultChangedCount >= 2);
+        Assert.True(sendsChangedCount >= 2);
         Assert.Equal(1, authChangedCount);
     }
 
@@ -370,6 +372,210 @@ public class NotificationsServiceTests
         await service.StopAsync();
 
         Assert.Equal(expectedNotificationsEndpoint, connection.ServerUrl);
+    }
+
+    [Fact]
+    public async Task InitialConnection_RunsFullCatchUpAndRaisesRefreshEvents()
+    {
+        var connection = new FakeNotificationsConnection();
+        var dispatcher = new FakeNotificationDispatcher();
+        var sync = new FakeNotificationSyncService();
+        var session = MakeSession();
+        var vaultChanged = 0;
+        var sendsChanged = 0;
+        var service = MakeService(
+            () => connection,
+            dispatcher,
+            session,
+            sync: sync);
+        service.VaultChanged += () => vaultChanged++;
+        service.SendsChanged += () => sendsChanged++;
+
+        await service.StartAsync();
+        await WaitUntilAsync(
+            () => sync.SyncCalls == 1
+                && Volatile.Read(ref vaultChanged) == 1
+                && Volatile.Read(ref sendsChanged) == 1,
+            TimeSpan.FromSeconds(5));
+        await service.StopAsync();
+
+        Assert.True(sync.Leases.Single().SameSessionAs(session.CaptureLease()));
+        Assert.Equal(1, vaultChanged);
+        Assert.Equal(1, sendsChanged);
+    }
+
+    [Fact]
+    public async Task CatchUpFailure_ReconnectsAndRetriesBeforeLiveMessageDispatch()
+    {
+        var connection = new FakeNotificationsConnection
+        {
+            Messages = [new NotificationMessage((int)UpdateType.SyncVault, null)],
+        };
+        var dispatcher = new FakeNotificationDispatcher();
+        var refresher = new FakeTokenRefresher();
+        var sync = new FakeNotificationSyncService
+        {
+            NextSyncException = new HttpRequestException("sync unavailable"),
+        };
+        var service = MakeService(
+            () => connection,
+            dispatcher,
+            MakeSession(),
+            refresher: refresher,
+            sync: sync,
+            baseBackoff: TimeSpan.FromMilliseconds(5));
+
+        await service.StartAsync();
+        await WaitUntilAsync(
+            () => dispatcher.Dispatched.Count >= 1,
+            TimeSpan.FromSeconds(5));
+        await service.StopAsync();
+
+        Assert.True(sync.SyncCalls >= 2);
+        Assert.True(connection.ConnectCallCount >= 2);
+        Assert.Equal(UpdateType.SyncVault, (UpdateType)dispatcher.Dispatched[0].Type);
+        Assert.True(refresher.CallCount >= 1);
+    }
+
+    [Fact]
+    public async Task PersistentCatchUpFailure_NeverAdmitsLiveMessagesAndStopsOnCancellation()
+    {
+        var connection = new FakeNotificationsConnection
+        {
+            Messages = [new NotificationMessage((int)UpdateType.SyncVault, null)],
+        };
+        var dispatcher = new FakeNotificationDispatcher();
+        var sync = new FakeNotificationSyncService
+        {
+            SyncException = new HttpRequestException("sync unavailable"),
+        };
+        var service = MakeService(
+            () => connection,
+            dispatcher,
+            MakeSession(),
+            sync: sync,
+            baseBackoff: TimeSpan.FromMilliseconds(5));
+
+        await service.StartAsync();
+        await WaitUntilAsync(
+            () => sync.SyncCalls >= 2,
+            TimeSpan.FromSeconds(5));
+        await service.StopAsync();
+
+        Assert.True(connection.ConnectCallCount >= 2);
+        Assert.Empty(dispatcher.Dispatched);
+    }
+
+    [Fact]
+    public async Task SuccessfulReconnect_RunsCatchUpAgain()
+    {
+        var connection = new FakeNotificationsConnection();
+        connection.MessageQueues.Enqueue([]);
+        var sync = new FakeNotificationSyncService();
+        var service = MakeService(
+            () => connection,
+            new FakeNotificationDispatcher(),
+            MakeSession(),
+            sync: sync,
+            baseBackoff: TimeSpan.FromMilliseconds(5));
+
+        await service.StartAsync();
+        await WaitUntilAsync(
+            () => sync.SyncCalls >= 2,
+            TimeSpan.FromSeconds(5));
+        await service.StopAsync();
+
+        Assert.True(connection.ConnectCallCount >= 2);
+        Assert.True(sync.Leases.All(
+            lease => lease.SameSessionAs(sync.Leases[0])));
+    }
+
+    [Fact]
+    public async Task SyncOrgKeys_RefreshesTokenBeforeRebuildingConnection()
+    {
+        var connection = new FakeNotificationsConnection
+        {
+            Messages = [new NotificationMessage((int)UpdateType.SyncOrgKeys, null)],
+        };
+        var session = MakeSession();
+        var refresher = new FakeTokenRefresher
+        {
+            Handler = (lease, _) => Task.FromResult(session.TryCommit(lease, () =>
+                session.SetTokens("rotated-access", "rotated-refresh"))),
+        };
+        var service = MakeService(
+            () => connection,
+            new FakeNotificationDispatcher(),
+            session,
+            refresher: refresher,
+            baseBackoff: TimeSpan.FromSeconds(5));
+
+        await service.StartAsync();
+        await WaitUntilAsync(
+            () => connection.ConnectCallCount >= 2,
+            TimeSpan.FromSeconds(2));
+        await service.StopAsync();
+
+        Assert.True(connection.ConnectCallCount >= 2);
+        Assert.True(refresher.CallCount >= 1);
+        Assert.Equal("test-access-token", connection.AccessTokens[0]);
+        Assert.Equal("rotated-access", connection.AccessTokens[1]);
+    }
+
+    [Fact]
+    public async Task SyncOrgKeys_RefreshFailureDoesNotReconnectWithOldToken()
+    {
+        var connection = new FakeNotificationsConnection
+        {
+            Messages = [new NotificationMessage((int)UpdateType.SyncOrgKeys, null)],
+        };
+        var refresher = new FakeTokenRefresher { Result = false };
+        var service = MakeService(
+            () => connection,
+            new FakeNotificationDispatcher(),
+            MakeSession(),
+            refresher: refresher,
+            baseBackoff: TimeSpan.FromMilliseconds(5));
+
+        await service.StartAsync();
+        await WaitUntilAsync(
+            () => refresher.CallCount >= 2,
+            TimeSpan.FromSeconds(5));
+        await service.StopAsync();
+
+        Assert.Equal(1, connection.ConnectCallCount);
+        Assert.Single(connection.AccessTokens);
+        Assert.Equal("test-access-token", connection.AccessTokens[0]);
+    }
+
+    [Fact]
+    public async Task SyncOrgKeys_PostSyncCallbackFailureStillUsesRefreshBarrier()
+    {
+        var connection = new FakeNotificationsConnection
+        {
+            Messages = [new NotificationMessage((int)UpdateType.SyncOrgKeys, null)],
+        };
+        var session = MakeSession();
+        var refresher = new FakeTokenRefresher
+        {
+            Handler = (lease, _) => Task.FromResult(session.TryCommit(lease, () =>
+                session.SetTokens("rotated-after-failure", "rotated-refresh"))),
+        };
+        var service = MakeService(
+            () => connection,
+            new FakeNotificationDispatcher { ThrowAfterConnectionRebuild = true },
+            session,
+            refresher: refresher,
+            baseBackoff: TimeSpan.FromMilliseconds(5));
+
+        await service.StartAsync();
+        await WaitUntilAsync(
+            () => connection.ConnectCallCount >= 2,
+            TimeSpan.FromSeconds(5));
+        await service.StopAsync();
+
+        Assert.True(refresher.CallCount >= 1);
+        Assert.Equal("rotated-after-failure", connection.AccessTokens[1]);
     }
 
     private sealed class CapturingNotificationsConnection : INotificationsConnection

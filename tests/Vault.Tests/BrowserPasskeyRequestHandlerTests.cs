@@ -135,7 +135,7 @@ public class BrowserPasskeyRequestHandlerTests
         const string sentinel = @"SENTINEL_INTERNAL C:\Users\alice\vault token=secret stack=WebAuthnCrypto";
         var credentialId = WebAuthnCrypto.EncodeBase64Url([9, 9, 9, 9]);
         var credential = new CipherFido2Credential(
-            credentialId,
+            CredentialId.NormalizeStorage(credentialId),
             "public-key",
             "ECDSA",
             "P-256",
@@ -540,7 +540,8 @@ public class BrowserPasskeyRequestHandlerTests
         Assert.Equal(CipherType.Login, write.Saved!.Type);
         var cred = Assert.Single(write.Saved.Login!.Fido2Credentials);
         Assert.Equal("github.com", cred.RpId);
-        Assert.Equal(payload.CredentialId, cred.CredentialId);
+        Assert.StartsWith(CredentialId.Base64Prefix, cred.CredentialId);
+        Assert.True(CredentialId.StorageIdEqualsWire(cred.CredentialId, payload.CredentialId));
     }
 
     [Fact]
@@ -632,7 +633,7 @@ public class BrowserPasskeyRequestHandlerTests
     public async Task HandleCreate_ExcludeExistingCredential_ReturnsError()
     {
         // existing passkey for github.com with credId "ZXhpc3Q"; exclude it → InvalidStateError.
-        var cred = new CipherFido2Credential("ZXhpc3Q", "public-key", "ECDSA", "P-256", "k", "github.com", "u", "octo", 0, "GitHub", "Octo", true, DateTimeOffset.UtcNow);
+        var cred = new CipherFido2Credential("b64.ZXhpc3Q", "public-key", "ECDSA", "P-256", "k", "github.com", "u", "octo", 0, "GitHub", "Octo", true, DateTimeOffset.UtcNow);
         var existing = new Cipher { Id = "c-1", Type = CipherType.Login, Name = "GitHub", Login = new CipherLogin("u", null, null, []) { Fido2Credentials = [cred] } };
         var write = new FakeVaultWriteService();
         var handler = new BrowserPasskeyRequestHandler(new FakeVaultService(VaultState.Unlocked, [existing]), write, new CapturingApprovalService(approve: true));
@@ -640,6 +641,111 @@ public class BrowserPasskeyRequestHandlerTests
         var response = await handler.HandleAsync(new BrowserPasskeyRequest("r", "passkey.create", doc.RootElement, Context: Ctx()), TestContext.Current.CancellationToken);
         Assert.False(response.Ok);
         Assert.Null(write.Saved);
+    }
+
+    [Fact]
+    public async Task HandleGet_GuidStorageMatchesWireAllowListAndEquivalentApprovalId()
+    {
+        const string guid = "08d70b74-e9f5-4522-a425-e5dcd40107e7";
+        const string wireId = "CNcLdOn1RSKkJeXc1AEH5w";
+        var cipher = CandidateCipher("cipher-guid", guid, "octo@example.com");
+        var approval = new CapturingApprovalService
+        {
+            UseResult = new PasskeyUseApprovalResult(
+                new PasskeyApprovalEvidence(true, true, true),
+                "cipher-guid",
+                CredentialId.Base64Prefix + wireId),
+        };
+        var handler = CreateHandler([cipher], approval);
+
+        var response = await handler.HandleAsync(
+            RequestFor("passkey.get", [wireId]),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(response.Ok);
+        var assertion = response.Payload!.Value.Deserialize(
+            PasskeyJsonContext.Default.PasskeyGetAssertionPayload)!;
+        Assert.Equal(wireId, assertion.CredentialId);
+    }
+
+    [Fact]
+    public async Task HandleCreate_GuidStorageMatchesRawExcludeCredential()
+    {
+        const string guid = "08d70b74-e9f5-4522-a425-e5dcd40107e7";
+        const string wireId = "CNcLdOn1RSKkJeXc1AEH5w";
+        var write = new FakeVaultWriteService();
+        var approval = new CapturingApprovalService(approve: true);
+        var handler = new BrowserPasskeyRequestHandler(
+            new FakeVaultService(
+                VaultState.Unlocked,
+                [CandidateCipher("cipher-guid", guid, "octo@example.com")]),
+            write,
+            approval);
+        using var payload = CreatePayload(
+            exclude: $$"""{ "id": "{{wireId}}", "type": "public-key", "transports": ["internal"] }""");
+
+        var response = await handler.HandleAsync(
+            new BrowserPasskeyRequest(
+                "guid-excluded",
+                "passkey.create",
+                payload.RootElement,
+                Context: Ctx()),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(response.Ok);
+        Assert.Equal("credential_excluded", response.Error?.Code);
+        Assert.Null(write.Saved);
+        Assert.Null(approval.CreateRequest);
+    }
+
+    [Fact]
+    public async Task HandleGet_ArchivedCredential_IsNotOffered()
+    {
+        var archived = CandidateCipher(
+            "archived-cipher",
+            "CQoLDA",
+            "archived@example.com",
+            archived: true);
+        var approval = new CapturingApprovalService(approve: true);
+        var handler = CreateHandler([archived], approval);
+
+        var response = await handler.HandleAsync(
+            RequestFor("passkey.get", ["CQoLDA"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(response.Ok);
+        Assert.Equal(PasskeyErrorCodes.ClientNotHandled, response.Error?.Code);
+        Assert.Null(approval.Request);
+    }
+
+    [Fact]
+    public async Task HandleCreate_ArchivedCredential_DoesNotExcludeOrOfferAttachTarget()
+    {
+        var archived = CandidateCipher(
+            "archived-cipher",
+            "CQoLDA",
+            "archived@example.com",
+            archived: true);
+        var write = new FakeVaultWriteService();
+        var approval = new CapturingApprovalService(approve: true);
+        var handler = new BrowserPasskeyRequestHandler(
+            new FakeVaultService(VaultState.Unlocked, [archived]),
+            write,
+            approval);
+        using var payload = CreatePayload(
+            exclude: """{ "id": "CQoLDA", "type": "public-key", "transports": ["internal"] }""");
+
+        var response = await handler.HandleAsync(
+            new BrowserPasskeyRequest(
+                "archived-create",
+                "passkey.create",
+                payload.RootElement,
+                Context: Ctx()),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(response.Ok);
+        Assert.Empty(approval.CreateRequest!.ExistingLogins);
+        Assert.NotNull(write.Saved);
     }
 
     [Theory]
@@ -770,7 +876,7 @@ public class BrowserPasskeyRequestHandlerTests
     }
 
     private static CipherFido2Credential Credential(ECDsa key, string credentialId) => new(
-        credentialId,
+        CredentialId.NormalizeStorage(credentialId),
         "public-key",
         "ECDSA",
         "P-256",
@@ -840,11 +946,12 @@ public class BrowserPasskeyRequestHandlerTests
         string cipherId,
         string credentialId,
         string userName,
-        bool reprompt = false)
+        bool reprompt = false,
+        bool archived = false)
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var credential = new CipherFido2Credential(
-            credentialId,
+            CredentialId.NormalizeStorage(credentialId),
             "public-key",
             "ECDSA",
             "P-256",
@@ -863,6 +970,7 @@ public class BrowserPasskeyRequestHandlerTests
             Type = CipherType.Login,
             Name = "GitHub",
             Reprompt = reprompt,
+            ArchivedDate = archived ? DateTimeOffset.Parse("2026-06-25T00:00:00Z") : null,
             Login = new CipherLogin(userName, null, null, [])
             {
                 Fido2Credentials = [credential],

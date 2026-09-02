@@ -17,6 +17,8 @@ public class VaultSearchHaystackTests
         {
             new CipherField("plan tier", "pro", CipherFieldType.Text),
             new CipherField("secret answer", "my-hidden-value", CipherFieldType.Hidden),
+            new CipherField("linked password", "linked-secret", CipherFieldType.Linked, LinkedId: 101),
+            new CipherField("future field", "future-secret", CipherFieldType.Unsupported, RawType: 97),
         },
     };
 
@@ -40,6 +42,8 @@ public class VaultSearchHaystackTests
         var h = VaultSearch.BuildHaystack(Login());
         Assert.DoesNotContain("super-secret-pw", h);   // password never searchable
         Assert.DoesNotContain("my-hidden-value", h);   // hidden field VALUE excluded
+        Assert.DoesNotContain("linked-secret", h);
+        Assert.DoesNotContain("future-secret", h);
     }
 
     [Fact]
@@ -64,5 +68,35 @@ public class VaultSearchHaystackTests
         Assert.Contains("lovelace", h);
         Assert.Contains("ada@example.com", h);
         Assert.Contains("555-1234", h);
+    }
+
+    [Fact]
+    public void Haystack_HiddenPasswordsExcludeProtectedNotesAndNumberFragments()
+    {
+        var cipher = new Cipher
+        {
+            Id = "hidden",
+            Type = CipherType.Login,
+            Name = "Visible name",
+            Notes = "protected-note",
+            CanViewPassword = false,
+            Login = new CipherLogin("visible-user", "protected-password", "protected-totp", []),
+            Card = new CipherCard(null, "4111111111111111", null, null, "123", null),
+            BankAccount = new CipherBankAccount("Visible bank", null, null, "account-2222", null, null, null, null, "iban-3333", null),
+            DriversLicense = new CipherDriversLicense("Visible", null, "Driver", null, "license-4444", "GB", null, null, null, null, null),
+            Passport = new CipherPassport("Person", "Visible", null, null, null, null, "GB", "passport-5555", null, null, null, null, null),
+        };
+
+        var haystack = VaultSearch.BuildHaystack(cipher);
+
+        Assert.Contains("visible name", haystack);
+        Assert.Contains("visible-user", haystack);
+        Assert.Contains("visible bank", haystack);
+        Assert.DoesNotContain("protected-note", haystack);
+        Assert.DoesNotContain("1111", haystack);
+        Assert.DoesNotContain("2222", haystack);
+        Assert.DoesNotContain("3333", haystack);
+        Assert.DoesNotContain("4444", haystack);
+        Assert.DoesNotContain("5555", haystack);
     }
 }

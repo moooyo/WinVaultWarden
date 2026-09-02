@@ -69,13 +69,38 @@
                                                  IsExpanded="True">
                             <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE8B7;" /></muxc:NavigationViewItem.Icon>
                         </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem Content="银行账户" Tag="vault:type:BankAccount">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE825;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem Content="驾驶证" Tag="vault:type:DriversLicense">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE77B;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem Content="护照" Tag="vault:type:Passport">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE8A5;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem x:Name="OrganizationsNavItem"
+                                                 Content="组织"
+                                                 SelectsOnInvoked="False"
+                                                 IsExpanded="True">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE716;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem x:Name="CollectionsNavItem"
+                                                 Content="集合"
+                                                 SelectsOnInvoked="False"
+                                                 IsExpanded="True">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE8B7;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
+                        <muxc:NavigationViewItem Content="归档" Tag="vault:archive">
+                            <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE7B8;" /></muxc:NavigationViewItem.Icon>
+                        </muxc:NavigationViewItem>
                         <muxc:NavigationViewItem Content="回收站" Tag="vault:trash">
                             <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE74D;" /></muxc:NavigationViewItem.Icon>
                         </muxc:NavigationViewItem>
                     </muxc:NavigationViewItem.MenuItems>
                 </muxc:NavigationViewItem>
 
-                <muxc:NavigationViewItem Content="Send"
+                <muxc:NavigationViewItem x:Name="SendNavItem"
+                                         Content="Send"
                                          SelectsOnInvoked="False"
                                          IsExpanded="True">
                     <muxc:NavigationViewItem.Icon><FontIcon Glyph="&#xE724;" /></muxc:NavigationViewItem.Icon>

@@ -70,16 +70,25 @@ public class VaultSessionTests
         var account = new AccountInfo("test-account", "me@example.com", new ServerOrigin("https://vault.example"), "M", "PBKDF2 600000");
 
         session.SetUnlockedKey(key);
-        session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 3, SkippedFolderCount: 1));
+        session.SetSnapshot(new DecryptedVault(
+            account,
+            [],
+            [],
+            SkippedCipherCount: 3,
+            SkippedFolderCount: 1,
+            UnsupportedOrganizationCipherCount: 2));
         Assert.Equal(3, session.SkippedCipherCount);
         Assert.Equal(1, session.SkippedFolderCount);
+        Assert.Equal(2, session.UnsupportedOrganizationCipherCount);
 
         session.Lock();
         Assert.Equal(0, session.SkippedCipherCount);
         Assert.Equal(0, session.SkippedFolderCount);
+        Assert.Equal(0, session.UnsupportedOrganizationCipherCount);
 
         // 重新解锁后才能再次写入快照。
-        session.SetUnlockedKey(key);
+        session.SetUnlockedKey(new SymmetricCryptoKey(
+            Enumerable.Range(0, 64).Select(i => (byte)i).ToArray()));
         session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 5, SkippedFolderCount: 2));
         Assert.Equal(5, session.SkippedCipherCount);
         Assert.Equal(2, session.SkippedFolderCount);
@@ -87,6 +96,37 @@ public class VaultSessionTests
         session.Logout();
         Assert.Equal(0, session.SkippedCipherCount);
         Assert.Equal(0, session.SkippedFolderCount);
+        Assert.Equal(0, session.UnsupportedOrganizationCipherCount);
+    }
+
+    [Fact]
+    public void SetSnapshot_StoresOrganizationMetadataAndClearsItOnLock()
+    {
+        var session = new VaultSession();
+        var key = new SymmetricCryptoKey(Enumerable.Range(0, 64).Select(i => (byte)i).ToArray());
+        var account = new AccountInfo(
+            "test-account",
+            "me@example.com",
+            new ServerOrigin("https://vault.example"),
+            "M",
+            string.Empty);
+        var snapshot = new DecryptedVault(account, [], [], 0, 0)
+        {
+            Organizations = [new VaultOrganization("org-1", "Team", 2, 2, true)],
+            Collections = [new VaultCollection("collection-1", "org-1", "Engineering", true, true, false, null)],
+            Policies = [new VaultOrganizationPolicy("policy-1", "org-1", 6, true, "{}")],
+        };
+
+        session.SetUnlockedKey(key);
+        Assert.True(session.SetSnapshot(snapshot));
+        Assert.Single(session.Organizations);
+        Assert.Single(session.Collections);
+        Assert.Single(session.Policies);
+
+        session.Lock();
+        Assert.Empty(session.Organizations);
+        Assert.Empty(session.Collections);
+        Assert.Empty(session.Policies);
     }
 
     [Fact]
@@ -146,6 +186,58 @@ public class VaultSessionTests
         session.SetSnapshot(new DecryptedVault(account, [], [], SkippedCipherCount: 0, SkippedFolderCount: 0), dataStale: true);
         session.Lock();
         Assert.False(session.DataStale);
+    }
+
+    [Fact]
+    public void Capabilities_AreLeaseBoundAndClearedOnAccountSwitchAndLock()
+    {
+        var session = new VaultSession();
+        var first = session.BeginAccountSession(
+            "account-a",
+            "a@example.com",
+            ServerEndpoints.ForSelfHosted("https://a.example"));
+        session.SetUnlockedKey(new SymmetricCryptoKey(
+            Enumerable.Range(0, 64).Select(i => (byte)i).ToArray()));
+        var enabled = new VaultCapabilities(true, true, true);
+
+        Assert.True(session.TrySetCapabilities(first, enabled));
+        Assert.Equal(enabled, session.GetCapabilities(first));
+        Assert.Equal(enabled, ((IVaultSnapshot)session).Capabilities);
+
+        var second = session.BeginAccountSession(
+            "account-b",
+            "b@example.com",
+            ServerEndpoints.ForSelfHosted("https://b.example"));
+
+        Assert.Equal(VaultCapabilities.None, session.Capabilities);
+        Assert.False(session.TrySetCapabilities(first, enabled));
+        Assert.Throws<OperationCanceledException>(() => session.GetCapabilities(first));
+
+        session.SetUnlockedKey(new SymmetricCryptoKey(
+            Enumerable.Range(64, 64).Select(i => (byte)i).ToArray()));
+        Assert.True(session.TrySetCapabilities(second, enabled));
+        session.Lock();
+
+        Assert.Equal(VaultCapabilities.None, session.Capabilities);
+    }
+
+    [Fact]
+    public void SetSnapshot_WithoutCapabilitiesClearsPreviouslyEnabledState()
+    {
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession(
+            "account-a",
+            "a@example.com",
+            ServerEndpoints.ForSelfHosted("https://a.example"));
+        session.SetUnlockedKey(new SymmetricCryptoKey(
+            Enumerable.Range(0, 64).Select(i => (byte)i).ToArray()));
+        Assert.True(session.TrySetCapabilities(
+            lease,
+            new VaultCapabilities(true, true, true)));
+
+        session.SetSnapshot(new DecryptedVault(session.Account, [], [], 0, 0));
+
+        Assert.Equal(VaultCapabilities.None, session.Capabilities);
     }
 
     private static Send DemoSend(string id) => new()

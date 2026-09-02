@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Api;
 using Core.Models;
 using Api.Dtos;
@@ -8,10 +9,18 @@ namespace Vault.Tests;
 
 public class ApiWriteClientTests
 {
+    private const int VaultwardenJsonLimitBytes = 20 * 1024 * 1024;
+
     private static ApiClient NewClient(FakeHttpMessageHandler handler)
     {
         var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
         return client;
+    }
+
+    private static JsonElement ReadBody(FakeHttpMessageHandler handler, int index = 0)
+    {
+        using var document = JsonDocument.Parse(handler.Bodies[index]);
+        return document.RootElement.Clone();
     }
 
     private static CipherRequest SampleCipher() => new()
@@ -271,7 +280,9 @@ public class ApiWriteClientTests
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
         var client = NewClient(handler);
 
-        await client.CreateCipherAsync(SampleCipher(), TestContext.Current.CancellationToken);
+        await client.CreateCipherAsync(
+            new CipherWithIdRequest("must-not-be-sent", SampleCipher()),
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
         Assert.Equal("/api/ciphers", handler.Requests[0].RequestUri!.AbsolutePath);
@@ -279,6 +290,147 @@ public class ApiWriteClientTests
         Assert.Contains("\"name\":\"2.name\"", handler.Bodies[0]);
         Assert.Contains("\"login\":{", handler.Bodies[0]);
         Assert.Contains("\"username\":\"2.user\"", handler.Bodies[0]);
+        Assert.False(ReadBody(handler).TryGetProperty("id", out _));
+    }
+
+    [Fact]
+    public async Task CreateCipherWithResponse_ReturnsServerAssignedId()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
+            """{"id":"created-1","type":1,"name":"2.name","notes":null,"key":"2.key","organizationId":null,"folderId":null,"favorite":false,"reprompt":0,"login":null,"card":null,"identity":null,"secureNote":null,"sshKey":null,"fields":null,"creationDate":"2026-08-01T12:00:00Z","revisionDate":"2026-08-01T12:00:00Z","deletedDate":null}"""));
+        var client = NewClient(handler);
+
+        var created = await client.CreateCipherWithResponseAsync(
+            SampleCipher(),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("created-1", created!.Id);
+        Assert.Equal("/api/ciphers", handler.Requests[0].RequestUri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task CreateCipherWithResponse_AllowsVaultwardenMaximumDeclaredContentLength()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ =>
+        {
+            var response = FakeHttpMessageHandler.Json(
+                HttpStatusCode.OK,
+                """{"id":"created-at-limit","type":1,"name":"2.name"}""");
+            // Exercise the inclusive Content-Length guard without allocating a 20 MiB body.
+            response.Content.Headers.ContentLength = VaultwardenJsonLimitBytes;
+            return response;
+        });
+        var client = NewClient(handler);
+
+        var created = await client.CreateCipherWithResponseAsync(
+            SampleCipher(),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("created-at-limit", created!.Id);
+    }
+
+    [Fact]
+    public async Task CreateCipherWithResponse_OversizedSuccessfulBodyIsCommitConfirmedReadFailure()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ =>
+        {
+            var response = FakeHttpMessageHandler.Json(
+                HttpStatusCode.OK,
+                """{"id":"created-over-limit","type":1,"name":"2.name"}""");
+            response.Content.Headers.ContentLength = VaultwardenJsonLimitBytes + 1L;
+            return response;
+        });
+        var client = NewClient(handler);
+
+        var exception = await Assert.ThrowsAsync<CipherCreateSuccessResponseReadException>(() =>
+            client.CreateCipherWithResponseAsync(
+                SampleCipher(),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.OK, exception.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, exception.SuccessStatusCode);
+        Assert.IsType<InvalidDataException>(exception.InnerException);
+    }
+
+    [Fact]
+    public async Task CreateCipherWithResponse_InvalidSuccessfulJsonIsCommitConfirmedReadFailure()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{"));
+        var client = NewClient(handler);
+
+        var exception = await Assert.ThrowsAsync<CipherCreateSuccessResponseReadException>(() =>
+            client.CreateCipherWithResponseAsync(
+                SampleCipher(),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.OK, exception.StatusCode);
+        Assert.IsType<JsonException>(exception.InnerException);
+    }
+
+    [Fact]
+    public async Task CreateCipherWithResponse_SuccessfulBodyCancellationIsCommitConfirmedReadFailure()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ThrowingHttpContent(new OperationCanceledException("response body cancelled")),
+        });
+        var client = NewClient(handler);
+
+        var exception = await Assert.ThrowsAsync<CipherCreateSuccessResponseReadException>(() =>
+            client.CreateCipherWithResponseAsync(
+                SampleCipher(),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.OK, exception.StatusCode);
+        Assert.IsType<OperationCanceledException>(exception.InnerException);
+    }
+
+    [Fact]
+    public async Task CreateOrganizationCipher_PostsShareEnvelopeToCreateEndpoint()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
+        var client = NewClient(handler);
+
+        await client.CreateOrganizationCipherAsync(
+            new ShareCipherRequest
+            {
+                Cipher = SampleCipher(),
+                CollectionIds = ["collection-1", "collection-2"],
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
+        Assert.Equal("/api/ciphers/create", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Contains("\"cipher\":{", handler.Bodies[0]);
+        Assert.Contains("\"name\":\"2.name\"", handler.Bodies[0]);
+        Assert.Contains("\"collectionIds\":[\"collection-1\",\"collection-2\"]", handler.Bodies[0]);
+        Assert.False(ReadBody(handler).GetProperty("cipher").TryGetProperty("id", out _));
+    }
+
+    [Fact]
+    public async Task CreateOrganizationCipherWithResponse_ReturnsServerAssignedId()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
+            """{"id":"created-org-1","type":1,"name":"2.name","notes":null,"key":"2.key","organizationId":"org-1","folderId":null,"favorite":false,"reprompt":0,"login":null,"card":null,"identity":null,"secureNote":null,"sshKey":null,"fields":null,"creationDate":"2026-08-01T12:00:00Z","revisionDate":"2026-08-01T12:00:00Z","deletedDate":null}"""));
+        var client = NewClient(handler);
+
+        var created = await client.CreateOrganizationCipherWithResponseAsync(
+            new ShareCipherRequest
+            {
+                Cipher = SampleCipher(),
+                CollectionIds = ["collection-1"],
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("created-org-1", created!.Id);
+        Assert.Equal("/api/ciphers/create", handler.Requests[0].RequestUri!.AbsolutePath);
     }
 
     [Fact]
@@ -288,11 +440,145 @@ public class ApiWriteClientTests
         handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
         var client = NewClient(handler);
 
-        await client.UpdateCipherAsync("c-1", SampleCipher(), TestContext.Current.CancellationToken);
+        await client.UpdateCipherAsync(
+            "c-1",
+            new CipherWithIdRequest("must-not-be-sent", SampleCipher()),
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpMethod.Put, handler.Requests[0].Method);
         Assert.Equal("/api/ciphers/c-1", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Contains("\"name\":\"2.name\"", handler.Bodies[0]);
+        Assert.False(ReadBody(handler).TryGetProperty("id", out _));
+    }
+
+    [Fact]
+    public async Task ShareExistingCipher_PutsShareEnvelopeWithoutCipherIdInBody()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
+        var client = NewClient(handler);
+
+        await client.ShareExistingCipherAsync(
+            "c-1",
+            new ShareCipherRequest
+            {
+                Cipher = SampleCipher(),
+                CollectionIds = ["collection-1", "collection-2"],
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpMethod.Put, handler.Requests[0].Method);
+        Assert.Equal("/api/ciphers/c-1/share", handler.Requests[0].RequestUri!.AbsolutePath);
+        var body = ReadBody(handler);
+        Assert.Equal(2, body.EnumerateObject().Count());
+        Assert.Equal("2.name", body.GetProperty("cipher").GetProperty("name").GetString());
+        Assert.False(body.GetProperty("cipher").TryGetProperty("id", out _));
+        Assert.Equal(
+            ["collection-1", "collection-2"],
+            body.GetProperty("collectionIds").EnumerateArray().Select(item => item.GetString()));
+    }
+
+    [Fact]
+    public async Task BulkShareCiphers_PutsFlatCipherDataWithIdAndAcceptsEmptyResponse()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        var client = NewClient(handler);
+
+        await client.BulkShareCiphersAsync(
+            new BulkShareCiphersRequest
+            {
+                Ciphers = [new CipherWithIdRequest("c-1", SampleCipher())],
+                CollectionIds = ["collection-1"],
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpMethod.Put, handler.Requests[0].Method);
+        Assert.Equal("/api/ciphers/share", handler.Requests[0].RequestUri!.AbsolutePath);
+        var body = ReadBody(handler);
+        Assert.Equal(2, body.EnumerateObject().Count());
+        var cipher = Assert.Single(body.GetProperty("ciphers").EnumerateArray());
+        Assert.Equal("c-1", cipher.GetProperty("id").GetString());
+        Assert.Equal(1, cipher.GetProperty("type").GetInt32());
+        Assert.Equal("2.name", cipher.GetProperty("name").GetString());
+        Assert.Equal("2.user", cipher.GetProperty("login").GetProperty("username").GetString());
+        Assert.False(cipher.TryGetProperty("cipher", out _));
+        Assert.Equal(
+            ["collection-1"],
+            body.GetProperty("collectionIds").EnumerateArray().Select(item => item.GetString()));
+    }
+
+    [Fact]
+    public async Task SetCipherCollections_PutsCollectionIdsToCollectionsV2()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
+        var client = NewClient(handler);
+
+        await client.SetCipherCollectionsAsync(
+            "c-1",
+            new CipherCollectionsRequest
+            {
+                CollectionIds = ["collection-1", "collection-2"],
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpMethod.Put, handler.Requests[0].Method);
+        Assert.Equal("/api/ciphers/c-1/collections_v2", handler.Requests[0].RequestUri!.AbsolutePath);
+        var body = ReadBody(handler);
+        Assert.Single(body.EnumerateObject());
+        Assert.Equal(
+            ["collection-1", "collection-2"],
+            body.GetProperty("collectionIds").EnumerateArray().Select(item => item.GetString()));
+    }
+
+    [Fact]
+    public async Task BulkUpdateCipherCollections_PostsExactBulkCollectionsBody()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        var client = NewClient(handler);
+
+        await client.BulkUpdateCipherCollectionsAsync(
+            new BulkCipherCollectionsRequest
+            {
+                OrganizationId = "org-1",
+                CipherIds = ["c-1", "c-2"],
+                CollectionIds = ["collection-1", "collection-2"],
+                RemoveCollections = true,
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
+        Assert.Equal("/api/ciphers/bulk-collections", handler.Requests[0].RequestUri!.AbsolutePath);
+        var body = ReadBody(handler);
+        Assert.Equal(4, body.EnumerateObject().Count());
+        Assert.Equal("org-1", body.GetProperty("organizationId").GetString());
+        Assert.Equal(
+            ["c-1", "c-2"],
+            body.GetProperty("cipherIds").EnumerateArray().Select(item => item.GetString()));
+        Assert.Equal(
+            ["collection-1", "collection-2"],
+            body.GetProperty("collectionIds").EnumerateArray().Select(item => item.GetString()));
+        Assert.True(body.GetProperty("removeCollections").GetBoolean());
+    }
+
+    [Fact]
+    public async Task UpdateCipherPartial_PreservesFolderAndWritesFavorite()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
+        var client = NewClient(handler);
+
+        await client.UpdateCipherPartialAsync(
+            "c-1",
+            new PartialCipherRequest { FolderId = "f-1", Favorite = true },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpMethod.Put, handler.Requests[0].Method);
+        Assert.Equal("/api/ciphers/c-1/partial", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Contains("\"folderId\":\"f-1\"", handler.Bodies[0]);
+        Assert.Contains("\"favorite\":true", handler.Bodies[0]);
     }
 
     [Fact]
@@ -490,5 +776,17 @@ public class ApiWriteClientTests
         await client.BulkMoveCiphersAsync(new[] { "a" }, null, TestContext.Current.CancellationToken);
 
         Assert.Contains("\"folderId\":null", handler.Bodies[0]);
+    }
+
+    private sealed class ThrowingHttpContent(Exception failure) : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            Task.FromException(failure);
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
     }
 }

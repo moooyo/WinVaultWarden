@@ -8,7 +8,13 @@ public sealed class FakeAccountApiClient : IAccountApiClient, IRegistrationApiCl
 {
     public ProfileUpdateRequest? Profile;
     public ChangePasswordRequest? Password;
+    public UpdateTemporaryPasswordRequest? TemporaryPassword;
     public ChangeKdfRequest? Kdf;
+    public DeleteAccountRequest? AccountDeletion;
+    public int AccountDeletionOtpRequestCount;
+    public int AccountDeletionRequestCount;
+    public Func<CancellationToken, Task>? RequestAccountDeletionOtp;
+    public Func<DeleteAccountRequest, CancellationToken, Task>? DeleteAccount;
     public Exception? Throw;
 
     public Task UpdateProfileAsync(ProfileUpdateRequest r, CancellationToken ct = default)
@@ -25,11 +31,39 @@ public sealed class FakeAccountApiClient : IAccountApiClient, IRegistrationApiCl
         return Task.CompletedTask;
     }
 
+    public Task UpdateTemporaryPasswordAsync(
+        UpdateTemporaryPasswordRequest r,
+        CancellationToken ct = default)
+    {
+        if (Throw != null) throw Throw;
+        TemporaryPassword = r;
+        return Task.CompletedTask;
+    }
+
     public Task ChangeKdfAsync(ChangeKdfRequest r, CancellationToken ct = default)
     {
         if (Throw != null) throw Throw;
         Kdf = r;
         return Task.CompletedTask;
+    }
+
+    public Task RequestAccountDeletionOtpAsync(CancellationToken ct = default)
+    {
+        AccountDeletionOtpRequestCount++;
+        if (Throw is not null)
+            throw Throw;
+        return RequestAccountDeletionOtp?.Invoke(ct) ?? Task.CompletedTask;
+    }
+
+    public Task DeleteAccountAsync(
+        DeleteAccountRequest request,
+        CancellationToken ct = default)
+    {
+        AccountDeletionRequestCount++;
+        AccountDeletion = request;
+        if (Throw is not null)
+            throw Throw;
+        return DeleteAccount?.Invoke(request, ct) ?? Task.CompletedTask;
     }
 
     public RegisterRequest? Register;

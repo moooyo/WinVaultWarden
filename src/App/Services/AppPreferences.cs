@@ -14,7 +14,7 @@ public static class AppPreferenceIndexPolicy
         value is >= 0 and <= 2 ? value : DefaultThemeIndex;
 
     public static int NormalizeSessionTimeoutIndex(int value) =>
-        value is >= 0 and <= 7 ? value : DefaultSessionTimeoutIndex;
+        value is >= 0 and <= 8 ? value : DefaultSessionTimeoutIndex;
 
     public static int NormalizeTimeoutActionIndex(int value) =>
         value is >= 0 and <= 1 ? value : DefaultTimeoutActionIndex;
@@ -183,7 +183,7 @@ public sealed class AppPreferencesData
     /// <summary>本地保存的命名筛选视图(不同步服务端)。</summary>
     public List<SavedSearchViewData> SavedSearchViews { get; set; } = new();
 
-    /// <summary>会话超时 ComboBox 索引(0重启时..7永不)。默认 3=15分钟。</summary>
+    /// <summary>Session timeout ComboBox index. The default is 3 (15 minutes).</summary>
     public int SessionTimeoutIndex { get; set; } = AppPreferenceIndexPolicy.DefaultSessionTimeoutIndex;
 
     /// <summary>超时动作:0=锁定(默认),1=登出。</summary>

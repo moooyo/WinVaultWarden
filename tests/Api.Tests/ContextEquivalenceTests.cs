@@ -19,6 +19,22 @@ public class ContextEquivalenceTests
     }
 
     [Fact]
+    public void CipherRequest_archivedDate_uses_camelCase_in_source_generated_wire()
+    {
+        var request = new CipherRequest
+        {
+            Type = 1,
+            Name = "n",
+            ArchivedDate = new DateTimeOffset(2026, 8, 1, 12, 30, 0, TimeSpan.Zero),
+        };
+
+        var generated = JsonSerializer.Serialize(request, ApiJsonContext.Default.CipherRequest);
+
+        Assert.Contains("\"archivedDate\":\"2026-08-01T12:30:00+00:00\"", generated);
+        Assert.Equal(JsonSerializer.Serialize(request, Web), generated);
+    }
+
+    [Fact]
     public void CipherRequest_with_nested_LoginRequest_context_matches_reflection_wire()
     {
         // Nested types rely on the camelCase POLICY (no explicit [JsonPropertyName]).
@@ -43,6 +59,28 @@ public class ContextEquivalenceTests
         var token = JsonSerializer.Deserialize(json, ApiJsonContext.Default.TokenResponse)!;
         Assert.Equal("2.k", token.Key);
         Assert.Equal(5, token.KdfIterations);
+    }
+
+    [Theory]
+    [InlineData("securityStamp")]
+    [InlineData("SecurityStamp")]
+    public void SyncResponse_context_reads_security_stamp(string propertyName)
+    {
+        var json = $$"""
+        {
+          "object": "sync",
+          "profile": {
+            "id": "user-1",
+            "{{propertyName}}": "stamp-1"
+          }
+        }
+        """;
+
+        var response = JsonSerializer.Deserialize(
+            json,
+            ApiJsonContext.Default.SyncResponse);
+
+        Assert.Equal("stamp-1", response!.Profile!.SecurityStamp);
     }
 
     [Fact]

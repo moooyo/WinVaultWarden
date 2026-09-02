@@ -1,4 +1,6 @@
 using App.ViewModels;
+using Core.Enums;
+using Core.Models;
 using Core.Services;
 using Xunit;
 
@@ -66,6 +68,46 @@ public class LoginViewModelPinTests
         await vm.LoginCommand.ExecuteAsync(null);
 
         Assert.Equal(LoginStage.Unlock, vm.Stage);
+        Assert.Equal("PIN 已清除", vm.Status);
+        Assert.Equal(string.Empty, vm.Pin);
+    }
+
+    [Fact]
+    public async Task LoginCommand_KeyConnectorPinCleared_FallsBackToKeyConnector()
+    {
+        var auth = new FakeAuthService
+        {
+            UnlockWithPinResult = new AuthResult.PinCleared("PIN 已清除"),
+        };
+        var pin = new FakePinService { IsPinSet = true };
+        var store = new Vault.MemoryTokenStore();
+        var session = new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            "account-key-connector",
+            ServerEndpoints.FromWebVault("https://vault.example"),
+            7,
+            "me@example.com",
+            "device-id",
+            "refresh-token",
+            "2.protected-user-key",
+            KdfType.Pbkdf2,
+            600_000,
+            null,
+            null,
+            unlockMethod: PersistedSessionUnlockMethod.KeyConnector,
+            keyConnectorUrl: "https://keys.example/base");
+        store.Save(session);
+        var vm = new LoginViewModel(
+            auth,
+            demoVault: null,
+            pin: pin,
+            tokenStore: store);
+        vm.PrepareUnlock(session.ServerUrl, session.Email);
+        vm.Pin = "1234";
+
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.Equal(LoginStage.KeyConnectorUnlock, vm.Stage);
         Assert.Equal("PIN 已清除", vm.Status);
         Assert.Equal(string.Empty, vm.Pin);
     }

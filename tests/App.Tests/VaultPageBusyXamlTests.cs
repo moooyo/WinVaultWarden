@@ -61,10 +61,15 @@ public sealed class VaultPageBusyXamlTests
             node.Attributes().Any(attribute =>
                 attribute.Name.LocalName == "Name"
                 && attribute.Value == "VaultLayoutRoot"));
+        var statusPanel = document.Descendants().Single(node =>
+            node.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Name"
+                && attribute.Value == "VaultGlobalStatusPanel"));
 
-        Assert.Same(layoutRoot, panel.Parent);
-        Assert.Equal("0", panel.Attribute("Grid.Row")?.Value);
-        Assert.Equal("2", panel.Attribute("Grid.ColumnSpan")?.Value);
+        Assert.Same(layoutRoot, statusPanel.Parent);
+        Assert.Same(statusPanel, panel.Parent);
+        Assert.Equal("0", statusPanel.Attribute("Grid.Row")?.Value);
+        Assert.Equal("2", statusPanel.Attribute("Grid.ColumnSpan")?.Value);
         Assert.DoesNotContain(panel.Ancestors(), node =>
             node.Attributes().Any(attribute =>
                 attribute.Name.LocalName == "Name"

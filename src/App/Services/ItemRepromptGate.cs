@@ -16,6 +16,7 @@ public enum SensitiveItemAction
     Copy,
     Totp,
     Edit,
+    Clone,
     DownloadAttachment,
     OpenAttachment,
     UsePasskey,

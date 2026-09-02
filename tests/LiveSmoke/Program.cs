@@ -66,7 +66,12 @@ var bootstrapper = new VaultBootstrapper(sync, clients, session);
 refresher = new TokenRefreshService(clients, session, tokenStore);
 var auth = new AuthService(clients, crypto, session, tokenStore, bootstrapper, cache, refresher);
 var encryptor = new CipherEncryptor(crypto);
-var writeService = new VaultWriteService(clients, encryptor, sync, session);
+var writeService = new VaultWriteService(
+    clients,
+    encryptor,
+    sync,
+    session,
+    cipherCreateStore: new SmokeCipherCreatePendingStore());
 
 var sendCrypto = new SendCryptoService(crypto);
 var sendService = new SendService(clients, sendCrypto, session);
@@ -267,16 +272,13 @@ try
     if (createdId is not null)
     {
         var p2 = $"pass2-{run}!";
-        var updated = new Cipher
-        {
-            Id = createdId,
-            Type = CipherType.Login,
-            Name = cipherName,
-            Notes = note,
-            FolderId = folder?.Id,
-            Login = new CipherLogin(u, p2, totp, new[] { new CipherLoginUri("https://example.com", null) }),
-            Fields = newCipher.Fields,
-        };
+        var updated = CopyLoginForUpdate(
+            created!,
+            new CipherLogin(
+                u,
+                p2,
+                totp,
+                [new CipherLoginUri("https://example.com", null)]));
         await writeService.SaveCipherAsync(updated);
         var afterUpdate = (await sync.SyncAsync()).FirstOrDefault(c => c.Id == createdId);
         Step("password updated round-trip", afterUpdate?.Login?.Password == p2, afterUpdate?.Login?.Password);
@@ -665,18 +667,9 @@ try
             if (editHost is not null)
             {
                 var editedPassword = $"att-pass-{run}-edited!";
-                var edited = new Cipher
-                {
-                    Id = editHost.Id,
-                    Key = editHost.Key,       // 复用服务端下发的条目密钥(R1 修复的关键)
-                    Type = editHost.Type,
-                    Name = editHost.Name,
-                    FolderId = editHost.FolderId,
-                    Favorite = editHost.Favorite,
-                    Reprompt = editHost.Reprompt,
-                    Notes = editHost.Notes,
-                    Login = editHost.Login is null ? null : editHost.Login with { Password = editedPassword },
-                };
+                var edited = CopyLoginForUpdate(
+                    editHost,
+                    editHost.Login! with { Password = editedPassword });
                 await writeService.SaveCipherAsync(edited);
 
                 var afterEdit = (await sync.SyncAsync()).FirstOrDefault(c => c.Id == attHost.Id);
@@ -745,28 +738,23 @@ try
         var c1 = (await sync.SyncAsync()).First(c => c.Name == name);
 
         // 改密码 A→B：前插旧密码 A
-        await writeService.SaveCipherAsync(new Cipher
-        {
-            Id = c1.Id, Type = CipherType.Login, Name = name,
-            CreationDate = c1.CreationDate, RevisionDate = c1.RevisionDate,
-            Login = new CipherLogin("u", "passB", null, Array.Empty<CipherLoginUri>()),
-            PasswordHistory = new[] { new PasswordHistoryEntry("passA", DateTimeOffset.UtcNow) },
-        });
+        await writeService.SaveCipherAsync(CopyLoginForUpdate(
+            c1,
+            new CipherLogin("u", "passB", null, Array.Empty<CipherLoginUri>()),
+            [new PasswordHistoryEntry("passA", DateTimeOffset.UtcNow)]));
         var c2 = (await sync.SyncAsync()).First(c => c.Id == c1.Id);
         Step("pwh: 1 entry after first change", c2.PasswordHistory.Count == 1 && c2.PasswordHistory[0].Password == "passA");
 
         // 改密码 B→C：前插 B，保留 A
-        await writeService.SaveCipherAsync(new Cipher
-        {
-            Id = c1.Id, Type = CipherType.Login, Name = name,
-            CreationDate = c1.CreationDate, RevisionDate = c2.RevisionDate,
-            Login = new CipherLogin("u", "passC", null, Array.Empty<CipherLoginUri>()),
-            PasswordHistory = new[]
-            {
+        await writeService.SaveCipherAsync(CopyLoginForUpdate(
+            c2,
+            new CipherLogin("u", "passC", null, Array.Empty<CipherLoginUri>()),
+            [
                 new PasswordHistoryEntry("passB", DateTimeOffset.UtcNow),
-                new PasswordHistoryEntry("passA", c2.PasswordHistory[0].LastUsedDate ?? DateTimeOffset.UtcNow),
-            },
-        });
+                new PasswordHistoryEntry(
+                    "passA",
+                    c2.PasswordHistory[0].LastUsedDate ?? DateTimeOffset.UtcNow),
+            ]));
         var c3 = (await sync.SyncAsync()).First(c => c.Id == c1.Id);
         Step("pwh: 2 entries newest-first after second change",
             c3.PasswordHistory.Count == 2 && c3.PasswordHistory[0].Password == "passB" && c3.PasswordHistory[1].Password == "passA");
@@ -901,6 +889,42 @@ if (failures.Count > 0)
 return failed == 0 ? 0 : 1;
 
 // ── Create a cipher of a given type, re-sync, find it, verify, then hard-delete.
+static Cipher CopyLoginForUpdate(
+    Cipher source,
+    CipherLogin login,
+    IReadOnlyList<PasswordHistoryEntry>? passwordHistory = null) => new()
+{
+    Id = source.Id,
+    Type = source.Type,
+    OrganizationId = source.OrganizationId,
+    CollectionIds = source.CollectionIds,
+    FolderId = source.FolderId,
+    Key = source.Key,
+    Favorite = source.Favorite,
+    Reprompt = source.Reprompt,
+    Name = source.Name,
+    Notes = source.Notes,
+    CreationDate = source.CreationDate,
+    RevisionDate = source.RevisionDate,
+    DeletedDate = source.DeletedDate,
+    ArchivedDate = source.ArchivedDate,
+    CanEdit = source.CanEdit,
+    CanViewPassword = source.CanViewPassword,
+    CanDelete = source.CanDelete,
+    CanRestore = source.CanRestore,
+    Login = login,
+    Card = source.Card,
+    Identity = source.Identity,
+    SecureNote = source.SecureNote,
+    Ssh = source.Ssh,
+    BankAccount = source.BankAccount,
+    DriversLicense = source.DriversLicense,
+    Passport = source.Passport,
+    Fields = source.Fields,
+    Attachments = source.Attachments,
+    PasswordHistory = passwordHistory ?? source.PasswordHistory,
+};
+
 async Task TestCipherType(string label, Cipher cipher, Func<Cipher, (bool ok, string? detail)> verify)
 {
     await writeService.SaveCipherAsync(cipher);
@@ -1416,7 +1440,12 @@ BuildStack(string url)
     ref2 = new TokenRefreshService(localClients, s, ts);
     var auth2 = new AuthService(localClients, c, s, ts, boot, cache2, ref2);
     var enc2 = new CipherEncryptor(c);
-    var write2 = new VaultWriteService(localClients, enc2, sync2, s);
+    var write2 = new VaultWriteService(
+        localClients,
+        enc2,
+        sync2,
+        s,
+        cipherCreateStore: new SmokeCipherCreatePendingStore());
     var acct2 = new AccountService(c, localClients, s, ts, auth2, cache2);
     var ea2 = new EmergencyAccessService(localClients, c, dec, s);
     return (localClients, s, c, auth2, sync2, write2, acct2, ea2, tokenStore: ts);
@@ -1637,8 +1666,8 @@ async Task EmergencyAccessRoundTripAsync()
                     cleanA.crypto,
                     cleanA.tokenStore,
                     newEaPassword);
-                IEmergencyAccessApiClient eaApiA = cleanA.clients.GetAuthenticated<IEmergencyAccessApiClient>(cleanA.session.CaptureLease());
-                await eaApiA.DeleteAccountAsync(new Api.Dtos.DeleteAccountRequest { MasterPasswordHash = hashA });
+                IAccountApiClient accountApiA = cleanA.clients.GetAuthenticated<IAccountApiClient>(cleanA.session.CaptureLease());
+                await accountApiA.DeleteAccountAsync(Api.Dtos.DeleteAccountRequest.FromMasterPasswordHash(hashA));
                 Step("ea: cleanup delete account A (best-effort)", true, emailA);
             }
             else
@@ -1652,8 +1681,8 @@ async Task EmergencyAccessRoundTripAsync()
                         cleanA2.crypto,
                         cleanA2.tokenStore,
                         eaPassword);
-                    IEmergencyAccessApiClient eaApiA2 = cleanA2.clients.GetAuthenticated<IEmergencyAccessApiClient>(cleanA2.session.CaptureLease());
-                    await eaApiA2.DeleteAccountAsync(new Api.Dtos.DeleteAccountRequest { MasterPasswordHash = hashA2 });
+                    IAccountApiClient accountApiA2 = cleanA2.clients.GetAuthenticated<IAccountApiClient>(cleanA2.session.CaptureLease());
+                    await accountApiA2.DeleteAccountAsync(Api.Dtos.DeleteAccountRequest.FromMasterPasswordHash(hashA2));
                     Step("ea: cleanup delete account A (best-effort)", true, emailA + " (orig pw)");
                 }
                 else
@@ -1679,8 +1708,8 @@ async Task EmergencyAccessRoundTripAsync()
                     cleanB.crypto,
                     cleanB.tokenStore,
                     eaPassword);
-                IEmergencyAccessApiClient eaApiB = cleanB.clients.GetAuthenticated<IEmergencyAccessApiClient>(cleanB.session.CaptureLease());
-                await eaApiB.DeleteAccountAsync(new Api.Dtos.DeleteAccountRequest { MasterPasswordHash = hashB });
+                IAccountApiClient accountApiB = cleanB.clients.GetAuthenticated<IAccountApiClient>(cleanB.session.CaptureLease());
+                await accountApiB.DeleteAccountAsync(Api.Dtos.DeleteAccountRequest.FromMasterPasswordHash(hashB));
                 Step("ea: cleanup delete account B (best-effort)", true, emailB);
             }
             else
@@ -1737,4 +1766,190 @@ sealed class NullCacheStore : ICacheStore
     public void SaveVaultCache(VaultCacheEntry entry) { }
     public bool TryLoadVaultCache(out VaultCacheEntry entry) { entry = null!; return false; }
     public void ClearVaultCache() { }
+}
+
+// The live-smoke runner is intentionally process-local. Production uses the DPAPI ledger wired in App.
+sealed class SmokeCipherCreatePendingStore : ICipherCreatePendingStore
+{
+    private readonly object _gate = new();
+    private readonly Dictionary<Scope, CipherCreatePendingRecord> _entries = [];
+    private readonly HashSet<Scope> _active = [];
+
+    public CipherCreatePendingReadResult Read(string accountId, ServerEndpoints endpoints)
+    {
+        lock (_gate)
+        {
+            var scope = new Scope(accountId, endpoints);
+            if (!_entries.TryGetValue(scope, out var record))
+                return CipherCreatePendingReadResult.Absent;
+            if (record.IsInFlight && !_active.Contains(scope))
+            {
+                record = new CipherCreatePendingRecord(
+                    record.ReservationId,
+                    checked(record.Revision + 1),
+                    false,
+                    record.Pending);
+                _entries[scope] = record;
+            }
+            return CipherCreatePendingReadResult.Found(record);
+        }
+    }
+
+    public ICipherCreatePendingReservation? TryCreate(CipherCreatePending pending)
+    {
+        lock (_gate)
+        {
+            var scope = Scope.From(pending);
+            if (_entries.ContainsKey(scope))
+                return null;
+            var record = new CipherCreatePendingRecord(Guid.NewGuid(), 1, true, pending);
+            _entries.Add(scope, record);
+            _active.Add(scope);
+            return new Reservation(this, scope, record);
+        }
+    }
+
+    public CipherCreatePendingRecord? TryUpdate(
+        CipherCreatePendingRecord expected,
+        CipherCreatePending pending)
+    {
+        lock (_gate)
+        {
+            var scope = Scope.From(expected.Pending);
+            if (!_entries.TryGetValue(scope, out var existing)
+                || !Matches(existing, expected)
+                || !WitnessesMatch(existing.Pending.Witness, pending.Witness))
+            {
+                return null;
+            }
+
+            var merged = Merge(existing.Pending, pending);
+            if (existing.Pending.CommitConfirmed == merged.CommitConfirmed
+                && existing.Pending.ExpectedCipherId == merged.ExpectedCipherId)
+            {
+                return existing;
+            }
+            var updated = new CipherCreatePendingRecord(
+                existing.ReservationId,
+                checked(existing.Revision + 1),
+                existing.IsInFlight,
+                merged);
+            _entries[scope] = updated;
+            return updated;
+        }
+    }
+
+    public CipherCreatePendingRecord? Release(
+        CipherCreatePendingRecord expected,
+        CipherCreatePending pending)
+    {
+        lock (_gate)
+        {
+            var scope = Scope.From(expected.Pending);
+            if (!_entries.TryGetValue(scope, out var existing)
+                || !existing.IsInFlight
+                || !Matches(existing, expected)
+                || !WitnessesMatch(existing.Pending.Witness, pending.Witness))
+            {
+                return null;
+            }
+            var released = new CipherCreatePendingRecord(
+                existing.ReservationId,
+                checked(existing.Revision + 1),
+                false,
+                Merge(existing.Pending, pending));
+            _entries[scope] = released;
+            return released;
+        }
+    }
+
+    public bool RemoveConfirmed(CipherCreatePendingRecord expected)
+    {
+        lock (_gate)
+        {
+            var scope = Scope.From(expected.Pending);
+            return expected.Pending.CommitConfirmed
+                && !string.IsNullOrWhiteSpace(expected.Pending.ExpectedCipherId)
+                && _entries.TryGetValue(scope, out var existing)
+                && Matches(existing, expected)
+                && _entries.Remove(scope);
+        }
+    }
+
+    public bool Abandon(CipherCreatePendingRecord expected)
+    {
+        lock (_gate)
+        {
+            var scope = Scope.From(expected.Pending);
+            return !expected.IsInFlight
+                && !_active.Contains(scope)
+                && _entries.TryGetValue(scope, out var existing)
+                && Matches(existing, expected)
+                && _entries.Remove(scope);
+        }
+    }
+
+    private static CipherCreatePending Merge(
+        CipherCreatePending existing,
+        CipherCreatePending pending)
+    {
+        if (existing.ExpectedCipherId is not null
+                && pending.ExpectedCipherId is not null
+                && existing.ExpectedCipherId != pending.ExpectedCipherId)
+        {
+            throw new InvalidDataException("The expected cipher identifier cannot change.");
+        }
+
+        return existing with
+        {
+            CommitConfirmed = existing.CommitConfirmed || pending.CommitConfirmed,
+            ExpectedCipherId = existing.ExpectedCipherId ?? pending.ExpectedCipherId,
+        };
+    }
+
+    private static bool Matches(
+        CipherCreatePendingRecord existing,
+        CipherCreatePendingRecord expected) =>
+        existing.ReservationId == expected.ReservationId
+        && existing.Revision == expected.Revision
+        && existing.IsInFlight == expected.IsInFlight
+        && WitnessesMatch(existing.Pending.Witness, expected.Pending.Witness)
+        && existing.Pending.CommitConfirmed == expected.Pending.CommitConfirmed
+        && existing.Pending.ExpectedCipherId == expected.Pending.ExpectedCipherId;
+
+    private static bool WitnessesMatch(
+        CipherCreateWitness left,
+        CipherCreateWitness right) =>
+        left.AccountId == right.AccountId
+        && left.Endpoints == right.Endpoints
+        && left.CipherType == right.CipherType
+        && left.OrganizationId == right.OrganizationId
+        && left.CollectionIds.SequenceEqual(right.CollectionIds, StringComparer.Ordinal)
+        && left.BaselineCipherIds.SequenceEqual(right.BaselineCipherIds, StringComparer.Ordinal)
+        && left.KeyFingerprint == right.KeyFingerprint;
+
+    private void Release(Scope scope)
+    {
+        lock (_gate)
+            _active.Remove(scope);
+    }
+
+    private sealed record Scope(string AccountId, ServerEndpoints Endpoints)
+    {
+        public static Scope From(CipherCreatePending pending) => new(
+            pending.Witness.AccountId,
+            pending.Witness.Endpoints);
+    }
+
+    private sealed class Reservation(
+        SmokeCipherCreatePendingStore owner,
+        Scope scope,
+        CipherCreatePendingRecord record) : ICipherCreatePendingReservation
+    {
+        private SmokeCipherCreatePendingStore? _owner = owner;
+
+        public CipherCreatePendingRecord Record { get; } = record;
+
+        public void Dispose() => Interlocked.Exchange(ref _owner, null)?.Release(scope);
+    }
 }

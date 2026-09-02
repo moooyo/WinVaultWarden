@@ -1,5 +1,6 @@
 using Api;
 using Api.Dtos;
+using Core.Enums;
 using Core.Models;
 using Core.Services;
 using Core.Session;
@@ -133,6 +134,72 @@ public class VaultImportServiceTests
         Assert.Same(provider.LastLease, sync.LastLease);
     }
 
+    [Theory]
+    [InlineData(CipherType.BankAccount)]
+    [InlineData(CipherType.DriversLicense)]
+    [InlineData(CipherType.Passport)]
+    public async Task ImportAsync_UnsupportedTypeInMixedBatch_IsRejectedBeforeApiCall(
+        CipherType type)
+    {
+        var fixture = NewImportFixture();
+        var json =
+            $"{{\"encrypted\":false,\"folders\":[{{\"id\":\"f0\",\"name\":\"Work\"}}]," +
+            $"\"items\":[{{\"type\":1,\"name\":\"Login\",\"login\":{{\"uris\":[]}}}}," +
+            $"{{\"type\":{(int)type},\"name\":\"Unsupported\"}}]}}";
+
+        var exception = await Assert.ThrowsAsync<UnsupportedCipherTypeWriteException>(() =>
+            fixture.Service.ImportAsync(
+                ImportFormat.Json,
+                json,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(type, exception.CipherType);
+        Assert.Null(fixture.Api.Last);
+        Assert.Equal(0, fixture.Sync.Calls);
+    }
+
+    [Theory]
+    [InlineData(CipherType.BankAccount, "bankAccount")]
+    [InlineData(CipherType.DriversLicense, "driversLicense")]
+    [InlineData(CipherType.Passport, "passport")]
+    public async Task ImportAsync_NegotiatedNewCipherType_IsEncryptedAndImported(
+        CipherType type,
+        string childProperty)
+    {
+        var fixture = NewImportFixture(new VaultCapabilities(true, false, false));
+        var json =
+            $"{{\"encrypted\":false,\"folders\":[],\"items\":[" +
+            $"{{\"type\":{(int)type},\"name\":\"Supported\",\"{childProperty}\":{{}}}}]}}";
+
+        var count = await fixture.Service.ImportAsync(
+            ImportFormat.Json,
+            json,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, count);
+        var request = Assert.Single(fixture.Api.Last!.Ciphers);
+        Assert.Equal((int)type, request.Type);
+        Assert.Equal(1, fixture.Sync.Calls);
+    }
+
+    [Theory]
+    [InlineData("{\"type\":1,\"name\":\"Missing login\"}")]
+    [InlineData("{\"type\":1,\"name\":\"Ambiguous\",\"login\":{\"uris\":[]},\"card\":{}}")]
+    public async Task ImportAsync_InvalidTypedShape_IsRejectedBeforeApiCall(string itemJson)
+    {
+        var fixture = NewImportFixture();
+        var json = $"{{\"encrypted\":false,\"folders\":[],\"items\":[{itemJson}]}}";
+
+        await Assert.ThrowsAsync<InvalidCipherWriteShapeException>(() =>
+            fixture.Service.ImportAsync(
+                ImportFormat.Json,
+                json,
+                TestContext.Current.CancellationToken));
+
+        Assert.Null(fixture.Api.Last);
+        Assert.Equal(0, fixture.Sync.Calls);
+    }
+
     [Fact]
     public async Task ImportAsync_WriteSucceedsButResyncFails_ThrowsVaultRefreshException()
     {
@@ -155,7 +222,7 @@ public class VaultImportServiceTests
         CapturingImportApi Api,
         FakeSync Sync);
 
-    private static ImportFixture NewImportFixture()
+    private static ImportFixture NewImportFixture(VaultCapabilities? capabilities = null)
     {
         var api = new CapturingImportApi();
         var sync = new FakeSync();
@@ -171,6 +238,7 @@ public class VaultImportServiceTests
             session.SetUnlockedKey(key);
             session.SetTokens("access-a", "refresh-a");
         });
+        Assert.True(session.TrySetCapabilities(lease, capabilities ?? VaultCapabilities.None));
         var service = new VaultImportService(
             FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(api),
             new CipherEncryptor(new CryptoService()),
@@ -240,6 +308,31 @@ public class VaultImportServiceTests
     public void Parse_MalformedJson_ReturnsError() =>
         Assert.NotNull(new VaultImportService(FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(new CapturingImportApi()), new CipherEncryptor(new CryptoService()), new FakeSync(), new VaultSession())
             .Parse(ImportFormat.Json, "{bad").Error);
+
+    [Theory]
+    [InlineData("card")]
+    [InlineData("identity")]
+    [InlineData("sshkey")]
+    [InlineData("bankaccount")]
+    [InlineData("driverslicense")]
+    [InlineData("passport")]
+    [InlineData("future")]
+    public void Parse_CsvTypeWithoutRepresentableShape_ReturnsActionableError(string typeWord)
+    {
+        var service = new VaultImportService(
+            FakeVaultApiClientProvider.ForAuthenticated<IVaultWriteApiClient>(new CapturingImportApi()),
+            new CipherEncryptor(new CryptoService()),
+            new FakeSync(),
+            new VaultSession());
+        var csv =
+            "folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n" +
+            $",,{typeWord},Unsupported,,,,,,,";
+
+        var preview = service.Parse(ImportFormat.Csv, csv);
+
+        Assert.NotNull(preview.Error);
+        Assert.Contains("JSON", preview.Error, StringComparison.Ordinal);
+    }
 
     [Fact]
     public async Task ImportAsync_WhenLocked_Throws() =>

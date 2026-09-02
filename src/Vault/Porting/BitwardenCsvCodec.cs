@@ -5,14 +5,9 @@ using Core.Models;
 
 namespace Vault.Porting;
 
-// 域模型 <-> Bitwarden 未加密 CSV 导出格式的编解码器（面向登录，RFC4180 转义）。
-// 纯函数：不涉及网络、加密；调用方负责在导出前解密、导入后加密。
-//
-// 注意：CSV 格式只有 11 个固定列，非 login 类型（Card/Identity/SecureNote/SshKey）的
-// 类型专属字段（卡号、身份信息、SecureNote.Type、SSH 私钥等）不会被导出，属于
-// 有意为之的有损转换——需要无损往返请使用 BitwardenJsonCodec（Task 1）。
-// 即便是 login 类型也有损：login_uri 只保留第一条 URI（Uris[0]），且不携带每条 URI 的
-// match 匹配策略——这与真实 Bitwarden 单列 CSV 格式行为一致（CSV 无法表达多 URI 列表）。
+// Encodes and decodes Bitwarden's unencrypted, RFC 4180-compatible CSV format.
+// The fixed 11-column schema only represents login and secure-note item shapes. Other item
+// types are rejected before any CSV is returned so callers can direct the user to JSON.
 public static class BitwardenCsvCodec
 {
     private static readonly string[] ColumnNames =
@@ -23,6 +18,10 @@ public static class BitwardenCsvCodec
 
     public static string Serialize(IReadOnlyList<Cipher> ciphers, IReadOnlyList<Folder> folders)
     {
+        var unsupported = ciphers.FirstOrDefault(cipher => !CanExportToCsv(cipher.Type));
+        if (unsupported is not null)
+            throw new UnsupportedCipherCsvExportException(unsupported.Type);
+
         var folderNameById = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var f in folders)
         {
@@ -136,6 +135,7 @@ public static class BitwardenCsvCodec
                 Name = name,
                 Notes = string.IsNullOrEmpty(notes) ? null : notes,
                 Login = login,
+                SecureNote = type == CipherType.SecureNote ? new CipherSecureNote(0) : null,
                 Fields = ParseFields(fieldsCell),
             });
         }
@@ -177,20 +177,19 @@ public static class BitwardenCsvCodec
     {
         CipherType.Login => "login",
         CipherType.SecureNote => "note",
-        CipherType.Card => "card",
-        CipherType.Identity => "identity",
-        CipherType.SshKey => "sshkey",
-        _ => "login",
+        _ => throw new UnsupportedCipherCsvExportException(type),
     };
+
+    private static bool CanExportToCsv(CipherType type) => type is
+        CipherType.Login
+        or CipherType.SecureNote;
 
     private static CipherType WordToType(string word) => word switch
     {
-        "login" => CipherType.Login,
+        "" or "login" => CipherType.Login,
         "note" => CipherType.SecureNote,
-        "card" => CipherType.Card,
-        "identity" => CipherType.Identity,
-        "sshkey" => CipherType.SshKey,
-        _ => CipherType.Login, // Bitwarden CSV 以 login 为中心格式，未知/空类型回退为 login。
+        _ => throw new FormatException(
+            $"CSV 不支持条目类型“{word}”，无法保留其专属字段；请改用 JSON 格式。"),
     };
 
     // ---- RFC4180 读写（无第三方依赖，纯字符串状态机，AOT 友好） ----

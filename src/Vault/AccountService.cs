@@ -12,7 +12,7 @@ namespace Vault;
 /// <summary>
 /// 账户管理编排层：UpdateName / ChangePassword / ChangeKdf。
 /// 改密和改 KDF 只做服务端变更,不在此登出;由 App 层生命周期协调器经 CredentialChanged intent 统一登出。
-/// 需要 vault 已解锁（session.UserKey != null）。
+/// Requires an unlocked vault session with an active V1 or V2 user key.
 /// </summary>
 public sealed class AccountService : IAccountService
 {

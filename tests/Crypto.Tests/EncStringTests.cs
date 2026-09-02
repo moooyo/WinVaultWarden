@@ -88,4 +88,69 @@ public class EncStringTests
         Assert.IsType<FormatException>(ex);
         Assert.IsNotType<IndexOutOfRangeException>(ex);
     }
+
+    [Theory]
+    [InlineData(EncryptionType.Rsa2048_OaepSha256_HmacSha256_B64)]
+    [InlineData(EncryptionType.Rsa2048_OaepSha1_HmacSha256_B64)]
+    public void Parse_LegacyRsaHmac_RoundTripsExactDataAndMac(EncryptionType type)
+    {
+        var data = Enumerable.Range(0, 256).Select(index => (byte)index).ToArray();
+        var mac = Enumerable.Range(1, EncString.LegacyRsaMacLength)
+            .Select(index => (byte)index)
+            .ToArray();
+        var serialized = $"{(int)type}.{Convert.ToBase64String(data)}|{Convert.ToBase64String(mac)}";
+
+        var parsed = EncString.Parse(serialized);
+
+        Assert.Equal(type, parsed.Type);
+        Assert.Empty(parsed.Iv);
+        Assert.Equal(data, parsed.Ct);
+        Assert.Equal(mac, parsed.Mac);
+        Assert.Equal(serialized, parsed.ToString());
+    }
+
+    [Fact]
+    public void Parse_AllSupportedTypes_RejectTrailingSegments()
+    {
+        var iv = Convert.ToBase64String(new byte[16]);
+        var data = Convert.ToBase64String(new byte[16]);
+        var mac = Convert.ToBase64String(new byte[EncString.LegacyRsaMacLength]);
+        string[] malformed =
+        [
+            $"0.{iv}|{data}|{mac}",
+            $"1.{iv}|{data}|{mac}|{mac}",
+            $"2.{iv}|{data}|{mac}|{mac}",
+            $"3.{data}|{mac}",
+            $"4.{data}|{mac}",
+            $"5.{data}|{mac}|{mac}",
+            $"6.{data}|{mac}|{mac}",
+        ];
+
+        Assert.All(malformed, value =>
+            Assert.Throws<FormatException>(() => EncString.Parse(value)));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(31)]
+    [InlineData(33)]
+    public void Parse_LegacyRsaHmac_RejectsNonSha256MacLength(int macLength)
+    {
+        var data = Convert.ToBase64String(new byte[256]);
+        var mac = Convert.ToBase64String(new byte[macLength]);
+
+        Assert.Throws<FormatException>(() => EncString.Parse($"5.{data}|{mac}"));
+        Assert.Throws<FormatException>(() => EncString.Parse($"6.{data}|{mac}"));
+    }
+
+    [Theory]
+    [InlineData(EncryptionType.Rsa2048_OaepSha256_HmacSha256_B64)]
+    [InlineData(EncryptionType.Rsa2048_OaepSha1_HmacSha256_B64)]
+    public void ToString_LegacyRsaHmac_RejectsMalformedProgrammaticValue(
+        EncryptionType type)
+    {
+        var malformed = new EncString(type, [], new byte[256], new byte[31]);
+
+        Assert.Throws<InvalidOperationException>(() => malformed.ToString());
+    }
 }

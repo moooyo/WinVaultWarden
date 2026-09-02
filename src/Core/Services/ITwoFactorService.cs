@@ -2,8 +2,8 @@ using Core.Models;
 
 namespace Core.Services;
 
-// 两步验证管理编排。所有写操作需提供当前主密码用于服务端验证。
-// 启用/禁用成功后返回更新后的 RecoveryCode（服务端在响应中下发）。
+// Coordinates account-level two-factor management. Legacy providers use the current master
+// password; WebAuthn accepts one explicit server-side verification proof.
 public interface ITwoFactorService
 {
     /// <summary>列出当前账户已配置的所有两步验证提供者（含启用/禁用状态）。</summary>
@@ -36,6 +36,61 @@ public interface ITwoFactorService
     /// 完成 Email 两步验证启用：提交主密码、目标邮箱、收到的 token。
     /// </summary>
     Task EnableEmailAsync(string pw, string email, string token, CancellationToken ct = default);
+
+    /// <summary>Returns the registered account-level WebAuthn second-factor credentials.</summary>
+    Task<WebAuthnTwoFactorDetails> GetWebAuthnAsync(string pw, CancellationToken ct = default);
+
+    /// <summary>Returns WebAuthn credentials after applying exactly one server-side proof.</summary>
+    Task<WebAuthnTwoFactorDetails> GetWebAuthnAsync(
+        TwoFactorUserVerification verification,
+        CancellationToken ct = default);
+
+    /// <summary>Requests an emailed protected-action OTP from a compatible server.</summary>
+    Task RequestProtectedActionOtpAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Requests and validates a server-bound, single-use WebAuthn credential creation challenge.
+    /// </summary>
+    Task<WebAuthnRegistrationChallenge> GetWebAuthnChallengeAsync(
+        string pw,
+        CancellationToken ct = default);
+
+    Task<WebAuthnRegistrationChallenge> GetWebAuthnChallengeAsync(
+        TwoFactorUserVerification verification,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Submits one authenticator attestation. A challenge can be submitted at most once, including
+    /// when the server result is uncertain.
+    /// </summary>
+    Task<WebAuthnRegistrationOutcome> CompleteWebAuthnRegistrationAsync(
+        string pw,
+        int id,
+        string name,
+        WebAuthnRegistrationChallenge challenge,
+        WebAuthnRegistrationDeviceResponse deviceResponse,
+        CancellationToken ct = default);
+
+    Task<WebAuthnRegistrationOutcome> CompleteWebAuthnRegistrationAsync(
+        TwoFactorUserVerification verification,
+        int id,
+        string name,
+        WebAuthnRegistrationChallenge challenge,
+        WebAuthnRegistrationDeviceResponse deviceResponse,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes one WebAuthn credential. Deleting the last credential disables the whole provider.
+    /// </summary>
+    Task<WebAuthnTwoFactorDetails> DeleteWebAuthnCredentialAsync(
+        string pw,
+        int id,
+        CancellationToken ct = default);
+
+    Task<WebAuthnTwoFactorDetails> DeleteWebAuthnCredentialAsync(
+        TwoFactorUserVerification verification,
+        int id,
+        CancellationToken ct = default);
 
     /// <summary>
     /// 禁用指定类型的两步验证提供者。type 同 Bitwarden TwoFactorProviderType 整数值。

@@ -39,25 +39,26 @@ public class VaultPageAttachmentXamlTests
     }
 
     [Fact]
-    public void DownloadDeleteAddButtons_DisabledWhileVaultBusy()
+    public void DownloadDeleteAddButtons_DisabledWhileVaultBusyOrReadOnly()
     {
         var document = LoadXaml();
 
-        // 下载/删除按钮位于 DataTemplate(x:DataType=AttachmentItem)内,x:Bind 无法从模板内部
-        // 反向引用页面级 ViewModel(WinUI x:Bind 编译绑定作用域限制);因此禁用状态改在外层
-        // AttachmentsItems ItemsControl 上绑定 IsEnabled —— Control.IsEnabled=false 会向下
-        // 级联到所有子控件(含模板内生成的按钮),等效于逐按钮禁用。Task 11 起改绑定统一的
-        // ViewModel.CanStartVaultOperation(取代旧的并行 AttachmentBusyText/IsNotAttachmentBusy)。
         var itemsControl = document.Descendants(Xaml + "ItemsControl")
             .Single(e => e.Attribute(X + "Name")?.Value == "AttachmentsItems");
         var addButton = document.Descendants(Xaml + "Button")
             .Single(b => b.Attribute(X + "Name")?.Value == "AddAttachmentButton");
 
-        const string expected = "{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}";
-        Assert.Equal(expected, itemsControl.Attribute("IsEnabled")?.Value);
-        Assert.Equal(expected, addButton.Attribute("IsEnabled")?.Value);
+        foreach (var binding in new[]
+                 {
+                     itemsControl.Attribute("IsEnabled")?.Value,
+                     addButton.Attribute("IsEnabled")?.Value,
+                 })
+        {
+            Assert.Contains("ViewModel.CanModifySelectedItem", binding);
+            Assert.Contains("ViewModel.CanStartVaultOperation", binding);
+            Assert.Contains("CanBatchOperate", binding);
+        }
 
-        // 下载/删除按钮本身仍保留 Click 处理程序,不再单独携带 IsEnabled(由父级级联控制)。
         var downloadButton = document.Descendants(Xaml + "Button")
             .Single(b => b.Attribute("Click")?.Value == "OnDownloadAttachmentClick");
         var deleteButton = document.Descendants(Xaml + "Button")

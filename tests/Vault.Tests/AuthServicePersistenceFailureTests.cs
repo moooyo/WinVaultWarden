@@ -1,4 +1,7 @@
 using System.Security.Cryptography;
+using System.Text;
+using Api;
+using Api.Dtos;
 using Core.Abstractions;
 using Core.Enums;
 using Core.Models;
@@ -40,6 +43,145 @@ public sealed class AuthServicePersistenceFailureTests
         await AssertExpectedSaveFailureAsync(
             LocalUnlockKind.Hello,
             new CryptographicException("DPAPI protect failed"));
+    }
+
+    [Fact]
+    public async Task UnlockWithKeyConnectorAsync_WhenSessionSaveThrowsIOException_ReturnsSafeFailure()
+    {
+        await AssertKeyConnectorSaveFailureAsync(new IOException("disk full"));
+    }
+
+    [Fact]
+    public async Task UnlockWithKeyConnectorAsync_WhenSessionSaveThrowsUnauthorizedAccess_ReturnsSafeFailure()
+    {
+        await AssertKeyConnectorSaveFailureAsync(
+            new UnauthorizedAccessException("session directory is read-only"));
+    }
+
+    [Fact]
+    public async Task UnlockWithKeyConnectorAsync_WhenSessionSaveThrowsCryptographicException_ReturnsSafeFailure()
+    {
+        await AssertKeyConnectorSaveFailureAsync(
+            new CryptographicException("DPAPI protect failed"));
+    }
+
+    [Fact]
+    public async Task UnlockWithKeyConnectorAsync_WhenSessionSaveThrowsInvalidDataException_ReturnsSafeFailure()
+    {
+        await AssertKeyConnectorSaveFailureAsync(
+            new InvalidDataException("session payload is invalid"));
+    }
+
+    [Theory]
+    [InlineData(PersistenceFailureKind.IOException)]
+    [InlineData(PersistenceFailureKind.UnauthorizedAccess)]
+    [InlineData(PersistenceFailureKind.Cryptographic)]
+    [InlineData(PersistenceFailureKind.InvalidData)]
+    public async Task LoginAsync_WhenSessionSaveFailsRollsBackAndReturnsSafeFailure(
+        PersistenceFailureKind failureKind)
+    {
+        var crypto = new CapturingCryptoService();
+        var persisted = CreatePersistedSession(crypto, out var helloSignature);
+        var tokenStore = new ThrowingSaveTokenStore(
+            persisted,
+            CreatePersistenceFailure(failureKind));
+        var identity = new ControlledIdentityApiClient(_ =>
+            Task.FromResult<ConnectTokenResult>(new ConnectTokenResult.Success(
+                new TokenResponse(
+                    TestAccessToken(),
+                    "fresh-refresh",
+                    3600,
+                    "Bearer",
+                    "api offline_access",
+                    persisted.ProtectedUserKey,
+                    null,
+                    KdfType.Pbkdf2,
+                    Iterations))));
+        var session = new VaultSession();
+        var service = CreateAuthService(
+            crypto,
+            session,
+            tokenStore,
+            identity: identity);
+
+        try
+        {
+            var result = await service.LoginAsync(
+                Server,
+                Email,
+                Password,
+                TestContext.Current.CancellationToken);
+
+            var failure = Assert.IsType<AuthResult.Failure>(result);
+            Assert.Equal(AuthFailureKind.SafeMessage, failure.Kind);
+            Assert.Equal(
+                "The authenticated session could not be stored securely.",
+                failure.Message);
+            Assert.Equal(VaultState.LoggedOut, session.State);
+            Assert.Null(session.UserKey);
+            Assert.Null(session.AccessToken);
+            Assert.Null(session.RefreshToken);
+            AssertDecryptedKeyWasDisposed(crypto);
+            Assert.Equal(1, tokenStore.SaveCount);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(helloSignature);
+        }
+    }
+
+    [Theory]
+    [InlineData(LogoutRemovalFailureKind.ReturnedFalse)]
+    [InlineData(LogoutRemovalFailureKind.IOException)]
+    [InlineData(LogoutRemovalFailureKind.UnauthorizedAccess)]
+    [InlineData(LogoutRemovalFailureKind.Cryptographic)]
+    [InlineData(LogoutRemovalFailureKind.InvalidData)]
+    public async Task LogoutAsync_WhenPersistedSessionRemovalFailsDoesNotReportSuccess(
+        LogoutRemovalFailureKind failureKind)
+    {
+        const string sensitiveDetail = "SENSITIVE-STORAGE-PATH";
+        var crypto = new CryptoService();
+        var persisted = CreatePersistedSession(crypto, out var helloSignature);
+        var tokenStore = new FailingRemoveTokenStore(
+            persisted,
+            failureKind,
+            sensitiveDetail);
+        var session = new VaultSession();
+        session.RestorePersistedSession(persisted);
+        var userKeyBytes = Enumerable.Repeat((byte)0x5A, 64).ToArray();
+        session.SetTokens("access-token", "refresh-token");
+        session.SetUnlockedKey(new SymmetricCryptoKey(userKeyBytes));
+        var service = CreateAuthService(crypto, session, tokenStore);
+
+        try
+        {
+            var exception = await Assert.ThrowsAsync<AuthSessionPersistenceException>(
+                () => service.LogoutAsync(TestContext.Current.CancellationToken));
+
+            Assert.Equal(
+                "The saved session could not be removed securely. Retry logout after checking storage access.",
+                exception.Message);
+            Assert.DoesNotContain(sensitiveDetail, exception.ToString(), StringComparison.Ordinal);
+            Assert.Equal(VaultState.Locked, session.State);
+            Assert.Equal(persisted.AccountId, session.Account.Id);
+            Assert.Null(session.UserKey);
+            Assert.Null(session.AccessToken);
+            Assert.Null(session.RefreshToken);
+            Assert.All(userKeyBytes, value => Assert.Equal(0, value));
+            Assert.Equal(1, tokenStore.RemoveCount);
+
+            if (failureKind == LogoutRemovalFailureKind.ReturnedFalse)
+            {
+                tokenStore.AllowRemoval = true;
+                await service.LogoutAsync(TestContext.Current.CancellationToken);
+                Assert.Equal(VaultState.LoggedOut, session.State);
+                Assert.Equal(2, tokenStore.RemoveCount);
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(helloSignature);
+        }
     }
 
     [Fact]
@@ -117,24 +259,94 @@ public sealed class AuthServicePersistenceFailureTests
         }
     }
 
+    private static async Task AssertKeyConnectorSaveFailureAsync(Exception saveFailure)
+    {
+        var persisted = new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            Email,
+            ServerEndpoints.FromWebVault(Server),
+            1,
+            Email,
+            "device-id",
+            "stored-refresh",
+            "2.invalid",
+            KdfType.Pbkdf2,
+            Iterations,
+            null,
+            null,
+            unlockMethod: PersistedSessionUnlockMethod.KeyConnector,
+            keyConnectorUrl: "https://keys.example");
+        var tokenStore = new ThrowingSaveTokenStore(persisted, saveFailure);
+        var session = new VaultSession();
+        var keyConnector = new TrackingKeyConnectorClient();
+        var service = CreateAuthService(
+            new CryptoService(),
+            session,
+            tokenStore,
+            keyConnector);
+
+        var result = await service.UnlockWithKeyConnectorAsync(
+            service.BeginAuthenticationAttempt(),
+            TestContext.Current.CancellationToken);
+
+        var failure = Assert.IsType<AuthResult.Failure>(result);
+        Assert.Equal(AuthFailureKind.SafeMessage, failure.Kind);
+        Assert.Equal(
+            "The authenticated session could not be stored securely.",
+            failure.Message);
+        AssertLockedWithoutSecrets(session);
+        Assert.True(session.CaptureLease().Generation > persisted.Generation);
+        Assert.Equal(1, tokenStore.SaveCount);
+        Assert.Equal(0, keyConnector.CallCount);
+    }
+
     private static AuthService CreateAuthService(
         CryptoService crypto,
         VaultSession session,
-        ITokenStore tokenStore)
+        ITokenStore tokenStore,
+        IKeyConnectorClient? keyConnector = null,
+        IIdentityApiClient? identity = null)
     {
         var cache = new VaultCacheService(
             new FakeCacheStore(),
             new VaultDecryptor(crypto),
             session);
+        var clients = identity is null
+            ? new FakeVaultApiClientProvider()
+            : FakeVaultApiClientProvider.ForAnonymous<IIdentityApiClient>(identity);
         return new AuthService(
-            new FakeVaultApiClientProvider(),
+            clients,
             crypto,
             session,
             tokenStore,
             bootstrapper: null!,
             cache,
-            refresher: null!);
+            refresher: null!,
+            keyConnector);
     }
+
+    private static string TestAccessToken()
+    {
+        static string Encode(string value) =>
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(value))
+                .TrimEnd('=')
+                .Replace('+', '-')
+                .Replace('/', '_');
+
+        return $"{Encode("{\"alg\":\"none\"}")}.{Encode($"{{\"sub\":\"{Email}\"}}")}.signature";
+    }
+
+    private static Exception CreatePersistenceFailure(PersistenceFailureKind kind) => kind switch
+    {
+        PersistenceFailureKind.IOException => new IOException("disk full"),
+        PersistenceFailureKind.UnauthorizedAccess =>
+            new UnauthorizedAccessException("session directory is read-only"),
+        PersistenceFailureKind.Cryptographic =>
+            new CryptographicException("DPAPI protect failed"),
+        PersistenceFailureKind.InvalidData =>
+            new InvalidDataException("session payload is invalid"),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
 
     private static PersistedSession CreatePersistedSession(
         CryptoService crypto,
@@ -214,10 +426,8 @@ public sealed class AuthServicePersistenceFailureTests
 
     private static void AssertDecryptedKeyWasDisposed(CapturingCryptoService crypto)
     {
-        Assert.NotNull(crypto.LastDecryptedUserKey);
-        Assert.All(
-            crypto.LastDecryptedUserKey!.FullKey,
-            value => Assert.Equal(0, value));
+        Assert.NotNull(crypto.LastDecryptedUserKeyMaterial);
+        Assert.All(crypto.LastDecryptedUserKeyMaterial!, value => Assert.Equal(0, value));
     }
 
     private enum LocalUnlockKind
@@ -227,9 +437,36 @@ public sealed class AuthServicePersistenceFailureTests
         Hello,
     }
 
+    public enum PersistenceFailureKind
+    {
+        IOException,
+        UnauthorizedAccess,
+        Cryptographic,
+        InvalidData,
+    }
+
+    public enum LogoutRemovalFailureKind
+    {
+        ReturnedFalse,
+        IOException,
+        UnauthorizedAccess,
+        Cryptographic,
+        InvalidData,
+    }
+
     private sealed class CapturingCryptoService : CryptoService
     {
         public SymmetricCryptoKey? LastDecryptedUserKey { get; private set; }
+        public byte[]? LastDecryptedUserKeyMaterial { get; private set; }
+
+        public override byte[] DecryptUserKeyMaterial(
+            SymmetricCryptoKey stretchedKey,
+            EncString protectedUserKey)
+        {
+            var decrypted = base.DecryptUserKeyMaterial(stretchedKey, protectedUserKey);
+            LastDecryptedUserKeyMaterial = decrypted;
+            return decrypted;
+        }
 
         public override SymmetricCryptoKey DecryptUserKey(
             SymmetricCryptoKey stretchedKey,
@@ -261,6 +498,62 @@ public sealed class AuthServicePersistenceFailureTests
 
         public void Clear()
         {
+        }
+    }
+
+    private sealed class TrackingKeyConnectorClient : IKeyConnectorClient
+    {
+        public int CallCount { get; private set; }
+
+        public Task<byte[]> GetMasterKeyAsync(
+            string keyConnectorUrl,
+            string accessToken,
+            CancellationToken ct = default)
+        {
+            CallCount++;
+            return Task.FromResult(new byte[32]);
+        }
+    }
+
+    private sealed class FailingRemoveTokenStore(
+        PersistedSession persisted,
+        LogoutRemovalFailureKind failureKind,
+        string detail) : ITokenStore
+    {
+        public int RemoveCount { get; private set; }
+        public bool AllowRemoval { get; set; }
+
+        public bool TryLoad(out PersistedSession session)
+        {
+            session = persisted;
+            return true;
+        }
+
+        public void Save(PersistedSession session)
+        {
+        }
+
+        public void Clear()
+        {
+        }
+
+        public bool Remove(string accountId, ServerEndpoints endpoints)
+        {
+            RemoveCount++;
+            if (AllowRemoval)
+                return true;
+            return failureKind switch
+            {
+                LogoutRemovalFailureKind.ReturnedFalse => false,
+                LogoutRemovalFailureKind.IOException => throw new IOException(detail),
+                LogoutRemovalFailureKind.UnauthorizedAccess =>
+                    throw new UnauthorizedAccessException(detail),
+                LogoutRemovalFailureKind.Cryptographic =>
+                    throw new CryptographicException(detail),
+                LogoutRemovalFailureKind.InvalidData =>
+                    throw new InvalidDataException(detail),
+                _ => throw new ArgumentOutOfRangeException(nameof(failureKind)),
+            };
         }
     }
 }

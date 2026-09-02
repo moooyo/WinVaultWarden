@@ -8,5 +8,6 @@ public enum ExportFormat
 
 public interface IVaultExportService
 {
+    bool CanExport => true;
     string Export(ExportFormat format);
 }

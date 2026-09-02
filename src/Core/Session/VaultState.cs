@@ -8,4 +8,5 @@ public enum VaultState
     Syncing,
     Unlocked,
     Error,
+    PasswordChangeRequired,
 }

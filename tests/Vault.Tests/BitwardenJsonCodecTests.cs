@@ -36,6 +36,33 @@ public class BitwardenJsonCodecTests
     }
 
     [Fact]
+    public void RoundTrip_Fields_PreservesLinkedIdAndUnknownWireType()
+    {
+        var source = Login();
+        source = new Cipher
+        {
+            Id = source.Id,
+            Type = source.Type,
+            Name = source.Name,
+            Login = source.Login,
+            Fields =
+            [
+                new CipherField("", null, CipherFieldType.Linked, LinkedId: 101),
+                new CipherField("Future", "opaque", CipherFieldType.Unsupported, RawType: 97),
+            ],
+        };
+
+        var json = BitwardenJsonCodec.Serialize([source], []);
+        var fields = Assert.Single(BitwardenJsonCodec.Parse(json).Ciphers).Fields;
+
+        Assert.Contains("\"linkedId\":101", json);
+        Assert.Equal(CipherFieldType.Linked, fields[0].Type);
+        Assert.Equal(101, fields[0].LinkedId);
+        Assert.Equal(CipherFieldType.Unsupported, fields[1].Type);
+        Assert.Equal(97, fields[1].WireType);
+    }
+
+    [Fact]
     public void RoundTrip_Card()
     {
         var c = new Cipher { Id="1", Type=CipherType.Card, Name="Visa",
@@ -58,6 +85,44 @@ public class BitwardenJsonCodecTests
         Assert.Equal("F", parsed.Ciphers[0].Identity!.FirstName);
         Assert.Equal(CipherType.SecureNote, parsed.Ciphers[1].Type);
         Assert.Equal("priv", parsed.Ciphers[2].Ssh!.PrivateKey);
+    }
+
+    [Fact]
+    public void RoundTrip_NewCipherTypes()
+    {
+        var items = new[]
+        {
+            new Cipher { Id = "6", Type = CipherType.BankAccount, Name = "Bank", BankAccount = new CipherBankAccount("Example", "Ada", "Checking", "123", "456", "001", "7890", "SWIFT", "IBAN", "555") },
+            new Cipher { Id = "7", Type = CipherType.DriversLicense, Name = "License", DriversLicense = new CipherDriversLicense("Ada", "M", "Lovelace", "1815", "DL-1", "GB", "London", "2025", "2030", "DVLA", "B") },
+            new Cipher { Id = "8", Type = CipherType.Passport, Name = "Passport", Passport = new CipherPassport("Lovelace", "Ada", "1815", "F", "London", "British", "GB", "P-1", "P", "N-1", "HMPO", "2025", "2035") },
+        };
+
+        var parsed = BitwardenJsonCodec.Parse(BitwardenJsonCodec.Serialize(items, []));
+
+        Assert.Equal("123", parsed.Ciphers[0].BankAccount!.AccountNumber);
+        Assert.Equal("DL-1", parsed.Ciphers[1].DriversLicense!.LicenseNumber);
+        Assert.Equal("P-1", parsed.Ciphers[2].Passport!.PassportNumber);
+    }
+
+    [Fact]
+    public void RoundTrip_ArchivedDate_PreservesArchiveState()
+    {
+        var archivedDate = new DateTimeOffset(2026, 8, 1, 12, 30, 0, TimeSpan.Zero);
+        var cipher = Login();
+        cipher = new Cipher
+        {
+            Id = cipher.Id,
+            Type = cipher.Type,
+            Name = cipher.Name,
+            ArchivedDate = archivedDate,
+            Login = cipher.Login,
+        };
+
+        var json = BitwardenJsonCodec.Serialize([cipher], []);
+        var parsed = Assert.Single(BitwardenJsonCodec.Parse(json).Ciphers);
+
+        Assert.Contains("\"archivedDate\"", json, StringComparison.Ordinal);
+        Assert.Equal(archivedDate, parsed.ArchivedDate);
     }
 
     [Fact]
@@ -167,16 +232,12 @@ public class BitwardenJsonCodecTests
     }
 
     [Fact]
-    public void Parse_UnknownCipherType_DefaultsToLogin()
+    public void Parse_UnknownCipherType_ThrowsFormatException()
     {
         var json = "{\"encrypted\":false,\"folders\":[],\"items\":[{\"name\":\"Weird\",\"type\":99}]}";
 
-        var exception = Record.Exception(() => BitwardenJsonCodec.Parse(json));
+        var exception = Assert.Throws<FormatException>(() => BitwardenJsonCodec.Parse(json));
 
-        Assert.Null(exception);
-        var parsed = BitwardenJsonCodec.Parse(json);
-        var cipher = Assert.Single(parsed.Ciphers);
-        Assert.Equal(CipherType.Login, cipher.Type);
-        Assert.Equal("Weird", cipher.Name);
+        Assert.Contains("99", exception.Message, StringComparison.Ordinal);
     }
 }

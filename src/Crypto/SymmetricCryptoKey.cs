@@ -5,9 +5,12 @@ namespace Crypto;
 // 对称密钥封装:32 字节(仅 EncKey)或 64 字节(EncKey 32 ‖ MacKey 32)。
 public sealed class SymmetricCryptoKey : IDisposable
 {
+    private int _disposed;
+
     public byte[] FullKey { get; }
     public byte[] EncKey { get; }
     public byte[]? MacKey { get; }
+    public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
 
     public SymmetricCryptoKey(byte[] keyBytes)
     {
@@ -39,6 +42,8 @@ public sealed class SymmetricCryptoKey : IDisposable
     // ZeroMemory 幂等,对别名数组重复清零无害,故无需去重。
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
         CryptographicOperations.ZeroMemory(FullKey);
         CryptographicOperations.ZeroMemory(EncKey);
         if (MacKey is not null)

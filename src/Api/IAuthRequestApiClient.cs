@@ -2,14 +2,24 @@ using Api.Dtos;
 
 namespace Api;
 
-// auth-request 端点。Vaultwarden: src/api/core/accounts.rs
-// 三种场景：(1) 发起方 POST 创建 request；(2) 审批方 GET pending 列表 + PUT 批准/拒绝；
-// (3) 发起方轮询 GET response 等待审批结果。
+// Authentication-request endpoints used by the approving, authenticated device.
 public interface IAuthRequestApiClient : IAuthenticatedApiRole
 {
-    // GET api/auth-requests/pending — 审批方拉取所有待处理的请求列表。
+    Task<AuthRequestResponse> CreateAdminAsync(
+        AuthRequestRequest request,
+        CancellationToken ct = default) =>
+        Task.FromException<AuthRequestResponse>(
+            new NotSupportedException("Administrator auth-request creation is unavailable."));
+
+    Task<AuthRequestResponse> GetAsync(
+        string id,
+        CancellationToken ct = default) =>
+        Task.FromException<AuthRequestResponse>(
+            new NotSupportedException("Authenticated auth-request lookup is unavailable."));
+
+    // The approving device fetches all pending requests.
     Task<AuthRequestListResponse> GetPendingAsync(CancellationToken ct = default);
 
-    // PUT api/auth-requests/{id} — 审批方批准（或拒绝）指定 request。
+    // The approving device approves or rejects a request.
     Task<AuthRequestResponse> ApproveAsync(string id, AuthResponseRequest request, CancellationToken ct = default);
 }

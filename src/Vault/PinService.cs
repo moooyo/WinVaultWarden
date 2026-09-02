@@ -24,6 +24,10 @@ public sealed class PinService : IPinService
 
     public void SetPin(string pin)
     {
+        VaultPolicyEvaluator.ThrowIfEnabled(
+            _session,
+            Core.Enums.OrganizationPolicyType.RemoveUnlockWithPin,
+            "An organization policy prevents unlocking with a PIN.");
         if (!PinPolicy.IsValid(pin))
             throw new ArgumentException($"PIN 至少需要 {PinPolicy.MinLength} 位。", nameof(pin));
 

@@ -92,6 +92,147 @@ public sealed class VaultSessionLeaseTests
     }
 
     [Fact]
+    public void SecurityStamp_FirstCommitMatchesAndSurvivesLock()
+    {
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession("account-a", "a@example.com", A);
+
+        Assert.Equal(
+            SecurityStampComparison.NoBaseline,
+            session.CompareSecurityStamp(lease, "stamp-a"));
+        Assert.True(session.TryCommitSecurityStamp(lease, "stamp-a"));
+        Assert.Equal(
+            SecurityStampComparison.Match,
+            session.CompareSecurityStamp(lease, "stamp-a"));
+        Assert.Equal(
+            SecurityStampComparison.Mismatch,
+            session.CompareSecurityStamp(lease, "STAMP-A"));
+
+        var lockedLease = session.Lock()!;
+
+        Assert.Equal(
+            SecurityStampComparison.Match,
+            session.CompareSecurityStamp(lockedLease, "stamp-a"));
+        Assert.Equal(
+            SecurityStampComparison.StaleLease,
+            session.CompareSecurityStamp(lease, "stamp-a"));
+    }
+
+    [Fact]
+    public void SecurityStamp_FreshLoginAndLogoutClearBinding()
+    {
+        var session = new VaultSession();
+        var first = session.BeginAccountSession("account-a", "a@example.com", A);
+        Assert.True(session.TryCommitSecurityStamp(first, "stamp-a"));
+
+        var freshLogin = session.BeginAccountSession("account-a", "a@example.com", A);
+        Assert.Equal(
+            SecurityStampComparison.NoBaseline,
+            session.CompareSecurityStamp(freshLogin, "stamp-b"));
+        Assert.True(session.TryCommitSecurityStamp(freshLogin, "stamp-b"));
+
+        session.Logout();
+        var afterLogout = session.BeginAccountSession("account-a", "a@example.com", A);
+        Assert.Equal(
+            SecurityStampComparison.NoBaseline,
+            session.CompareSecurityStamp(afterLogout, "stamp-c"));
+    }
+
+    [Fact]
+    public void SecurityStamp_RestorePreservesOtherInProcessAccountBinding()
+    {
+        var session = new VaultSession();
+        var endpointsA = ServerEndpoints.FromWebVault(A.Value);
+        var leaseA = session.BeginAccountSession("account-a", "a@example.com", endpointsA);
+        Assert.True(session.TryCommitSecurityStamp(leaseA, "stamp-a"));
+        var leaseB = session.BeginAccountSession("account-b", "b@example.com", B);
+        Assert.True(session.TryCommitSecurityStamp(leaseB, "stamp-b"));
+        var persistedA = new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            "account-a",
+            endpointsA,
+            leaseB.Generation + 1,
+            "a@example.com",
+            "device-a",
+            "refresh-a",
+            "2.protected-a",
+            Core.Enums.KdfType.Pbkdf2,
+            600_000,
+            null,
+            null);
+
+        var restoredA = session.RestorePersistedSession(persistedA);
+
+        Assert.Equal(
+            SecurityStampComparison.Match,
+            session.CompareSecurityStamp(restoredA, "stamp-a"));
+        Assert.Equal(
+            SecurityStampComparison.StaleLease,
+            session.CompareSecurityStamp(leaseB, "stamp-b"));
+    }
+
+    [Fact]
+    public void SecurityStamp_LruKeepsReactivatedAccountAndEvictsLeastRecentBinding()
+    {
+        var session = new VaultSession();
+        var endpoints = Enumerable.Range(0, 6)
+            .Select(index => ServerEndpoints.ForSelfHosted($"https://vault-{index}.example"))
+            .ToArray();
+        VaultSessionLease? latest = null;
+        for (var index = 0; index < 5; index++)
+        {
+            latest = session.BeginAccountSession(
+                $"account-{index}",
+                $"user-{index}@example.com",
+                endpoints[index]);
+            Assert.True(session.TryCommitSecurityStamp(latest, $"stamp-{index}"));
+        }
+
+        var reactivated = session.RestorePersistedSession(Persisted(
+            "account-0",
+            endpoints[0],
+            latest!.Generation + 1));
+        var sixth = session.BeginAccountSession(
+            "account-5",
+            "user-5@example.com",
+            endpoints[5]);
+        Assert.True(session.TryCommitSecurityStamp(sixth, "stamp-5"));
+
+        var restoredMostRecent = session.RestorePersistedSession(Persisted(
+            "account-0",
+            endpoints[0],
+            sixth.Generation + 1));
+        Assert.Equal(
+            SecurityStampComparison.Match,
+            session.CompareSecurityStamp(restoredMostRecent, "stamp-0"));
+
+        var restoredEvicted = session.RestorePersistedSession(Persisted(
+            "account-1",
+            endpoints[1],
+            restoredMostRecent.Generation + 1));
+        Assert.Equal(
+            SecurityStampComparison.NoBaseline,
+            session.CompareSecurityStamp(restoredEvicted, "stamp-1"));
+
+        static PersistedSession Persisted(
+            string accountId,
+            ServerEndpoints serverEndpoints,
+            long generation) => new(
+                PersistedSession.CurrentSchemaVersion,
+                accountId,
+                serverEndpoints,
+                generation,
+                accountId + "@example.com",
+                "device-id",
+                "refresh-token",
+                "2.protected-key",
+                Core.Enums.KdfType.Pbkdf2,
+                600_000,
+                null,
+                null);
+    }
+
+    [Fact]
     public void IsCurrent_WithPersistedSession_RequiresCompleteEndpointBinding()
     {
         var session = new VaultSession();

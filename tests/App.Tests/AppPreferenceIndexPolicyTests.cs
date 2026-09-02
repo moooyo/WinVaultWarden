@@ -8,7 +8,7 @@ public sealed class AppPreferenceIndexPolicyTests
 {
     [Theory]
     [InlineData(-1)]
-    [InlineData(8)]
+    [InlineData(9)]
     [InlineData(int.MaxValue)]
     public void InvalidSessionTimeoutIndex_UsesSafeDefault(int value)
     {
@@ -41,6 +41,7 @@ public sealed class AppPreferenceIndexPolicyTests
     [Theory]
     [InlineData(0)]
     [InlineData(7)]
+    [InlineData(8)]
     public void ExplicitNonIdleTimeoutOptions_RemainDisabled(int value)
     {
         Assert.Equal(value, AppPreferenceIndexPolicy.NormalizeSessionTimeoutIndex(value));

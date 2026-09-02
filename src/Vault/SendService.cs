@@ -12,14 +12,14 @@ namespace Vault;
 public sealed class SendService : ISendService
 {
     private readonly IVaultApiClientProvider _clients;
-    private readonly SendCryptoService _crypto;
     private readonly VaultSession _session;
+    private readonly SendDecryptor _decryptor;
 
     public SendService(IVaultApiClientProvider clients, SendCryptoService crypto, VaultSession session)
     {
         _clients = clients;
-        _crypto = crypto;
         _session = session;
+        _decryptor = new SendDecryptor(crypto);
     }
 
     public async Task<IReadOnlyList<Send>> GetSendsAsync(CancellationToken ct = default)
@@ -33,8 +33,44 @@ public sealed class SendService : ISendService
 
     public async Task<SendReadSnapshot> ObserveSendsAsync(CancellationToken ct = default)
     {
+        VaultPolicyEvaluator.ThrowIfEnabled(
+            _session,
+            OrganizationPolicyType.DisableSend,
+            "An organization policy disables Send.");
         var lease = _session.CaptureLease();
-        if (!_session.TryCopyUserKey(lease, out var copiedKey))
+        if (!_session.TryGetSendSnapshot(lease, out var cachedSends, out var dataStale))
+            throw new InvalidOperationException("Vault is locked.");
+        if (dataStale)
+        {
+            return new SendReadSnapshot(
+                cachedSends.Select(send => new SendObservation(
+                    send.Id,
+                    send.RevisionDate,
+                    SendDecryptStatus.Decrypted,
+                    send,
+                    send.RawMutationWitness)).ToArray(),
+                lease,
+                IsComplete: true,
+                IsStale: true);
+        }
+
+        return await RefreshSendsAsync(lease, ct).ConfigureAwait(false);
+    }
+
+    public Task<SendReadSnapshot> RefreshSendsAsync(CancellationToken ct = default)
+    {
+        VaultPolicyEvaluator.ThrowIfEnabled(
+            _session,
+            OrganizationPolicyType.DisableSend,
+            "An organization policy disables Send.");
+        return RefreshSendsAsync(_session.CaptureLease(), ct);
+    }
+
+    private async Task<SendReadSnapshot> RefreshSendsAsync(
+        Core.Session.VaultSessionLease lease,
+        CancellationToken ct)
+    {
+        if (!_session.TryCopyUserKeyMaterial(lease, out var copiedKey))
             throw new InvalidOperationException("Vault is locked.");
         using var userKey = copiedKey!;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
@@ -56,7 +92,11 @@ public sealed class SendService : ISendService
             try
             {
                 witness = SendMutationWitness.Compute(dto);
-                var value = Decrypt(dto, userKey, lease.Endpoints.SendWeb.Value, witness);
+                var value = _decryptor.Decrypt(
+                    dto,
+                    userKey,
+                    lease.Endpoints.SendWeb.Value,
+                    witness);
                 observations.Add(new SendObservation(
                     dto.Id,
                     dto.RevisionDate,
@@ -64,7 +104,14 @@ public sealed class SendService : ISendService
                     value,
                     witness));
             }
-            catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException or NullReferenceException)
+            catch (Exception ex) when (
+                ex is CryptographicException
+                    or FormatException
+                    or System.Formats.Cbor.CborContentException
+                    or ArgumentException
+                    or InvalidDataException
+                    or NullReferenceException
+                    or OverflowException)
             {
                 // Keep the raw identity of corrupt entries so UI filtering cannot be mistaken for
                 // server-side deletion during replacement or delete reconciliation.
@@ -81,88 +128,12 @@ public sealed class SendService : ISendService
             && string.IsNullOrEmpty(response.ContinuationToken)
             && observations.Select(observation => observation.Id).Distinct(StringComparer.Ordinal).Count()
                 == observations.Count;
-        return new SendReadSnapshot(observations, lease, complete);
-    }
-
-    private Send Decrypt(
-        SendResponseDto dto,
-        SymmetricCryptoKey userKey,
-        string origin,
-        string rawMutationWitness)
-    {
-        var seed = _crypto.UnwrapSeed(dto.Key!, userKey);
-        try
-        {
-            using var cryptoKey = _crypto.DeriveCryptoKey(seed);
-            var type = SendTypePolicy.RequireSupported(dto.Type);
-            var name = _crypto.DecryptField(dto.Name, cryptoKey) ?? string.Empty;
-            var notes = _crypto.DecryptField(dto.Notes, cryptoKey);
-
-            SendText? text = null;
-            if (dto.Text is not null)
-                text = new SendText(_crypto.DecryptField(dto.Text.Text, cryptoKey), dto.Text.Hidden);
-
-            SendFile? file = null;
-            if (dto.File is not null)
-            {
-                var fileName = _crypto.DecryptField(dto.File.FileName, cryptoKey) ?? string.Empty;
-                var size = dto.File.Size ?? 0L;
-                file = new SendFile(fileName, size, dto.File.SizeName, dto.File.Id);
-            }
-
-            var shareUrl = _crypto.BuildShareUrl(origin, dto.AccessId, seed);
-            var authType = ResolveAuthType(dto);
-
-            return new Send
-            {
-                Id = dto.Id,
-                AccessId = dto.AccessId,
-                Type = type,
-                Name = name,
-                Notes = notes,
-                Text = text,
-                File = file,
-                MaxAccessCount = dto.MaxAccessCount,
-                AccessCount = dto.AccessCount,
-                ExpirationDate = dto.ExpirationDate,
-                DeletionDate = dto.DeletionDate,
-                Disabled = dto.Disabled,
-                HideEmail = dto.HideEmail,
-                AuthType = authType,
-                RawAuthType = dto.AuthType ?? int.MinValue,
-                // The raw password value is a server-side verifier. Keep only its protection signal.
-                HasPassword = authType == SendAuthType.Password || !string.IsNullOrEmpty(dto.Password),
-                RevisionDate = dto.RevisionDate,
-                RawMutationWitness = rawMutationWitness,
-                ShareUrl = shareUrl,
-                Key = dto.Key,
-            };
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(seed);
-        }
-    }
-
-    private static SendAuthType ResolveAuthType(SendResponseDto dto)
-    {
-        var hasPassword = !string.IsNullOrWhiteSpace(dto.Password);
-        var hasEmails = !string.IsNullOrWhiteSpace(dto.Emails);
-        return dto.AuthType switch
-        {
-            (int)SendAuthType.Email when hasPassword => SendAuthType.Unknown,
-            (int)SendAuthType.Email => SendAuthType.Email,
-            (int)SendAuthType.Password when hasEmails => SendAuthType.Unknown,
-            (int)SendAuthType.Password => SendAuthType.Password,
-            (int)SendAuthType.None when hasPassword || hasEmails => SendAuthType.Unknown,
-            (int)SendAuthType.None => SendAuthType.None,
-            // Legacy Vaultwarden omits authType. The complete legacy evidence matches
-            // Bitwarden SendUtilities.InferAuthType while contradictory evidence fails closed.
-            null when hasPassword && hasEmails => SendAuthType.Unknown,
-            null when hasPassword => SendAuthType.Password,
-            null when hasEmails => SendAuthType.Email,
-            null when dto.Type is (int)SendType.Text or (int)SendType.File => SendAuthType.None,
-            _ => SendAuthType.Unknown,
-        };
+        var sends = observations
+            .Where(observation => observation.DecryptStatus == SendDecryptStatus.Decrypted)
+            .Select(observation => observation.Value!)
+            .ToArray();
+        if (!_session.TrySetSends(lease, sends))
+            throw new OperationCanceledException(lease.CancellationToken);
+        return new SendReadSnapshot(observations, lease, complete, IsStale: false);
     }
 }

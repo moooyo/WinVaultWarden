@@ -6,7 +6,8 @@ namespace Api;
 public sealed class ClientHeadersHandler : DelegatingHandler
 {
     public const string ClientName = "desktop";
-    public const string ClientVersion = "2026.6.0";
+    // This is the Bitwarden protocol capability level, not the application package version.
+    public const string ClientVersion = "2026.8.0";
     public const string DeviceType = "6";
 
     private static readonly HttpRequestOptionsKey<ScopedBearerAuthorization>

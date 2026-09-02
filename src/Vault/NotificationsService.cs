@@ -30,12 +30,14 @@ public sealed class NotificationsService : INotificationsService
     private readonly INotificationDispatcher _dispatcher;
     private readonly VaultSession _session;
     private readonly ITokenRefresher _refresher;
+    private readonly ISyncService _sync;
     private readonly TimeSpan _baseBackoff;
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromSeconds(30);
 
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
     private readonly object _startLock = new();
+    private int _connectionRebuildRequested;
 
     public event Action? VaultChanged;
     public event Action? SendsChanged;
@@ -52,12 +54,14 @@ public sealed class NotificationsService : INotificationsService
         INotificationDispatcher dispatcher,
         VaultSession session,
         ITokenRefresher refresher,
+        ISyncService sync,
         TimeSpan? baseBackoff = null)
     {
         _connectionFactory = connectionFactory;
         _dispatcher        = dispatcher;
         _session           = session;
         _refresher         = refresher;
+        _sync              = sync;
         _baseBackoff       = baseBackoff ?? TimeSpan.FromSeconds(1);
 
         // 透传 dispatcher 事件 → 本服务事件
@@ -65,6 +69,8 @@ public sealed class NotificationsService : INotificationsService
         _dispatcher.SendsChanged        += () => SendsChanged?.Invoke();
         _dispatcher.AuthRequestsChanged += () => AuthRequestsChanged?.Invoke();
         _dispatcher.LoggedOut           += () => LoggedOut?.Invoke();
+        _dispatcher.ConnectionRebuildRequested += () =>
+            Interlocked.Exchange(ref _connectionRebuildRequested, 1);
     }
 
     /// <inheritdoc />
@@ -159,9 +165,43 @@ public sealed class NotificationsService : INotificationsService
     private async Task RunLoopAsync(VaultSessionLease lease, CancellationToken ct)
     {
         var backoff = _baseBackoff;
+        var refreshBeforeConnect = false;
 
         while (!ct.IsCancellationRequested && _session.IsCurrent(lease))
         {
+            // Organization-key changes alter the authorization claims carried by the access
+            // token. A successful refresh is therefore a hard barrier before rebuilding the
+            // SignalR connection; reconnecting with the old token would only look healthy.
+            if (refreshBeforeConnect)
+            {
+                var refreshed = false;
+                try
+                {
+                    refreshed = await _refresher.TryRefreshAsync(lease, ct)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    refreshed = false;
+                }
+
+                if (ct.IsCancellationRequested || !_session.IsCurrent(lease))
+                    return;
+                if (!refreshed)
+                {
+                    if (!await DelayForRetryAsync(backoff, ct).ConfigureAwait(false))
+                        return;
+                    backoff = IncreaseBackoff(backoff);
+                    continue;
+                }
+
+                refreshBeforeConnect = false;
+            }
+
             // 1. 从启动租约取绑定的 access token（校验租约仍 current）；为空则无法连接，停止循环。
             var binding = _session.GetAccessTokenBinding(lease);
             if (binding is null)
@@ -170,17 +210,36 @@ public sealed class NotificationsService : INotificationsService
             // 2. Connect to the notifications endpoint frozen into the lease.
             var conn = _connectionFactory();
             var connectionFailed = false;
+            var rebuildConnection = false;
             try
             {
                 await conn.ConnectAsync(
                     lease.Endpoints.Notifications.Value,
                     binding.Token,
                     ct).ConfigureAwait(false);
-                backoff = _baseBackoff; // 重置退避
+                Interlocked.Exchange(ref _connectionRebuildRequested, 0);
+
+                await CatchUpAfterConnectedAsync(lease, ct).ConfigureAwait(false);
+                if (ct.IsCancellationRequested || !_session.IsCurrent(lease))
+                    return;
+                // A connection is healthy only after the authoritative catch-up succeeds.
+                // Resetting earlier would turn a persistent catch-up failure into a tight loop.
+                backoff = _baseBackoff;
 
                 await foreach (var msg in conn.ReadAsync(ct).ConfigureAwait(false))
                 {
-                    await _dispatcher.DispatchAsync(lease, msg, ct).ConfigureAwait(false);
+                    try
+                    {
+                        await _dispatcher.DispatchAsync(lease, msg, ct).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        if (Interlocked.Exchange(ref _connectionRebuildRequested, 0) != 0)
+                            rebuildConnection = true;
+                    }
+
+                    if (rebuildConnection)
+                        break;
                 }
                 // ReadAsync 正常结束（连接关闭）→ token 仍有效，继续循环重连
             }
@@ -199,6 +258,11 @@ public sealed class NotificationsService : INotificationsService
 
             if (ct.IsCancellationRequested)
                 return;
+            if (rebuildConnection)
+            {
+                refreshBeforeConnect = true;
+                continue;
+            }
 
             // 3. 仅在连接因错误断开时才刷新 token（可能是 token 失效）。正常关闭无需刷新——token 仍有效，
             //    否则每次良性重连都多一次 connect/token 调用 + session.bin 落盘（R15）。若 token 确已过期，
@@ -221,17 +285,45 @@ public sealed class NotificationsService : INotificationsService
             }
 
             // 4. 退避等待后重连
-            try
-            {
-                await Task.Delay(backoff, ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
+            if (!await DelayForRetryAsync(backoff, ct).ConfigureAwait(false))
                 return;
-            }
 
             // 指数退避，上限 MaxBackoff
-            backoff = backoff * 2 > MaxBackoff ? MaxBackoff : backoff * 2;
+            backoff = IncreaseBackoff(backoff);
         }
     }
+
+    private async Task CatchUpAfterConnectedAsync(
+        VaultSessionLease lease,
+        CancellationToken ct)
+    {
+        // Account revision-date does not cover every organization change, and comparing it with
+        // a client wall-clock cache watermark can skip authoritative state. Every new connection
+        // therefore performs one full sync before live messages are accepted.
+        await _sync.SyncAsync(lease, ct).ConfigureAwait(false);
+        if (!_session.TryCommit(lease, () =>
+        {
+            VaultChanged?.Invoke();
+            SendsChanged?.Invoke();
+        }))
+            throw new OperationCanceledException(lease.CancellationToken);
+    }
+
+    private static async Task<bool> DelayForRetryAsync(
+        TimeSpan delay,
+        CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(delay, ct).ConfigureAwait(false);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
+    private static TimeSpan IncreaseBackoff(TimeSpan backoff) =>
+        backoff * 2 > MaxBackoff ? MaxBackoff : backoff * 2;
 }

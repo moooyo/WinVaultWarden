@@ -13,7 +13,7 @@ public interface IDemoVaultSessionService
 
 public sealed class DemoVaultSessionService : IDemoVaultSessionService
 {
-    private const string LocalhostPasskeyCredentialId = "CQgHBg";
+    private const string LocalhostPasskeyCredentialId = "b64.CQgHBg";
     private const string LocalhostPasskeyPrivateKey =
         "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgfXz874GHUc-96SruIPvps7It_3vkLr_ip9gWl-QSu3WhRANCAARrUjrSufadd_VXs_3EfmvqIK1EFblpeKrR25ehyTmgVdpHGiEVsdrqvcSSuwtwSyLEh5LXjJMsTWOnvptRsy7L";
     private const string LocalhostPasskeyUserHandle = "CgsMDQ";

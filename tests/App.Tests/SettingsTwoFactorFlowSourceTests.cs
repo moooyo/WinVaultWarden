@@ -56,6 +56,23 @@ public sealed class SettingsTwoFactorFlowSourceTests
         Assert.Contains("TotpRecoveryPasswordBox", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void WebAuthnRegistration_UsesReturnedSnapshotWithoutReusingVerification()
+    {
+        var source = Read();
+        var registration = source.IndexOf(
+            "ViewModel.AddWebAuthnCredentialWithDetailsAsync",
+            StringComparison.Ordinal);
+        var refresh = source.IndexOf(
+            "ViewModel.LoadWebAuthnAsync",
+            registration,
+            StringComparison.Ordinal);
+
+        Assert.True(registration >= 0);
+        Assert.Equal(-1, refresh);
+        Assert.Contains("registration.Value", source, StringComparison.Ordinal);
+    }
+
     private static string Read()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory);

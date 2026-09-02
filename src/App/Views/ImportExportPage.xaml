@@ -84,10 +84,16 @@
                              Title="导出文件包含明文密码"
                              Message="导出文件中的用户名、密码等字段均为未加密明文，请妥善保管并及时删除，不要通过不安全渠道传输。" />
 
+                    <InfoBar x:Name="ExportPolicyInfoBar"
+                             IsClosable="False"
+                             Severity="Warning"
+                             IsOpen="{x:Bind ViewModel.ShowExportPolicyInfo, Mode=OneWay}"
+                             Message="{x:Bind ViewModel.ExportPolicyNotice, Mode=OneWay}" />
+
                     <ComboBox Header="导出格式"
                               MaxWidth="320"
                               HorizontalAlignment="Stretch"
-                              IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}"
+                              IsEnabled="{x:Bind ViewModel.CanExport, Mode=OneWay}"
                               AutomationProperties.AutomationId="ExportFormatCombo"
                               SelectedIndex="{x:Bind ViewModel.ExportFormatIndex, Mode=TwoWay}">
                         <ComboBoxItem Content="Bitwarden JSON" />
@@ -96,7 +102,7 @@
 
                     <Button Content="导出"
                             Style="{ThemeResource AccentButtonStyle}"
-                            IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}"
+                            IsEnabled="{x:Bind ViewModel.CanExport, Mode=OneWay}"
                             AutomationProperties.AutomationId="ExportButton"
                             Click="OnExportClick" />
                 </StackPanel>

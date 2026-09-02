@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
+using Core.Enums;
 using Core.Models;
 using Core.Services;
+using Crypto.V2;
 
 namespace Crypto;
 
@@ -40,6 +42,7 @@ public sealed class SendCryptoService
     // Full HKDF extract-and-expand with SHA-256, producing enc(32) and MAC(32) keys.
     public SymmetricCryptoKey DeriveCryptoKey(byte[] seed)
     {
+        ValidateSeed(seed);
         var key = HKDF.DeriveKey(
             HashAlgorithmName.SHA256,
             ikm: seed,
@@ -51,10 +54,38 @@ public sealed class SendCryptoService
 
     // The key field is a type-2 EncString containing the seed encrypted by userKey.
     public string WrapSeed(byte[] seed, SymmetricCryptoKey userKey)
-        => _crypto.Encrypt(seed, userKey).ToString();
+    {
+        ValidateSeed(seed);
+        ArgumentNullException.ThrowIfNull(userKey);
+        return _crypto.Encrypt(seed, userKey).ToString();
+    }
+
+    // V2 accounts wrap the same seed in a type-7 COSE Encrypt0 envelope with cty=octet-stream.
+    public string WrapSeed(byte[] seed, V2UserKey userKey)
+    {
+        ValidateSeed(seed);
+        ArgumentNullException.ThrowIfNull(userKey);
+        return userKey.Encrypt(seed, CoseContentFormat.OctetStream);
+    }
 
     public byte[] UnwrapSeed(string encKey, SymmetricCryptoKey userKey)
-        => _crypto.Decrypt(EncString.Parse(encKey), userKey);
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(encKey);
+        ArgumentNullException.ThrowIfNull(userKey);
+        var envelope = EncString.Parse(encKey);
+        if (envelope.Type != EncryptionType.AesCbc256_HmacSha256_B64)
+            throw new CryptographicException("A V1 Send seed must use encryption type 2.");
+        var seed = _crypto.Decrypt(envelope, userKey);
+        return ValidateUnwrappedSeed(seed);
+    }
+
+    public byte[] UnwrapSeed(string encKey, V2UserKey userKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(encKey);
+        ArgumentNullException.ThrowIfNull(userKey);
+        var seed = userKey.Decrypt(encKey, CoseContentFormat.OctetStream);
+        return ValidateUnwrappedSeed(seed);
+    }
 
     // Send text fields are UTF-8 encoded and encrypted with cryptoKey.
     public string EncryptField(string plaintext, SymmetricCryptoKey cryptoKey)
@@ -303,5 +334,21 @@ public sealed class SendCryptoService
         }
 
         return false;
+    }
+
+    private static void ValidateSeed(byte[] seed)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+        if (seed.Length != SeedLength)
+            throw new ArgumentException("A Send seed must contain exactly 16 bytes.", nameof(seed));
+    }
+
+    private static byte[] ValidateUnwrappedSeed(byte[] seed)
+    {
+        if (seed.Length == SeedLength)
+            return seed;
+
+        CryptographicOperations.ZeroMemory(seed);
+        throw new CryptographicException("A wrapped Send seed did not contain exactly 16 bytes.");
     }
 }

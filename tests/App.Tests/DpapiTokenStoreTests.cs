@@ -184,7 +184,7 @@ public class DpapiTokenStoreTests
     }
 
     [Fact]
-    public void TryLoad_SchemaTwo_MigratesAndPersistsSchemaThreeEndpoints()
+    public void TryLoad_SchemaTwoReadsWithoutImplicitPersistentMigration()
     {
         if (!OperatingSystem.IsWindows())
             return;
@@ -225,28 +225,48 @@ public class DpapiTokenStoreTests
             Assert.Equal(PersistedSession.CurrentSchemaVersion, migrated.SchemaVersion);
             Assert.Equal(ServerEndpoints.BitwardenUs, migrated.Endpoints);
 
-            var persistedJson = ProtectedData.Unprotect(
-                File.ReadAllBytes(path),
-                null,
-                DataProtectionScope.CurrentUser);
-            try
-            {
-                var persisted = JsonSerializer.Deserialize(
-                    persistedJson,
-                    AppJsonContext.Default.PersistedSession)!;
-                Assert.True(persisted.HasValidBinding);
-                Assert.Equal(ServerEndpoints.BitwardenUs, persisted.Endpoints);
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(persistedJson);
-            }
+            Assert.DoesNotContain(
+                "WVWIDX01",
+                Encoding.ASCII.GetString(File.ReadAllBytes(path)),
+                StringComparison.Ordinal);
+            Assert.False(Directory.Exists(store.BlobDirectoryPath));
         }
         finally
         {
             CryptographicOperations.ZeroMemory(legacyJson);
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    [WindowsFact]
+    public void MultipleAccounts_ActivationAndRemovalPersistAcrossStoreInstances()
+    {
+        var path = Path.Combine(
+            Path.GetTempPath(),
+            "WinVaultWarden.Tests",
+            Guid.NewGuid().ToString("N"),
+            "session.bin");
+        var first = Session("account-a", "https://a.example", "refresh-a");
+        var second = Session("account-b", "https://b.example", "refresh-b");
+        var store = new DpapiTokenStore(path);
+
+        store.Save(first);
+        store.Save(second);
+        Assert.Equal(["account-b", "account-a"],
+            store.GetSavedAccounts().Select(account => account.AccountId));
+        Assert.True(store.TryActivate(first.AccountId, first.Endpoints!, out var active));
+        Assert.Equal(first.AccountId, active.AccountId);
+
+        var reopened = new DpapiTokenStore(path);
+        Assert.True(reopened.TryLoad(out active));
+        Assert.Equal(first.AccountId, active.AccountId);
+        Assert.True(reopened.Remove(first.AccountId, first.Endpoints!));
+        Assert.True(reopened.TryLoad(out active));
+        Assert.Equal(second.AccountId, active.AccountId);
+
+        var raw = File.ReadAllText(path);
+        Assert.DoesNotContain("refresh-a", raw);
+        Assert.DoesNotContain("refresh-b", raw);
     }
 
     [Fact]
@@ -422,4 +442,21 @@ public class DpapiTokenStoreTests
             Directory.Delete(directory, recursive: true);
         }
     }
+
+    private static PersistedSession Session(
+        string accountId,
+        string serverUrl,
+        string refreshToken) => new(
+        PersistedSession.CurrentSchemaVersion,
+        accountId,
+        ServerEndpoints.FromWebVault(serverUrl),
+        7,
+        $"{accountId}@example.com",
+        $"device-{accountId}",
+        refreshToken,
+        $"key-{accountId}",
+        KdfType.Pbkdf2,
+        600_000,
+        null,
+        null);
 }

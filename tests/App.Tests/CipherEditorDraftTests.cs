@@ -144,6 +144,8 @@ public class CipherEditorDraftTests
     [InlineData(CipherEditorFieldType.Text, 0, true, false, false)]
     [InlineData(CipherEditorFieldType.Hidden, 1, false, true, false)]
     [InlineData(CipherEditorFieldType.Boolean, 2, false, false, true)]
+    [InlineData(CipherEditorFieldType.Linked, 3, false, false, false)]
+    [InlineData(CipherEditorFieldType.Unsupported, 4, false, false, false)]
     public void CustomFieldTypeProjections_AreMutuallyExclusive(
         CipherEditorFieldType type,
         int expectedIndex,
@@ -157,6 +159,21 @@ public class CipherEditorDraftTests
         Assert.Equal(expectedText, field.IsText);
         Assert.Equal(expectedHidden, field.IsHidden);
         Assert.Equal(expectedBoolean, field.IsBoolean);
+    }
+
+    [Fact]
+    public void ExistingLinkedField_CanProjectItsWireMetadata()
+    {
+        var field = new CustomFieldEditorDraft
+        {
+            Type = CipherEditorFieldType.Linked,
+            LinkedId = 101,
+            PreserveWhenNameBlank = true,
+        };
+
+        Assert.Equal(3, field.TypeIndex);
+        Assert.True(field.IsLinked);
+        Assert.Equal(101, field.LinkedId);
     }
 
     [Fact]

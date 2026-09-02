@@ -43,10 +43,40 @@ public sealed class LifecycleWiringSourceTests
     public void RemoteLogoutAndCredentialChanges_UseCoordinator()
     {
         var services = Read("src", "App", "Services", "ServiceConfiguration.cs");
+        var terminationHost = Read("src", "App", "Services", "NotificationsHost.cs");
         var settings = Read("src", "App", "ViewModels", "SettingsViewModel.cs");
-        Assert.Contains("AppLifecycleIntent.RemoteLogout", services);
+        Assert.Contains("SessionTerminationHost", services);
+        Assert.Contains("AppLifecycleIntent.RemoteLogout", terminationHost);
+        Assert.Contains("SessionTerminationReason.PinPolicyEnforcementFailed", terminationHost);
         Assert.Contains("AppLifecycleIntent.CredentialChanged", settings);
         Assert.DoesNotContain("NavigateToLogin()", Read("src", "App", "Views", "SettingsPage.xaml.cs"));
+    }
+
+    [Fact]
+    public void TerminationDispatchFailureRetriesDurableLogoutThenFailsClosedSynchronously()
+    {
+        var services = Read("src", "App", "Services", "ServiceConfiguration.cs");
+        var dispatcher = Read("src", "App", "Services", "IUiDispatcher.cs");
+        var implementation = Read("src", "App", "Services", "UiDispatcher.cs");
+
+        Assert.Contains("bool Enqueue(Action action)", dispatcher);
+        Assert.Contains("return queue is not null && queue.TryEnqueue", implementation);
+        Assert.Contains("if (!queued)", services);
+        Assert.Contains("notice.InvalidatedSession", services);
+        Assert.Contains(".GetAwaiter()", services);
+        Assert.Contains("lifecycle.FailClosedSynchronously()", services);
+    }
+
+    [Fact]
+    public void NotificationSnapshotRefresh_UpdatesVaultContentAndNavigationShell()
+    {
+        var services = Read("src", "App", "Services", "ServiceConfiguration.cs");
+        var window = Read("src", "App", "MainWindow.xaml.cs");
+
+        Assert.Contains("MainWindow?.RefreshVaultSnapshot()", services);
+        Assert.Contains("public void RefreshVaultSnapshot()", window);
+        Assert.Contains("PopulateFolderNavigation();", window);
+        Assert.Contains("RefreshVaultList();", window);
     }
 
     [Fact]
@@ -63,6 +93,37 @@ public sealed class LifecycleWiringSourceTests
         Assert.Contains("frame.Content = null", source);
         Assert.Contains("frame.BackStack.Clear()", source);
         Assert.Contains("frame.ForwardStack.Clear()", source);
+    }
+
+    [Fact]
+    public void VaultNavigation_PreservesCurrentDraftWhileCreateIsInFlightOrPending()
+    {
+        var source = Read("src", "App", "MainWindow.xaml.cs");
+        var gate = source.IndexOf(".HasPendingOrInFlightCipherCreate()", StringComparison.Ordinal);
+        var reuse = source.IndexOf("currentVaultPage!.ViewModel.SelectFilterByTag(tag)", StringComparison.Ordinal);
+        var navigate = source.IndexOf("_nav.GoToVault(tag)", StringComparison.Ordinal);
+
+        Assert.True(gate >= 0);
+        Assert.True(reuse > gate);
+        Assert.True(navigate > reuse);
+    }
+
+    [Fact]
+    public void PendingCreate_BlocksNavigationAwayFromVaultButAllowsSafeActions()
+    {
+        var source = Read("src", "App", "MainWindow.xaml.cs");
+        var guard = source.IndexOf(
+            "currentVaultPage!.ViewModel.EditorDraft is not null",
+            StringComparison.Ordinal);
+        var sendNavigation = source.IndexOf("tag.StartsWith(\"send:\"", StringComparison.Ordinal);
+
+        Assert.True(guard >= 0);
+        Assert.True(sendNavigation > guard);
+        Assert.Contains("tag is not (\"gen\" or \"lock\" or \"logout\")", source);
+        Assert.Contains("Title = \"保存结果待确认\"", source);
+        Assert.Contains("请先同步确认新条目的保存结果，再离开密码库。", source);
+        Assert.Contains("CloseButtonText = \"知道了\"", source);
+        Assert.Contains("DialogHelper.ShowTrackedAsync(dialog)", source);
     }
 
     private static int Count(string value, string token) =>

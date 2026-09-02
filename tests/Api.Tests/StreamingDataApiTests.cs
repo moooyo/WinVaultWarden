@@ -300,7 +300,11 @@ public sealed class StreamingDataApiTests
 
         var receipt = await client.CreateAttachmentV2Async(
             "c1",
-            new AttachmentUploadRequest("2.key", "2.name", 65),
+            new AttachmentUploadRequest(
+                "2.key",
+                "2.name",
+                65,
+                new DateTime(2026, 6, 24, 0, 0, 0, DateTimeKind.Utc)),
             ct);
 
         Assert.Equal("a1", receipt.Value.AttachmentId);

@@ -1,6 +1,8 @@
 using App.Services;
 using App.ViewModels;
 using App.ViewModels.Models;
+using Core.Models;
+using Core.Services;
 using Xunit;
 
 namespace App.Tests;
@@ -34,13 +36,13 @@ public class MockVaultUiServiceTests
     }
 
     [Fact]
-    public void GetFilters_IncludesAllItemsAndFiveTypes()
+    public void GetFilters_IncludesAllItemsAndAllSupportedTypes()
     {
         var svc = new MockVaultUiService();
         var filters = svc.GetFilters();
 
         Assert.Contains(filters, f => f.Kind == FilterKind.AllItems);
-        Assert.Equal(5, filters.Count(f => f.Kind == FilterKind.Type));
+        Assert.Equal(8, filters.Count(f => f.Kind == FilterKind.Type));
     }
 
     [Fact]
@@ -67,6 +69,33 @@ public class MockVaultUiServiceTests
 
         Assert.Empty(folders);
     }
+
+    [Fact]
+    public void BuildSharedVaultNavigationItems_UsesOrganizationAndCollectionTags()
+    {
+        var filters = new[]
+        {
+            new FilterNode
+            {
+                Label = "Team",
+                Kind = FilterKind.Organization,
+                OrganizationId = "org-1",
+            },
+            new FilterNode
+            {
+                Label = "Engineering",
+                Kind = FilterKind.Collection,
+                OrganizationId = "org-1",
+                CollectionId = "collection-1",
+            },
+        };
+
+        var organization = Assert.Single(VaultNavItemBuilder.BuildOrganizationItems(filters));
+        var collection = Assert.Single(VaultNavItemBuilder.BuildCollectionItems(filters));
+
+        Assert.Equal("vault:organization:org-1", organization.Tag);
+        Assert.Equal("vault:collection:collection-1", collection.Tag);
+    }
 }
 
 public class VaultViewModelTests
@@ -80,9 +109,9 @@ public class VaultViewModelTests
     {
         public string? Text { get; private set; }
         public int SecretCount { get; private set; }
-        public int PlainCount { get; private set; }
+        public int SetTextCount { get; private set; }
 
-        public void SetText(string text) { Text = text; PlainCount++; }
+        public void SetText(string text) { Text = text; SetTextCount++; }
         public void SetSecretText(string text, int? autoClearSeconds = null) { Text = text; SecretCount++; }
     }
 
@@ -120,7 +149,24 @@ public class VaultViewModelTests
         await vm.CopyPrimaryAsync("1", NoPrompt);
 
         Assert.Equal(1, clipboard.SecretCount);
-        Assert.Equal(0, clipboard.PlainCount);
+        Assert.Equal(0, clipboard.SetTextCount);
+    }
+
+    [Theory]
+    [InlineData("username@example.test")]
+    [InlineData("https://vault.example.test/login")]
+    [InlineData("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest")]
+    [InlineData("custom field value")]
+    public void CopyField_UsesProtectedClipboardContract(string value)
+    {
+        var clipboard = new RecordingClipboard();
+        var vm = new VaultViewModel(new MockVaultUiService(), clipboard);
+
+        vm.CopyCommand.Execute(value);
+
+        Assert.Equal(value, clipboard.Text);
+        Assert.Equal(1, clipboard.SetTextCount);
+        Assert.Equal(0, clipboard.SecretCount);
     }
 
     [Fact]
@@ -334,6 +380,23 @@ public class VaultViewModelTests
         Assert.Equal("shared name", vm.EditorDraft.Name);
         Assert.Equal("shared notes", vm.EditorDraft.Notes);
         Assert.Equal("新增 SSH 密钥", vm.EditorTitle);
+    }
+
+    [Fact]
+    public async Task ChangeEditorType_ExistingCipherIsLockedToItsOriginalType()
+    {
+        var vm = NewVm();
+        var opened = await vm.BeginEditAsync("1", NoPrompt);
+
+        Assert.True(opened.IsSuccess);
+        Assert.False(vm.CanChangeEditorType);
+        Assert.Equal(VaultItemKind.Login, vm.EditorDraft!.Type);
+
+        vm.ChangeEditorType(VaultItemKind.Card);
+
+        Assert.Equal(VaultItemKind.Login, vm.EditorDraft.Type);
+        vm.CancelEdit();
+        Assert.True(vm.CanChangeEditorType);
     }
 
     [Fact]
@@ -648,6 +711,31 @@ public class VaultViewModelTests
     }
 
     [Fact]
+    public async Task BeginClone_LoadsSecretsIntoNewReviewedDraftAndCreatesDistinctItem()
+    {
+        var vm = NewVm();
+        var source = vm.Items.First(item => item.Id == "1");
+        var before = vm.Items.Count;
+
+        var started = await vm.BeginCloneAsync(source.Id, NoPrompt);
+
+        Assert.True(started.IsSuccess);
+        Assert.True(vm.IsEditing);
+        Assert.Equal("新增登录", vm.EditorTitle);
+        Assert.Equal("百度网盘 副本", vm.EditorDraft!.Name);
+        Assert.Equal("p@ssw0rd123", vm.EditorDraft.Login.Password);
+        Assert.False(vm.EditorDraft.Favorite);
+        Assert.Null(vm.SelectedItem);
+
+        var saved = await vm.SaveDraftAsync();
+
+        Assert.True(saved.IsSuccess);
+        Assert.Equal(before + 1, vm.Items.Count);
+        Assert.Contains(vm.Items, item => item.Id == source.Id && item.Name == source.Name);
+        Assert.Contains(vm.Items, item => item.Id != source.Id && item.Name == "百度网盘 副本");
+    }
+
+    [Fact]
     public async Task SaveDraftAsync_Edit_UpdatesItemInPlaceWithoutDuplicating()
     {
         var vm = NewVm();
@@ -742,6 +830,38 @@ public class VaultViewModelTests
         Assert.Equal("网络请求失败，请检查连接后重试。", vm.OperationError);
         Assert.True(vm.IsEditing);       // stays in editor so user can retry
         Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_EditConflict_RequiresReloadAndKeepsDraftOpen()
+    {
+        var vm = new VaultViewModel(new ThrowingVaultUiService(
+            new CipherEditConflictException("stale edit")));
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.EditorDraft!.Name = "Local edit";
+
+        var saved = await vm.SaveDraftAsync();
+
+        Assert.False(saved.IsSuccess);
+        Assert.Contains("重新加载", vm.OperationError);
+        Assert.True(vm.IsEditing);
+        Assert.Equal("Local edit", vm.EditorDraft.Name);
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_UnsupportedCipherType_ShowsActionableMessageAndKeepsDraftOpen()
+    {
+        var failure = new UnsupportedCipherTypeWriteException(Core.Enums.CipherType.BankAccount);
+        var vm = new VaultViewModel(new ThrowingVaultUiService(failure));
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.EditorDraft!.Name = "Existing bank account";
+
+        var saved = await vm.SaveDraftAsync();
+
+        Assert.False(saved.IsSuccess);
+        Assert.Equal(failure.Message, vm.OperationError);
+        Assert.Contains("JSON", vm.OperationError, StringComparison.Ordinal);
+        Assert.True(vm.IsEditing);
     }
 
     [Fact]
@@ -840,14 +960,14 @@ public class VaultViewModelTests
     {
         var service = new ControlledVaultUiService();
         var vm = new VaultViewModel(service);
+        vm.BeginAdd(VaultItemKind.Login);
+        vm.EditorDraft!.Name = "Blocked";
 
         var sync = vm.SyncAsync();
         Assert.Equal(VaultOperationKind.Sync, vm.CurrentOperation);
         Assert.Equal("正在同步保险库…", vm.BusyMessage);
         Assert.False(vm.CanStartVaultOperation);
 
-        vm.BeginAdd(VaultItemKind.Login);
-        vm.EditorDraft!.Name = "Blocked";
         var save = await vm.SaveDraftAsync();
 
         Assert.Equal(UiOperationStatus.Busy, save.Status);
@@ -956,6 +1076,12 @@ public class VaultViewModelTests
         vm.EditorDraft!.Name = "First";
         var save = vm.SaveDraftAsync();
         Assert.Equal(VaultOperationKind.SaveCipher, vm.CurrentOperation);
+        Assert.False(vm.CanEditEditorDraft);
+
+        var edit = await vm.BeginEditAsync("1", NoPrompt);
+        var clone = await vm.BeginCloneAsync("1", NoPrompt);
+        Assert.Equal(UiOperationStatus.Busy, edit.Status);
+        Assert.Equal(UiOperationStatus.Busy, clone.Status);
 
         var sync = await vm.SyncAsync();
 
@@ -1002,6 +1128,7 @@ public class VaultViewModelTests
 
     [Theory]
     [InlineData(VaultOperationKind.Sync, "正在同步保险库…")]
+    [InlineData(VaultOperationKind.ResolveCipherCreate, "正在更新待确认状态…")]
     [InlineData(VaultOperationKind.SaveCipher, "正在保存条目…")]
     [InlineData(VaultOperationKind.DeleteCipher, "正在更新回收站…")]
     [InlineData(VaultOperationKind.Folder, "正在更新文件夹…")]
@@ -1135,6 +1262,17 @@ public sealed class ControlledSaveVaultUiService : IVaultUiService
 public sealed class ThrowingVaultUiService : IVaultUiService
 {
     private readonly MockVaultUiService _inner = new();
+    private readonly Exception _failure;
+    private readonly bool _applyBatchMutationBeforeThrow;
+
+    public ThrowingVaultUiService(
+        Exception? failure = null,
+        bool applyBatchMutationBeforeThrow = false)
+    {
+        _failure = failure ?? new HttpRequestException("boom");
+        _applyBatchMutationBeforeThrow = applyBatchMutationBeforeThrow;
+    }
+
     public IReadOnlyList<CipherListItem> GetItems() => _inner.GetItems();
     public CipherAccessPolicy GetAccessPolicy(string id) => _inner.GetAccessPolicy(id);
     public CipherDetail GetDetail(string id, bool includeSensitive) => _inner.GetDetail(id, includeSensitive);
@@ -1142,15 +1280,20 @@ public sealed class ThrowingVaultUiService : IVaultUiService
     public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
     public int SkippedCipherCount => 0;
     public bool DataStale => false;
-    public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => throw new HttpRequestException("boom");
-    public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => throw new HttpRequestException("boom");
-    public Task RestoreCipherAsync(string id, CancellationToken ct = default) => throw new HttpRequestException("boom");
-    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => throw new HttpRequestException("boom");
-    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => throw new HttpRequestException("boom");
-    public Task SyncAsync(CancellationToken ct = default) => throw new HttpRequestException("boom");
-    public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => throw new HttpRequestException("boom");
-    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default) => throw new HttpRequestException("boom");
-    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) => throw new HttpRequestException("boom");
+    public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => throw _failure;
+    public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => throw _failure;
+    public Task RestoreCipherAsync(string id, CancellationToken ct = default) => throw _failure;
+    public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => throw _failure;
+    public Task DeleteFolderAsync(string folderId, CancellationToken ct = default) => throw _failure;
+    public Task SyncAsync(CancellationToken ct = default) => throw _failure;
+    public async Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default)
+    {
+        if (_applyBatchMutationBeforeThrow)
+            await _inner.MoveCiphersAsync(ids, folderId, ct);
+        throw _failure;
+    }
+    public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default) => throw _failure;
+    public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) => throw _failure;
 }
 
 public sealed class EmptyVaultUiService : IVaultUiService
@@ -1323,6 +1466,42 @@ public class VaultBulkCommandTests
     }
 
     [Fact]
+    public async Task BatchRecoveryFailure_MarksViewStaleAndShowsPartialCommitWarning()
+    {
+        var failure = new VaultBatchMutationRecoveryException(
+            "uncertain",
+            new TimeoutException("mutation"),
+            new HttpRequestException("refresh"));
+        var vm = new VaultViewModel(new ThrowingVaultUiService(failure));
+        vm.ToggleSelectionModeCommand.Execute(null);
+        vm.ToggleSelection("1");
+
+        await vm.MoveSelectedToFolderAsync("f1");
+
+        Assert.True(vm.DataStale);
+        Assert.Contains("部分完成", vm.OperationWarning);
+        Assert.Contains("无法确认", vm.OperationError);
+    }
+
+    [Fact]
+    public async Task BatchApiFailure_AfterRecoverySync_ReloadsAuthoritativeItems()
+    {
+        var service = new ThrowingVaultUiService(
+            new HttpRequestException("response lost"),
+            applyBatchMutationBeforeThrow: true);
+        var vm = new VaultViewModel(service);
+        Assert.Equal("f1", vm.Items.Single(item => item.Id == "1").FolderId);
+        vm.ToggleSelectionModeCommand.Execute(null);
+        vm.ToggleSelection("1");
+
+        await vm.MoveSelectedToFolderAsync(null);
+
+        Assert.Null(vm.Items.Single(item => item.Id == "1").FolderId);
+        Assert.False(vm.DataStale);
+        Assert.Contains("网络请求失败", vm.OperationError);
+    }
+
+    [Fact]
     public void IsTrashFilterSelected_TrueOnlyForTrashFilter()
     {
         var vm = NewVm();
@@ -1357,14 +1536,33 @@ public sealed class SkippedCipherVaultUiService : IVaultUiService
 {
     private readonly MockVaultUiService _inner = new();
     public int SkippedCipherCount { get; set; }
+    public int UnsupportedOrganizationCipherCount { get; set; }
     public bool DataStale => false;
+    public IReadOnlyList<CipherDestinationOption>? Destinations { get; set; }
+    public IReadOnlyList<CipherCollectionOption>? CollectionOptions { get; set; }
+    public CipherEditorDraft? LastSavedDraft { get; private set; }
+    public CipherPlacementBaseline? PlacementBaseline { get; set; }
+    public (CipherPlacementBaseline Baseline, string OrganizationId, IReadOnlyCollection<string> CollectionIds)? LastTransfer { get; private set; }
+    public (CipherPlacementBaseline Baseline, IReadOnlyCollection<string> CollectionIds)? LastCollectionUpdate { get; private set; }
 
     public IReadOnlyList<CipherListItem> GetItems() => _inner.GetItems();
     public CipherAccessPolicy GetAccessPolicy(string id) => _inner.GetAccessPolicy(id);
     public CipherDetail GetDetail(string id, bool includeSensitive) => _inner.GetDetail(id, includeSensitive);
     public IReadOnlyList<FilterNode> GetFilters() => _inner.GetFilters();
     public CipherEditorDraft GetDraft(string id) => _inner.GetDraft(id);
-    public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => _inner.SaveCipherAsync(draft, editingId, ct);
+    public IReadOnlyList<CipherDestinationOption> GetCipherDestinations() =>
+        Destinations ?? _inner.GetCipherDestinations();
+    public IReadOnlyList<CipherCollectionOption> GetCipherCollectionOptions(
+        string organizationId,
+        IReadOnlyCollection<string>? selectedCollectionIds = null,
+        bool lockReadOnlyAssignments = false) => CollectionOptions ?? [];
+    public CipherPlacementBaseline GetCipherPlacementBaseline(string id) =>
+        PlacementBaseline ?? throw new NotSupportedException();
+    public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default)
+    {
+        LastSavedDraft = draft;
+        return _inner.SaveCipherAsync(draft, editingId, ct);
+    }
     public Task DeleteCipherAsync(string id, bool permanent, CancellationToken ct = default) => _inner.DeleteCipherAsync(id, permanent, ct);
     public Task RestoreCipherAsync(string id, CancellationToken ct = default) => _inner.RestoreCipherAsync(id, ct);
     public Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default) => _inner.SaveFolderAsync(folderId, name, ct);
@@ -1373,6 +1571,110 @@ public sealed class SkippedCipherVaultUiService : IVaultUiService
     public Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default) => _inner.MoveCiphersAsync(ids, folderId, ct);
     public Task DeleteCiphersAsync(IReadOnlyCollection<string> ids, bool permanent, CancellationToken ct = default) => _inner.DeleteCiphersAsync(ids, permanent, ct);
     public Task RestoreCiphersAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default) => _inner.RestoreCiphersAsync(ids, ct);
+    public Task TransferCipherToOrganizationAsync(
+        CipherPlacementBaseline baseline,
+        string organizationId,
+        IReadOnlyCollection<string> collectionIds,
+        CancellationToken ct = default)
+    {
+        LastTransfer = (baseline, organizationId, collectionIds);
+        return Task.CompletedTask;
+    }
+    public Task SetCipherCollectionsAsync(
+        CipherPlacementBaseline baseline,
+        IReadOnlyCollection<string> collectionIds,
+        CancellationToken ct = default)
+    {
+        LastCollectionUpdate = (baseline, collectionIds);
+        return Task.CompletedTask;
+    }
+}
+
+public class VaultDestinationTests
+{
+    [Fact]
+    public void BeginAdd_SelectingOrganizationDestinationUpdatesDraft()
+    {
+        var organization = new CipherDestinationOption("Team", "org-1", null);
+        var service = new SkippedCipherVaultUiService
+        {
+            Destinations = [CipherDestinationOption.Personal, organization],
+        };
+        var viewModel = new VaultViewModel(service);
+
+        viewModel.BeginAdd(VaultItemKind.Login);
+        viewModel.EditorSelectedDestination = organization;
+
+        Assert.True(viewModel.CanChooseEditorDestination);
+        Assert.Equal("org-1", viewModel.EditorDraft!.OrganizationId);
+        Assert.Null(viewModel.EditorDraft.CollectionId);
+        Assert.Equal(organization, viewModel.EditorSelectedDestination);
+    }
+
+    [Fact]
+    public async Task NewOrganizationCipher_SelectsAndSavesMultipleCollections()
+    {
+        var organization = new CipherDestinationOption("Team", "org-1", null);
+        var collections = new[]
+        {
+            new CipherCollectionOption { Id = "one", OrganizationId = "org-1", Name = "One" },
+            new CipherCollectionOption { Id = "two", OrganizationId = "org-1", Name = "Two" },
+        };
+        var service = new SkippedCipherVaultUiService
+        {
+            Destinations = [CipherDestinationOption.Personal, organization],
+            CollectionOptions = collections,
+        };
+        var viewModel = new VaultViewModel(service);
+
+        viewModel.BeginAdd(VaultItemKind.Login);
+        viewModel.EditorSelectedDestination = organization;
+        viewModel.EditorDraft!.Name = "Shared login";
+        foreach (var option in viewModel.EditorCollectionOptions)
+            option.IsSelected = true;
+
+        var result = await viewModel.SaveDraftAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(["one", "two"], service.LastSavedDraft!.CollectionIds);
+    }
+
+    [Fact]
+    public void BeginAdd_WithoutWritableDestinationShowsValidationError()
+    {
+        var service = new SkippedCipherVaultUiService { Destinations = [] };
+        var viewModel = new VaultViewModel(service);
+
+        viewModel.BeginAdd(VaultItemKind.Login);
+
+        Assert.Null(viewModel.EditorSelectedDestination);
+        Assert.Contains("没有可写入", viewModel.EditorError);
+    }
+
+    [Fact]
+    public async Task PlacementActions_DelegateBaselineAndSelectedCollections()
+    {
+        var baseline = new CipherPlacementBaseline(
+            "cipher-1",
+            Core.Enums.CipherType.Login,
+            DateTimeOffset.Parse("2026-08-01T12:00:00Z"),
+            null,
+            []);
+        var service = new SkippedCipherVaultUiService { PlacementBaseline = baseline };
+        var viewModel = new VaultViewModel(service);
+
+        Assert.Same(baseline, viewModel.GetCipherPlacementBaseline("cipher-1"));
+        Assert.True((await viewModel.TransferCipherToOrganizationAsync(
+            baseline,
+            "org-1",
+            ["one", "two"])).IsSuccess);
+        Assert.True((await viewModel.SetCipherCollectionsAsync(
+            baseline,
+            ["two"])).IsSuccess);
+
+        Assert.Equal(["one", "two"], service.LastTransfer!.Value.CollectionIds);
+        Assert.Equal(["two"], service.LastCollectionUpdate!.Value.CollectionIds);
+    }
 }
 
 public class VaultSkippedCipherTests
@@ -1415,6 +1717,22 @@ public class VaultSkippedCipherTests
         Assert.Contains(nameof(VaultViewModel.SkippedCipherCount), notified);
         Assert.Contains(nameof(VaultViewModel.HasSkippedCiphers), notified);
         Assert.Contains(nameof(VaultViewModel.SkippedCipherMessage), notified);
+    }
+
+    [Fact]
+    public void OrganizationCipherCount_UsesDedicatedWarningState()
+    {
+        var service = new SkippedCipherVaultUiService
+        {
+            SkippedCipherCount = 0,
+            UnsupportedOrganizationCipherCount = 2,
+        };
+
+        var vm = new VaultViewModel(service);
+
+        Assert.False(vm.HasSkippedCiphers);
+        Assert.True(vm.HasUnsupportedOrganizationCiphers);
+        Assert.Contains("2", vm.UnsupportedOrganizationCipherMessage);
     }
 }
 
@@ -1476,4 +1794,3 @@ public class VaultDataStaleTests
         Assert.Contains(nameof(VaultViewModel.DataStale), notified);
     }
 }
-

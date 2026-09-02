@@ -6,6 +6,7 @@ using App.Controls;
 using App.Services;
 using App.ViewModels;
 using App.ViewModels.Models;
+using Core.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -22,6 +23,7 @@ public sealed partial class VaultPage : Page
     private string? _currentLayoutState;
     private CipherListItem? _pendingListFocusItem;
     private bool _restoreListFocus;
+    private bool _isRebindingSelection;
 
     // 响应式布局阈值:>= 800 DIP 显示双栏(列表+详情);更窄时按是否有详情/编辑态在
     // NarrowList / NarrowDetail 之间切换,窄详情态显示"返回列表"入口。
@@ -34,6 +36,7 @@ public sealed partial class VaultPage : Page
         InitializeComponent();
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         ViewModel.FoldersChanged += OnVaultFoldersChanged;
+        ViewModel.SelectionRebindRequested += OnSelectionRebindRequested;
         UpdateDetailTemplate();
     }
 
@@ -63,6 +66,9 @@ public sealed partial class VaultPage : Page
 
     private void OnVaultNarrowBackClick(object sender, RoutedEventArgs e)
     {
+        if (!ViewModel.CanCancelEditor)
+            return;
+
         _pendingListFocusItem = ViewModel.SelectedItem;
         _restoreListFocus = true;
         ViewModel.CancelEdit();
@@ -128,7 +134,9 @@ public sealed partial class VaultPage : Page
     // 此前 CipherList 只单向绑定 SelectedItem、无此接线,逐项勾选完全不被记录,批量操作全程禁用(R4)。
     private void OnCipherSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!ViewModel.IsSelectionMode)
+        if (!ViewModel.IsSelectionMode
+            || ViewModel.IsRebuildingItems
+            || _isRebindingSelection)
             return;
         foreach (var removed in e.RemovedItems)
             if (removed is CipherListItem item)
@@ -136,6 +144,27 @@ public sealed partial class VaultPage : Page
         foreach (var added in e.AddedItems)
             if (added is CipherListItem item)
                 ViewModel.SetItemSelected(item.Id, selected: true);
+    }
+
+    private void OnSelectionRebindRequested(object? sender, EventArgs e)
+    {
+        if (!ViewModel.IsSelectionMode)
+            return;
+
+        _isRebindingSelection = true;
+        try
+        {
+            CipherList.SelectedItems.Clear();
+            foreach (var item in ViewModel.FilteredItems)
+            {
+                if (ViewModel.IsSelected(item.Id))
+                    CipherList.SelectedItems.Add(item);
+            }
+        }
+        finally
+        {
+            _isRebindingSelection = false;
+        }
     }
 
     private sealed class RowActionState
@@ -280,10 +309,32 @@ public sealed partial class VaultPage : Page
         }
     }
 
+    private async void OnRowCloneClick(object sender, RoutedEventArgs e)
+    {
+        if (RowItem(sender) is { } item)
+        {
+            var authorized = await ViewModel.BeginCloneAsync(item.Id, PromptMasterPasswordAsync);
+            if (authorized.IsSuccess)
+                SyncEditorTypeSelection();
+        }
+    }
+
     private async void OnRowFavoriteClick(object sender, RoutedEventArgs e)
     {
         if (RowItem(sender) is { } item)
             await ViewModel.ToggleFavoriteAsync(item.Id);
+    }
+
+    private async void OnRowArchiveClick(object sender, RoutedEventArgs e)
+    {
+        if (RowItem(sender) is { } item)
+            await ViewModel.ArchiveAsync(item.Id);
+    }
+
+    private async void OnRowUnarchiveClick(object sender, RoutedEventArgs e)
+    {
+        if (RowItem(sender) is { } item)
+            await ViewModel.UnarchiveAsync(item.Id);
     }
 
     private async void OnRowSoftDeleteClick(object sender, RoutedEventArgs e)
@@ -332,6 +383,14 @@ public sealed partial class VaultPage : Page
 
     private void OnAddSshClick(object sender, RoutedEventArgs e) => BeginAdd(VaultItemKind.Ssh);
 
+    private void OnAddBankAccountClick(object sender, RoutedEventArgs e) =>
+        BeginAdd(VaultItemKind.BankAccount);
+
+    private void OnAddDriversLicenseClick(object sender, RoutedEventArgs e) =>
+        BeginAdd(VaultItemKind.DriversLicense);
+
+    private void OnAddPassportClick(object sender, RoutedEventArgs e) => BeginAdd(VaultItemKind.Passport);
+
     private void BeginAdd(VaultItemKind kind)
     {
         ViewModel.BeginAdd(kind);
@@ -344,6 +403,43 @@ public sealed partial class VaultPage : Page
     {
         if ((await ViewModel.SaveDraftAsync()).IsSuccess)
             UpdateDetailTemplate();
+    }
+
+    private async void OnAbandonPendingCipherCreateClick(object sender, RoutedEventArgs e)
+    {
+        var expected = ViewModel.CapturePendingCipherCreate();
+        if (expected is null)
+            return;
+
+        Core.Session.VaultSessionLease lease;
+        try
+        {
+            lease = global::App.App.Services
+                .GetRequiredService<Vault.VaultSession>()
+                .CaptureLease();
+        }
+        catch (InvalidOperationException)
+        {
+            return;
+        }
+
+        var risk = expected.CommitConfirmed
+            ? "服务器已经返回成功，该条目很可能已经创建。"
+            : "服务器仍可能已经创建该条目。";
+        var duplicateRisk = ViewModel.HasRecoverablePendingDraft
+            ? "解除防重复保护后再次保存当前草稿，可能创建重复条目。"
+            : "解除防重复保护后重新创建同一条目，可能产生重复项。";
+        var confirmed = await DialogHelper.ConfirmAsync(
+            XamlRoot,
+            lease,
+            "放弃待确认状态？",
+            $"{risk}此操作只会清除本机的待确认记录，不会删除服务器条目，也不会重新提交。{duplicateRisk}",
+            "仍要放弃",
+            "返回检查");
+        if (!confirmed)
+            return;
+
+        await ViewModel.AbandonPendingCipherCreateAsync(expected);
     }
 
     private void OnCipherEditorTypeChanged(object sender, SelectionChangedEventArgs e)
@@ -362,6 +458,7 @@ public sealed partial class VaultPage : Page
         if (ViewModel.EditorDraft is null)
             return;
 
+        CipherEditorTypeBox.SelectedItem = null;
         var tag = ViewModel.EditorDraft.Type.ToString();
         foreach (var item in CipherEditorTypeBox.Items.OfType<ComboBoxItem>())
         {
@@ -391,6 +488,9 @@ public sealed partial class VaultPage : Page
             IdentityDetail => "IdentityTemplate",
             NoteDetail => "NoteTemplate",
             SshDetail => "SshTemplate",
+            BankAccountDetail => "BankAccountTemplate",
+            DriversLicenseDetail => "DriversLicenseTemplate",
+            PassportDetail => "PassportTemplate",
             _ => null,
         };
 
@@ -448,12 +548,297 @@ public sealed partial class VaultPage : Page
         }
     }
 
+    private async void OnTransferCipherToOrganizationClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedItem is not { CanTransferToOrganization: true } item)
+            return;
+
+        CipherPlacementBaseline baseline;
+        try
+        {
+            baseline = ViewModel.GetCipherPlacementBaseline(item.Id);
+        }
+        catch (InvalidOperationException)
+        {
+            ViewModel.OperationError = "条目已发生变化，请刷新后重试。";
+            return;
+        }
+
+        var result = await PromptOrganizationTransferAsync();
+        if (result is null)
+            return;
+        await ViewModel.TransferCipherToOrganizationAsync(
+            baseline,
+            result.Destination.OrganizationId!,
+            result.CollectionIds);
+    }
+
+    private async void OnManageCipherCollectionsClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedItem is not { CanManageCollections: true } item
+            || string.IsNullOrWhiteSpace(item.OrganizationId))
+        {
+            return;
+        }
+
+        CipherPlacementBaseline baseline;
+        try
+        {
+            baseline = ViewModel.GetCipherPlacementBaseline(item.Id);
+        }
+        catch (InvalidOperationException)
+        {
+            ViewModel.OperationError = "条目已发生变化，请刷新后重试。";
+            return;
+        }
+
+        var options = ViewModel.GetCipherCollectionOptions(
+            item.OrganizationId,
+            baseline.CollectionIds,
+            lockReadOnlyAssignments: true);
+        var collectionIds = await PromptCollectionSelectionAsync(
+            "管理集合",
+            "选择此条目所属的集合。只读集合会保留且不能取消。",
+            options);
+        if (collectionIds is null)
+            return;
+        await ViewModel.SetCipherCollectionsAsync(baseline, collectionIds);
+    }
+
+    private async void OnTransferSelectedToOrganizationClick(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.CanTransferSelectionToOrganization)
+        {
+            ViewModel.OperationError = string.IsNullOrEmpty(ViewModel.SelectionPlacementError)
+                ? "所选条目不能批量转移到组织。"
+                : ViewModel.SelectionPlacementError;
+            return;
+        }
+
+        var result = await PromptOrganizationTransferAsync(
+            "批量转移到组织",
+            $"将 {ViewModel.SelectedCount} 个个人条目转移到同一组织。请选择至少一个集合。",
+            "转移所选");
+        if (result is null)
+            return;
+
+        await ViewModel.TransferSelectedCiphersToOrganizationAsync(
+            result.Destination.OrganizationId!,
+            result.CollectionIds);
+    }
+
+    private async void OnAddSelectedToCollectionsClick(object sender, RoutedEventArgs e) =>
+        await PromptBulkCollectionUpdateAsync(removeCollections: false);
+
+    private async void OnRemoveSelectedFromCollectionsClick(object sender, RoutedEventArgs e) =>
+        await PromptBulkCollectionUpdateAsync(removeCollections: true);
+
+    private async Task PromptBulkCollectionUpdateAsync(bool removeCollections)
+    {
+        if (!ViewModel.CanManageSelectionCollections
+            || ViewModel.SelectedOrganizationId is not { } organizationId)
+        {
+            ViewModel.OperationError = string.IsNullOrEmpty(ViewModel.SelectionPlacementError)
+                ? "所选条目不能批量更改集合。"
+                : ViewModel.SelectionPlacementError;
+            return;
+        }
+
+        var options = ViewModel.GetCipherCollectionOptions(organizationId);
+        if (options.Count == 0)
+        {
+            ViewModel.OperationError = "此组织没有可写集合。";
+            return;
+        }
+
+        var organizationName = ViewModel.Filters.FirstOrDefault(filter =>
+            filter.Kind == FilterKind.Organization
+            && string.Equals(filter.OrganizationId, organizationId, StringComparison.Ordinal))?.Label
+            ?? organizationId;
+        var action = removeCollections ? "移出" : "加入";
+        var collectionIds = await PromptCollectionSelectionAsync(
+            $"批量{action}集合",
+            $"组织：{organizationName}\n选择要将 {ViewModel.SelectedCount} 个条目{action}的集合。",
+            options,
+            primaryButtonText: action,
+            requireSelection: true);
+        if (collectionIds is null)
+            return;
+
+        if (removeCollections)
+            await ViewModel.RemoveSelectedCiphersFromCollectionsAsync(collectionIds);
+        else
+            await ViewModel.AddSelectedCiphersToCollectionsAsync(collectionIds);
+    }
+
+    private async Task<OrganizationTransferDialogResult?> PromptOrganizationTransferAsync(
+        string title = "转移到组织",
+        string? message = null,
+        string primaryButtonText = "转移")
+    {
+        var destinations = ViewModel.GetOrganizationDestinations();
+        if (destinations.Count == 0)
+        {
+            ViewModel.OperationError = "当前账户没有可写入的组织集合。";
+            return null;
+        }
+
+        var organizationBox = new ComboBox
+        {
+            Header = "组织",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        foreach (var candidate in destinations)
+        {
+            organizationBox.Items.Add(new ComboBoxItem
+            {
+                Content = candidate.DisplayName,
+                Tag = candidate,
+            });
+        }
+
+        var collectionsPanel = new StackPanel { Spacing = 4 };
+        var collectionBoxes = new List<(string Id, CheckBox Box)>();
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(new TextBlock
+        {
+            Text = message ?? "转移后条目将由组织管理。请选择至少一个集合。",
+            TextWrapping = TextWrapping.Wrap,
+        });
+        content.Children.Add(organizationBox);
+        content.Children.Add(new TextBlock { Text = "集合" });
+        content.Children.Add(new ScrollViewer { MaxHeight = 280, Content = collectionsPanel });
+
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = content,
+            PrimaryButtonText = primaryButtonText,
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+            IsPrimaryButtonEnabled = false,
+            XamlRoot = XamlRoot,
+        };
+
+        void UpdatePrimaryButton() => dialog.IsPrimaryButtonEnabled =
+            collectionBoxes.Any(entry => entry.Box.IsChecked == true);
+
+        void ReloadCollections()
+        {
+            collectionsPanel.Children.Clear();
+            collectionBoxes.Clear();
+            if (organizationBox.SelectedItem is not ComboBoxItem
+                {
+                    Tag: CipherDestinationOption { OrganizationId: { } organizationId },
+                })
+            {
+                UpdatePrimaryButton();
+                return;
+            }
+
+            foreach (var option in ViewModel.GetCipherCollectionOptions(organizationId))
+            {
+                var box = new CheckBox
+                {
+                    Content = option.Name,
+                    IsChecked = option.IsSelected,
+                    IsEnabled = option.CanSelect,
+                };
+                box.Checked += (_, _) => UpdatePrimaryButton();
+                box.Unchecked += (_, _) => UpdatePrimaryButton();
+                collectionBoxes.Add((option.Id, box));
+                collectionsPanel.Children.Add(box);
+            }
+            UpdatePrimaryButton();
+        }
+
+        organizationBox.SelectionChanged += (_, _) => ReloadCollections();
+        organizationBox.SelectedIndex = 0;
+        if (await DialogHelper.ShowTrackedAsync(dialog) != ContentDialogResult.Primary
+            || organizationBox.SelectedItem is not ComboBoxItem
+            {
+                Tag: CipherDestinationOption destination,
+            })
+        {
+            return null;
+        }
+
+        return new OrganizationTransferDialogResult(
+            destination,
+            collectionBoxes
+                .Where(entry => entry.Box.IsChecked == true)
+                .Select(entry => entry.Id)
+                .ToList());
+    }
+
+    private async Task<IReadOnlyList<string>?> PromptCollectionSelectionAsync(
+        string title,
+        string message,
+        IReadOnlyList<CipherCollectionOption> options,
+        string primaryButtonText = "保存",
+        bool requireSelection = false)
+    {
+        var boxes = new List<(string Id, CheckBox Box)>();
+        var collectionsPanel = new StackPanel { Spacing = 4 };
+        foreach (var option in options)
+        {
+            var box = new CheckBox
+            {
+                Content = option.Name,
+                IsChecked = option.IsSelected,
+                IsEnabled = option.CanSelect,
+            };
+            boxes.Add((option.Id, box));
+            collectionsPanel.Children.Add(box);
+        }
+
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
+        content.Children.Add(new ScrollViewer { MaxHeight = 280, Content = collectionsPanel });
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = content,
+            PrimaryButtonText = primaryButtonText,
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+        };
+        void UpdatePrimaryButton() => dialog.IsPrimaryButtonEnabled =
+            !requireSelection || boxes.Any(entry => entry.Box.IsChecked == true);
+        foreach (var entry in boxes)
+        {
+            entry.Box.Checked += (_, _) => UpdatePrimaryButton();
+            entry.Box.Unchecked += (_, _) => UpdatePrimaryButton();
+        }
+        UpdatePrimaryButton();
+
+        if (await DialogHelper.ShowTrackedAsync(dialog) != ContentDialogResult.Primary)
+            return null;
+        return boxes
+            .Where(entry => entry.Box.IsChecked == true)
+            .Select(entry => entry.Id)
+            .ToList();
+    }
+
     private async void OnDeleteCipherClick(object sender, RoutedEventArgs e)
     {
         if (ViewModel.SelectedItem is not { } item)
             return;
         if (await ConfirmAsync("移到回收站", $"确定要将“{item.Name}”移到回收站吗?", "删除"))
             await ViewModel.SoftDeleteAsync(item.Id);
+    }
+
+    private async void OnArchiveCipherClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedItem is { } item)
+            await ViewModel.ArchiveAsync(item.Id);
+    }
+
+    private async void OnUnarchiveCipherClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedItem is { } item)
+            await ViewModel.UnarchiveAsync(item.Id);
     }
 
     private async void OnRestoreCipherClick(object sender, RoutedEventArgs e)
@@ -741,4 +1126,8 @@ public sealed partial class VaultPage : Page
         ViewModel.FacetFavoriteOnly = false;
         ViewModel.SearchText = string.Empty;
     }
+
+    private sealed record OrganizationTransferDialogResult(
+        CipherDestinationOption Destination,
+        IReadOnlyList<string> CollectionIds);
 }

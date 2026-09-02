@@ -8,11 +8,13 @@ public sealed class FakeCacheStore : ICacheStore
     private VaultCacheEntry? _entry;
     public int SaveCount { get; private set; }
     public int ClearCount { get; private set; }
+    public int ClearAttemptCount { get; private set; }
     public VaultCacheEntry? LastSaved { get; private set; }
     public Action? BeforeSave { get; set; }
     public Action? BeforeLoad { get; set; }
     public Action? BeforeClear { get; set; }
     public List<string> Operations { get; } = [];
+    public List<(string AccountId, ServerEndpoints Endpoints)> ClearedBindings { get; } = [];
 
     public void SaveVaultCache(VaultCacheEntry entry)
     {
@@ -32,10 +34,17 @@ public sealed class FakeCacheStore : ICacheStore
 
     public void ClearVaultCache()
     {
+        ClearAttemptCount++;
         BeforeClear?.Invoke();
         _entry = null;
         LastSaved = null;
         ClearCount++;
         Operations.Add("clear");
+    }
+
+    public void ClearVaultCache(string accountId, ServerEndpoints endpoints)
+    {
+        ClearedBindings.Add((accountId, endpoints));
+        ClearVaultCache();
     }
 }

@@ -18,7 +18,7 @@ public class SettingsPageDangerZoneXamlTests
     }
 
     [Fact]
-    public void DeleteAccountButton_IsDisabledUntilImplemented()
+    public void DeleteAccountButton_IsEnabledAndWired()
     {
         var doc = Load();
         var buttons = doc.Descendants().Where(e => e.Name.LocalName == "Button").ToList();
@@ -27,6 +27,22 @@ public class SettingsPageDangerZoneXamlTests
                 && (string?)t.Attribute("Text") == "删除账户"));
 
         Assert.NotNull(deleteButton);
-        Assert.Equal("False", (string?)deleteButton!.Attribute("IsEnabled"));
+        Assert.NotEqual("False", (string?)deleteButton!.Attribute("IsEnabled"));
+        Assert.Equal("DeleteAccountButton", (string?)deleteButton.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")));
+        Assert.Equal("OnDeleteAccountClick", (string?)deleteButton.Attribute("Click"));
+        Assert.Equal(
+            "DeleteAccountButton",
+            deleteButton.Attributes().First(attribute =>
+                attribute.Name.LocalName == "AutomationProperties.AutomationId").Value);
+    }
+
+    [Fact]
+    public void DeleteAccountCard_NoLongerAdvertisesPlaceholder()
+    {
+        var card = Load().Descendants().First(element =>
+            element.Name.LocalName == "SettingsCard"
+            && (string?)element.Attribute("Header") == "删除账户");
+
+        Assert.DoesNotContain("即将推出", (string?)card.Attribute("Description"), StringComparison.Ordinal);
     }
 }

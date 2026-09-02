@@ -10,8 +10,11 @@ public interface IIdentityApiClient : IAnonymousApiRole
         ConnectTokenRequest request,
         CancellationToken ct = default);
     Task SendTwoFactorEmailLoginAsync(
-        string email,
-        string masterPasswordHash,
-        string deviceIdentifier,
+        SendEmailLoginRequest request,
         CancellationToken ct = default);
+    Task ResendNewDeviceOtpAsync(
+        ResendNewDeviceOtpRequest request,
+        CancellationToken ct = default) =>
+        Task.FromException(
+            new NotSupportedException("New-device OTP resend is unavailable."));
 }

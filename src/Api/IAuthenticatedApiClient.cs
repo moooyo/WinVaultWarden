@@ -8,6 +8,8 @@ public interface IAuthenticatedApiClient :
     IAccountApiClient,
     ITwoFactorApiClient,
     IAuthRequestApiClient,
+    IDeviceTrustApiClient,
+    ITdeRegistrationApiClient,
     IEmergencyAccessApiClient,
     IOriginBoundApiClient,
     IDisposable

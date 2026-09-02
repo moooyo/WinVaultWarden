@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Api;
 using Api.Dtos;
+using Core.Abstractions;
 using Core.Enums;
 using Core.Models;
 using Core.Services;
@@ -92,15 +93,75 @@ public class AuthServiceHelloTests
         Assert.IsType<AuthResult.Failure>(result);
     }
 
+    [Fact]
+    public async Task UnlockWithHelloAsync_PendingAccountDeletionBlocksAndClearsSignature()
+    {
+        var fixture = CreateLoginFixture();
+        var signature = Enumerable.Repeat((byte)5, 256).ToArray();
+        using var helloKey = _crypto.DeriveKeyFromSecret(signature);
+        var persisted = new PersistedSession(
+            PersistedSession.CurrentSchemaVersion,
+            Email,
+            new ServerOrigin(Server),
+            1,
+            Email,
+            "device-id",
+            "stored-refresh",
+            fixture.ProtectedUserKey,
+            KdfType.Pbkdf2,
+            Iterations,
+            null,
+            null)
+        {
+            HelloProtectedUserKey = _crypto.Encrypt(
+                fixture.UserKey.FullKey,
+                helloKey).ToString(),
+        };
+        var tokenStore = new MemoryTokenStore();
+        tokenStore.Save(persisted);
+        var session = new VaultSession();
+        var service = CreateAuthService(
+            new FakeHttpMessageHandler(),
+            session,
+            tokenStore,
+            new VaultCacheService(
+                new FakeCacheStore(),
+                new VaultDecryptor(_crypto),
+                session),
+            FixedAccountDeletionTombstoneStore.ForSession(persisted));
+
+        var result = await service.UnlockWithHelloAsync(
+            signature,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            AuthFailureKind.AccountDeletionRecoveryRequired,
+            Assert.IsType<AuthResult.Failure>(result).Kind);
+        Assert.All(signature, value => Assert.Equal(0, value));
+        Assert.Null(session.UserKey);
+    }
+
     private AuthService CreateAuthService(
-        FakeHttpMessageHandler handler, VaultSession session, MemoryTokenStore tokenStore, VaultCacheService cache)
+        FakeHttpMessageHandler handler,
+        VaultSession session,
+        MemoryTokenStore tokenStore,
+        VaultCacheService cache,
+        IAccountDeletionTombstoneStore? accountDeletionTombstones = null)
     {
         var api = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
         var decryptor = new VaultDecryptor(_crypto);
         var provider = new FakeVaultApiClientProvider().AddAnonymous<IIdentityApiClient>(api).AddAuthenticated<IReadonlyApiClient>(api);
         var bootstrapper = new VaultBootstrapper(new SyncService(provider, decryptor, session, cache), provider, session);
         var refresher = new TokenRefreshService(provider, session, tokenStore);
-        return new AuthService(provider, _crypto, session, tokenStore, bootstrapper, cache, refresher);
+        return new AuthService(
+            provider,
+            _crypto,
+            session,
+            tokenStore,
+            bootstrapper,
+            cache,
+            refresher,
+            accountDeletionTombstones: accountDeletionTombstones);
     }
 
     // 预置一条加密缓存(直接写 store,不经过 session 解锁/加锁,避免 Dispose 清零测试仍要复用的 fixture.UserKey)。

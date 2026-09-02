@@ -59,6 +59,23 @@ public class ImportExportPageXamlTests
     }
 
     [Fact]
+    public void ExportSection_ShowsPolicyNoticeAndBindsControlsToCanExport()
+    {
+        var document = LoadXaml();
+        var policyInfo = document.Descendants().Single(element =>
+            element.Attribute("{http://schemas.microsoft.com/winfx/2006/xaml}Name")?.Value
+                == "ExportPolicyInfoBar");
+        var exportButton = document.Descendants().Single(element =>
+            element.Attribute("AutomationProperties.AutomationId")?.Value == "ExportButton");
+        var exportFormat = document.Descendants().Single(element =>
+            element.Attribute("AutomationProperties.AutomationId")?.Value == "ExportFormatCombo");
+
+        Assert.Contains("ShowExportPolicyInfo", policyInfo.Attribute("IsOpen")?.Value);
+        Assert.Contains("CanExport", exportButton.Attribute("IsEnabled")?.Value);
+        Assert.Contains("CanExport", exportFormat.Attribute("IsEnabled")?.Value);
+    }
+
+    [Fact]
     public void Page_UsesUnifiedOperationStatusInfoBarsWithLiveRegions()
     {
         var doc = LoadXaml();
@@ -152,8 +169,6 @@ public class ImportExportPageXamlTests
         var doc = LoadXaml();
         var ids = new[]
         {
-            "ExportFormatCombo",
-            "ExportButton",
             "ImportFormatCombo",
             "ImportChooseFileButton",
         };
@@ -186,7 +201,13 @@ public class ImportExportPageXamlTests
         Assert.Contains("BeginOperation(ImportExportOperationKind.ChooseImportFile)", code, StringComparison.Ordinal);
         Assert.Contains("var format = operation.ExportFormat;", code, StringComparison.Ordinal);
         Assert.Contains("ViewModel.ExportToText(format)", code, StringComparison.Ordinal);
+        Assert.Contains("catch (UnsupportedCipherCsvExportException)", code, StringComparison.Ordinal);
+        Assert.Contains("请改用 JSON 格式", code, StringComparison.Ordinal);
         Assert.DoesNotContain("ViewModel.SelectedExportFormat", code, StringComparison.Ordinal);
+
+        var exportValidation = code.IndexOf("var exportText = ViewModel.ExportToText(format);", StringComparison.Ordinal);
+        var filePicker = code.IndexOf("new Windows.Storage.Pickers.FileSavePicker", StringComparison.Ordinal);
+        Assert.True(exportValidation >= 0 && exportValidation < filePicker);
     }
 
     [Fact]

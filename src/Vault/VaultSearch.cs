@@ -12,10 +12,12 @@ public static class VaultSearch
     public static string BuildHaystack(Cipher cipher)
     {
         var sb = new StringBuilder();
+        var includeProtectedMetadata = cipher.CanViewPassword;
         void Add(string? s) { if (!string.IsNullOrWhiteSpace(s)) { sb.Append(s); sb.Append('\n'); } }
 
         Add(cipher.Name);
-        Add(cipher.Notes);
+        if (includeProtectedMetadata)
+            Add(cipher.Notes);
 
         if (cipher.Login is { } login)
         {
@@ -25,11 +27,12 @@ public static class VaultSearch
 
         foreach (var f in cipher.Fields)
         {
-            Add(f.Name);                                  // 字段名可搜(含隐藏字段的名)
-            if (f.Type != CipherFieldType.Hidden) Add(f.Value);  // 仅非隐藏值
+            Add(f.Name);
+            if (f.Type is CipherFieldType.Text or CipherFieldType.Boolean)
+                Add(f.Value);
         }
 
-        if (cipher.Card?.Number is { Length: >= 4 } num) Add(num[^4..]);  // 仅后四位,不含 CVV
+        if (includeProtectedMetadata && cipher.Card?.Number is { Length: >= 4 } num) Add(num[^4..]);  // 仅后四位,不含 CVV
 
         if (cipher.Identity is { } id)
         {
@@ -39,6 +42,50 @@ public static class VaultSearch
             Add(id.City);
         }
 
+        if (cipher.BankAccount is { } bank)
+        {
+            Add(bank.BankName);
+            Add(bank.NameOnAccount);
+            Add(bank.AccountType);
+            Add(bank.BankContactPhone);
+            if (includeProtectedMetadata)
+            {
+                AddLastFour(bank.AccountNumber);
+                AddLastFour(bank.Iban);
+            }
+        }
+
+        if (cipher.DriversLicense is { } license)
+        {
+            Add(license.FirstName);
+            Add(license.MiddleName);
+            Add(license.LastName);
+            Add(license.IssuingCountry);
+            Add(license.IssuingState);
+            Add(license.IssuingAuthority);
+            Add(license.LicenseClass);
+            if (includeProtectedMetadata)
+                AddLastFour(license.LicenseNumber);
+        }
+
+        if (cipher.Passport is { } passport)
+        {
+            Add(passport.GivenName);
+            Add(passport.Surname);
+            Add(passport.Nationality);
+            Add(passport.IssuingCountry);
+            Add(passport.IssuingAuthority);
+            Add(passport.PassportType);
+            if (includeProtectedMetadata)
+                AddLastFour(passport.PassportNumber);
+        }
+
         return sb.ToString().ToLowerInvariant();
+
+        void AddLastFour(string? value)
+        {
+            if (value is { Length: >= 4 })
+                Add(value[^4..]);
+        }
     }
 }

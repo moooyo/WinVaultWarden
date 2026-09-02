@@ -16,7 +16,8 @@ public sealed record SendListItem(
     SendType Type,
     string DeleteDate,
     string? Link,
-    SendReconciliationState ReconciliationState = SendReconciliationState.None)
+    SendReconciliationState ReconciliationState = SendReconciliationState.None,
+    bool IsReadOnly = false)
 {
     public string TypeLabel
     {
@@ -33,7 +34,7 @@ public sealed record SendListItem(
         }
     }
 
-    public bool CanModify => ReconciliationState == SendReconciliationState.None;
+    public bool CanModify => !IsReadOnly && ReconciliationState == SendReconciliationState.None;
 
     public string DeleteDateAccessibleLabel => $"删除日期 {DeleteDate}";
 

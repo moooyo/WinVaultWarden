@@ -24,12 +24,12 @@ public class WebAuthnAssertionServiceTests
             "https://login.github.com",
             "AQIDBA",
             "github.com",
-            [credential.CredentialId!],
+            [WireId(credential)],
             ApprovalEvidence: VerifiedApproval);
 
         var assertion = WebAuthnAssertionService.CreateAssertion(credential, request);
 
-        Assert.Equal(credential.CredentialId, assertion.CredentialId);
+        Assert.Equal(WireId(credential), assertion.CredentialId);
         Assert.Equal(0u, assertion.SignatureCounter);
         Assert.Equal(credential.UserHandle, assertion.UserHandle);
 
@@ -61,7 +61,7 @@ public class WebAuthnAssertionServiceTests
             "https://login.github.com",
             "AQIDBA",
             "github.com",
-            [credential.CredentialId!],
+            [WireId(credential)],
             ApprovalEvidence: VerifiedApproval,
             CrossOrigin: true);
 
@@ -97,7 +97,7 @@ public class WebAuthnAssertionServiceTests
             "https://github.com",
             "AQIDBA",
             "evil.example",
-            [credential.CredentialId!],
+            [WireId(credential)],
             ApprovalEvidence: PresenceOnlyApproval);
 
         Assert.Throws<InvalidOperationException>(() =>
@@ -119,7 +119,7 @@ public class WebAuthnAssertionServiceTests
             "https://github.com",
             "AQIDBA",
             "github.com",
-            [credential.CredentialId!],
+            [WireId(credential)],
             new PasskeyApprovalEvidence(true, userPresent, userVerified));
 
         var assertion = WebAuthnAssertionService.CreateAssertion(credential, request);
@@ -137,7 +137,7 @@ public class WebAuthnAssertionServiceTests
             "https://github.com",
             "AQIDBA",
             "github.com",
-            [credential.CredentialId!],
+            [WireId(credential)],
             new PasskeyApprovalEvidence(false, false, false));
 
         var error = Assert.Throws<InvalidOperationException>(() =>
@@ -155,15 +155,37 @@ public class WebAuthnAssertionServiceTests
             "https://github.com",
             "AQIDBA",
             "github.com",
-            [credential.CredentialId!],
+            [WireId(credential)],
             new PasskeyApprovalEvidence(true, false, true));
 
         Assert.Throws<ArgumentException>(() =>
             WebAuthnAssertionService.CreateAssertion(credential, request));
     }
 
-    private static CipherFido2Credential Credential(ECDsa key) => new(
-        WebAuthnCrypto.EncodeBase64Url([1, 2, 3, 4]),
+    [Fact]
+    public void CreateAssertion_GuidStorageMatchesEquivalentWireAndReturnsRawId()
+    {
+        const string guid = "08d70b74-e9f5-4522-a425-e5dcd40107e7";
+        const string wireId = "CNcLdOn1RSKkJeXc1AEH5w";
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var credential = Credential(key, guid);
+        var request = new WebAuthnGetAssertionRequest(
+            "https://github.com",
+            "AQIDBA",
+            "github.com",
+            [wireId],
+            VerifiedApproval);
+
+        var assertion = WebAuthnAssertionService.CreateAssertion(credential, request);
+
+        Assert.Equal(wireId, assertion.CredentialId);
+    }
+
+    private static string WireId(CipherFido2Credential credential) =>
+        CredentialId.EncodeForWire(CredentialId.DecodeStorage(credential.CredentialId!));
+
+    private static CipherFido2Credential Credential(ECDsa key, string? credentialId = null) => new(
+        credentialId ?? CredentialId.EncodeForStorage([1, 2, 3, 4]),
         "public-key",
         "ECDSA",
         "P-256",

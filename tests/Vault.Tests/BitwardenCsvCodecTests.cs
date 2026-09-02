@@ -28,7 +28,7 @@ public class BitwardenCsvCodecTests
     }
 
     [Fact]
-    public void RoundTrip_Note_LossyNonLogin()
+    public void RoundTrip_SecureNote_PreservesTypedShape()
     {
         var c = new Cipher { Id="1", Type=CipherType.SecureNote, Name="N", Notes="body", SecureNote=new CipherSecureNote(0) };
         var parsed = BitwardenCsvCodec.Parse(BitwardenCsvCodec.Serialize(new[]{c}, Array.Empty<Folder>()));
@@ -36,6 +36,60 @@ public class BitwardenCsvCodecTests
         Assert.Equal(CipherType.SecureNote, p.Type);
         Assert.Equal("body", p.Notes);
         Assert.Null(p.Login);
+        Assert.Equal(0, p.SecureNote!.Type);
+    }
+
+    [Theory]
+    [InlineData(CipherType.Card)]
+    [InlineData(CipherType.Identity)]
+    [InlineData(CipherType.SshKey)]
+    [InlineData(CipherType.BankAccount)]
+    [InlineData(CipherType.DriversLicense)]
+    [InlineData(CipherType.Passport)]
+    [InlineData((CipherType)999)]
+    public void Serialize_TypeWithoutOfficialCsvShape_RequiresJson(CipherType type)
+    {
+        var cipher = new Cipher { Id = "1", Type = type, Name = "Unsupported" };
+
+        var exception = Assert.Throws<UnsupportedCipherCsvExportException>(() =>
+            BitwardenCsvCodec.Serialize([cipher], []));
+
+        Assert.Equal(type, exception.CipherType);
+        Assert.Contains("JSON", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("数据丢失", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("card")]
+    [InlineData("identity")]
+    [InlineData("sshkey")]
+    [InlineData("bankaccount")]
+    [InlineData("driverslicense")]
+    [InlineData("passport")]
+    [InlineData("future")]
+    public void Parse_PseudoTypeWithoutCsvShape_RequiresJson(string typeWord)
+    {
+        var csv =
+            "folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n" +
+            $",,{typeWord},Unsupported,,,,,,,";
+
+        var exception = Assert.Throws<FormatException>(() => BitwardenCsvCodec.Parse(csv));
+
+        Assert.Contains(typeWord, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("JSON", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Parse_EmptyType_DefaultsToLogin()
+    {
+        const string csv =
+            "folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n" +
+            ",,,Untyped,,,,,,,";
+
+        var cipher = Assert.Single(BitwardenCsvCodec.Parse(csv).Ciphers);
+
+        Assert.Equal(CipherType.Login, cipher.Type);
+        Assert.NotNull(cipher.Login);
     }
 
     [Fact]

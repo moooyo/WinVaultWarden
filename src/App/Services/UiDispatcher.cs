@@ -16,7 +16,12 @@ public sealed class UiDispatcher : IUiDispatcher
 
     public bool HasThreadAccess => _queue?.HasThreadAccess ?? false;
 
-    public void Enqueue(Action action) => _queue?.TryEnqueue(() => action());
+    public bool Enqueue(Action action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        var queue = _queue;
+        return queue is not null && queue.TryEnqueue(() => action());
+    }
 
     public Task EnqueueAsync(Func<Task> action)
     {

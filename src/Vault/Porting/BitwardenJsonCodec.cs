@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Core.Enums;
 using Core.Models;
+using Core.Passkeys;
 
 namespace Vault.Porting;
 
@@ -43,7 +44,11 @@ public static class BitwardenJsonCodec
                 SecureNote: c.SecureNote is null ? null : new BwSecureNote(c.SecureNote.Type),
                 SshKey: c.Ssh is null ? null : ToBw(c.Ssh),
                 Fields: c.Fields.Count == 0 ? null : c.Fields.Select(ToBw).ToArray(),
-                PasswordHistory: c.PasswordHistory.Count == 0 ? null : c.PasswordHistory.Select(ToBw).ToArray());
+                PasswordHistory: c.PasswordHistory.Count == 0 ? null : c.PasswordHistory.Select(ToBw).ToArray(),
+                BankAccount: c.BankAccount is null ? null : ToBw(c.BankAccount),
+                DriversLicense: c.DriversLicense is null ? null : ToBw(c.DriversLicense),
+                Passport: c.Passport is null ? null : ToBw(c.Passport),
+                ArchivedDate: c.ArchivedDate);
         }).ToArray();
 
         var export = new BwExport(Encrypted: false, Folders: bwFolders, Items: bwItems);
@@ -91,12 +96,11 @@ public static class BitwardenJsonCodec
     private static Cipher FromBw(BwItem item) => new()
     {
         Id = item.Id ?? string.Empty,
-        // 未知/非法 type（如手工篡改的导出文件）回退为 Login —— Bitwarden 以登录为中心的默认类型，
-        // 保持导入侧的健壮性与可加性而非抛出异常中断整批导入。
-        Type = Enum.IsDefined(typeof(CipherType), item.Type) ? (CipherType)item.Type : CipherType.Login,
+        Type = ParseCipherType(item.Type),
         FolderId = item.FolderId,
         Favorite = item.Favorite,
         Reprompt = item.Reprompt != 0,
+        ArchivedDate = item.ArchivedDate,
         Name = item.Name ?? string.Empty,
         Notes = item.Notes,
         Login = item.Login is null ? null : FromBw(item.Login),
@@ -104,11 +108,20 @@ public static class BitwardenJsonCodec
         Identity = item.Identity is null ? null : FromBw(item.Identity),
         SecureNote = item.SecureNote is null ? null : new CipherSecureNote(item.SecureNote.Type),
         Ssh = item.SshKey is null ? null : FromBw(item.SshKey),
+        BankAccount = item.BankAccount is null ? null : FromBw(item.BankAccount),
+        DriversLicense = item.DriversLicense is null ? null : FromBw(item.DriversLicense),
+        Passport = item.Passport is null ? null : FromBw(item.Passport),
         Fields = item.Fields is null ? Array.Empty<CipherField>() : item.Fields.Select(FromBw).ToArray(),
         PasswordHistory = item.PasswordHistory is null
             ? Array.Empty<PasswordHistoryEntry>()
             : item.PasswordHistory.Select(FromBw).ToArray(),
     };
+
+    private static CipherType ParseCipherType(int value) =>
+        Enum.IsDefined(typeof(CipherType), value)
+            ? (CipherType)value
+            : throw new FormatException(
+                $"Bitwarden JSON contains unsupported cipher type {value}.");
 
     private static BwLogin ToBw(CipherLogin l) => new(
         l.Username, l.Password, l.Totp,
@@ -125,7 +138,7 @@ public static class BitwardenJsonCodec
     };
 
     private static BwFido2Credential ToBw(CipherFido2Credential c) => new(
-        c.CredentialId ?? string.Empty,
+        NormalizeCredentialIdForWrite(c.CredentialId),
         c.KeyType ?? string.Empty,
         c.KeyAlgorithm ?? string.Empty,
         c.KeyCurve ?? string.Empty,
@@ -138,6 +151,11 @@ public static class BitwardenJsonCodec
         c.UserDisplayName,
         c.Discoverable ? "true" : "false",
         c.CreationDate);
+
+    private static string NormalizeCredentialIdForWrite(string? credentialId) =>
+        CredentialId.TryNormalizeStorage(credentialId, out var normalized)
+            ? normalized
+            : credentialId ?? string.Empty;
 
     private static CipherFido2Credential FromBw(BwFido2Credential c) => new(
         c.CredentialId,
@@ -170,9 +188,42 @@ public static class BitwardenJsonCodec
 
     private static CipherSsh FromBw(BwSshKey s) => new(s.PrivateKey, s.PublicKey, s.KeyFingerprint);
 
-    private static BwField ToBw(CipherField f) => new(f.Name, f.Value, (int)f.Type);
+    private static BwBankAccount ToBw(CipherBankAccount account) => new(
+        account.BankName, account.NameOnAccount, account.AccountType, account.AccountNumber,
+        account.RoutingNumber, account.BranchNumber, account.Pin, account.SwiftCode,
+        account.Iban, account.BankContactPhone);
 
-    private static CipherField FromBw(BwField f) => new(f.Name ?? string.Empty, f.Value, (CipherFieldType)f.Type);
+    private static CipherBankAccount FromBw(BwBankAccount account) => new(
+        account.BankName, account.NameOnAccount, account.AccountType, account.AccountNumber,
+        account.RoutingNumber, account.BranchNumber, account.Pin, account.SwiftCode,
+        account.Iban, account.BankContactPhone);
+
+    private static BwDriversLicense ToBw(CipherDriversLicense license) => new(
+        license.FirstName, license.MiddleName, license.LastName, license.DateOfBirth,
+        license.LicenseNumber, license.IssuingCountry, license.IssuingState, license.IssueDate,
+        license.ExpirationDate, license.IssuingAuthority, license.LicenseClass);
+
+    private static CipherDriversLicense FromBw(BwDriversLicense license) => new(
+        license.FirstName, license.MiddleName, license.LastName, license.DateOfBirth,
+        license.LicenseNumber, license.IssuingCountry, license.IssuingState, license.IssueDate,
+        license.ExpirationDate, license.IssuingAuthority, license.LicenseClass);
+
+    private static BwPassport ToBw(CipherPassport passport) => new(
+        passport.Surname, passport.GivenName, passport.DateOfBirth, passport.Sex,
+        passport.BirthPlace, passport.Nationality, passport.IssuingCountry,
+        passport.PassportNumber, passport.PassportType, passport.NationalIdentificationNumber,
+        passport.IssuingAuthority, passport.IssueDate, passport.ExpirationDate);
+
+    private static CipherPassport FromBw(BwPassport passport) => new(
+        passport.Surname, passport.GivenName, passport.DateOfBirth, passport.Sex,
+        passport.BirthPlace, passport.Nationality, passport.IssuingCountry,
+        passport.PassportNumber, passport.PassportType, passport.NationalIdentificationNumber,
+        passport.IssuingAuthority, passport.IssueDate, passport.ExpirationDate);
+
+    private static BwField ToBw(CipherField f) => new(f.Name, f.Value, f.WireType, f.LinkedId);
+
+    private static CipherField FromBw(BwField f) =>
+        CipherField.FromWire(f.Name ?? string.Empty, f.Value, f.Type, f.LinkedId);
 
     private static BwPasswordHistory ToBw(PasswordHistoryEntry p) => new(
         p.Password, p.LastUsedDate?.ToString("o", CultureInfo.InvariantCulture));

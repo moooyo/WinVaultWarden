@@ -3,6 +3,7 @@ using App.Services;
 using App.ViewModels.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Models;
 
 namespace App.ViewModels;
 
@@ -11,8 +12,10 @@ namespace App.ViewModels;
 public enum VaultOperationKind
 {
     Sync,
+    ResolveCipherCreate,
     SaveCipher,
     DeleteCipher,
+    ArchiveCipher,
     Folder,
     Batch,
     AttachmentUpload,
@@ -33,6 +36,18 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     private readonly HashSet<string> _selectedIds = new(StringComparer.Ordinal);
     private readonly AsyncOperationGate _operationGate = new();
     private CancellationTokenSource? _operationCts;
+    private CipherCreatePending? _pendingCipherCreate;
+    private string? _ownedPendingCipherCreateFingerprint;
+    private CipherCreatePending? _explicitlyAbandonedPendingCipherCreate;
+    private bool _showPendingCreateAbandonedWarning;
+    private CipherSaveUiContext? _activeCipherSave;
+    private long _lifecycleEpoch;
+    private bool _acceptCipherCreateGateNotifications = true;
+
+    private sealed record CipherSaveUiContext(
+        long LifecycleEpoch,
+        CipherEditorDraft Draft,
+        bool IsCreate);
 
     public ObservableCollection<SavedSearchView> SavedViews { get; } = new();
 
@@ -50,7 +65,105 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     public bool HasSelection => IsSelectionMode && _selectedIds.Count > 0;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanModifySelectedItem))]
+    [NotifyPropertyChangedFor(nameof(CanDeleteSelectedItem))]
+    [NotifyPropertyChangedFor(nameof(CanRestoreSelectedItem))]
+    [NotifyPropertyChangedFor(nameof(CanArchiveSelectedItem))]
+    [NotifyPropertyChangedFor(nameof(CanUnarchiveSelectedItem))]
+    [NotifyPropertyChangedFor(nameof(CanTransferSelectedItem))]
+    [NotifyPropertyChangedFor(nameof(CanManageSelectedItemCollections))]
+    [NotifyPropertyChangedFor(nameof(ShowSensitiveUnlock))]
     public partial CipherListItem? SelectedItem { get; set; }
+
+    public bool CanModifySelectedItem => SelectedItem?.CanModify == true;
+    public bool CanDeleteSelectedItem => CanModifySelectedItem && SelectedItem?.CanDelete == true;
+    public bool CanRestoreSelectedItem => CanModifySelectedItem && SelectedItem?.CanRestore == true;
+    public bool CanArchiveSelectedItem => CanArchiveItems
+        && SelectedItem is { CanArchive: true, IsDeleted: false, IsArchived: false };
+    public bool CanUnarchiveSelectedItem => CanUnarchiveItems
+        && SelectedItem is { CanUnarchive: true, IsDeleted: false, IsArchived: true };
+    public bool CanTransferSelectedItem =>
+        SelectedItem is { IsDeleted: false, CanTransferToOrganization: true };
+    public bool CanManageSelectedItemCollections =>
+        SelectedItem is { IsDeleted: false, CanManageCollections: true };
+    public bool CanModifySelection => HasSelection && _selectedIds.All(id =>
+        Items.FirstOrDefault(item => item.Id == id)?.CanModify == true);
+    public bool CanDeleteSelection => HasSelection && _selectedIds.All(id =>
+        Items.FirstOrDefault(item => item.Id == id)?.CanDelete == true);
+    public bool CanRestoreSelection => HasSelection && _selectedIds.All(id =>
+        Items.FirstOrDefault(item => item.Id == id)?.CanRestore == true);
+    public bool CanMoveSelection => HasSelection && _selectedIds.All(id =>
+        Items.FirstOrDefault(item => item.Id == id) is { IsDeleted: false });
+    public bool CanArchiveSelection => CanArchiveItems && HasSelection && _selectedIds.All(id =>
+        Items.FirstOrDefault(item => item.Id == id) is
+            { CanArchive: true, IsDeleted: false, IsArchived: false });
+    public bool CanUnarchiveSelection => CanUnarchiveItems && HasSelection && _selectedIds.All(id =>
+        Items.FirstOrDefault(item => item.Id == id) is
+            { CanUnarchive: true, IsDeleted: false, IsArchived: true });
+    public bool CanTransferSelectionToOrganization =>
+        TryGetUniformOrganizationSelection(out var selected, out var organizationId)
+        && organizationId is null
+        && selected.All(item => item.CanTransferToOrganization)
+        && string.IsNullOrEmpty(SelectionPlacementError);
+    public bool CanManageSelectionCollections =>
+        TryGetUniformOrganizationSelection(out var selected, out var organizationId)
+        && organizationId is not null
+        && selected.All(item => item.CanManageCollections)
+        && string.IsNullOrEmpty(SelectionPlacementError);
+    public string? SelectedOrganizationId =>
+        TryGetUniformOrganizationSelection(out _, out var organizationId)
+            ? organizationId
+            : null;
+    public string SelectionPlacementError
+    {
+        get
+        {
+            if (!HasSelection)
+                return string.Empty;
+            if (!TryGetUniformOrganizationSelection(out var selected, out var organizationId))
+            {
+                return "所选条目混合了个人密码库与组织条目，或来自不同组织。请仅选择全部个人条目或同一组织的条目。";
+            }
+            if (selected.Any(item => item.IsDeleted))
+                return "回收站中的条目不能执行批量组织操作。";
+            if (selected.Any(item => !IsPlacementTypeSupported(item.Kind)))
+                return "所选条目包含当前服务器不支持写入的类型。";
+            if (organizationId is null)
+            {
+                if (selected.Any(item => !item.CanEdit || !item.CanViewPassword))
+                    return "所选条目包含只读条目或不可查看密码的条目。";
+                if (selected.Any(item => !item.CanTransferToOrganization))
+                    return "所选条目包含无法安全转移的附件，或当前没有可写入的组织集合。";
+            }
+            else if (selected.Any(item => !item.CanManageCollections))
+            {
+                return "所选条目包含当前账户无权管理集合的条目。";
+            }
+            return string.Empty;
+        }
+    }
+    public bool HasSelectionPlacementError => !string.IsNullOrEmpty(SelectionPlacementError);
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanCreateNewCipherTypes))]
+    [NotifyPropertyChangedFor(nameof(CanArchiveItems))]
+    [NotifyPropertyChangedFor(nameof(CanUnarchiveItems))]
+    [NotifyPropertyChangedFor(nameof(CanArchiveSelectedItem))]
+    [NotifyPropertyChangedFor(nameof(CanUnarchiveSelectedItem))]
+    [NotifyPropertyChangedFor(nameof(CanArchiveSelection))]
+    [NotifyPropertyChangedFor(nameof(CanUnarchiveSelection))]
+    [NotifyPropertyChangedFor(nameof(ShowArchiveSelectionAction))]
+    [NotifyPropertyChangedFor(nameof(ShowUnarchiveSelectionAction))]
+    [NotifyPropertyChangedFor(nameof(CanSaveEditorDraft))]
+    [NotifyPropertyChangedFor(nameof(CanTransferSelectionToOrganization))]
+    [NotifyPropertyChangedFor(nameof(CanManageSelectionCollections))]
+    [NotifyPropertyChangedFor(nameof(SelectionPlacementError))]
+    [NotifyPropertyChangedFor(nameof(HasSelectionPlacementError))]
+    public partial VaultCapabilities Capabilities { get; set; } = VaultCapabilities.None;
+
+    public bool CanCreateNewCipherTypes => Capabilities.CanWriteNewCipherTypes;
+    public bool CanArchiveItems => Capabilities.CanArchive;
+    public bool CanUnarchiveItems => Capabilities.CanUnarchive;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNoSelectionPlaceholder))]
@@ -113,7 +226,55 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(EditorSelectedFolder))]
+    [NotifyPropertyChangedFor(nameof(EditorSelectedDestination))]
+    [NotifyPropertyChangedFor(nameof(CanSaveEditorDraft))]
     public partial CipherEditorDraft? EditorDraft { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EditorSelectedDestination))]
+    public partial IReadOnlyList<CipherDestinationOption> EditorDestinations { get; set; } =
+        [CipherDestinationOption.Personal];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowEditorCollectionOptions))]
+    public partial IReadOnlyList<CipherCollectionOption> EditorCollectionOptions { get; set; } = [];
+
+    private bool _canChooseEditorDestination;
+    public bool CanChooseEditorDestination => _canChooseEditorDestination;
+    public bool ShowEditorCollectionOptions =>
+        CanChooseEditorDestination
+        && EditorDraft?.OrganizationId is not null
+        && EditorCollectionOptions.Count > 0;
+
+    public CipherDestinationOption? EditorSelectedDestination
+    {
+        get
+        {
+            if (EditorDraft is null)
+                return null;
+            return EditorDestinations.FirstOrDefault(destination =>
+                string.Equals(destination.OrganizationId, EditorDraft.OrganizationId, StringComparison.Ordinal));
+        }
+        set
+        {
+            if (EditorDraft is null || !_canChooseEditorDestination || value is null)
+                return;
+            var organizationChanged = !string.Equals(
+                EditorDraft.OrganizationId,
+                value.OrganizationId,
+                StringComparison.Ordinal);
+            EditorDraft.OrganizationId = value.OrganizationId;
+            if (organizationChanged)
+                EditorDraft.ReplaceCollectionIds([]);
+            EditorCollectionOptions = value.OrganizationId is null
+                ? []
+                : BuildWritableNewCipherCollectionOptions(
+                    value.OrganizationId,
+                    EditorDraft.CollectionIds);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowEditorCollectionOptions));
+        }
+    }
 
     // 文件夹选择:以 FilterNode 形式暴露给 ComboBox 的 SelectedItem,内部映射到 EditorDraft.FolderId。
     // 用 x:Bind + SelectedItem 取代反射式 DisplayMemberPath/SelectedValuePath(AOT 下反射会抛
@@ -138,15 +299,52 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     [NotifyPropertyChangedFor(nameof(IsBusy))]
     [NotifyPropertyChangedFor(nameof(BusyMessage))]
     [NotifyPropertyChangedFor(nameof(CanStartVaultOperation))]
+    [NotifyPropertyChangedFor(nameof(CanSaveEditorDraft))]
+    [NotifyPropertyChangedFor(nameof(CanCancelEditor))]
+    [NotifyPropertyChangedFor(nameof(CanBeginCipherCreate))]
+    [NotifyPropertyChangedFor(nameof(CanEditEditorDraft))]
+    [NotifyPropertyChangedFor(nameof(CanChangeEditorType))]
+    [NotifyPropertyChangedFor(nameof(CanCheckPendingCipherCreate))]
+    [NotifyPropertyChangedFor(nameof(CanAbandonPendingCipherCreate))]
     public partial VaultOperationKind? CurrentOperation { get; set; }
 
     public bool IsBusy => CurrentOperation is not null;
     public bool CanStartVaultOperation => CurrentOperation is null;
+    public bool CanSaveEditorDraft => CanStartVaultOperation
+        && !HasOwnedPendingCipherCreate
+        && (_editingId is not null || !_service.HasPendingOrInFlightCipherCreate())
+        && (EditorDraft is null
+            || !IsNewCipherType(EditorDraft.Type)
+            || CanCreateNewCipherTypes);
+    public bool CanCancelEditor => CanStartVaultOperation && !HasOwnedPendingCipherCreate;
+    public bool CanBeginCipherCreate => CanStartVaultOperation
+        && _pendingCipherCreate is null
+        && !_service.HasPendingOrInFlightCipherCreate();
+    public bool CanEditEditorDraft => CanStartVaultOperation
+        && !HasOwnedPendingCipherCreate;
+    public bool HasPendingCipherCreate => _pendingCipherCreate is not null;
+    public bool CanCheckPendingCipherCreate => HasPendingCipherCreate && CanStartVaultOperation;
+    public bool CanAbandonPendingCipherCreate => HasPendingCipherCreate && CanStartVaultOperation;
+    public bool HasRecoverablePendingDraft =>
+        HasOwnedPendingCipherCreate && IsEditing && EditorDraft is not null;
+    public string PendingCipherCreateTitle => _pendingCipherCreate?.CommitConfirmed == true
+        ? "服务器已接受创建，但仍无法定位条目"
+        : "无法确认上一次新建是否成功";
+    public string PendingCipherCreateMessage => _pendingCipherCreate?.CommitConfirmed == true
+        ? "服务器曾返回成功，但客户端仍无法确认新条目。解除防重复保护后再次保存，很可能产生重复条目。"
+        : "服务器可能已经保存了该条目。解除防重复保护后再次保存，可能产生重复条目。";
+    public string PendingCipherCreateDraftMessage => HasRecoverablePendingDraft
+        ? "与此请求对应的当前草稿仍保留。放弃待确认状态后，请先检查密码库，再决定是否手动保存。"
+        : "本地没有与此请求对应的可恢复草稿；此操作可能来自浏览器或上一次应用运行。";
+    private bool HasOwnedPendingCipherCreate =>
+        _pendingCipherCreate is not null && OwnsPendingCipherCreate(_pendingCipherCreate);
     public string BusyMessage => CurrentOperation switch
     {
         VaultOperationKind.Sync => "正在同步保险库…",
+        VaultOperationKind.ResolveCipherCreate => "正在更新待确认状态…",
         VaultOperationKind.SaveCipher => "正在保存条目…",
         VaultOperationKind.DeleteCipher => "正在更新回收站…",
+        VaultOperationKind.ArchiveCipher => "正在更新归档…",
         VaultOperationKind.Folder => "正在更新文件夹…",
         VaultOperationKind.Batch => "正在处理所选条目…",
         VaultOperationKind.AttachmentUpload => "正在上传附件…",
@@ -164,10 +362,18 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasOperationWarning))]
+    [NotifyPropertyChangedFor(nameof(ShowOperationWarningInfo))]
     [NotifyPropertyChangedFor(nameof(ShowDataStaleInfo))]
+    [NotifyPropertyChangedFor(nameof(OperationWarningTitle))]
     public partial string OperationWarning { get; set; } = string.Empty;
 
     public bool HasOperationWarning => !string.IsNullOrEmpty(OperationWarning);
+    public bool ShowOperationWarningInfo => HasOperationWarning && !HasPendingCipherCreate;
+    public string OperationWarningTitle => _pendingCipherCreate is not null
+        ? "保存结果待确认"
+        : _showPendingCreateAbandonedWarning
+            ? "待确认状态已放弃"
+            : "已保存，需要同步";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSkippedCiphers))]
@@ -177,6 +383,15 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     // 同步时有条目无法解密被跳过 → 提示用户这些条目已被隐藏。
     public bool HasSkippedCiphers => SkippedCipherCount > 0;
     public string SkippedCipherMessage => $"{SkippedCipherCount} 个条目无法解密，已隐藏";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUnsupportedOrganizationCiphers))]
+    [NotifyPropertyChangedFor(nameof(UnsupportedOrganizationCipherMessage))]
+    public partial int UnsupportedOrganizationCipherCount { get; set; }
+
+    public bool HasUnsupportedOrganizationCiphers => UnsupportedOrganizationCipherCount > 0;
+    public string UnsupportedOrganizationCipherMessage =>
+        $"{UnsupportedOrganizationCipherCount} 个共享条目因组织密钥无法解密，已隐藏。";
 
     // 当前快照来自离线缓存(未联网同步) → 提示用户数据可能已过期。
     [ObservableProperty]
@@ -189,7 +404,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     public bool NoSelection => Detail is null;
 
     // 详情要求主密码重提示且当前投影尚未解锁 → 显示"验证后显示敏感字段"入口。
-    public bool ShowSensitiveUnlock => Detail is { Reprompt: true, SensitiveUnlocked: false };
+    public bool ShowSensitiveUnlock =>
+        SelectedItem?.CanViewPassword == true
+        && Detail is { Reprompt: true, SensitiveUnlocked: false };
 
     // 右栏“未选择任何项目”空状态浮层:无选中且不在编辑(新建条目时 Detail 为空但在编辑,需排除)。
     public bool ShowNoSelectionPlaceholder => Detail is null && !IsEditing;
@@ -199,21 +416,34 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         Detail is LoginDetail login ? Core.IconDomain.Extract(login.Uri) : null;
     public string? SelectedFilterTag => TagForFilter(SelectedFilter);
     public bool IsSelectedItemDeleted => SelectedItem?.IsDeleted == true;
+    public bool IsSelectedItemArchived => SelectedItem?.IsArchived == true;
     public bool IsFolderFilterSelected => SelectedFilter?.Kind == FilterKind.Folder;
     public bool IsTrashFilterSelected => SelectedFilter?.Kind == FilterKind.Trash;
+    public bool IsArchiveFilterSelected => SelectedFilter?.Kind == FilterKind.Archive;
+    public bool ShowArchiveSelectionAction =>
+        CanArchiveItems && !IsTrashFilterSelected && !IsArchiveFilterSelected;
+    public bool ShowUnarchiveSelectionAction => CanUnarchiveItems && IsArchiveFilterSelected;
 
     public int TrashCount => Items.Count(i => i.IsDeleted);
     public bool HasTrashItems => TrashCount > 0;
     public bool IsTrashEmpty => IsTrashFilterSelected && TrashCount == 0;
     public bool CanEmptyRecycleBin => IsTrashFilterSelected && HasTrashItems;
     public string TrashHeader => $"回收站 ({TrashCount})";
+    public int ArchiveCount => Items.Count(i => i.IsArchived && !i.IsDeleted);
+    public bool IsArchiveEmpty => IsArchiveFilterSelected && ArchiveCount == 0;
 
     // 保险库内一条(未删除)记录都没有 → 空库引导。
-    public bool HasNoItems => !IsTrashFilterSelected && Items.All(i => i.IsDeleted);
+    public bool HasNoItems => !IsTrashFilterSelected && !IsArchiveFilterSelected
+        && Items.All(i => i.IsDeleted || i.IsArchived);
     // 库里有记录,但当前搜索/筛选结果为空 → 无结果提示。
-    public bool NoResults => FilteredItems.Count == 0 && !HasNoItems && !IsTrashEmpty;
+    public bool NoResults => FilteredItems.Count == 0 && !HasNoItems && !IsTrashEmpty && !IsArchiveEmpty;
 
     public event EventHandler? FoldersChanged;
+    public event EventHandler? SelectionRebindRequested;
+
+    public bool IsRebuildingItems => _isRebuildingFilteredItems;
+
+    public bool CanChangeEditorType => _editingId is null && CanEditEditorDraft;
 
     public string EditorTitle => EditorDraft?.Type switch
     {
@@ -222,6 +452,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         VaultItemKind.Identity => _editingId is null ? "新增身份" : "编辑身份",
         VaultItemKind.Note => _editingId is null ? "新增笔记" : "编辑笔记",
         VaultItemKind.Ssh => _editingId is null ? "新增 SSH 密钥" : "编辑 SSH 密钥",
+        VaultItemKind.BankAccount => _editingId is null ? "新增银行账户" : "编辑银行账户",
+        VaultItemKind.DriversLicense => _editingId is null ? "新增驾驶证" : "编辑驾驶证",
+        VaultItemKind.Passport => _editingId is null ? "新增护照" : "编辑护照",
         _ => string.Empty,
     };
 
@@ -233,10 +466,20 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         _attachments = attachments;
         _savedStore = savedStore;
         _reprompt = reprompt;
+        SubscribeToCipherCreateGateChanges(service);
+        Capabilities = service.Capabilities;
         foreach (var it in service.GetItems()) Items.Add(it);
         foreach (var f in service.GetFilters()) Filters.Add(f);
         SkippedCipherCount = service.SkippedCipherCount;
+        UnsupportedOrganizationCipherCount = service.UnsupportedOrganizationCipherCount;
         DataStale = service.DataStale;
+        if (service.GetPendingCipherCreate() is { } pending)
+        {
+            _pendingCipherCreate = pending;
+            DataStale = true;
+            OperationWarning = "新条目的保存结果仍待确认。请先同步，不要重复提交。";
+            OperationError = "检测到此账户存在待确认的新建操作。";
+        }
         if (savedStore is not null)
             foreach (var v in savedStore.GetAll()) SavedViews.Add(v);
         SelectedFilter = Filters.FirstOrDefault();
@@ -299,6 +542,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(HasDetailSelected));
         OnPropertyChanged(nameof(NoSelection));
         OnPropertyChanged(nameof(IsSelectedItemDeleted));
+        OnPropertyChanged(nameof(IsSelectedItemArchived));
         OnPropertyChanged(nameof(DetailIconDomain));
     }
 
@@ -332,9 +576,16 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         {
             "vault:allitems" => Filters.FirstOrDefault(f => f.Kind == FilterKind.AllItems),
             "vault:favorites" => Filters.FirstOrDefault(f => f.Kind == FilterKind.Favorites),
+            "vault:archive" => Filters.FirstOrDefault(f => f.Kind == FilterKind.Archive),
             "vault:trash" => Filters.FirstOrDefault(f => f.Kind == FilterKind.Trash),
             _ when tag.StartsWith("vault:type:", StringComparison.Ordinal) => FindTypeFilter(tag["vault:type:".Length..]),
             _ when tag.StartsWith("vault:folder:", StringComparison.Ordinal) => FindFolderFilter(tag["vault:folder:".Length..]),
+            _ when tag.StartsWith("vault:organization:", StringComparison.Ordinal) =>
+                Filters.FirstOrDefault(filter => filter.Kind == FilterKind.Organization
+                    && filter.OrganizationId == tag["vault:organization:".Length..]),
+            _ when tag.StartsWith("vault:collection:", StringComparison.Ordinal) =>
+                Filters.FirstOrDefault(filter => filter.Kind == FilterKind.Collection
+                    && filter.CollectionId == tag["vault:collection:".Length..]),
             _ => null,
         };
     }
@@ -353,15 +604,23 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(SelectedFilterTag));
         OnPropertyChanged(nameof(IsFolderFilterSelected));
         OnPropertyChanged(nameof(IsTrashFilterSelected));
+        OnPropertyChanged(nameof(IsArchiveFilterSelected));
+        OnPropertyChanged(nameof(ShowArchiveSelectionAction));
+        OnPropertyChanged(nameof(ShowUnarchiveSelectionAction));
     }
 
     private static string? TagForFilter(FilterNode? filter) => filter?.Kind switch
     {
         FilterKind.AllItems => "vault:allitems",
         FilterKind.Favorites => "vault:favorites",
+        FilterKind.Archive => "vault:archive",
         FilterKind.Trash => "vault:trash",
         FilterKind.Type when filter.TypeFilter is not null => $"vault:type:{filter.TypeFilter}",
         FilterKind.Folder when !string.IsNullOrWhiteSpace(filter.FolderId) => $"vault:folder:{filter.FolderId}",
+        FilterKind.Organization when !string.IsNullOrWhiteSpace(filter.OrganizationId) =>
+            $"vault:organization:{filter.OrganizationId}",
+        FilterKind.Collection when !string.IsNullOrWhiteSpace(filter.CollectionId) =>
+            $"vault:collection:{filter.CollectionId}",
         _ => null,
     };
 
@@ -376,11 +635,18 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
             IEnumerable<CipherListItem> baseItems = SelectedFilter?.Kind switch
             {
-                FilterKind.Favorites => Items.Where(i => i.Favorite && !i.IsDeleted),
+                FilterKind.Favorites => Items.Where(i => i.Favorite && !i.IsDeleted && !i.IsArchived),
+                FilterKind.Archive   => Items.Where(i => i.IsArchived && !i.IsDeleted),
                 FilterKind.Trash     => Items.Where(i => i.IsDeleted),
-                FilterKind.Type      => Items.Where(i => i.Kind == SelectedFilter.TypeFilter && !i.IsDeleted),
-                FilterKind.Folder    => Items.Where(i => i.FolderId == SelectedFilter.FolderId && !i.IsDeleted),
-                _                    => Items.Where(i => !i.IsDeleted), // AllItems 及未选中
+                FilterKind.Type      => Items.Where(i => i.Kind == SelectedFilter.TypeFilter && !i.IsDeleted && !i.IsArchived),
+                FilterKind.Folder    => Items.Where(i => i.FolderId == SelectedFilter.FolderId && !i.IsDeleted && !i.IsArchived),
+                FilterKind.Organization => Items.Where(i =>
+                    i.OrganizationId == SelectedFilter.OrganizationId && !i.IsDeleted && !i.IsArchived),
+                FilterKind.Collection => Items.Where(i =>
+                    i.CollectionIds.Contains(SelectedFilter.CollectionId ?? string.Empty, StringComparer.Ordinal)
+                    && !i.IsDeleted
+                    && !i.IsArchived),
+                _                    => Items.Where(i => !i.IsDeleted && !i.IsArchived), // AllItems 及未选中
             };
 
             foreach (var i in VaultQuery.Apply(baseItems, SearchText, CurrentFacets, SelectedSort))
@@ -394,7 +660,11 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         }
 
         if (!wasRebuildingFilteredItems)
+        {
             RestoreVisibleSelection(selectedId);
+            if (IsSelectionMode)
+                SelectionRebindRequested?.Invoke(this, EventArgs.Empty);
+        }
         OnPropertyChanged(nameof(HasNoItems));
         OnPropertyChanged(nameof(NoResults));
         OnPropertyChanged(nameof(HasActiveRefinement));
@@ -403,6 +673,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(IsTrashEmpty));
         OnPropertyChanged(nameof(CanEmptyRecycleBin));
         OnPropertyChanged(nameof(TrashHeader));
+        OnPropertyChanged(nameof(ArchiveCount));
+        OnPropertyChanged(nameof(IsArchiveEmpty));
     }
 
     private void RestoreVisibleSelection(string? id)
@@ -422,7 +694,16 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     }
 
     private static readonly VaultItemKind[] TypeOrder =
-        { VaultItemKind.Login, VaultItemKind.Card, VaultItemKind.Identity, VaultItemKind.Note, VaultItemKind.Ssh };
+    {
+        VaultItemKind.Login,
+        VaultItemKind.Card,
+        VaultItemKind.Identity,
+        VaultItemKind.Note,
+        VaultItemKind.Ssh,
+        VaultItemKind.BankAccount,
+        VaultItemKind.DriversLicense,
+        VaultItemKind.Passport,
+    };
 
     private static string TypeDisplayName(VaultItemKind kind) => kind switch
     {
@@ -431,6 +712,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         VaultItemKind.Identity => "身份",
         VaultItemKind.Note => "笔记",
         VaultItemKind.Ssh => "SSH 密钥",
+        VaultItemKind.BankAccount => "银行账户",
+        VaultItemKind.DriversLicense => "驾驶证",
+        VaultItemKind.Passport => "护照",
         _ => "其他",
     };
 
@@ -457,7 +741,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         }
 
         // 选具体文件夹:单组、不显头。
-        if (SelectedFilter?.Kind == FilterKind.Folder)
+        if (SelectedFilter?.Kind is FilterKind.Folder or FilterKind.Organization or FilterKind.Collection)
         {
             if (FilteredItems.Count == 0)
                 return;
@@ -497,9 +781,30 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     public void BeginAdd(VaultItemKind type)
     {
+        LoadPendingCipherCreateFromLedger();
+        if (!CanBeginCipherCreate)
+        {
+            OperationError = _pendingCipherCreate is not null
+                ? "请先同步并确认上一次新建结果，再创建其他条目。"
+                : _service.HasPendingOrInFlightCipherCreate()
+                    ? "另一个新建操作仍在进行或等待确认。"
+                    : "当前有保险库操作正在进行。";
+            return;
+        }
+
+        if (IsNewCipherType(type) && !CanCreateNewCipherTypes)
+        {
+            OperationError = "当前服务器未确认支持创建此类型的条目。";
+            return;
+        }
+
         _editingId = null;
+        OnPropertyChanged(nameof(CanChangeEditorType));
         EditorDraft = CipherEditorDraft.CreateDefault(type);
-        EditorError = string.Empty;
+        ConfigureEditorDestinations(canChoose: true);
+        EditorError = EditorDestinations.Count == 0
+            ? "当前账户没有可写入的密码库或组织集合。"
+            : string.Empty;
         OperationError = string.Empty;
         IsEditing = true;
         SelectedItem = null;
@@ -532,13 +837,48 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         Func<CancellationToken, Task<string?>> prompt,
         CancellationToken ct = default)
     {
+        var lifecycleEpoch = _lifecycleEpoch;
+        LoadPendingCipherCreateFromLedger();
+        if (!CanStartVaultOperation)
+            return UiOperationResult.Busy();
+        if (_pendingCipherCreate is not null)
+            return UiOperationResult.Failure("请先同步并确认上一次新建结果。");
+
+        var source = Items.FirstOrDefault(item => item.Id == id);
+        if (source is { CanViewPassword: false })
+            return UiOperationResult.Failure("该组织条目已隐藏密码，不能编辑。请联系组织管理员调整权限。");
+        if (source?.CanModify != true)
+            return UiOperationResult.Failure("当前条目不能编辑。");
+
         var authorization = await EnsureAuthorizedAsync(
             id, SensitiveItemAction.Edit, prompt, ct);
         if (!authorization.IsSuccess)
             return new UiOperationResult(authorization.Status, authorization.Error);
+        if (lifecycleEpoch != _lifecycleEpoch)
+            return UiOperationResult.Cancelled();
+        if (!CanStartVaultOperation)
+            return UiOperationResult.Busy();
+        if (_pendingCipherCreate is not null)
+            return UiOperationResult.Failure("请先同步并确认上一次新建结果。");
 
-        EditorDraft = _service.GetDraft(id);
+        CipherEditorDraft draft;
+        try
+        {
+            draft = _service.GetDraft(id);
+        }
+        catch (Core.Services.OrganizationCipherOperationException)
+        {
+            return UiOperationResult.Failure("该组织条目的密码查看权限已被撤销，不能编辑。");
+        }
+        catch (InvalidOperationException)
+        {
+            return UiOperationResult.Failure("条目已发生变化，请刷新后重试。");
+        }
+
+        EditorDraft = draft;
         _editingId = id;
+        OnPropertyChanged(nameof(CanChangeEditorType));
+        ConfigureEditorDestinations(canChoose: false);
         EditorError = string.Empty;
         OperationError = string.Empty;
         IsEditing = true;
@@ -546,25 +886,165 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         return UiOperationResult.Success();
     }
 
+    public async Task<UiOperationResult> BeginCloneAsync(
+        string id,
+        Func<CancellationToken, Task<string?>> prompt,
+        CancellationToken ct = default)
+    {
+        var lifecycleEpoch = _lifecycleEpoch;
+        LoadPendingCipherCreateFromLedger();
+        if (!CanStartVaultOperation)
+            return UiOperationResult.Busy();
+        if (!CanBeginCipherCreate)
+            return UiOperationResult.Failure("请先同步并确认上一次新建结果。");
+
+        var source = Items.FirstOrDefault(item => item.Id == id);
+        if (source is { CanViewPassword: false })
+            return UiOperationResult.Failure("该组织条目已隐藏密码，不能创建副本。请联系组织管理员调整权限。");
+        if (source?.CanClone != true)
+            return UiOperationResult.Failure("当前条目不能创建副本。");
+
+        var authorization = await EnsureAuthorizedAsync(
+            id, SensitiveItemAction.Clone, prompt, ct);
+        if (!authorization.IsSuccess)
+            return new UiOperationResult(authorization.Status, authorization.Error);
+        if (lifecycleEpoch != _lifecycleEpoch)
+            return UiOperationResult.Cancelled();
+        if (!CanStartVaultOperation)
+            return UiOperationResult.Busy();
+        if (!CanBeginCipherCreate)
+            return UiOperationResult.Failure("请先同步并确认上一次新建结果。");
+
+        CipherEditorDraft draft;
+        try
+        {
+            draft = _service.GetDraft(id);
+        }
+        catch (Core.Services.OrganizationCipherOperationException)
+        {
+            return UiOperationResult.Failure("该组织条目的密码查看权限已被撤销，不能创建副本。");
+        }
+        catch (InvalidOperationException)
+        {
+            return UiOperationResult.Failure("条目已发生变化，请刷新后重试。");
+        }
+
+        draft.Name = string.IsNullOrWhiteSpace(draft.Name)
+            ? "未命名条目 副本"
+            : $"{draft.Name} 副本";
+        draft.Favorite = false;
+        EditorDraft = draft;
+        _editingId = null;
+        OnPropertyChanged(nameof(CanChangeEditorType));
+        ConfigureEditorDestinations(canChoose: true);
+        EditorError = string.Empty;
+        OperationError = string.Empty;
+        IsSelectionMode = false;
+        IsEditing = true;
+        SelectedItem = null;
+        Detail = null;
+        OnPropertyChanged(nameof(HasDetailSelected));
+        OnPropertyChanged(nameof(NoSelection));
+        OnPropertyChanged(nameof(DetailIconDomain));
+        OnPropertyChanged(nameof(EditorTitle));
+        return UiOperationResult.Success();
+    }
+
     public void CancelEdit()
+    {
+        if (!CanCancelEditor)
+            return;
+
+        CloseEditor();
+    }
+
+    private void CloseEditor()
     {
         IsEditing = false;
         EditorDraft = null;
+        _ownedPendingCipherCreateFingerprint = null;
         EditorError = string.Empty;
         OperationError = string.Empty;
         _editingId = null;
+        OnPropertyChanged(nameof(CanChangeEditorType));
+        _canChooseEditorDestination = false;
+        EditorDestinations = [CipherDestinationOption.Personal];
+        EditorCollectionOptions = [];
+        OnPropertyChanged(nameof(CanChooseEditorDestination));
+        OnPropertyChanged(nameof(ShowEditorCollectionOptions));
         OnPropertyChanged(nameof(EditorTitle));
     }
 
     public void ChangeEditorType(VaultItemKind type)
     {
-        if (EditorDraft is null)
+        if (EditorDraft is null || !CanChangeEditorType)
             return;
+        if (IsNewCipherType(type) && !CanCreateNewCipherTypes)
+        {
+            EditorError = "当前服务器未确认支持创建此类型的条目。";
+            return;
+        }
 
         EditorDraft.Type = type;
         EditorError = string.Empty;
         OnPropertyChanged(nameof(EditorTitle));
         OnPropertyChanged(nameof(EditorDraft));
+    }
+
+    private static bool IsNewCipherType(VaultItemKind type) => type is
+        VaultItemKind.BankAccount
+        or VaultItemKind.DriversLicense
+        or VaultItemKind.Passport;
+
+    private void ConfigureEditorDestinations(bool canChoose)
+    {
+        _canChooseEditorDestination = canChoose;
+        var destinations = _service.GetCipherDestinations().ToList();
+        if (!canChoose
+            && EditorDraft is { } draft
+            && !destinations.Any(destination =>
+                string.Equals(destination.OrganizationId, draft.OrganizationId, StringComparison.Ordinal)))
+        {
+            destinations.Add(new CipherDestinationOption(
+                draft.OrganizationId is null ? "个人密码库（当前）" : "当前组织位置",
+                draft.OrganizationId,
+                null));
+        }
+
+        EditorDestinations = destinations;
+        if (canChoose)
+        {
+            if (EditorSelectedDestination is null && destinations.FirstOrDefault() is { } first)
+                EditorSelectedDestination = first;
+            else if (EditorDraft?.OrganizationId is { } organizationId)
+            {
+                EditorCollectionOptions = BuildWritableNewCipherCollectionOptions(
+                    organizationId,
+                    EditorDraft.CollectionIds);
+                EditorDraft.ReplaceCollectionIds(
+                    EditorCollectionOptions
+                        .Where(option => option.IsSelected)
+                        .Select(option => option.Id));
+            }
+        }
+        else
+        {
+            EditorCollectionOptions = [];
+        }
+        OnPropertyChanged(nameof(CanChooseEditorDestination));
+        OnPropertyChanged(nameof(EditorSelectedDestination));
+        OnPropertyChanged(nameof(ShowEditorCollectionOptions));
+    }
+
+    private IReadOnlyList<CipherCollectionOption> BuildWritableNewCipherCollectionOptions(
+        string organizationId,
+        IReadOnlyCollection<string> selectedCollectionIds)
+    {
+        var selected = selectedCollectionIds.ToHashSet(StringComparer.Ordinal);
+        var options = _service.GetCipherCollectionOptions(organizationId);
+        foreach (var option in options)
+            option.IsSelected = selected.Contains(option.Id);
+        return options;
     }
 
     // 唯一 Vault 操作 runner:_operationGate 原子去重(第二个并发调用立即返回 Busy,不触发 action);
@@ -581,6 +1061,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         using (operation)
         {
             _operationCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            if (kind != VaultOperationKind.ResolveCipherCreate)
+                SetPendingCreateAbandonedWarning(false);
             CurrentOperation = kind;
             OperationError = string.Empty;
             try
@@ -594,12 +1076,63 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             }
             catch (Core.Services.VaultRefreshException) when (committedRefreshFailure is not null)
             {
+                if (kind == VaultOperationKind.SaveCipher && !CanPublishCurrentCipherSave())
+                    return UiOperationResult<T>.Cancelled();
                 DataStale = true;
                 OperationWarning = "更改已保存，但本地密码库刷新失败，请手动同步。";
+                ReloadItems();
+                ReloadFilters();
                 return UiOperationResult<T>.Success(committedRefreshFailure());
+            }
+            catch (Core.Services.CipherCreateOutcomeUncertainException ex)
+            {
+                var pending = _service.RememberPendingCipherCreate(ex.Pending);
+                if (!CanPublishPendingCipherCreate(pending))
+                    return UiOperationResult<T>.Cancelled();
+                ClaimPendingCipherCreateOwnership(pending);
+                BlockPendingCipherCreate(
+                    pending,
+                    "无法确认新条目是否已保存。请手动同步，在确认结果前不要重复提交。",
+                    "新条目的保存结果不确定，已保留当前草稿。");
+                return UiOperationResult<T>.Failure(OperationError);
+            }
+            catch (Core.Services.CipherCreateSnapshotMismatchException ex)
+            {
+                var pending = _service.RememberPendingCipherCreate(ex.Pending);
+                if (!CanPublishPendingCipherCreate(pending))
+                    return UiOperationResult<T>.Cancelled();
+                ClaimPendingCipherCreateOwnership(pending);
+                ReloadItems();
+                ReloadFilters();
+                BlockPendingCipherCreate(
+                    pending,
+                    "新条目可能已保存，但本地快照无法可靠核对。请手动同步。",
+                    "无法确认新条目的服务器记录，已保留当前草稿。");
+                return UiOperationResult<T>.Failure(OperationError);
+            }
+            catch (Core.Services.VaultBatchMutationRecoveryException)
+            {
+                DataStale = true;
+                OperationWarning = "操作可能已部分完成，且无法刷新本地密码库。请立即手动同步。";
+                OperationError = "无法确认服务器更改是否完整完成。";
+                return UiOperationResult<T>.Failure(OperationError);
+            }
+            catch (Core.Services.VaultMutationReconciliationException)
+            {
+                OperationWarning = "操作仅部分完成，已刷新为服务器当前状态。";
+                OperationError = "服务器未对所有所选条目应用更改。";
+                return UiOperationResult<T>.Failure(OperationError);
             }
             catch (Exception ex) when (
                 ex is Core.Services.AttachmentTooLargeException
+                    or Core.Services.CipherEditConflictException
+                    or Core.Services.LegacyCipherAttachmentTransferException
+                    or Core.Services.InvalidCipherWriteShapeException
+                    or Core.Services.UnsupportedCipherTypeWriteException
+                    or Core.Services.UnsupportedCipherArchiveOperationException
+                    or Core.Services.OrganizationCipherOperationException
+                    or Core.Services.OrganizationPolicyException
+                    or Core.Services.CipherCreatePendingOperationException
                     or Vault.AttachmentUploadCompensationException
                     or Api.VaultWriteException
                     or HttpRequestException
@@ -610,7 +1143,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
                     or TimeoutException
                 || Api.RequestTimeoutClassifier.IsTimeout(ex, _operationCts.Token))
             {
-                OperationError = SafeOperationMessage(ex);
+                OperationError = kind == VaultOperationKind.ResolveCipherCreate
+                    ? "无法清除本机待确认状态，防重复保护仍然有效。请检查本地存储后重试。"
+                    : SafeOperationMessage(ex);
                 return UiOperationResult<T>.Failure(OperationError);
             }
             finally
@@ -621,6 +1156,285 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             }
         }
     }
+
+    private void BlockPendingCipherCreate(
+        CipherCreatePending pending,
+        string warning,
+        string error)
+    {
+        SetPendingCreateAbandonedWarning(false);
+        _pendingCipherCreate = pending;
+        DataStale = true;
+        OperationWarning = warning;
+        OperationError = error;
+        NotifyPendingCipherCreateChanged();
+    }
+
+    private bool LoadPendingCipherCreateFromLedger()
+    {
+        if (_service.GetPendingCipherCreate() is not { } pending)
+            return _pendingCipherCreate is not null;
+        if (_pendingCipherCreate is not null
+            && PendingCreateStateMatches(_pendingCipherCreate, pending))
+        {
+            return true;
+        }
+
+        BlockPendingCipherCreate(
+            pending,
+            "新条目的保存结果仍待确认。请先同步，不要重复提交。",
+            "检测到此账户存在待确认的新建操作。");
+        return true;
+    }
+
+    private void ClearPendingCipherCreate()
+    {
+        if (_pendingCipherCreate is null)
+            return;
+
+        _pendingCipherCreate = null;
+        NotifyPendingCipherCreateChanged();
+    }
+
+    private void NotifyPendingCipherCreateChanged()
+    {
+        OnPropertyChanged(nameof(HasPendingCipherCreate));
+        OnPropertyChanged(nameof(CanSaveEditorDraft));
+        OnPropertyChanged(nameof(CanCancelEditor));
+        OnPropertyChanged(nameof(CanBeginCipherCreate));
+        OnPropertyChanged(nameof(CanEditEditorDraft));
+        OnPropertyChanged(nameof(CanChangeEditorType));
+        OnPropertyChanged(nameof(CanCheckPendingCipherCreate));
+        OnPropertyChanged(nameof(CanAbandonPendingCipherCreate));
+        OnPropertyChanged(nameof(HasRecoverablePendingDraft));
+        OnPropertyChanged(nameof(PendingCipherCreateTitle));
+        OnPropertyChanged(nameof(PendingCipherCreateMessage));
+        OnPropertyChanged(nameof(PendingCipherCreateDraftMessage));
+        OnPropertyChanged(nameof(ShowOperationWarningInfo));
+        OnPropertyChanged(nameof(OperationWarningTitle));
+    }
+
+    private void SetPendingCreateAbandonedWarning(bool value)
+    {
+        if (_showPendingCreateAbandonedWarning == value)
+            return;
+
+        _showPendingCreateAbandonedWarning = value;
+        OnPropertyChanged(nameof(OperationWarningTitle));
+    }
+
+    private void SubscribeToCipherCreateGateChanges(IVaultUiService service)
+    {
+        var weakTarget = new WeakReference<VaultViewModel>(this);
+        var synchronizationContext = SynchronizationContext.Current;
+        EventHandler? handler = null;
+        handler = (_, _) =>
+        {
+            if (!weakTarget.TryGetTarget(out _))
+            {
+                service.CipherCreateGateChanged -= handler!;
+                return;
+            }
+
+            if (synchronizationContext is null
+                || ReferenceEquals(SynchronizationContext.Current, synchronizationContext))
+            {
+                if (weakTarget.TryGetTarget(out var target))
+                    target.OnCipherCreateGateChanged();
+                return;
+            }
+
+            synchronizationContext.Post(
+                static state =>
+                {
+                    var weak = (WeakReference<VaultViewModel>)state!;
+                    if (weak.TryGetTarget(out var target))
+                        target.OnCipherCreateGateChanged();
+                },
+                weakTarget);
+        };
+        service.CipherCreateGateChanged += handler;
+    }
+
+    private void OnCipherCreateGateChanged()
+    {
+        if (!_acceptCipherCreateGateNotifications)
+            return;
+
+        if (_service.GetPendingCipherCreate() is { } pending)
+        {
+            if (_pendingCipherCreate is null
+                || !PendingCreateStateMatches(_pendingCipherCreate, pending))
+            {
+                BlockPendingCipherCreate(
+                    pending,
+                    "新条目的保存结果仍待确认。请先同步，不要重复提交。",
+                    "检测到此账户存在待确认的新建操作。");
+            }
+        }
+        else if (_pendingCipherCreate is not null
+            && !_service.HasPendingOrInFlightCipherCreate())
+        {
+            var cleared = _pendingCipherCreate;
+            var ownsDraft = OwnsPendingCipherCreate(cleared);
+            var explicitlyAbandoned = _explicitlyAbandonedPendingCipherCreate is not null
+                && PendingCreateStateMatches(cleared, _explicitlyAbandonedPendingCipherCreate);
+            ClearPendingCipherCreate();
+            if (explicitlyAbandoned)
+            {
+                _ownedPendingCipherCreateFingerprint = null;
+                PublishPendingCipherCreateAbandoned();
+            }
+            else if (ownsDraft)
+            {
+                CloseEditor();
+                OperationError = string.Empty;
+                OperationWarning = "待确认的新条目已完成核销，请刷新密码库查看。";
+            }
+        }
+
+        OnPropertyChanged(nameof(CanSaveEditorDraft));
+        OnPropertyChanged(nameof(CanBeginCipherCreate));
+        OnPropertyChanged(nameof(CanEditEditorDraft));
+        OnPropertyChanged(nameof(CanChangeEditorType));
+    }
+
+    private void ClaimPendingCipherCreateOwnership(CipherCreatePending pending)
+    {
+        var context = _activeCipherSave;
+        if (context is null
+            || !context.IsCreate
+            || context.LifecycleEpoch != _lifecycleEpoch
+            || !ReferenceEquals(EditorDraft, context.Draft)
+            || !IsEditing)
+        {
+            return;
+        }
+
+        _ownedPendingCipherCreateFingerprint = pending.Witness.KeyFingerprint;
+    }
+
+    private bool OwnsPendingCipherCreate(CipherCreatePending pending) =>
+        string.Equals(
+            _ownedPendingCipherCreateFingerprint,
+            pending.Witness.KeyFingerprint,
+            StringComparison.Ordinal);
+
+    private bool CanPublishPendingCipherCreate(CipherCreatePending pending)
+    {
+        var current = _service.GetPendingCipherCreate();
+        return CanPublishCurrentCipherSave()
+            && current is not null
+            && string.Equals(
+                current.Witness.AccountId,
+                pending.Witness.AccountId,
+                StringComparison.Ordinal)
+            && current.Witness.Endpoints == pending.Witness.Endpoints
+            && string.Equals(
+                current.Witness.KeyFingerprint,
+                pending.Witness.KeyFingerprint,
+                StringComparison.Ordinal);
+    }
+
+    private bool CanPublishCurrentCipherSave()
+    {
+        var context = _activeCipherSave;
+        return context is not null
+            && context.LifecycleEpoch == _lifecycleEpoch
+            && ReferenceEquals(EditorDraft, context.Draft)
+            && IsEditing;
+    }
+
+    public CipherCreatePending? CapturePendingCipherCreate()
+    {
+        LoadPendingCipherCreateFromLedger();
+        return _pendingCipherCreate;
+    }
+
+    public async Task<UiOperationResult> AbandonPendingCipherCreateAsync(
+        CipherCreatePending expected,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        ArgumentNullException.ThrowIfNull(expected.Witness);
+        LoadPendingCipherCreateFromLedger();
+        if (_pendingCipherCreate is null
+            || !PendingCreateStateMatches(_pendingCipherCreate, expected))
+        {
+            OperationError = "待确认状态已变化，请重新检查后再决定是否放弃。";
+            return UiOperationResult.Failure(OperationError);
+        }
+
+        var lifecycleEpoch = _lifecycleEpoch;
+        _explicitlyAbandonedPendingCipherCreate = expected;
+        try
+        {
+            var result = await RunOperationAsync(
+                VaultOperationKind.ResolveCipherCreate,
+                token =>
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (lifecycleEpoch != _lifecycleEpoch)
+                        throw new OperationCanceledException(token);
+                    return Task.FromResult(_service.AbandonPendingCipherCreate(expected));
+                },
+                ct);
+            if (!result.IsSuccess)
+                return new UiOperationResult(result.Status, result.Error);
+            if (lifecycleEpoch != _lifecycleEpoch)
+                return UiOperationResult.Cancelled();
+            if (result.Value != true)
+            {
+                _explicitlyAbandonedPendingCipherCreate = null;
+                OnCipherCreateGateChanged();
+                if (_pendingCipherCreate is null)
+                    return UiOperationResult.Success();
+
+                OperationError = "待确认状态已变化，请重新检查后再决定是否放弃。";
+                return UiOperationResult.Failure(OperationError);
+            }
+
+            if (_pendingCipherCreate is not null
+                && PendingCreateStateMatches(_pendingCipherCreate, expected))
+            {
+                _ownedPendingCipherCreateFingerprint = null;
+                ClearPendingCipherCreate();
+            }
+            PublishPendingCipherCreateAbandoned();
+            return UiOperationResult.Success();
+        }
+        finally
+        {
+            _explicitlyAbandonedPendingCipherCreate = null;
+        }
+    }
+
+    private void PublishPendingCipherCreateAbandoned()
+    {
+        SetPendingCreateAbandonedWarning(true);
+        DataStale = true;
+        OperationError = string.Empty;
+        OperationWarning = "已清除本机待确认状态。服务器上仍可能存在该条目，请先查找再决定是否手动保存。";
+        NotifyPendingCipherCreateChanged();
+    }
+
+    private static bool PendingCreateStateMatches(
+        CipherCreatePending left,
+        CipherCreatePending right) =>
+        string.Equals(
+            left.Witness.AccountId,
+            right.Witness.AccountId,
+            StringComparison.Ordinal)
+        && left.Witness.Endpoints == right.Witness.Endpoints
+        && string.Equals(
+            left.Witness.KeyFingerprint,
+            right.Witness.KeyFingerprint,
+            StringComparison.Ordinal)
+        && left.CommitConfirmed == right.CommitConfirmed
+        && string.Equals(
+            left.ExpectedCipherId,
+            right.ExpectedCipherId,
+            StringComparison.Ordinal);
 
     private static string SafeOperationMessage(Exception ex)
     {
@@ -634,6 +1448,21 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         return ex switch
         {
             Core.Services.AttachmentTooLargeException => ex.Message,
+            Core.Services.CipherEditConflictException =>
+                "此条目已在其他位置更新或删除，请重新加载后再编辑。",
+            Core.Services.LegacyCipherAttachmentTransferException =>
+                "此旧格式条目包含附件，当前无法安全转移到组织。",
+            Core.Services.VaultMutationReconciliationException =>
+                "服务器未对所有条目应用更改，已刷新为服务器当前状态。",
+            Core.Services.InvalidCipherWriteShapeException => ex.Message,
+            Core.Services.UnsupportedCipherTypeWriteException => ex.Message,
+            Core.Services.UnsupportedCipherArchiveOperationException => ex.Message,
+            Core.Services.OrganizationCipherOperationException =>
+                "当前账户没有此组织条目的写入权限，或组织密钥不可用。",
+            Core.Services.OrganizationPolicyException =>
+                "组织策略不允许执行此操作。",
+            Core.Services.CipherCreatePendingOperationException =>
+                "另一个新建操作仍在进行或等待确认，请先同步。",
             Api.VaultWriteException => "服务器拒绝了此更改，请检查输入后重试。",
             InvalidDataException or System.Security.Cryptography.CryptographicException =>
                 "附件内容无效或完整性校验失败。",
@@ -649,8 +1478,33 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     public async Task<UiOperationResult<string>> SaveDraftAsync(CancellationToken ct = default)
     {
+        if (LoadPendingCipherCreateFromLedger()
+            && (_editingId is null || HasOwnedPendingCipherCreate))
+        {
+            EditorError = "请先手动同步并确认上一次保存结果。";
+            return UiOperationResult<string>.Failure(EditorError);
+        }
+
+        if (_editingId is null && _service.HasPendingOrInFlightCipherCreate())
+        {
+            EditorError = "另一个新建操作仍在进行或等待确认，请先同步。";
+            return UiOperationResult<string>.Failure(EditorError);
+        }
+
         if (EditorDraft is null)
             return UiOperationResult<string>.Failure("没有可保存的草稿");
+        if (_editingId is null && EditorSelectedDestination is null)
+        {
+            EditorError = "当前账户没有可写入的密码库或组织集合。";
+            return UiOperationResult<string>.Failure(EditorError);
+        }
+        if (_canChooseEditorDestination)
+        {
+            EditorDraft.ReplaceCollectionIds(
+                EditorCollectionOptions
+                    .Where(option => option.IsSelected)
+                    .Select(option => option.Id));
+        }
         var errors = EditorDraft.Validate();
         if (errors.Count > 0)
         {
@@ -660,25 +1514,50 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
         var draft = EditorDraft;
         var editingId = _editingId;
-        return await RunOperationAsync(
-            VaultOperationKind.SaveCipher,
-            async token =>
-            {
-                var savedId = await _service.SaveCipherAsync(draft, editingId, token);
-                ReloadItems();
-                ReloadFilters();
-                SelectById(savedId);
-                CancelEdit();
-                return savedId;
-            },
-            ct,
-            committedRefreshFailure: () =>
-            {
-                // The remote record exists even though the refreshed snapshot is unavailable.
-                // Discard the draft so the user cannot accidentally submit the same create again.
-                CancelEdit();
-                return editingId ?? string.Empty;
-            });
+        var saveContext = new CipherSaveUiContext(
+            _lifecycleEpoch,
+            draft,
+            IsCreate: editingId is null);
+        if (Interlocked.CompareExchange(ref _activeCipherSave, saveContext, null) is not null)
+            return UiOperationResult<string>.Busy();
+        try
+        {
+            return await RunOperationAsync(
+                VaultOperationKind.SaveCipher,
+                async token =>
+                {
+                    var savedId = await _service.SaveCipherAsync(draft, editingId, token);
+                    if (!CanPublishCurrentCipherSave())
+                        throw new OperationCanceledException(token);
+                    ReloadItems();
+                    ReloadFilters();
+                    SkippedCipherCount = _service.SkippedCipherCount;
+                    UnsupportedOrganizationCipherCount = _service.UnsupportedOrganizationCipherCount;
+                    var createdCipherIsVisible = editingId is not null
+                        || Items.Any(item => string.Equals(item.Id, savedId, StringComparison.Ordinal));
+                    if (createdCipherIsVisible)
+                    {
+                        SelectById(savedId);
+                    }
+                    else
+                    {
+                        SelectedItem = null;
+                        OperationWarning = "新条目已确认保存，但当前无法解密或不可见。请勿重新创建。";
+                    }
+                    CloseEditor();
+                    return savedId;
+                },
+                ct,
+                committedRefreshFailure: () =>
+                {
+                    CloseEditor();
+                    return editingId ?? string.Empty;
+                });
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref _activeCipherSave, null, saveContext);
+        }
     }
 
     private async Task<UiOperationResult> RunWriteAndReloadAsync(
@@ -723,6 +1602,40 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             selectId: id,
             ct);
 
+    public Task<UiOperationResult> ArchiveAsync(string id, CancellationToken ct = default)
+    {
+        if (!CanArchiveItems
+            || Items.FirstOrDefault(item => item.Id == id) is not
+                { CanArchive: true, IsDeleted: false, IsArchived: false })
+        {
+            return Task.FromResult(
+                UiOperationResult.Failure("当前服务器或账户不支持此操作。"));
+        }
+
+        return RunWriteAndReloadAsync(
+            VaultOperationKind.ArchiveCipher,
+            token => _service.ArchiveCipherAsync(id, token),
+            selectId: null,
+            ct);
+    }
+
+    public Task<UiOperationResult> UnarchiveAsync(string id, CancellationToken ct = default)
+    {
+        if (!CanUnarchiveItems
+            || Items.FirstOrDefault(item => item.Id == id) is not
+                { CanUnarchive: true, IsDeleted: false, IsArchived: true })
+        {
+            return Task.FromResult(
+                UiOperationResult.Failure("当前服务器或账户不支持此操作。"));
+        }
+
+        return RunWriteAndReloadAsync(
+            VaultOperationKind.ArchiveCipher,
+            token => _service.UnarchiveCipherAsync(id, token),
+            selectId: null,
+            ct);
+    }
+
     public async Task<UiOperationResult> SaveFolderAsync(string? folderId, string name, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -749,26 +1662,186 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         return result;
     }
 
+    public CipherPlacementBaseline GetCipherPlacementBaseline(string id) =>
+        _service.GetCipherPlacementBaseline(id);
+
+    public IReadOnlyList<CipherDestinationOption> GetOrganizationDestinations() =>
+        _service.GetCipherDestinations()
+            .Where(destination => destination.OrganizationId is not null)
+            .ToArray();
+
+    public IReadOnlyList<CipherCollectionOption> GetCipherCollectionOptions(
+        string organizationId,
+        IReadOnlyCollection<string>? selectedCollectionIds = null,
+        bool lockReadOnlyAssignments = false) =>
+        _service.GetCipherCollectionOptions(
+            organizationId,
+            selectedCollectionIds,
+            lockReadOnlyAssignments);
+
+    public Task<UiOperationResult> TransferCipherToOrganizationAsync(
+        CipherPlacementBaseline baseline,
+        string organizationId,
+        IReadOnlyCollection<string> collectionIds,
+        CancellationToken ct = default) =>
+        RunPlacementOperationAsync(
+            token => _service.TransferCipherToOrganizationAsync(
+                baseline,
+                organizationId,
+                collectionIds,
+                token),
+            baseline.CipherId,
+            ct);
+
+    public Task<UiOperationResult> SetCipherCollectionsAsync(
+        CipherPlacementBaseline baseline,
+        IReadOnlyCollection<string> collectionIds,
+        CancellationToken ct = default) =>
+        RunPlacementOperationAsync(
+            token => _service.SetCipherCollectionsAsync(baseline, collectionIds, token),
+            baseline.CipherId,
+            ct);
+
+    public async Task<UiOperationResult> TransferSelectedCiphersToOrganizationAsync(
+        string organizationId,
+        IReadOnlyCollection<string> collectionIds,
+        CancellationToken ct = default)
+    {
+        if (!CanTransferSelectionToOrganization)
+            return RejectSelectionPlacement("所选条目不能批量转移到组织。");
+        if (string.IsNullOrWhiteSpace(organizationId) || collectionIds.Count == 0)
+            return RejectSelectionPlacement("请选择目标组织和至少一个可写集合。");
+
+        if (!TryCaptureSelectedPlacementBaselines(out var baselines))
+            return UiOperationResult.Failure(OperationError);
+        var result = await RunBatchAsync(
+            (_, token) => _service.TransferCiphersToOrganizationAsync(
+                baselines,
+                organizationId,
+                collectionIds,
+                token),
+            ct);
+        if (result.IsSuccess)
+            IsSelectionMode = false;
+        return result;
+    }
+
+    public Task<UiOperationResult> TransferSelectedToOrganizationAsync(
+        string organizationId,
+        IReadOnlyCollection<string> collectionIds,
+        CancellationToken ct = default) =>
+        TransferSelectedCiphersToOrganizationAsync(organizationId, collectionIds, ct);
+
+    public Task<UiOperationResult> AddSelectedCiphersToCollectionsAsync(
+        IReadOnlyCollection<string> collectionIds,
+        CancellationToken ct = default) =>
+        UpdateSelectedCipherCollectionsAsync(collectionIds, removeCollections: false, ct);
+
+    public Task<UiOperationResult> RemoveSelectedCiphersFromCollectionsAsync(
+        IReadOnlyCollection<string> collectionIds,
+        CancellationToken ct = default) =>
+        UpdateSelectedCipherCollectionsAsync(collectionIds, removeCollections: true, ct);
+
+    private async Task<UiOperationResult> UpdateSelectedCipherCollectionsAsync(
+        IReadOnlyCollection<string> collectionIds,
+        bool removeCollections,
+        CancellationToken ct)
+    {
+        if (!CanManageSelectionCollections || SelectedOrganizationId is not { } organizationId)
+            return RejectSelectionPlacement("所选条目不能批量更改集合。");
+        if (collectionIds.Count == 0)
+            return RejectSelectionPlacement("请至少选择一个可写集合。");
+
+        if (!TryCaptureSelectedPlacementBaselines(out var baselines))
+            return UiOperationResult.Failure(OperationError);
+        var result = await RunBatchAsync(
+            (_, token) => _service.BulkUpdateCipherCollectionsAsync(
+                baselines,
+                organizationId,
+                collectionIds,
+                removeCollections,
+                token),
+            ct);
+        if (result.IsSuccess)
+            IsSelectionMode = false;
+        return result;
+    }
+
+    private bool TryCaptureSelectedPlacementBaselines(
+        out CipherPlacementBaseline[] baselines)
+    {
+        try
+        {
+            baselines = _selectedIds
+                .Select(_service.GetCipherPlacementBaseline)
+                .ToArray();
+            return true;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or NotSupportedException)
+        {
+            baselines = [];
+            OperationError = "一个或多个所选条目已发生变化，请刷新后重试。";
+            return false;
+        }
+    }
+
+    private UiOperationResult RejectSelectionPlacement(string fallback)
+    {
+        OperationError = string.IsNullOrEmpty(SelectionPlacementError)
+            ? fallback
+            : SelectionPlacementError;
+        return UiOperationResult.Failure(OperationError);
+    }
+
+    private async Task<UiOperationResult> RunPlacementOperationAsync(
+        Func<CancellationToken, Task> operation,
+        string cipherId,
+        CancellationToken ct)
+    {
+        var result = await RunWriteAndReloadAsync(
+            VaultOperationKind.SaveCipher,
+            operation,
+            cipherId,
+            ct);
+        if (!result.IsSuccess)
+        {
+            ReloadSnapshotPreservingSelection(cipherId);
+            DataStale = DataStale || _service.DataStale;
+        }
+        return result;
+    }
+
     // 批量操作共用 helper:从 _selectedIds 取快照;空选择直接失败,不占用门禁、不触发服务调用。
-    private Task<UiOperationResult> RunBatchAsync(
+    private async Task<UiOperationResult> RunBatchAsync(
         Func<IReadOnlyCollection<string>, CancellationToken, Task> operation,
         CancellationToken ct = default)
     {
         var ids = _selectedIds.ToArray();
         if (ids.Length == 0)
-            return Task.FromResult(UiOperationResult.Failure("没有选择任何条目。"));
-        return RunWriteAndReloadAsync(
+            return UiOperationResult.Failure("没有选择任何条目。");
+
+        var selectedId = SelectedItem?.Id;
+        var result = await RunWriteAndReloadAsync(
             VaultOperationKind.Batch,
             token => operation(ids, token),
             selectId: null,
             ct);
+        if (!result.IsSuccess)
+        {
+            ReloadSnapshotPreservingSelection(selectedId);
+            DataStale = DataStale || _service.DataStale;
+        }
+        return result;
     }
 
     private void ReloadItems()
     {
+        Capabilities = _service.Capabilities;
         Items.Clear();
         foreach (var item in _service.GetItems())
             Items.Add(item);
+        _selectedIds.IntersectWith(Items.Select(item => item.Id));
+        NotifySelectionStateChanged();
     }
 
     private void ReloadFilters()
@@ -796,7 +1869,11 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         }
 
         if (!wasRebuildingFilteredItems)
+        {
             RestoreVisibleSelection(selectedId);
+            if (IsSelectionMode)
+                SelectionRebindRequested?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void SelectById(string? id)
@@ -820,21 +1897,90 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     public async Task<UiOperationResult> SyncAsync(CancellationToken ct = default)
     {
+        LoadPendingCipherCreateFromLedger();
         var selectedId = SelectedItem?.Id;
+        var pendingCreate = _pendingCipherCreate;
+        var lifecycleEpoch = _lifecycleEpoch;
         var result = await RunOperationAsync(
             VaultOperationKind.Sync,
             async token =>
             {
-                await _service.SyncAsync(token);
-                ReloadSnapshotPreservingSelection(selectedId);
+                Capabilities = VaultCapabilities.None;
+                CipherCreateReconciliationResult? reconciliation = null;
+                if (pendingCreate is null)
+                    await _service.SyncAsync(token);
+                else
+                    reconciliation = await _service.SyncAndReconcileCipherCreateAsync(pendingCreate, token);
+                if (lifecycleEpoch != _lifecycleEpoch)
+                    throw new OperationCanceledException(token);
+                var reconciledId = reconciliation is
+                    { Status: CipherCreateReconciliationStatus.Confirmed, ConfirmedId: { Length: > 0 } id }
+                    ? id
+                    : selectedId;
+                ReloadSnapshotPreservingSelection(reconciledId);
                 SkippedCipherCount = _service.SkippedCipherCount;
+                UnsupportedOrganizationCipherCount = _service.UnsupportedOrganizationCipherCount;
                 DataStale = _service.DataStale;
-                if (!DataStale)
+                if (pendingCreate is not null && reconciliation is not null)
+                    ApplyCipherCreateReconciliation(pendingCreate, reconciliation);
+                else if (!DataStale)
                     OperationWarning = string.Empty;
                 return true;
             },
             ct);
+        if (!result.IsSuccess && lifecycleEpoch == _lifecycleEpoch)
+        {
+            ReloadSnapshotPreservingSelection(selectedId);
+            SkippedCipherCount = _service.SkippedCipherCount;
+            UnsupportedOrganizationCipherCount = _service.UnsupportedOrganizationCipherCount;
+            DataStale = _service.DataStale || _pendingCipherCreate is not null;
+        }
         return new UiOperationResult(result.Status, result.Error);
+    }
+
+    private void ApplyCipherCreateReconciliation(
+        CipherCreatePending pending,
+        CipherCreateReconciliationResult reconciliation)
+    {
+        if (reconciliation is
+            { Status: CipherCreateReconciliationStatus.Confirmed, ConfirmedId: { Length: > 0 } confirmedId })
+        {
+            var ownsDraft = OwnsPendingCipherCreate(pending);
+            ClearPendingCipherCreate();
+            if (ownsDraft)
+                CloseEditor();
+            var confirmedCipherIsVisible = Items.Any(item =>
+                string.Equals(item.Id, confirmedId, StringComparison.Ordinal));
+            if (!IsEditing)
+                SelectById(confirmedId);
+            OperationError = string.Empty;
+            if (!confirmedCipherIsVisible)
+            {
+                OperationWarning = "新条目已确认保存，但当前无法解密或不可见。请勿重新创建。";
+            }
+            else if (!DataStale)
+            {
+                OperationWarning = string.Empty;
+            }
+            return;
+        }
+
+        DataStale = true;
+        OperationWarning = reconciliation.Status switch
+        {
+            CipherCreateReconciliationStatus.NotFound =>
+                "同步尚未观察到待确认条目，但先前请求可能仍在处理。请勿重复提交。",
+            CipherCreateReconciliationStatus.Ambiguous =>
+                "同步后找到多个可能的新条目，无法安全判断保存结果。请勿重复提交。",
+            CipherCreateReconciliationStatus.SnapshotMismatch =>
+                "同步快照与保存前状态不一致，仍无法安全判断新条目的保存结果。",
+            CipherCreateReconciliationStatus.SessionMismatch =>
+                "当前账户或服务器已变化，无法在此会话中核对新条目的保存结果。",
+            _ => "仍无法安全判断新条目的保存结果。请勿重复提交。",
+        };
+        OperationError = HasOwnedPendingCipherCreate
+            ? "新条目的保存结果仍未确认，创建该请求的草稿继续保持锁定。"
+            : "新条目的保存结果仍未确认。现有草稿仍可编辑或取消，但新的创建会继续被阻止。";
     }
 
     [RelayCommand]
@@ -848,20 +1994,71 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         var selectedId = SelectedItem?.Id;
         ReloadSnapshotPreservingSelection(selectedId);
         SkippedCipherCount = _service.SkippedCipherCount;
+        UnsupportedOrganizationCipherCount = _service.UnsupportedOrganizationCipherCount;
         // Notification-driven snapshot refreshes do not prove that the failed post-write sync
         // has recovered. Only a successful explicit SyncAsync clears the committed-write warning.
-        DataStale = _service.DataStale || HasOperationWarning;
+        DataStale = _service.DataStale || HasOperationWarning || _pendingCipherCreate is not null;
     }
 
     [RelayCommand]
     private void Add() => BeginAdd(VaultItemKind.Login);
 
+    private bool TryGetUniformOrganizationSelection(
+        out CipherListItem[] selected,
+        out string? organizationId)
+    {
+        selected = _selectedIds
+            .Select(id => Items.FirstOrDefault(item => item.Id == id))
+            .Where(item => item is not null)
+            .Cast<CipherListItem>()
+            .ToArray();
+        organizationId = null;
+        if (!HasSelection || selected.Length != _selectedIds.Count)
+            return false;
+
+        var expectedOrganizationId = string.IsNullOrWhiteSpace(selected[0].OrganizationId)
+            ? null
+            : selected[0].OrganizationId;
+        organizationId = expectedOrganizationId;
+        return selected.All(item => string.Equals(
+            string.IsNullOrWhiteSpace(item.OrganizationId) ? null : item.OrganizationId,
+            expectedOrganizationId,
+            StringComparison.Ordinal));
+    }
+
+    private bool IsPlacementTypeSupported(VaultItemKind kind) =>
+        kind is VaultItemKind.Login
+            or VaultItemKind.Card
+            or VaultItemKind.Identity
+            or VaultItemKind.Note
+            or VaultItemKind.Ssh
+        || (Capabilities.CanWriteNewCipherTypes && kind is
+            (VaultItemKind.BankAccount
+            or VaultItemKind.DriversLicense
+            or VaultItemKind.Passport));
+
+    private void NotifySelectionStateChanged()
+    {
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(HasSelection));
+        OnPropertyChanged(nameof(CanModifySelection));
+        OnPropertyChanged(nameof(CanDeleteSelection));
+        OnPropertyChanged(nameof(CanRestoreSelection));
+        OnPropertyChanged(nameof(CanMoveSelection));
+        OnPropertyChanged(nameof(CanArchiveSelection));
+        OnPropertyChanged(nameof(CanUnarchiveSelection));
+        OnPropertyChanged(nameof(CanTransferSelectionToOrganization));
+        OnPropertyChanged(nameof(CanManageSelectionCollections));
+        OnPropertyChanged(nameof(SelectedOrganizationId));
+        OnPropertyChanged(nameof(SelectionPlacementError));
+        OnPropertyChanged(nameof(HasSelectionPlacementError));
+    }
+
     public void ToggleSelection(string id)
     {
         if (!_selectedIds.Remove(id))
             _selectedIds.Add(id);
-        OnPropertyChanged(nameof(SelectedCount));
-        OnPropertyChanged(nameof(HasSelection));
+        NotifySelectionStateChanged();
     }
 
     // 由列表的 SelectionChanged 逐项调用:把 ListView 的勾选/取消精确同步进 _selectedIds
@@ -871,8 +2068,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         var changed = selected ? _selectedIds.Add(id) : _selectedIds.Remove(id);
         if (!changed)
             return;
-        OnPropertyChanged(nameof(SelectedCount));
-        OnPropertyChanged(nameof(HasSelection));
+        NotifySelectionStateChanged();
     }
 
     public bool IsSelected(string id) => _selectedIds.Contains(id);
@@ -880,8 +2076,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     private void ClearSelection()
     {
         _selectedIds.Clear();
-        OnPropertyChanged(nameof(SelectedCount));
-        OnPropertyChanged(nameof(HasSelection));
+        NotifySelectionStateChanged();
     }
 
     // 锁屏/登出时清空内存中的明文足迹:选中项、详情、编辑草稿、搜索与全部条目/过滤集合。
@@ -889,11 +2084,19 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     // 幂等:重复调用安全(集合已空、属性已置默认值)。
     public void ClearSensitive()
     {
+        _lifecycleEpoch++;
+        _acceptCipherCreateGateNotifications = false;
         CancelCurrentOperation();
         SelectedItem = null;
         Detail = null;
+        ClearPendingCipherCreate();
+        _ownedPendingCipherCreateFingerprint = null;
+        _explicitlyAbandonedPendingCipherCreate = null;
+        SetPendingCreateAbandonedWarning(false);
         EditorDraft = null;
         _editingId = null;
+        Capabilities = VaultCapabilities.None;
+        OnPropertyChanged(nameof(CanChangeEditorType));
         IsEditing = false;
         SearchText = string.Empty;
         OperationError = string.Empty;
@@ -912,7 +2115,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             ClearSelection(); // ClearSelection 已通知 HasSelection
         else
         {
-            OnPropertyChanged(nameof(HasSelection));
+            NotifySelectionStateChanged();
         }
     }
 
@@ -926,8 +2129,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             return;
         foreach (var item in FilteredItems)
             _selectedIds.Add(item.Id);
-        OnPropertyChanged(nameof(SelectedCount));
-        OnPropertyChanged(nameof(HasSelection));
+        NotifySelectionStateChanged();
     }
 
     [RelayCommand]
@@ -952,6 +2154,26 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     private async Task RestoreSelected()
     {
         var result = await RunBatchAsync((ids, ct) => _service.RestoreCiphersAsync(ids, ct));
+        if (result.IsSuccess)
+            IsSelectionMode = false;
+    }
+
+    [RelayCommand]
+    private async Task ArchiveSelected()
+    {
+        if (!CanArchiveSelection)
+            return;
+        var result = await RunBatchAsync((ids, ct) => _service.ArchiveCiphersAsync(ids, ct));
+        if (result.IsSuccess)
+            IsSelectionMode = false;
+    }
+
+    [RelayCommand]
+    private async Task UnarchiveSelected()
+    {
+        if (!CanUnarchiveSelection)
+            return;
+        var result = await RunBatchAsync((ids, ct) => _service.UnarchiveCiphersAsync(ids, ct));
         if (result.IsSuccess)
             IsSelectionMode = false;
     }
@@ -1005,6 +2227,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     [RelayCommand]
     private void Copy(string? value)
     {
+        // IClipboardService applies the protected vault policy to non-secret fields as well.
         if (!string.IsNullOrEmpty(value)) _clipboard?.SetText(value);
     }
 
@@ -1016,6 +2239,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     {
         if (string.IsNullOrEmpty(id))
             return UiOperationResult.Failure("无效条目");
+        if (Items.FirstOrDefault(item => item.Id == id) is not { CanViewPassword: true })
+            return UiOperationResult.Failure("该组织条目已隐藏密码，不能复制敏感值。");
 
         var authorization = await EnsureAuthorizedAsync(
             id, SensitiveItemAction.Copy, prompt, ct);
@@ -1046,6 +2271,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         Func<CancellationToken, Task<string?>> prompt,
         CancellationToken ct = default)
     {
+        if (Items.FirstOrDefault(item => item.Id == id) is not { CanViewPassword: true })
+            return UiOperationResult<bool>.Failure("该组织条目已隐藏密码，不能显示敏感字段。");
+
         var authorization = await EnsureAuthorizedAsync(
             id, SensitiveItemAction.Totp, prompt, ct);
         if (!authorization.IsSuccess)
@@ -1062,12 +2290,11 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     public Task<UiOperationResult> ToggleFavoriteAsync(string id, CancellationToken ct = default) =>
         RunWriteAndReloadAsync(
             VaultOperationKind.SaveCipher,
-            async token =>
-            {
-                var draft = _service.GetDraft(id);
-                draft.Favorite = !draft.Favorite;
-                await _service.SaveCipherAsync(draft, id, token);
-            },
+            token => _service.SetFavoriteAsync(
+                id,
+                !(Items.FirstOrDefault(item => item.Id == id)?.Favorite
+                    ?? throw new InvalidOperationException("Cipher is not present in the current vault view.")),
+                token),
             selectId: id,
             ct);
 
@@ -1157,7 +2384,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         LoginDetail l => new LoginDetail
         {
             Id = l.Id, Name = l.Name, FolderName = l.FolderName, Notes = l.Notes, CustomFields = l.CustomFields,
-            Created = l.Created, Edited = l.Edited, IsDeleted = l.IsDeleted, Favorite = l.Favorite, Reprompt = l.Reprompt,
+            Created = l.Created, Edited = l.Edited, IsDeleted = l.IsDeleted, IsArchived = l.IsArchived,
+            CanEdit = l.CanEdit, CanDelete = l.CanDelete, CanRestore = l.CanRestore,
+            Favorite = l.Favorite, Reprompt = l.Reprompt,
             SensitiveUnlocked = l.SensitiveUnlocked,
             Username = l.Username, Password = l.Password, TotpSecret = l.TotpSecret, Uri = l.Uri, Passkeys = l.Passkeys,
             PasswordHistory = l.PasswordHistory,
@@ -1166,7 +2395,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         CardDetail c => new CardDetail
         {
             Id = c.Id, Name = c.Name, FolderName = c.FolderName, Notes = c.Notes, CustomFields = c.CustomFields,
-            Created = c.Created, Edited = c.Edited, IsDeleted = c.IsDeleted, Favorite = c.Favorite, Reprompt = c.Reprompt,
+            Created = c.Created, Edited = c.Edited, IsDeleted = c.IsDeleted, IsArchived = c.IsArchived,
+            CanEdit = c.CanEdit, CanDelete = c.CanDelete, CanRestore = c.CanRestore,
+            Favorite = c.Favorite, Reprompt = c.Reprompt,
             SensitiveUnlocked = c.SensitiveUnlocked,
             Cardholder = c.Cardholder, Number = c.Number, Expiry = c.Expiry, Brand = c.Brand, Cvv = c.Cvv,
             Attachments = attachments,
@@ -1174,7 +2405,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         IdentityDetail i => new IdentityDetail
         {
             Id = i.Id, Name = i.Name, FolderName = i.FolderName, Notes = i.Notes, CustomFields = i.CustomFields,
-            Created = i.Created, Edited = i.Edited, IsDeleted = i.IsDeleted, Favorite = i.Favorite, Reprompt = i.Reprompt,
+            Created = i.Created, Edited = i.Edited, IsDeleted = i.IsDeleted, IsArchived = i.IsArchived,
+            CanEdit = i.CanEdit, CanDelete = i.CanDelete, CanRestore = i.CanRestore,
+            Favorite = i.Favorite, Reprompt = i.Reprompt,
             SensitiveUnlocked = i.SensitiveUnlocked,
             FullName = i.FullName, Username = i.Username, Company = i.Company, Email = i.Email, Phone = i.Phone,
             IdNumber = i.IdNumber, Address = i.Address,
@@ -1183,7 +2416,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         NoteDetail n => new NoteDetail
         {
             Id = n.Id, Name = n.Name, FolderName = n.FolderName, Notes = n.Notes, CustomFields = n.CustomFields,
-            Created = n.Created, Edited = n.Edited, IsDeleted = n.IsDeleted, Favorite = n.Favorite, Reprompt = n.Reprompt,
+            Created = n.Created, Edited = n.Edited, IsDeleted = n.IsDeleted, IsArchived = n.IsArchived,
+            CanEdit = n.CanEdit, CanDelete = n.CanDelete, CanRestore = n.CanRestore,
+            Favorite = n.Favorite, Reprompt = n.Reprompt,
             SensitiveUnlocked = n.SensitiveUnlocked,
             Content = n.Content,
             Attachments = attachments,
@@ -1191,10 +2426,52 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         SshDetail s => new SshDetail
         {
             Id = s.Id, Name = s.Name, FolderName = s.FolderName, Notes = s.Notes, CustomFields = s.CustomFields,
-            Created = s.Created, Edited = s.Edited, IsDeleted = s.IsDeleted, Favorite = s.Favorite, Reprompt = s.Reprompt,
+            Created = s.Created, Edited = s.Edited, IsDeleted = s.IsDeleted, IsArchived = s.IsArchived,
+            CanEdit = s.CanEdit, CanDelete = s.CanDelete, CanRestore = s.CanRestore,
+            Favorite = s.Favorite, Reprompt = s.Reprompt,
             SensitiveUnlocked = s.SensitiveUnlocked,
             PublicKey = s.PublicKey, PrivateKey = s.PrivateKey, Fingerprint = s.Fingerprint,
             Attachments = attachments,
+        },
+        BankAccountDetail bank => new BankAccountDetail
+        {
+            Id = bank.Id, Name = bank.Name, FolderName = bank.FolderName, Notes = bank.Notes,
+            CustomFields = bank.CustomFields, Created = bank.Created, Edited = bank.Edited,
+            IsDeleted = bank.IsDeleted, IsArchived = bank.IsArchived, CanEdit = bank.CanEdit,
+            CanDelete = bank.CanDelete, CanRestore = bank.CanRestore, Favorite = bank.Favorite,
+            Reprompt = bank.Reprompt, SensitiveUnlocked = bank.SensitiveUnlocked,
+            BankName = bank.BankName, NameOnAccount = bank.NameOnAccount, AccountType = bank.AccountType,
+            AccountNumber = bank.AccountNumber, RoutingNumber = bank.RoutingNumber,
+            BranchNumber = bank.BranchNumber, Pin = bank.Pin, SwiftCode = bank.SwiftCode,
+            Iban = bank.Iban, BankContactPhone = bank.BankContactPhone, Attachments = attachments,
+        },
+        DriversLicenseDetail license => new DriversLicenseDetail
+        {
+            Id = license.Id, Name = license.Name, FolderName = license.FolderName, Notes = license.Notes,
+            CustomFields = license.CustomFields, Created = license.Created, Edited = license.Edited,
+            IsDeleted = license.IsDeleted, IsArchived = license.IsArchived, CanEdit = license.CanEdit,
+            CanDelete = license.CanDelete, CanRestore = license.CanRestore, Favorite = license.Favorite,
+            Reprompt = license.Reprompt, SensitiveUnlocked = license.SensitiveUnlocked,
+            FullName = license.FullName, DateOfBirth = license.DateOfBirth,
+            LicenseNumber = license.LicenseNumber, IssuingCountry = license.IssuingCountry,
+            IssuingState = license.IssuingState, IssueDate = license.IssueDate,
+            ExpirationDate = license.ExpirationDate, IssuingAuthority = license.IssuingAuthority,
+            LicenseClass = license.LicenseClass, Attachments = attachments,
+        },
+        PassportDetail passport => new PassportDetail
+        {
+            Id = passport.Id, Name = passport.Name, FolderName = passport.FolderName, Notes = passport.Notes,
+            CustomFields = passport.CustomFields, Created = passport.Created, Edited = passport.Edited,
+            IsDeleted = passport.IsDeleted, IsArchived = passport.IsArchived, CanEdit = passport.CanEdit,
+            CanDelete = passport.CanDelete, CanRestore = passport.CanRestore, Favorite = passport.Favorite,
+            Reprompt = passport.Reprompt, SensitiveUnlocked = passport.SensitiveUnlocked,
+            FullName = passport.FullName, DateOfBirth = passport.DateOfBirth, Sex = passport.Sex,
+            BirthPlace = passport.BirthPlace, Nationality = passport.Nationality,
+            IssuingCountry = passport.IssuingCountry, PassportNumber = passport.PassportNumber,
+            PassportType = passport.PassportType,
+            NationalIdentificationNumber = passport.NationalIdentificationNumber,
+            IssuingAuthority = passport.IssuingAuthority, IssueDate = passport.IssueDate,
+            ExpirationDate = passport.ExpirationDate, Attachments = attachments,
         },
         _ => detail,
     };

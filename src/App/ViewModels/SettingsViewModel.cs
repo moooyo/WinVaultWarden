@@ -1,6 +1,8 @@
 using Api;
 using App.Services;
+using App.ViewModels.Models;
 using Core.Abstractions;
+using Core.Enums;
 using Core.Models;
 using Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -20,6 +22,10 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IWindowsHelloAuthenticator? _hello;
     private readonly IHelloUnlockService? _helloUnlock;
     private readonly IAppLifecycleCoordinator? _lifecycle;
+    private readonly IVaultService? _vault;
+    private readonly IDeviceTrustService? _deviceTrust;
+    private readonly IWebAuthnTwoFactorRegistrationService? _webAuthnRegistration;
+    private readonly IAccountDeletionService? _accountDeletion;
 
     // 是否支持浏览器集成：仅便携版(unpackaged)为 true；MSIX 打包时 DI 传 false。
     // 默认 true 使无参构造器（设计时 / 无注入测试）保持便携版语义。
@@ -40,7 +46,23 @@ public partial class SettingsViewModel : ObservableObject
                 OnPropertyChanged(nameof(SelectedSessionTimeoutIndex));
                 return;
             }
+
+            if (_vault is not null
+                && value == IdleTimeoutPolicy.PolicySpecificMinutesIndex
+                && IdleTimeoutPolicy.IsSessionTimeoutIndexAllowed(_vault.Snapshot, value))
+            {
+                ApplyTimeoutPolicyRestrictions();
+                return;
+            }
+
             var normalized = AppPreferenceIndexPolicy.NormalizeSessionTimeoutIndex(value);
+            if (_vault is not null
+                && !IdleTimeoutPolicy.IsSessionTimeoutIndexAllowed(_vault.Snapshot, normalized))
+            {
+                ApplyTimeoutPolicyRestrictions();
+                return;
+            }
+
             SetProperty(ref _selectedSessionTimeoutIndex, normalized);
             SaveSessionTimeoutIndex(normalized);
         }
@@ -59,8 +81,85 @@ public partial class SettingsViewModel : ObservableObject
                 return;
             }
             var normalized = AppPreferenceIndexPolicy.NormalizeTimeoutActionIndex(value);
+            if (_vault is not null && !CanSelectTimeoutAction)
+            {
+                ApplyTimeoutPolicyRestrictions();
+                return;
+            }
+
             SetProperty(ref _selectedTimeoutActionIndex, normalized);
             SaveTimeoutActionIndex(normalized);
+        }
+    }
+
+    public bool CanSelectRestartTimeout => IsTimeoutOptionAllowed(IdleTimeoutPolicy.RestartIndex);
+    public bool CanSelectOneMinuteTimeout => IsTimeoutOptionAllowed(1);
+    public bool CanSelectFiveMinuteTimeout => IsTimeoutOptionAllowed(2);
+    public bool CanSelectFifteenMinuteTimeout => IsTimeoutOptionAllowed(3);
+    public bool CanSelectThirtyMinuteTimeout => IsTimeoutOptionAllowed(4);
+    public bool CanSelectOneHourTimeout => IsTimeoutOptionAllowed(5);
+    public bool CanSelectFourHourTimeout => IsTimeoutOptionAllowed(6);
+    public bool CanSelectNeverTimeout => IsTimeoutOptionAllowed(IdleTimeoutPolicy.NeverIndex);
+    public bool CanSelectSystemLockTimeout => IsTimeoutOptionAllowed(IdleTimeoutPolicy.OnSystemLockIndex);
+
+    public bool HasPolicySpecificTimeoutOption => _vault is not null
+        && IdleTimeoutPolicy.HasPolicySpecificMinutes(_vault.Snapshot);
+
+    public string PolicySpecificTimeoutOptionText
+    {
+        get
+        {
+            var constraint = CurrentTimeoutConstraint();
+            return constraint.Mode switch
+            {
+                MaximumVaultTimeoutMode.Immediately => "立即",
+                MaximumVaultTimeoutMode.Minutes => FormatTimeout(constraint.Minutes),
+                _ => string.Empty,
+            };
+        }
+    }
+
+    public bool CanSelectTimeoutAction =>
+        CurrentTimeoutConstraint().RequiredAction is null;
+
+    public bool HasMaximumVaultTimeoutPolicy
+    {
+        get
+        {
+            var constraint = CurrentTimeoutConstraint();
+            return constraint.Applies
+                && (constraint.Mode != MaximumVaultTimeoutMode.Never
+                    || constraint.RequiredAction is not null);
+        }
+    }
+
+    public string MaximumVaultTimeoutPolicyHint
+    {
+        get
+        {
+            var constraint = CurrentTimeoutConstraint();
+            if (!constraint.Applies)
+                return string.Empty;
+
+            var timeout = constraint.Mode switch
+            {
+                MaximumVaultTimeoutMode.Immediately =>
+                    "组织策略要求密码库立即超时。",
+                MaximumVaultTimeoutMode.Minutes when constraint.UsedFailClosedFallback =>
+                    $"组织策略数据无效；当前安全上限为 {FormatTimeout(constraint.Minutes)}。",
+                MaximumVaultTimeoutMode.Minutes =>
+                    $"组织策略将密码库超时上限设为 {FormatTimeout(constraint.Minutes)}。",
+                MaximumVaultTimeoutMode.OnSystemLock => "组织策略要求在系统锁定时锁定密码库。",
+                MaximumVaultTimeoutMode.OnAppRestart => "组织策略要求应用重启后锁定密码库。",
+                _ => string.Empty,
+            };
+            var action = constraint.RequiredAction switch
+            {
+                MaximumVaultTimeoutAction.Lock => " 超时动作由策略设为锁定。",
+                MaximumVaultTimeoutAction.Logout => " 超时动作由策略设为登出。",
+                _ => string.Empty,
+            };
+            return (timeout + action).Trim();
         }
     }
 
@@ -249,9 +348,27 @@ public partial class SettingsViewModel : ObservableObject
         _lifecycle = lifecycle;
     }
 
-    public SettingsViewModel(ITwoFactorUiService twoFactorUi) => _twoFactorUi = twoFactorUi;
+    public SettingsViewModel(
+        IAccountDeletionService accountDeletion,
+        IAppLifecycleCoordinator? lifecycle = null,
+        IVaultService? vault = null)
+    {
+        _accountDeletion = accountDeletion;
+        _lifecycle = lifecycle;
+        _vault = vault;
+    }
+
+    public SettingsViewModel(
+        ITwoFactorUiService twoFactorUi,
+        IWebAuthnTwoFactorRegistrationService? webAuthnRegistration = null)
+    {
+        _twoFactorUi = twoFactorUi;
+        _webAuthnRegistration = webAuthnRegistration;
+    }
 
     public SettingsViewModel(IPinService pin) => _pin = pin;
+
+    internal SettingsViewModel(IVaultService vault) => _vault = vault;
 
     // 供 Windows Hello 相关测试直接注入两个协作者，无需 accountUi/twoFactorUi/pin 假件。
     public SettingsViewModel(IWindowsHelloAuthenticator hello, IHelloUnlockService helloUnlock)
@@ -267,7 +384,11 @@ public partial class SettingsViewModel : ObservableObject
         IWindowsHelloAuthenticator? hello = null,
         IHelloUnlockService? helloUnlock = null,
         IAppLifecycleCoordinator? lifecycle = null,
-        bool browserIntegrationSupported = true)
+        bool browserIntegrationSupported = true,
+        IVaultService? vault = null,
+        IDeviceTrustService? deviceTrust = null,
+        IWebAuthnTwoFactorRegistrationService? webAuthnRegistration = null,
+        IAccountDeletionService? accountDeletion = null)
     {
         _accountUi = accountUi;
         _twoFactorUi = twoFactorUi;
@@ -275,6 +396,10 @@ public partial class SettingsViewModel : ObservableObject
         _hello = hello;
         _helloUnlock = helloUnlock;
         _lifecycle = lifecycle;
+        _vault = vault;
+        _deviceTrust = deviceTrust;
+        _webAuthnRegistration = webAuthnRegistration;
+        _accountDeletion = accountDeletion;
         ApplyBrowserIntegrationGate(browserIntegrationSupported);
     }
 
@@ -296,9 +421,105 @@ public partial class SettingsViewModel : ObservableObject
     public string AccountInitial => _accountUi?.GetAccount().Initial ?? string.Empty;
     public string KdfSummary => _accountUi?.GetAccount().KdfSummary ?? string.Empty;
 
+    public bool CanRegisterWebAuthn => _webAuthnRegistration?.IsSupported == true;
+
+    public static TwoFactorUserVerification CreateWebAuthnVerification(
+        WebAuthnVerificationMethod method,
+        string value) => method switch
+    {
+        WebAuthnVerificationMethod.MasterPassword =>
+            TwoFactorUserVerification.FromMasterPassword(value),
+        WebAuthnVerificationMethod.EmailOtp =>
+            TwoFactorUserVerification.FromOtp(value),
+        WebAuthnVerificationMethod.AuthRequestAccessCode =>
+            TwoFactorUserVerification.FromAuthRequestAccessCode(value),
+        _ => throw new ArgumentOutOfRangeException(nameof(method)),
+    };
+
+    public static string GetTwoFactorProviderDisplayName(int type) =>
+        (TwoFactorProviderType)type switch
+        {
+            TwoFactorProviderType.Authenticator => "TOTP 验证器",
+            TwoFactorProviderType.Email => "邮箱验证码",
+            TwoFactorProviderType.Duo => "Duo",
+            TwoFactorProviderType.YubiKey => "YubiKey OTP",
+            TwoFactorProviderType.U2f => "U2F 安全密钥",
+            TwoFactorProviderType.Remember => "已记住的设备",
+            TwoFactorProviderType.OrganizationDuo => "组织 Duo",
+            TwoFactorProviderType.WebAuthn => "安全密钥 / Windows Hello",
+            TwoFactorProviderType.RecoveryCode => "恢复代码",
+            _ => $"未知（类型 {type}）",
+        };
+
     // ── PIN 解锁 ─────────────────────────────────────────────────────────────
 
     public bool IsPinSet => _pin?.IsPinSet ?? false;
+    public bool CanUsePinUnlock => _vault is null || !VaultPolicyEvaluator.IsEnabledForUser(
+        _vault.Snapshot,
+        Core.Enums.OrganizationPolicyType.RemoveUnlockWithPin);
+
+    public void ApplyPolicyRestrictions()
+    {
+        ApplyTimeoutPolicyRestrictions();
+        if (!CanUsePinUnlock && IsPinSet)
+            ClearPin();
+    }
+
+    private void ApplyTimeoutPolicyRestrictions()
+    {
+        if (_vault is null)
+            return;
+
+        var timeoutIndex = IdleTimeoutPolicy.NormalizeSessionTimeoutIndexForPolicy(
+            _vault.Snapshot,
+            AppPreferences.Current.SessionTimeoutIndex);
+        SetProperty(ref _selectedSessionTimeoutIndex, timeoutIndex, nameof(SelectedSessionTimeoutIndex));
+
+        var actionIndex = IdleTimeoutPolicy.NormalizeTimeoutActionIndexForPolicy(
+            _vault.Snapshot,
+            AppPreferences.Current.TimeoutActionIndex);
+        SetProperty(ref _selectedTimeoutActionIndex, actionIndex, nameof(SelectedTimeoutActionIndex));
+
+        NotifyTimeoutPolicyProperties();
+    }
+
+    private bool IsTimeoutOptionAllowed(int index) => _vault is null
+        || IdleTimeoutPolicy.IsSessionTimeoutIndexAllowed(_vault.Snapshot, index);
+
+    private MaximumVaultTimeoutConstraint CurrentTimeoutConstraint() => _vault is null
+        ? MaximumVaultTimeoutConstraint.None
+        : MaximumVaultTimeoutPolicyResolver.Resolve(_vault.Snapshot);
+
+    private void NotifyTimeoutPolicyProperties()
+    {
+        OnPropertyChanged(nameof(CanSelectRestartTimeout));
+        OnPropertyChanged(nameof(CanSelectOneMinuteTimeout));
+        OnPropertyChanged(nameof(CanSelectFiveMinuteTimeout));
+        OnPropertyChanged(nameof(CanSelectFifteenMinuteTimeout));
+        OnPropertyChanged(nameof(CanSelectThirtyMinuteTimeout));
+        OnPropertyChanged(nameof(CanSelectOneHourTimeout));
+        OnPropertyChanged(nameof(CanSelectFourHourTimeout));
+        OnPropertyChanged(nameof(CanSelectNeverTimeout));
+        OnPropertyChanged(nameof(CanSelectSystemLockTimeout));
+        OnPropertyChanged(nameof(HasPolicySpecificTimeoutOption));
+        OnPropertyChanged(nameof(PolicySpecificTimeoutOptionText));
+        OnPropertyChanged(nameof(CanSelectTimeoutAction));
+        OnPropertyChanged(nameof(HasMaximumVaultTimeoutPolicy));
+        OnPropertyChanged(nameof(MaximumVaultTimeoutPolicyHint));
+    }
+
+    private static string FormatTimeout(int minutes)
+    {
+        if (minutes < 60)
+            return $"{minutes} 分钟";
+
+        var hours = minutes / 60;
+        var remainingMinutes = minutes % 60;
+        return remainingMinutes == 0
+            ? $"{hours} 小时"
+            : $"{hours} 小时 {remainingMinutes} 分钟";
+    }
+
     public void SetPin(string pin) => _pin?.SetPin(pin);
     public void ClearPin() => _pin?.ClearPin();
 
@@ -337,6 +558,82 @@ public partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(IsWindowsHelloEnabled));
         OnPropertyChanged(nameof(CanToggleWindowsHello));
     }
+
+    public bool IsCurrentDeviceTrusted => _deviceTrust?.IsCurrentDeviceTrusted ?? false;
+
+    public bool CanTrustCurrentDevice =>
+        !IsBusy && (_deviceTrust?.CanTrustCurrentDevice ?? false);
+
+    public bool ShowTrustedDeviceSettings =>
+        IsCurrentDeviceTrusted || CanTrustCurrentDevice;
+
+    public string TrustedDeviceStatus => IsCurrentDeviceTrusted
+        ? "此设备已受信任；锁定后将重新通过企业 SSO 验证信任状态。"
+        : "允许此设备在企业 SSO 后解密保险库。";
+
+    public string TrustedDeviceActionText => IsBusy
+        ? "正在建立信任"
+        : IsCurrentDeviceTrusted
+            ? "已信任"
+            : "信任此设备";
+
+    public async Task<UiOperationResult> TrustCurrentDeviceAsync(
+        CancellationToken ct = default)
+    {
+        if (IsBusy)
+            return UiOperationResult.Busy();
+        if (_deviceTrust is null || !CanTrustCurrentDevice)
+            return UiOperationResult.Failure("当前会话不支持可信设备加密");
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            await _deviceTrust.TrustCurrentDeviceAsync(ct);
+            NotifyDeviceTrustProperties();
+            return UiOperationResult.Success();
+        }
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
+        {
+            return UiOperationResult.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return UiOperationResult.Failure(OperationError);
+        }
+        catch (VaultApiException)
+        {
+            OperationError = "服务器拒绝了可信设备请求";
+            return UiOperationResult.Failure(OperationError);
+        }
+        catch (HttpRequestException)
+        {
+            OperationError = "无法连接服务器，请稍后重试";
+            return UiOperationResult.Failure(OperationError);
+        }
+        catch (DeviceTrustException ex)
+        {
+            OperationError = ex.Message;
+            return UiOperationResult.Failure(OperationError);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void NotifyDeviceTrustProperties()
+    {
+        OnPropertyChanged(nameof(IsCurrentDeviceTrusted));
+        OnPropertyChanged(nameof(CanTrustCurrentDevice));
+        OnPropertyChanged(nameof(ShowTrustedDeviceSettings));
+        OnPropertyChanged(nameof(TrustedDeviceStatus));
+        OnPropertyChanged(nameof(TrustedDeviceActionText));
+    }
+
+    partial void OnIsBusyChanged(bool value) => NotifyDeviceTrustProperties();
 
     // ── 账户操作 ─────────────────────────────────────────────────────────────
 
@@ -477,6 +774,216 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
+    // Account deletion
+
+    public UiOperationResult<AccountDeletionPreflight> GetAccountDeletionPreflight()
+    {
+        if (_accountDeletion is null)
+        {
+            OperationError = "账户删除服务不可用";
+            return UiOperationResult<AccountDeletionPreflight>.Failure(OperationError);
+        }
+        if (IsBusy)
+            return UiOperationResult<AccountDeletionPreflight>.Busy();
+
+        OperationError = string.Empty;
+        try
+        {
+            return UiOperationResult<AccountDeletionPreflight>.Success(
+                _accountDeletion.GetPreflight());
+        }
+        catch
+        {
+            OperationError = "无法检查账户删除条件，请重新在线登录后重试";
+            return UiOperationResult<AccountDeletionPreflight>.Failure(OperationError);
+        }
+    }
+
+    public async Task<UiOperationResult<AccountDeletionOtpRequestResult>> RequestAccountDeletionOtpAsync(
+        CancellationToken ct = default)
+    {
+        if (_accountDeletion is null)
+        {
+            OperationError = "账户删除服务不可用";
+            return UiOperationResult<AccountDeletionOtpRequestResult>.Failure(OperationError);
+        }
+        if (IsBusy)
+            return UiOperationResult<AccountDeletionOtpRequestResult>.Busy();
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            var result = await _accountDeletion.RequestOtpAsync(ct);
+            return UiOperationResult<AccountDeletionOtpRequestResult>.Success(result);
+        }
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
+        {
+            return UiOperationResult<AccountDeletionOtpRequestResult>.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return UiOperationResult<AccountDeletionOtpRequestResult>.Failure(OperationError);
+        }
+        catch
+        {
+            OperationError = "无法请求账户删除验证码，请稍后重试";
+            return UiOperationResult<AccountDeletionOtpRequestResult>.Failure(OperationError);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task<UiOperationResult<AccountDeletionResult>> DeleteAccountAsync(
+        AccountDeletionCredential credential,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(credential);
+        try
+        {
+            if (_accountDeletion is null)
+            {
+                OperationError = "账户删除服务不可用";
+                return UiOperationResult<AccountDeletionResult>.Failure(OperationError);
+            }
+            if (IsBusy)
+                return UiOperationResult<AccountDeletionResult>.Busy();
+
+            IsBusy = true;
+            OperationError = string.Empty;
+            try
+            {
+                var result = await _accountDeletion.DeleteAsync(credential, ct);
+                return UiOperationResult<AccountDeletionResult>.Success(result);
+            }
+            catch (OperationCanceledException ex)
+                when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
+            {
+                return UiOperationResult<AccountDeletionResult>.Cancelled();
+            }
+            catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+            {
+                OperationError = "无法确认账户是否已删除。请勿自动重试。";
+                return UiOperationResult<AccountDeletionResult>.Failure(OperationError);
+            }
+            catch
+            {
+                OperationError = "账户删除失败，请稍后重试";
+                return UiOperationResult<AccountDeletionResult>.Failure(OperationError);
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+        finally
+        {
+            credential.Dispose();
+        }
+    }
+
+    public async Task<UiOperationResult> TransitionAfterAccountDeletionAsync(
+        AccountDeletionResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        var intent = result switch
+        {
+            AccountDeletionResult.Confirmed => AppLifecycleIntent.Lock,
+            AccountDeletionResult.OutcomeUncertain => AppLifecycleIntent.Lock,
+            AccountDeletionResult.OutcomeUncertainLocalCleanupComplete => AppLifecycleIntent.Lock,
+            AccountDeletionResult.OutcomeUncertainLocalCleanupIncomplete => AppLifecycleIntent.Lock,
+            AccountDeletionResult.ConfirmedLocalCleanupIncomplete => AppLifecycleIntent.Lock,
+            AccountDeletionResult.Rejected { Pending: not null } => AppLifecycleIntent.Lock,
+            AccountDeletionResult.CancelledBeforeDispatch { Pending: not null } => AppLifecycleIntent.Lock,
+            _ => (AppLifecycleIntent?)null,
+        };
+        if (intent is null)
+            return UiOperationResult.Success();
+        var binding = GetAccountDeletionBinding(result);
+        if (_lifecycle is null)
+        {
+            OperationError = "无法完成账户删除后的安全清理";
+            return UiOperationResult.Failure(OperationError);
+        }
+
+        try
+        {
+            await _lifecycle.RequestIfAsync(
+                intent.Value,
+                () => !ShouldSkipAccountDeletionTransition(binding));
+            return UiOperationResult.Success();
+        }
+        catch
+        {
+            _lifecycle.FailClosedSynchronously();
+            OperationError = "账户状态已改变，应用已进入安全锁定状态";
+            return UiOperationResult.Failure(OperationError);
+        }
+    }
+
+    private static AccountDeletionBinding? GetAccountDeletionBinding(
+        AccountDeletionResult result) => result switch
+    {
+        AccountDeletionResult.Confirmed { Preflight: not null } confirmed =>
+            confirmed.Preflight.Binding,
+        AccountDeletionResult.Rejected { Preflight: not null } rejected =>
+            rejected.Preflight.Binding,
+        AccountDeletionResult.Rejected { Pending: not null } rejected =>
+            rejected.Pending.Binding,
+        AccountDeletionResult.CancelledBeforeDispatch cancelled =>
+            cancelled.Pending?.Binding ?? cancelled.Preflight.Binding,
+        AccountDeletionResult.OutcomeUncertain uncertain => uncertain.Pending.Binding,
+        AccountDeletionResult.OutcomeUncertainLocalCleanupComplete complete =>
+            complete.Pending.Binding,
+        AccountDeletionResult.OutcomeUncertainLocalCleanupIncomplete incomplete =>
+            incomplete.Pending.Binding,
+        AccountDeletionResult.ConfirmedLocalCleanupIncomplete incomplete =>
+            incomplete.Pending.Binding,
+        _ => null,
+    };
+
+    private bool ShouldSkipAccountDeletionTransition(AccountDeletionBinding? binding)
+    {
+        if (_vault is null)
+            return false;
+        if (binding is null)
+            return true;
+
+        try
+        {
+            var account = _vault.Snapshot.Account;
+            return !string.IsNullOrWhiteSpace(account.Id)
+                && account.Endpoints is not null
+                && (!string.Equals(account.Id, binding.AccountId, StringComparison.Ordinal)
+                    || account.Endpoints != binding.Endpoints);
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    public static string GetAccountDeletionRejectionMessage(
+        AccountDeletionRejectionReason reason) => reason switch
+    {
+        AccountDeletionRejectionReason.RequiresUnlockedSession => "请先解锁密码库后重试。",
+        AccountDeletionRejectionReason.SessionBindingMismatch => "当前会话已变化，请重新登录后重试。",
+        AccountDeletionRejectionReason.FreshOnlineAuthenticationRequired => "需要重新在线登录后才能删除账户。",
+        AccountDeletionRejectionReason.ClaimedByOrganization => "此账户域名由组织认领，不能从客户端删除。请联系组织管理员。",
+        AccountDeletionRejectionReason.WrongCredentialKind => "所需的验证方式已变化，请重新开始。",
+        AccountDeletionRejectionReason.PendingDeletionExists => "此账户已有未确认的删除请求，请勿重复提交。",
+        AccountDeletionRejectionReason.LocalPersistenceUnavailable => "无法安全记录删除状态，未发送删除请求。",
+        AccountDeletionRejectionReason.LocalPersistenceCorrupt => "本地删除状态损坏，请重新在线登录。",
+        AccountDeletionRejectionReason.ConcurrentStateChange => "账户状态已变化，请重新开始。",
+        AccountDeletionRejectionReason.InvalidCredential => "验证信息不正确。",
+        AccountDeletionRejectionReason.ServerRejected => "服务器拒绝了账户删除请求。",
+        _ => "无法删除账户。",
+    };
+
     // RenameCommand 供 XAML 绑定（string 参数可正常传递）
     // ChangePassword/ChangeIterations 的 tuple 版本不能被 XAML CommandParameter 绑定，
     // 由 code-behind 直接 await 公开的 async 方法即可。
@@ -488,6 +995,309 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial DataPageState TwoFactorState { get; set; } = DataPageState.Loading;
+
+    [ObservableProperty]
+    public partial DataPageState WebAuthnState { get; set; } = DataPageState.Loading;
+
+    public Task<UiOperationResult<WebAuthnManagementSnapshot>> LoadWebAuthnAsync(
+        string pw,
+        CancellationToken ct = default) =>
+        LoadWebAuthnAsync(TwoFactorUserVerification.FromMasterPassword(pw), ct);
+
+    public async Task<UiOperationResult<WebAuthnManagementSnapshot>> LoadWebAuthnAsync(
+        TwoFactorUserVerification verification,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(verification);
+        if (_twoFactorUi is null)
+        {
+            OperationError = "两步验证服务不可用";
+            WebAuthnState = DataPageState.Error;
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+        if (IsBusy)
+            return UiOperationResult<WebAuthnManagementSnapshot>.Busy();
+
+        IsBusy = true;
+        WebAuthnState = DataPageState.Loading;
+        OperationError = string.Empty;
+        try
+        {
+            var details = await _twoFactorUi.GetWebAuthnAsync(verification, ct);
+            var snapshot = ToWebAuthnSnapshot(details);
+            WebAuthnState = snapshot.Credentials.Count == 0
+                ? DataPageState.Empty
+                : DataPageState.Content;
+            return UiOperationResult<WebAuthnManagementSnapshot>.Success(snapshot);
+        }
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
+        {
+            return UiOperationResult<WebAuthnManagementSnapshot>.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            WebAuthnState = DataPageState.Error;
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+        catch (TwoFactorOperationException)
+        {
+            OperationError = "无法验证所选信息或加载安全密钥";
+            WebAuthnState = DataPageState.Error;
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+        catch
+        {
+            OperationError = "无法加载安全密钥，请稍后重试";
+            WebAuthnState = DataPageState.Error;
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task<UiOperationResult> RequestWebAuthnVerificationOtpAsync(
+        CancellationToken ct = default)
+    {
+        if (_twoFactorUi is null)
+        {
+            OperationError = "两步验证服务不可用";
+            return UiOperationResult.Failure(OperationError);
+        }
+        if (IsBusy)
+            return UiOperationResult.Busy();
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            await _twoFactorUi.RequestProtectedActionOtpAsync(ct);
+            return UiOperationResult.Success();
+        }
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
+        {
+            return UiOperationResult.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return UiOperationResult.Failure(OperationError);
+        }
+        catch (TwoFactorOperationException)
+        {
+            OperationError = "无法发送验证码，请稍后重试";
+            return UiOperationResult.Failure(OperationError);
+        }
+        catch
+        {
+            OperationError = "无法发送验证码，请稍后重试";
+            return UiOperationResult.Failure(OperationError);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public Task<UiOperationResult> AddWebAuthnCredentialAsync(
+        string pw,
+        int id,
+        string name,
+        CancellationToken ct = default) =>
+        AddWebAuthnCredentialAsync(
+            TwoFactorUserVerification.FromMasterPassword(pw),
+            id,
+            name,
+            ct);
+
+    public async Task<UiOperationResult> AddWebAuthnCredentialAsync(
+        TwoFactorUserVerification verification,
+        int id,
+        string name,
+        CancellationToken ct = default)
+    {
+        var result = await AddWebAuthnCredentialWithDetailsAsync(
+            verification,
+            id,
+            name,
+            ct);
+        return new UiOperationResult(result.Status, result.Error);
+    }
+
+    public async Task<UiOperationResult<WebAuthnManagementSnapshot>> AddWebAuthnCredentialWithDetailsAsync(
+        TwoFactorUserVerification verification,
+        int id,
+        string name,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(verification);
+        if (_twoFactorUi is null || _webAuthnRegistration is null)
+        {
+            OperationError = "此设备无法注册安全密钥";
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+        if (!_webAuthnRegistration.IsSupported)
+        {
+            OperationError = "此设备不支持 Windows WebAuthn";
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+        if (IsBusy)
+            return UiOperationResult<WebAuthnManagementSnapshot>.Busy();
+        if (id <= 0)
+        {
+            OperationError = "安全密钥标识无效";
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+
+        var normalizedName = name?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(normalizedName))
+        {
+            OperationError = "请输入安全密钥名称";
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            var challenge = await _twoFactorUi.GetWebAuthnChallengeAsync(verification, ct);
+            var deviceResponse = await _webAuthnRegistration.CreateCredentialAsync(challenge, ct);
+            var outcome = await _twoFactorUi.CompleteWebAuthnRegistrationAsync(
+                verification,
+                id,
+                normalizedName,
+                challenge,
+                deviceResponse,
+                ct);
+
+            if (outcome is WebAuthnRegistrationOutcome.OutcomeUncertain uncertain)
+            {
+                OperationError = "无法确认安全密钥是否已添加。请刷新列表检查，不要立即重复添加。";
+                var observed = uncertain.ObservedDetails is null
+                    ? null
+                    : ToWebAuthnSnapshot(uncertain.ObservedDetails);
+                return new UiOperationResult<WebAuthnManagementSnapshot>(
+                    UiOperationStatus.Failed,
+                    observed,
+                    OperationError);
+            }
+
+            var confirmed = (WebAuthnRegistrationOutcome.Confirmed)outcome;
+            var snapshot = ToWebAuthnSnapshot(confirmed.Details);
+            WebAuthnState = snapshot.Credentials.Count == 0
+                ? DataPageState.Empty
+                : DataPageState.Content;
+            return UiOperationResult<WebAuthnManagementSnapshot>.Success(snapshot);
+        }
+        catch (WebAuthnTwoFactorCancelledException)
+        {
+            return UiOperationResult<WebAuthnManagementSnapshot>.Cancelled();
+        }
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
+        {
+            return UiOperationResult<WebAuthnManagementSnapshot>.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+        catch (TwoFactorOperationException)
+        {
+            OperationError = "无法完成安全密钥注册，请检查验证信息后重试";
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+        catch (WebAuthnTwoFactorException)
+        {
+            OperationError = "Windows 无法完成安全密钥注册，请重试";
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+        catch
+        {
+            OperationError = "无法添加安全密钥，请稍后重试";
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public Task<UiOperationResult<WebAuthnManagementSnapshot>> DeleteWebAuthnCredentialAsync(
+        string pw,
+        int id,
+        CancellationToken ct = default) =>
+        DeleteWebAuthnCredentialAsync(
+            TwoFactorUserVerification.FromMasterPassword(pw),
+            id,
+            ct);
+
+    public async Task<UiOperationResult<WebAuthnManagementSnapshot>> DeleteWebAuthnCredentialAsync(
+        TwoFactorUserVerification verification,
+        int id,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(verification);
+        if (_twoFactorUi is null)
+        {
+            OperationError = "两步验证服务不可用";
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+        if (IsBusy)
+            return UiOperationResult<WebAuthnManagementSnapshot>.Busy();
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            var details = await _twoFactorUi.DeleteWebAuthnCredentialAsync(verification, id, ct);
+            var snapshot = ToWebAuthnSnapshot(details);
+            WebAuthnState = snapshot.Credentials.Count == 0
+                ? DataPageState.Empty
+                : DataPageState.Content;
+            return UiOperationResult<WebAuthnManagementSnapshot>.Success(snapshot);
+        }
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
+        {
+            return UiOperationResult<WebAuthnManagementSnapshot>.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+        catch (TwoFactorOperationException)
+        {
+            OperationError = "无法删除安全密钥，请检查验证信息后重试";
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+        catch
+        {
+            OperationError = "无法删除安全密钥，请稍后重试";
+            return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private static WebAuthnManagementSnapshot ToWebAuthnSnapshot(
+        WebAuthnTwoFactorDetails details) =>
+        new(
+            details.Enabled,
+            details.Credentials
+                .Select(static credential => new WebAuthnCredentialListItem(
+                    credential.Id,
+                    credential.Name,
+                    credential.Migrated))
+                .ToArray());
 
     public async Task<UiOperationResult<IReadOnlyList<TwoFactorProvider>>> LoadProvidersAsync(CancellationToken ct = default)
     {

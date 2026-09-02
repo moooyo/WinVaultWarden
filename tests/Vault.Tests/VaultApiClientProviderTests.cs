@@ -49,6 +49,24 @@ public sealed class VaultApiClientProviderTests
     }
 
     [Fact]
+    public void GetAuthenticated_ResolvesDedicatedServerConfigRole()
+    {
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession(
+            "account",
+            "user@example.com",
+            ServerEndpoints.ForSelfHosted("https://vault.example"));
+        using var provider = new VaultApiClientProvider(
+            new ApiClientFactory(_ => new TrackingHandler()),
+            session,
+            (_, _, _) => Task.FromResult(false));
+
+        var config = provider.GetAuthenticated<IServerConfigApiClient>(lease);
+
+        Assert.IsAssignableFrom<IOriginBoundApiClient>(config);
+    }
+
+    [Fact]
     public async Task SessionSwitchDuringCreation_DiscardsStaleClientWithoutReplacingCurrent()
     {
         var enteredFactory = new TaskCompletionSource(

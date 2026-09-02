@@ -26,7 +26,7 @@ public class VaultPageEditorLoadXamlTests
         var doc = LoadVaultPageXaml();
 
         var panel = doc.Descendants()
-            .FirstOrDefault(e => e.Name.LocalName == "StackPanel"
+            .FirstOrDefault(e => e.Name.LocalName == "ContentControl"
                 && e.Attribute(X + "Name")?.Value == "CipherEditorPanel");
         Assert.NotNull(panel);
 

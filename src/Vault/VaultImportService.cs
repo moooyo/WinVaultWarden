@@ -40,18 +40,45 @@ public sealed class VaultImportService : IVaultImportService
     public async Task<int> ImportAsync(ImportFormat format, string content, CancellationToken ct = default)
     {
         var lease = _session.CaptureLease();
+        var capabilities = _session.GetCapabilities(lease);
+        VaultPolicyEvaluator.ThrowIfEnabled(
+            _session,
+            Core.Enums.OrganizationPolicyType.PersonalOwnership,
+            "An organization policy prevents importing items into the personal vault.");
         var data = ParseContent(format, content);
-        if (!_session.TryCopyUserKey(lease, out var copiedKey) || copiedKey is null)
+        foreach (var cipher in data.Ciphers)
+            CipherWritePolicy.EnsureCanWrite(cipher, capabilities);
+        if (data.Ciphers.Any(cipher => VaultPolicyEvaluator.IsCipherRestricted(_session, cipher)))
+            throw new OrganizationPolicyException("An organization policy restricts one or more imported item types.");
+        if (!_session.TryCopyUserKeyMaterial(lease, out var copiedKey) || copiedKey is null)
             throw new InvalidOperationException("Vault is locked.");
 
         CipherRequest[] ciphers;
         FolderRequest[] folders;
         using (copiedKey)
         {
-            ciphers = data.Ciphers
-                .Select(c => _encryptor.Encrypt(c.WithFolderId(null), copiedKey))
-                .ToArray();
-            folders = data.Folders.Select(f => new FolderRequest { Name = _encryptor.EncryptFolderName(f.Name, copiedKey) }).ToArray();
+            ciphers = copiedKey.Legacy is { } legacy
+                ? data.Ciphers
+                    .Select(cipher => _encryptor.Encrypt(
+                        cipher.WithFolderId(null),
+                        legacy,
+                        capabilities).WithEncryptionContext(lease.AccountId))
+                    .ToArray()
+                : data.Ciphers
+                    .Select(cipher => _encryptor.Encrypt(
+                        cipher.WithFolderId(null),
+                        copiedKey.V2!,
+                        capabilities).WithEncryptionContext(lease.AccountId))
+                    .ToArray();
+            folders = copiedKey.Legacy is { } folderLegacy
+                ? data.Folders.Select(folder => new FolderRequest
+                {
+                    Name = _encryptor.EncryptFolderName(folder.Name, folderLegacy),
+                }).ToArray()
+                : data.Folders.Select(folder => new FolderRequest
+                {
+                    Name = _encryptor.EncryptFolderName(folder.Name, copiedKey.V2!),
+                }).ToArray();
         }
         var rels = data.Relations.Select(r => new ImportRelationship { Key = r.CipherIndex, Value = r.FolderIndex }).ToArray();
 

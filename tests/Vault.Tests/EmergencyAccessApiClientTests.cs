@@ -242,18 +242,4 @@ public class EmergencyAccessApiClientTests
         Assert.Contains("\"newMasterPasswordHash\":\"hash\"", handler.Bodies[0]);
     }
 
-    // ===== DELETE with body (delete account) =====
-
-    [Fact]
-    public async Task SoftDeleteAccount_DeletesAccountsWithHash()
-    {
-        var handler = new FakeHttpMessageHandler();
-        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
-        var client = NewClient(handler);
-        await ((IEmergencyAccessApiClient)client).DeleteAccountAsync(
-            new DeleteAccountRequest { MasterPasswordHash = "h" }, TestContext.Current.CancellationToken);
-        Assert.Equal(HttpMethod.Delete, handler.Requests[0].Method);
-        Assert.Equal("/api/accounts", handler.Requests[0].RequestUri!.AbsolutePath);
-        Assert.Contains("\"masterPasswordHash\":\"h\"", handler.Bodies[0]);
-    }
 }

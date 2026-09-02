@@ -73,4 +73,35 @@ public class VaultHealthServiceDemoExposedTests
         Assert.Equal(2, result.SuccessfulQueries); // 两个唯一密码,离线判定视为均已"成功"查询
         Assert.Single(result.Findings);
     }
+
+    [Fact]
+    public async Task CheckExposureAsync_InDemo_HiddenPasswordsAreNotReportedOrCounted()
+    {
+        var session = new VaultSession();
+        session.SetUnlockedKey(new SymmetricCryptoKey(Enumerable.Range(1, 64).Select(i => (byte)i).ToArray()));
+        session.SetSnapshot(new DecryptedVault(AccountInfo.Empty, System.Array.Empty<Folder>(), new[]
+        {
+            new Cipher
+            {
+                Id = "visible", Type = Core.Enums.CipherType.Login, Name = "Visible",
+                Login = new CipherLogin("u", "Qx7$mZ2!vKp9", null, System.Array.Empty<CipherLoginUri>()),
+            },
+            new Cipher
+            {
+                Id = "hidden", Type = Core.Enums.CipherType.Login, Name = "Hidden",
+                CanViewPassword = false,
+                Login = new CipherLogin("u", "password", null, System.Array.Empty<CipherLoginUri>()),
+            },
+        }, SkippedCipherCount: 0, SkippedFolderCount: 0));
+        session.MarkDemo();
+        var eval = new PasswordStrengthEvaluator(new Omnimatch(new DictionaryMatcher(FrequencyDictionaries.Load())));
+        var service = new VaultHealthService(new VaultService(session), eval, new ThrowingPwned(), session);
+
+        var result = await service.CheckExposureAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(BreachCheckStatus.Succeeded, result.Status);
+        Assert.Equal(1, result.SuccessfulQueries);
+        Assert.Equal(0, result.FailedQueries);
+        Assert.Empty(result.Findings);
+    }
 }

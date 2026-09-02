@@ -2,6 +2,7 @@ using App.Services;
 using App.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml.Controls;
+using System.ComponentModel;
 
 namespace App.Views;
 
@@ -13,7 +14,8 @@ public sealed partial class GeneratorDialog : ContentDialog
     {
         ViewModel = global::App.App.Services.GetRequiredService<GeneratorViewModel>();
         InitializeComponent();
-        GeneratorTabs.SelectedItem ??= PasswordTab;
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        SelectModeTab();
         UpdatePrimaryButtonState();
         Opened += (_, _) => ApplyResponsiveWidth();
         SizeChanged += (_, _) => ApplyResponsiveWidth();
@@ -40,12 +42,37 @@ public sealed partial class GeneratorDialog : ContentDialog
         UpdatePrimaryButtonState();
     }
 
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(GeneratorViewModel.Mode))
+            SelectModeTab();
+        if (e.PropertyName is nameof(GeneratorViewModel.CanGenerate)
+            or nameof(GeneratorViewModel.GeneratedPassword))
+        {
+            UpdatePrimaryButtonState();
+        }
+    }
+
+    private void SelectModeTab()
+    {
+        var selectedIndex = ViewModel.Mode switch
+        {
+            GeneratorMode.Passphrase => 1,
+            GeneratorMode.Username => 2,
+            _ => 0,
+        };
+        if (GeneratorTabs.SelectedIndex != selectedIndex)
+            GeneratorTabs.SelectedIndex = selectedIndex;
+    }
+
     private void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
         ViewModel.CopyCommand.Execute(null);
     }
 
-    private void UpdatePrimaryButtonState() => IsPrimaryButtonEnabled = true;
+    private void UpdatePrimaryButtonState() =>
+        IsPrimaryButtonEnabled = ViewModel.CanGenerate
+            && !string.IsNullOrWhiteSpace(ViewModel.GeneratedPassword);
 
     // "查看历史"请求标志。WinUI 同一时刻只允许一个 ContentDialog 打开,
     // 因此不能在本对话框仍打开时嵌套 ShowAsync 历史对话框(会抛 COMException 使整进程崩溃)。

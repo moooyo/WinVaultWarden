@@ -38,7 +38,8 @@ public sealed class DeviceUiService : IDeviceUiService
             string.IsNullOrWhiteSpace(device.Name) ? "Unknown device" : device.Name,
             GlyphFor(device.Type),
             LastActiveText(device, isCurrent),
-            isCurrent);
+            isCurrent,
+            device.IsTrusted);
     }
 
     private static string GlyphFor(int type) => type switch

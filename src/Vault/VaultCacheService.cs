@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Formats.Cbor;
 using System.Text.Json;
 using Api;
 using Api.Dtos;
@@ -6,6 +7,7 @@ using Core.Abstractions;
 using Core.Models;
 using Core.Session;
 using Crypto;
+using Crypto.V2;
 
 namespace Vault;
 
@@ -45,7 +47,15 @@ public sealed class VaultCacheService
         SyncResponse sync,
         DateTimeOffset cachedAt)
     {
-        var json = JsonSerializer.Serialize(sync, ApiJsonContext.Default.SyncResponse);
+        var persistedSync = sync.Profile is null
+            ? sync
+            : sync with
+            {
+                Profile = sync.Profile with { SecurityStamp = null },
+            };
+        var json = JsonSerializer.Serialize(
+            persistedSync,
+            ApiJsonContext.Default.SyncResponse);
         _store.SaveVaultCache(new VaultCacheEntry(
             SchemaVersion,
             lease.AccountId,
@@ -56,6 +66,24 @@ public sealed class VaultCacheService
             json));
     }
 
+    public bool TryGetLastSuccessfulSyncAt(
+        VaultSessionLease lease,
+        out DateTimeOffset syncedAtUtc)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        syncedAtUtc = default;
+        if (!TryLoadAvailableCache(lease, out var loaded)
+            || !loaded.TryMigrate(out var entry)
+            || entry.AccountId != lease.AccountId
+            || entry.Endpoints != lease.Endpoints
+            || entry.Generation != lease.Generation
+            || entry.CachedAtUtc == default)
+            return false;
+
+        syncedAtUtc = entry.CachedAtUtc.ToUniversalTime();
+        return true;
+    }
+
     /// <summary>
     /// 载入缓存并解密进快照(DataStale=true)。校验 schema/account/origin/generation 头部与
     /// profile.Id 是否等于租约账户;任何不符/损坏返回 false。最终写入经 TryCommit 门禁,
@@ -63,11 +91,34 @@ public sealed class VaultCacheService
     /// </summary>
     public bool TryLoadInto(
         VaultSessionLease lease,
-        SymmetricCryptoKey userKey)
+        SymmetricCryptoKey userKey) => TryLoadIntoCore(
+            lease,
+            sync => _decryptor.Decrypt(sync, userKey, lease.Endpoints));
+
+    public bool TryLoadInto(
+        VaultSessionLease lease,
+        V2UserKey userKey) => TryLoadIntoCore(
+            lease,
+            sync => _decryptor.Decrypt(sync, userKey, lease.Endpoints));
+
+    public bool TryLoadInto(
+        VaultSessionLease lease,
+        VaultUserKey userKey)
+    {
+        ArgumentNullException.ThrowIfNull(userKey);
+        return userKey.IsV2
+            ? TryLoadInto(lease, userKey.V2!)
+            : TryLoadInto(lease, userKey.Legacy!);
+    }
+
+    private bool TryLoadIntoCore(
+        VaultSessionLease lease,
+        Func<SyncResponse, DecryptedVault> decrypt)
     {
         ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(decrypt);
 
-        if (!TryLoadAvailableCache(out var loaded)
+        if (!TryLoadAvailableCache(lease, out var loaded)
             || !loaded.TryMigrate(out var entry)
             || entry.AccountId != lease.AccountId
             || entry.Endpoints != lease.Endpoints
@@ -84,13 +135,15 @@ public sealed class VaultCacheService
             if (deserialized?.Profile?.Id != lease.AccountId)
                 return false;
             sync = deserialized;
-            vault = _decryptor.Decrypt(sync, userKey, lease.Endpoints);
+            vault = decrypt(sync);
         }
         catch (Exception ex) when (
             ex is JsonException
+                or CborContentException
                 or CryptographicException
                 or FormatException
                 or ArgumentException
+                or InvalidDataException
                 or InvalidOperationException)
         {
             // 缓存加载/解密的任何失败(损坏/格式不符/意外异常)→ 视为无缓存,回退联网。
@@ -115,7 +168,7 @@ public sealed class VaultCacheService
                     // best-effort cache rewrite cannot be persisted.
                 }
             }
-            _session.SetEncryptedPrivateKey(sync.Profile.PrivateKey);
+            _session.SetEncryptedPrivateKey(vault.WrappedAccountPrivateKey);
             _session.SetSnapshot(vault, dataStale: true);
         });
     }
@@ -129,7 +182,7 @@ public sealed class VaultCacheService
     {
         ArgumentNullException.ThrowIfNull(lease);
 
-        if (!TryLoadAvailableCache(out var loaded)
+        if (!TryLoadAvailableCache(lease, out var loaded)
             || !loaded.TryMigrate(out var entry)
             || entry.AccountId != lease.AccountId
             || entry.Endpoints != lease.Endpoints)
@@ -150,11 +203,16 @@ public sealed class VaultCacheService
         }
     }
 
-    private bool TryLoadAvailableCache(out VaultCacheEntry entry)
+    private bool TryLoadAvailableCache(
+        VaultSessionLease lease,
+        out VaultCacheEntry entry)
     {
         try
         {
-            return _store.TryLoadVaultCache(out entry);
+            return _store.TryLoadVaultCache(
+                lease.AccountId,
+                lease.Endpoints,
+                out entry);
         }
         catch (Exception ex) when (
             ex is IOException or UnauthorizedAccessException)
@@ -167,4 +225,7 @@ public sealed class VaultCacheService
     }
 
     public void Clear() => _store.ClearVaultCache();
+
+    public void Clear(string accountId, ServerEndpoints endpoints) =>
+        _store.ClearVaultCache(accountId, endpoints);
 }

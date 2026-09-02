@@ -2,7 +2,9 @@ using Api;
 using Api.Dtos;
 using Core.Enums;
 using Core.Models;
+using Core.Services;
 using Crypto;
+using Crypto.V2;
 using Vault;
 using Xunit;
 
@@ -13,7 +15,8 @@ public class SendServiceTests
     private static readonly byte[] UserKeyBytes = Enumerable.Range(0, 64).Select(i => (byte)(i + 1)).ToArray();
 
     private static (SendService service, FakeSendApiClient api, SendCryptoService crypto, SymmetricCryptoKey userKey) NewService(
-        string serverUrl = "https://vault.test")
+        string serverUrl = "https://vault.test",
+        bool disableSend = false)
     {
         var userKey = new SymmetricCryptoKey(UserKeyBytes);
         var session = new VaultSession();
@@ -21,6 +24,22 @@ public class SendServiceTests
         session.BeginAccountSession("test-account", "test@test.com", endpoints);
         session.SetUnlockedKey(userKey);
         session.SetAccount(new Core.Models.AccountInfo("test-account", "test@test.com", endpoints, "T", "PBKDF2"));
+        if (disableSend)
+        {
+            session.SetSnapshot(new DecryptedVault(session.Account, [], [], 0, 0)
+            {
+                Organizations = [new VaultOrganization("org-1", "Team", 2, 2, true)],
+                Policies =
+                [
+                    new VaultOrganizationPolicy(
+                        "policy-1",
+                        "org-1",
+                        (int)OrganizationPolicyType.DisableSend,
+                        true,
+                        "{}"),
+                ],
+            });
+        }
         var crypto = new SendCryptoService(new CryptoService());
         var api = new FakeSendApiClient();
         return (new SendService(FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(api), crypto, session), api, crypto, userKey);
@@ -89,6 +108,17 @@ public class SendServiceTests
         Assert.Equal(2, send.AccessCount);
         Assert.True(send.HideEmail);
         Assert.False(send.HasPassword);
+    }
+
+    [Fact]
+    public async Task GetSends_DisableSendPolicy_RejectsBeforeApiCall()
+    {
+        var (service, api, _, _) = NewService(disableSend: true);
+
+        await Assert.ThrowsAsync<OrganizationPolicyException>(() =>
+            service.GetSendsAsync(TestContext.Current.CancellationToken));
+
+        Assert.Empty(api.Calls);
     }
 
     [Fact]
@@ -167,6 +197,93 @@ public class SendServiceTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.GetSendsAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ObserveSendsAsync_OfflineSnapshotReturnsCachedSendsWithoutNetwork()
+    {
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession(
+            "test-account",
+            "test@test.com",
+            new ServerOrigin("https://vault.test"));
+        session.SetUnlockedKey(new SymmetricCryptoKey(UserKeyBytes));
+        session.SetSnapshot(new DecryptedVault(session.Account, [], [], 0, 0)
+        {
+            Sends =
+            [
+                new Send
+                {
+                    Id = "cached-send",
+                    AccessId = "cached-access",
+                    Type = SendType.Text,
+                    Name = "Cached",
+                    Text = new SendText("secret", false),
+                    DeletionDate = DateTimeOffset.UnixEpoch.AddDays(1),
+                    ShareUrl = "https://vault.test/#/send/cached-access/AAAAAAAAAAAAAAAAAAAAAA",
+                },
+            ],
+        }, dataStale: true);
+        var api = new FakeSendApiClient();
+        var service = new SendService(
+            FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(api),
+            new SendCryptoService(new CryptoService()),
+            session);
+
+        var snapshot = await service.ObserveSendsAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(snapshot.IsStale);
+        Assert.True(snapshot.SessionLease!.SameSessionAs(lease));
+        Assert.Equal("Cached", Assert.Single(snapshot.Observations).Value!.Name);
+        Assert.Empty(api.Calls);
+    }
+
+    [Fact]
+    public async Task GetSends_V2UserKeyDecryptsType7Seed()
+    {
+        var crypto = new SendCryptoService(new CryptoService());
+        var userKey = V2UserKey.Generate();
+        var seed = crypto.GenerateSeed();
+        using var sendKey = crypto.DeriveCryptoKey(seed);
+        var dto = new SendResponseDto(
+            "v2-send",
+            "v2-access",
+            0,
+            crypto.EncryptField("V2 Send", sendKey),
+            null,
+            new SendTextDto(crypto.EncryptField("v2 secret", sendKey), false),
+            null,
+            crypto.WrapSeed(seed, userKey),
+            null,
+            0,
+            null,
+            (int)SendAuthType.None,
+            false,
+            false,
+            DateTimeOffset.UnixEpoch,
+            null,
+            DateTimeOffset.UnixEpoch.AddDays(1),
+            "send");
+        var api = new FakeSendApiClient
+        {
+            ListResult = new SendListResponse([dto], "list"),
+        };
+        var session = new VaultSession();
+        session.BeginAccountSession(
+            "test-account",
+            "test@test.com",
+            new ServerOrigin("https://vault.test"));
+        session.SetUnlockedKey(userKey);
+        var service = new SendService(
+            FakeVaultApiClientProvider.ForAuthenticated<ISendApiClient>(api),
+            crypto,
+            session);
+
+        var send = Assert.Single(await service.GetSendsAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal("V2 Send", send.Name);
+        Assert.Equal("v2 secret", send.Text!.Content);
+        Assert.StartsWith("7.", send.Key);
     }
 
     // C1 回归：ShareUrl 必须包含 seed；TryParseShareUrl 能恢复原始 accessId 和 seed。

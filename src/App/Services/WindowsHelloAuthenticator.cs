@@ -5,10 +5,11 @@ using Windows.Security.Cryptography;
 
 namespace App.Services;
 
-// Windows Hello (KeyCredentialManager) 适配器。凭据名固定单账户。任何失败/取消返回 null/false,不外抛 WinRT 异常。
+// Windows Hello adapter with one fixed application credential. Interactive failures and
+// cancellations return null or false instead of exposing WinRT exceptions to the UI layer.
 public sealed class WindowsHelloAuthenticator : IWindowsHelloAuthenticator
 {
-    private const string CredentialName = "WinVaultWarden.HelloUnlock";
+    internal const string CredentialName = "WinVaultWarden.HelloUnlock";
 
     public async Task<bool> IsAvailableAsync()
     {

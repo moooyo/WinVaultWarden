@@ -41,4 +41,15 @@ public class DecryptReadHelpersTests
 
         Assert.Equal("item", service.DecryptToString(enc, itemKey));
     }
+
+    [Fact]
+    public void DecryptItemKey_InvalidPlaintextLength_ClearsOwnedPlaintext()
+    {
+        var invalidPlaintext = Enumerable.Repeat((byte)0xA5, 48).ToArray();
+
+        Assert.Throws<ArgumentException>(() =>
+            CryptoService.CreateSymmetricKeyFromOwnedBytes(invalidPlaintext));
+
+        Assert.All(invalidPlaintext, value => Assert.Equal(0, value));
+    }
 }

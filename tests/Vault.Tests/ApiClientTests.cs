@@ -52,6 +52,32 @@ public class ApiClientTests
         Assert.Contains("deviceName=WinVaultWarden", handler.Bodies[0]);
         Assert.DoesNotContain("device_type", handler.Bodies[0]);
         Assert.Contains("username=me%40example.com", handler.Bodies[0]);
+        Assert.DoesNotContain("newDeviceOtp", handler.Bodies[0]);
+    }
+
+    [Fact]
+    public async Task ConnectToken_PasswordGrant_WithNewDeviceOtp_UsesExactFormField()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK,
+            """{"access_token":"a","refresh_token":"r","expires_in":3600,"token_type":"Bearer","scope":"api offline_access","Key":"2.X","PrivateKey":null,"Kdf":0,"KdfIterations":600000}"""));
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
+
+        var result = await client.ConnectTokenAsync(
+            ConnectTokenRequest.Password(
+                "me@example.com",
+                "hash",
+                "device-id",
+                "WinVaultWarden",
+                null,
+                "123456"),
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<ConnectTokenResult.Success>(result);
+        var form = ParseForm(handler.Bodies[0]);
+        Assert.Equal("123456", form["newDeviceOtp"]);
+        Assert.False(form.ContainsKey("new_device_otp"));
+        Assert.False(form.ContainsKey("NewDeviceOtp"));
     }
 
     [Fact]
@@ -68,6 +94,38 @@ public class ApiClientTests
 
         var twoFactor = Assert.IsType<ConnectTokenResult.TwoFactorRequired>(result);
         Assert.Equal([0], twoFactor.Providers);
+    }
+
+    [Fact]
+    public async Task ConnectToken_NewDeviceVerificationError_ReturnsDedicatedResult()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"error":"device_error","error_description":"New device verification required","ErrorModel":{"Message":"new device verification required","Object":"error"}}"""));
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
+
+        var result = await client.ConnectTokenAsync(
+            ConnectTokenRequest.Password("me@example.com", "hash", "d", "n", null),
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<ConnectTokenResult.DeviceVerificationRequired>(result);
+    }
+
+    [Fact]
+    public async Task ConnectToken_OtherDeviceError_RemainsError()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"error":"device_error","error_description":"Invalid New Device OTP","ErrorModel":{"Message":"invalid new device otp","Object":"error"}}"""));
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
+
+        var result = await client.ConnectTokenAsync(
+            ConnectTokenRequest.Password("me@example.com", "hash", "d", "n", null),
+            TestContext.Current.CancellationToken);
+
+        var error = Assert.IsType<ConnectTokenResult.Error>(result);
+        Assert.Equal("Invalid New Device OTP", error.Message);
+        Assert.Equal("device_error", error.ErrorCode);
     }
 
     [Fact]
@@ -254,6 +312,53 @@ public class ApiClientTests
     }
 
     [Fact]
+    public void ClientProtocolVersion_TracksSupportedDesktopContract()
+    {
+        Assert.Equal("desktop", ClientHeadersHandler.ClientName);
+        Assert.Equal("2026.8.0", ClientHeadersHandler.ClientVersion);
+        Assert.True(Version.TryParse(ClientHeadersHandler.ClientVersion, out _));
+    }
+
+    [Fact]
+    public async Task CipherArchiveEndpoints_UseVaultwardenRoutesAndIdsPayloads()
+    {
+        var handler = new FakeHttpMessageHandler();
+        for (var i = 0; i < 4; i++)
+            handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example"));
+
+        await client.ArchiveCipherAsync("single-a", TestContext.Current.CancellationToken);
+        await client.UnarchiveCipherAsync("single-b", TestContext.Current.CancellationToken);
+        await client.BulkArchiveCiphersAsync(["a", "b"], TestContext.Current.CancellationToken);
+        await client.BulkUnarchiveCiphersAsync(["c", "d"], TestContext.Current.CancellationToken);
+
+        Assert.Collection(
+            handler.Requests,
+            request =>
+            {
+                Assert.Equal(HttpMethod.Put, request.Method);
+                Assert.Equal("/api/ciphers/single-a/archive", request.RequestUri!.AbsolutePath);
+            },
+            request =>
+            {
+                Assert.Equal(HttpMethod.Put, request.Method);
+                Assert.Equal("/api/ciphers/single-b/unarchive", request.RequestUri!.AbsolutePath);
+            },
+            request =>
+            {
+                Assert.Equal(HttpMethod.Put, request.Method);
+                Assert.Equal("/api/ciphers/archive", request.RequestUri!.AbsolutePath);
+            },
+            request =>
+            {
+                Assert.Equal(HttpMethod.Put, request.Method);
+                Assert.Equal("/api/ciphers/unarchive", request.RequestUri!.AbsolutePath);
+            });
+        Assert.Contains("\"ids\":[\"a\",\"b\"]", handler.Bodies[2]);
+        Assert.Contains("\"ids\":[\"c\",\"d\"]", handler.Bodies[3]);
+    }
+
+    [Fact]
     public async Task AuthHeaderHandler_RetriesOnceAfterSuccessfulRefresh()
     {
         var accessToken = "old-token";
@@ -397,7 +502,8 @@ public class ApiClientTests
         var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example/"));
 
         await client.SendTwoFactorEmailLoginAsync(
-            "me@example.com", "hash-abc", "device-1", TestContext.Current.CancellationToken);
+            new SendEmailLoginRequest("me@example.com", "hash-abc", "device-1"),
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
         Assert.Equal("/api/two-factor/send-email-login", handler.Requests[0].RequestUri!.AbsolutePath);
@@ -405,4 +511,145 @@ public class ApiClientTests
         Assert.Contains("\"masterPasswordHash\":\"hash-abc\"", handler.Bodies[0]);
         Assert.Contains("\"deviceIdentifier\":\"device-1\"", handler.Bodies[0]);
     }
+
+    [Fact]
+    public async Task ResendNewDeviceOtp_PostsExactAnonymousRequest()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
+        var client = new ApiClientFactory(_ => handler)
+            .CreateAnonymous<IIdentityApiClient>(new ServerOrigin("https://vault.example/"));
+
+        await client.ResendNewDeviceOtpAsync(
+            new ResendNewDeviceOtpRequest("me@example.com", "hash-abc"),
+            TestContext.Current.CancellationToken);
+
+        var sent = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Post, sent.Method);
+        Assert.Equal("/api/accounts/resend-new-device-otp", sent.RequestUri!.AbsolutePath);
+        Assert.Null(sent.Headers.Authorization);
+        using var body = JsonDocument.Parse(Assert.Single(handler.Bodies));
+        var properties = body.RootElement.EnumerateObject().ToArray();
+        Assert.Equal(2, properties.Length);
+        Assert.Equal("me@example.com", body.RootElement.GetProperty("email").GetString());
+        Assert.Equal("hash-abc", body.RootElement.GetProperty("masterPasswordHash").GetString());
+    }
+
+    [Theory]
+    [InlineData("", "hash")]
+    [InlineData("me@example.com", "")]
+    [InlineData(" ", "hash")]
+    [InlineData("me@example.com", " ")]
+    public async Task ResendNewDeviceOtp_RejectsBlankCredentials(
+        string email,
+        string masterPasswordHash)
+    {
+        var handler = new FakeHttpMessageHandler();
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example/"));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => client.ResendNewDeviceOtpAsync(
+            new ResendNewDeviceOtpRequest(email, masterPasswordHash),
+            TestContext.Current.CancellationToken));
+
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task ResendNewDeviceOtp_RejectsOversizedCredentials()
+    {
+        var handler = new FakeHttpMessageHandler();
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example/"));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => client.ResendNewDeviceOtpAsync(
+            new ResendNewDeviceOtpRequest(new string('a', 257), "hash"),
+            TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentException>(() => client.ResendNewDeviceOtpAsync(
+            new ResendNewDeviceOtpRequest("me@example.com", new string('h', 301)),
+            TestContext.Current.CancellationToken));
+
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task ConnectToken_AuthorizationCode_UsesPkceAndRedirectUriFormFields()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(
+            HttpStatusCode.OK,
+            """{"access_token":"at","refresh_token":"rt","expires_in":3600,"token_type":"Bearer","scope":"api offline_access","Kdf":0,"KdfIterations":600000}"""));
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example/"));
+
+        var result = await client.ConnectTokenAsync(
+            ConnectTokenRequest.AuthorizationCode(
+                "authorization-code",
+                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_",
+                "http://localhost:8065",
+                "device-1",
+                "WinVaultWarden"),
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<ConnectTokenResult.Success>(result);
+        var form = ParseForm(handler.Bodies[0]);
+        Assert.Equal("authorization_code", form["grant_type"]);
+        Assert.Equal("authorization-code", form["code"]);
+        Assert.Equal("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_", form["code_verifier"]);
+        Assert.Equal("http://localhost:8065", form["redirect_uri"]);
+        Assert.Equal("desktop", form["client_id"]);
+        Assert.Equal("device-1", form["deviceIdentifier"]);
+        Assert.False(form.ContainsKey("username"));
+        Assert.False(form.ContainsKey("password"));
+    }
+
+    [Fact]
+    public async Task ConnectToken_SsoTwoFactorError_PreservesSessionContext()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(
+            HttpStatusCode.BadRequest,
+            """{"error":"invalid_grant","error_description":"Two factor required.","TwoFactorProviders":["1"],"TwoFactorProviders2":{"1":{"Email":"m***@example.com"}},"SsoEmail2faSessionToken":"sso-session","Email":"me@example.com"}"""));
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example/"));
+
+        var result = await client.ConnectTokenAsync(
+            ConnectTokenRequest.AuthorizationCode(
+                "code",
+                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_",
+                "http://localhost:8065",
+                "device-1",
+                "WinVaultWarden"),
+            TestContext.Current.CancellationToken);
+
+        var challenge = Assert.IsType<ConnectTokenResult.TwoFactorRequired>(result);
+        Assert.Equal([1], challenge.Providers);
+        Assert.Equal("sso-session", challenge.SsoEmail2FaSessionToken);
+        Assert.Equal("me@example.com", challenge.Email);
+        Assert.Equal("m***@example.com", challenge.ProviderData!["1"]!.Value.GetProperty("Email").GetString());
+    }
+
+    [Fact]
+    public async Task SendTwoFactorEmailLogin_SsoContext_UsesSessionToken()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, "{}"));
+        var client = new ApiClient(new HttpClient(handler), new ServerOrigin("https://vault.example/"));
+
+        await client.SendTwoFactorEmailLoginAsync(
+            new SendEmailLoginRequest(
+                "me@example.com",
+                string.Empty,
+                "device-1",
+                "sso-session"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Contains("\"email\":\"me@example.com\"", handler.Bodies[0]);
+        Assert.Contains("\"masterPasswordHash\":\"\"", handler.Bodies[0]);
+        Assert.Contains("\"deviceIdentifier\":\"device-1\"", handler.Bodies[0]);
+        Assert.Contains("\"ssoEmail2FaSessionToken\":\"sso-session\"", handler.Bodies[0]);
+    }
+
+    private static Dictionary<string, string> ParseForm(string body) =>
+        body.Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.Split('=', 2))
+            .ToDictionary(
+                pair => WebUtility.UrlDecode(pair[0]),
+                pair => WebUtility.UrlDecode(pair[1]));
 }

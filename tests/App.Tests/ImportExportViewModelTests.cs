@@ -55,6 +55,22 @@ public class ImportExportViewModelTests
     }
 
     [Fact]
+    public void ExportPolicy_DisablesExportAndRejectsOperationBeforeGateAcquisition()
+    {
+        var viewModel = new ImportExportViewModel(
+            new StubExport(canExport: false),
+            new StubImport(0, 0),
+            new StubAccount(true));
+
+        var result = viewModel.BeginOperation(ImportExportOperationKind.Export);
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.False(viewModel.CanExport);
+        Assert.True(viewModel.ShowExportPolicyInfo);
+        Assert.Contains("组织策略", viewModel.ExportPolicyNotice);
+    }
+
+    [Fact]
     public void PreviewImport_UsesFormatCapturedAtStart()
     {
         var import = new StubImport(2, 1);
@@ -461,8 +477,10 @@ public class ImportExportViewModelTests
         bool accountResult = true) =>
         new(new StubExport(), import, new StubAccount(accountResult));
 
-    private sealed class StubExport : IVaultExportService
+    private sealed class StubExport(bool canExport = true) : IVaultExportService
     {
+        public bool CanExport => canExport;
+
         public string Export(ExportFormat format) =>
             format == ExportFormat.Json ? "json-marker" : "csv-marker";
     }

@@ -210,7 +210,7 @@ public class BrowserPasskeyCancellationTests
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var credential = new CipherFido2Credential(
-            credentialId,
+            CredentialId.NormalizeStorage(credentialId),
             "public-key",
             "ECDSA",
             "P-256",

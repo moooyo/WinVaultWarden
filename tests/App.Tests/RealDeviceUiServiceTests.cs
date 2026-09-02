@@ -18,6 +18,8 @@ public class RealDeviceUiServiceTests
         Assert.Equal("Desktop", devices[0].Name);
         Assert.True(devices[0].IsCurrent);
         Assert.False(devices[1].IsCurrent);
+        Assert.True(devices[0].IsTrusted);
+        Assert.False(devices[1].IsTrusted);
         Assert.NotEmpty(devices[0].Glyph);
         Assert.Equal("me@example.com", account.Email);
         Assert.Equal("https://vault.example", account.ServerUrl);

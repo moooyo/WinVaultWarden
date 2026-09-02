@@ -14,7 +14,9 @@ public sealed class FaviconCache : IFaviconCache
     private readonly HttpClient _http;
     private readonly VaultSession _session;
     private readonly string _cacheDir;
-    private readonly ConcurrentDictionary<CacheKey, Task<byte[]?>> _inflight = [];
+    private readonly object _diskGate = new();
+    private readonly ConcurrentDictionary<CacheOperationKey, Task<byte[]?>> _inflight = [];
+    private long _cacheGeneration;
 
     public FaviconCache(HttpClient http, VaultSession session, string? cacheDir = null)
     {
@@ -43,7 +45,12 @@ public sealed class FaviconCache : IFaviconCache
         var key = new CacheKey(
             iconsEndpoint,
             domain.Trim().ToLowerInvariant());
-        var shared = _inflight.GetOrAdd(key, LoadAsync);
+        var operationKey = new CacheOperationKey(
+            key,
+            Volatile.Read(ref _cacheGeneration));
+        var shared = _inflight.GetOrAdd(
+            operationKey,
+            candidate => LoadAsync(candidate.Key, candidate.Generation));
         try
         {
             return await shared.WaitAsync(ct);
@@ -59,11 +66,14 @@ public sealed class FaviconCache : IFaviconCache
         finally
         {
             if (shared.IsCompleted)
-                _inflight.TryRemove(new KeyValuePair<CacheKey, Task<byte[]?>>(key, shared));
+            {
+                _inflight.TryRemove(
+                    new KeyValuePair<CacheOperationKey, Task<byte[]?>>(operationKey, shared));
+            }
         }
     }
 
-    private async Task<byte[]?> LoadAsync(CacheKey key)
+    private async Task<byte[]?> LoadAsync(CacheKey key, long generation)
     {
         var hash = Hash(key);
         var png = Path.Combine(_cacheDir, hash + ".png");
@@ -83,9 +93,14 @@ public sealed class FaviconCache : IFaviconCache
             if (resp.IsSuccessStatusCode && ctType is not null && ctType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             {
                 var bytes = await resp.Content.ReadAsByteArrayAsync(CancellationToken.None);
-                if (bytes.Length > 0) { WriteAtomic(png, bytes); TryDelete(none); return bytes; }
+                if (bytes.Length > 0)
+                {
+                    WriteAtomic(png, bytes, generation);
+                    TryDelete(none, generation);
+                    return bytes;
+                }
             }
-            WriteAtomic(none, Array.Empty<byte>()); // 负缓存
+            WriteAtomic(none, Array.Empty<byte>(), generation); // 负缓存
             return null;
         }
         catch
@@ -99,31 +114,95 @@ public sealed class FaviconCache : IFaviconCache
     private static bool Fresh(string path, TimeSpan ttl)
         => File.Exists(path) && (DateTime.UtcNow - File.GetLastWriteTimeUtc(path)) < ttl;
 
-    private void WriteAtomic(string path, byte[] bytes)
+    private void WriteAtomic(string path, byte[] bytes, long generation)
     {
-        try
+        lock (_diskGate)
         {
-            Directory.CreateDirectory(_cacheDir);
-            var tmp = path + ".tmp";
-            File.WriteAllBytes(tmp, bytes);
-            File.Move(tmp, path, overwrite: true);
+            if (generation != _cacheGeneration)
+                return;
+            try
+            {
+                Directory.CreateDirectory(_cacheDir);
+                var tmp = path + ".tmp";
+                File.WriteAllBytes(tmp, bytes);
+                File.Move(tmp, path, overwrite: true);
+            }
+            catch
+            {
+                // Cache writes remain best effort outside account deletion.
+            }
         }
-        catch { /* 缓存写失败不致命 */ }
     }
 
-    private static void TryDelete(string path) { try { if (File.Exists(path)) File.Delete(path); } catch { } }
+    private void TryDelete(string path, long generation)
+    {
+        lock (_diskGate)
+        {
+            if (generation != _cacheGeneration)
+                return;
+            try
+            {
+                File.Delete(path);
+            }
+            catch
+            {
+                // Cache maintenance remains best effort outside account deletion.
+            }
+        }
+    }
 
     // Clear all cached icons on logout. Failures are deliberately non-fatal.
-    public void Clear()
+    public void Clear() => _ = ClearForAccountDeletion();
+
+    public FaviconCacheClearStatus ClearForAccountDeletion()
     {
-        try
+        lock (_diskGate)
         {
-            if (!Directory.Exists(_cacheDir))
-                return;
-            foreach (var file in Directory.EnumerateFiles(_cacheDir))
-                TryDelete(file);
+            _cacheGeneration++;
+            _inflight.Clear();
+
+            string[] files;
+            try
+            {
+                files = Directory.EnumerateFiles(_cacheDir).ToArray();
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return FaviconCacheClearStatus.Absent;
+            }
+            catch (Exception exception) when (exception is
+                IOException or UnauthorizedAccessException)
+            {
+                return FaviconCacheClearStatus.Unavailable;
+            }
+
+            var unavailable = false;
+            var removed = false;
+            foreach (var file in files)
+            {
+                try
+                {
+                    File.Delete(file);
+                    removed = true;
+                }
+                catch (Exception exception) when (exception is
+                    FileNotFoundException or DirectoryNotFoundException)
+                {
+                    // Another best-effort cache clear already removed this file.
+                }
+                catch (Exception exception) when (exception is
+                    IOException or UnauthorizedAccessException)
+                {
+                    unavailable = true;
+                }
+            }
+
+            return unavailable
+                ? FaviconCacheClearStatus.Unavailable
+                : removed
+                    ? FaviconCacheClearStatus.Cleared
+                    : FaviconCacheClearStatus.Absent;
         }
-        catch { /* 目录枚举失败(不存在/占用)忽略 */ }
     }
 
     private static string Hash(CacheKey key)
@@ -131,4 +210,5 @@ public sealed class FaviconCache : IFaviconCache
             $"{key.Endpoint.Value}\n{key.Domain}")));
 
     private readonly record struct CacheKey(ServerEndpoint Endpoint, string Domain);
+    private readonly record struct CacheOperationKey(CacheKey Key, long Generation);
 }

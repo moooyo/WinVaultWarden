@@ -6,7 +6,7 @@ using Core.Session;
 
 namespace Vault.Tests;
 
-// 手写 IAttachmentApiClient 测试替身。捕获请求、返回预置响应,镜像 FakeSendApiClient 写法。
+// Captures attachment requests and returns configured responses.
 public sealed class FakeAttachmentApiClient : IAttachmentApiClient
 {
     public List<string> Calls { get; } = new();
@@ -24,6 +24,7 @@ public sealed class FakeAttachmentApiClient : IAttachmentApiClient
     public string? LastDownloadUrl { get; private set; }
 
     public Func<string, CipherDto>? GetCipherFactory { get; set; }
+    public Action<string>? AfterGetCipher { get; set; }
     public CipherDto GetCipherResult { get; set; } = null!;
     public AttachmentUploadV2Response CreateResult { get; set; } =
         new(
@@ -36,8 +37,9 @@ public sealed class FakeAttachmentApiClient : IAttachmentApiClient
         1,
         "test-access-token");
     public byte[] DownloadBytes { get; set; } = Array.Empty<byte>();
+    public Exception? CreateThrows { get; set; }
 
-    // G1:注入第二步上传/补偿删除的失败,验证孤儿清理与原始异常保真。
+    // Injects upload and cleanup failures to verify orphan compensation.
     public Exception? UploadThrows { get; set; }
     public Exception? DeleteThrows { get; set; }
     public Action? AfterUploadSuccess { get; set; }
@@ -47,6 +49,7 @@ public sealed class FakeAttachmentApiClient : IAttachmentApiClient
         Calls.Add("get-cipher");
         LastGetCipherId = cipherId;
         var dto = GetCipherFactory is not null ? GetCipherFactory(cipherId) : GetCipherResult;
+        AfterGetCipher?.Invoke(cipherId);
         return Task.FromResult(dto);
     }
 
@@ -58,6 +61,8 @@ public sealed class FakeAttachmentApiClient : IAttachmentApiClient
         Calls.Add("create-v2");
         LastCreateCipherId = cipherId;
         LastCreateRequest = request;
+        if (CreateThrows is not null)
+            throw CreateThrows;
         return Task.FromResult(new AuthenticatedWriteReceipt<AttachmentUploadV2Response>(
             CreateResult,
             CreateAuthorization));
@@ -90,7 +95,7 @@ public sealed class FakeAttachmentApiClient : IAttachmentApiClient
 
     public Task DeleteAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default)
     {
-        // 若调用方误用已取消的 token 做补偿删除,这里会先抛 → 测试可据此断言补偿走 CancellationToken.None。
+        // Compensation must use a token independent from the cancelled upload operation.
         ct.ThrowIfCancellationRequested();
         Calls.Add("delete");
         LastDeleteCipherId = cipherId;

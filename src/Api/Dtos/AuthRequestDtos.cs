@@ -4,9 +4,9 @@ using System.Text.Json.Serialization;
 namespace Api.Dtos;
 
 /// <summary>
-/// 服务端返回的单个 auth-request 详情。
-/// GET /api/auth-requests/{id} 及 GET /api/auth-requests 列表项。
-/// Vaultwarden: src/api/core/accounts.rs  AuthRequest::to_json()
+/// Describes one authentication request returned by the server.
+/// Official servers return the extended device metadata, while Vaultwarden
+/// omits it; the optional members preserve compatibility with both shapes.
 /// </summary>
 public sealed record AuthRequestResponse(
     [property: JsonPropertyName("id")]                  string Id,
@@ -18,19 +18,21 @@ public sealed record AuthRequestResponse(
     [property: JsonPropertyName("creationDate")]        string CreationDate,
     [property: JsonPropertyName("responseDate")]        string? ResponseDate,
     [property: JsonPropertyName("requestApproved")]     bool? RequestApproved,
-    [property: JsonPropertyName("origin")]              string? Origin);
+    [property: JsonPropertyName("origin")]              string? Origin,
+    [property: JsonPropertyName("requestDeviceIdentifier")] string? RequestDeviceIdentifier = null,
+    [property: JsonPropertyName("requestDeviceTypeValue")] int? RequestDeviceTypeValue = null,
+    [property: JsonPropertyName("requestCountryName")] string? RequestCountryName = null,
+    [property: JsonPropertyName("requestDeviceId")] string? RequestDeviceId = null,
+    [property: JsonPropertyName("object")] string? Object = null);
 
 /// <summary>
-/// GET /api/auth-requests 的分页/列表包装。
-/// Vaultwarden ListResponse 约定，"data" 字段名固定。
+/// Wraps the authentication request list returned by the API.
 /// </summary>
 public sealed record AuthRequestListResponse(
     [property: JsonPropertyName("data")] List<AuthRequestResponse> Data);
 
 /// <summary>
-/// 批准或拒绝一个待处理的 auth-request 时发送的响应体。
-/// PUT /api/auth-requests/{id}
-/// Vaultwarden: AuthRequestUpdateData / RespondAuthRequestData
+/// Approves or rejects a pending authentication request.
 /// </summary>
 public sealed record AuthResponseRequest(
     [property: JsonPropertyName("deviceIdentifier")]    string DeviceIdentifier,
@@ -39,9 +41,7 @@ public sealed record AuthResponseRequest(
     [property: JsonPropertyName("requestApproved")]     bool RequestApproved);
 
 /// <summary>
-/// 创建新的 auth-request（无密码登录发起方）。
-/// POST /api/auth-requests
-/// Vaultwarden: NewAuthRequestData
+/// Creates a new authentication request from the device that is signing in.
 /// </summary>
 public sealed record AuthRequestRequest(
     [property: JsonPropertyName("accessCode")]          string AccessCode,

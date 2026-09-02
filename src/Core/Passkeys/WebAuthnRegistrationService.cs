@@ -66,9 +66,10 @@ public static class WebAuthnRegistrationService
                 PasskeyJsonContext.Default.CredPropsExtensions)
             : null;
 
-        var credentialIdB64 = WebAuthnCrypto.EncodeBase64Url(credentialId);
+        var storedCredentialId = CredentialId.EncodeForStorage(credentialId);
+        var wireCredentialId = CredentialId.EncodeForWire(credentialId);
         var credential = new CipherFido2Credential(
-            CredentialId: credentialIdB64,
+            CredentialId: storedCredentialId,
             KeyType: "public-key",
             KeyAlgorithm: "ECDSA",
             KeyCurve: "P-256",
@@ -83,7 +84,7 @@ public static class WebAuthnRegistrationService
             CreationDate: DateTimeOffset.UtcNow);
 
         var payload = new PasskeyCreateAttestationPayload(
-            credentialIdB64,
+            wireCredentialId,
             WebAuthnCrypto.EncodeBase64Url(clientDataJson),
             WebAuthnCrypto.EncodeBase64Url(attestationObject),
             WebAuthnCrypto.EncodeBase64Url(authData),

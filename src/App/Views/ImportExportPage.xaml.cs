@@ -9,12 +9,15 @@ using Microsoft.UI.Xaml.Controls;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
 using Vault;
+using Vault.Porting;
 
 namespace App.Views;
 
 public sealed partial class ImportExportPage : Page
 {
     private const string ExportFailureMessage = "导出失败，请稍后重试。";
+    private const string UnsupportedCipherCsvExportMessage =
+        "密码库包含 CSV 不支持的条目类型。为避免数据丢失，已取消导出；请改用 JSON 格式。";
     private const string ImportReadFailureMessage = "无法读取所选文件，请确认文件可用后重试。";
 
     public ImportExportViewModel ViewModel { get; }
@@ -124,6 +127,7 @@ public sealed partial class ImportExportPage : Page
                 }
 
                 var format = operation.ExportFormat;
+                var exportText = ViewModel.ExportToText(format);
                 var picker = new Windows.Storage.Pickers.FileSavePicker
                 {
                     SuggestedFileName = "bitwarden_export",
@@ -167,7 +171,6 @@ public sealed partial class ImportExportPage : Page
                             bufferSize: 8192,
                             leaveOpen: true))
                         {
-                            var exportText = ViewModel.ExportToText(format);
                             await writer.WriteAsync(exportText.AsMemory(), ct);
                             await writer.FlushAsync(ct);
                         }
@@ -208,6 +211,18 @@ public sealed partial class ImportExportPage : Page
                 operation.Complete(
                     UiOperationStatus.Failed,
                     UiExceptionPolicy.RequestTimeoutMessage);
+            }
+            catch (UnsupportedCipherCsvExportException)
+            {
+                operation.Complete(
+                    UiOperationStatus.Failed,
+                    UnsupportedCipherCsvExportMessage);
+            }
+            catch (OrganizationPolicyException)
+            {
+                operation.Complete(
+                    UiOperationStatus.Failed,
+                    "组织策略已禁用个人密码库导出。");
             }
             catch (Exception ex) when (IsRecoverableFileOperationException(ex))
             {

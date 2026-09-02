@@ -33,8 +33,16 @@ public sealed record EnableAuthenticatorRequest(
 /// type: TwoFactorProviderType 整数值（0=Authenticator, 1=Email, …）。
 /// </summary>
 public sealed record DisableTwoFactorRequest(
-    [property: JsonPropertyName("masterPasswordHash")] string MasterPasswordHash,
-    [property: JsonPropertyName("type")] int Type);
+    [property: JsonPropertyName("masterPasswordHash")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? MasterPasswordHash,
+    [property: JsonPropertyName("type")] int Type,
+    [property: JsonPropertyName("otp")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Otp = null,
+    [property: JsonPropertyName("authRequestAccessCode")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? AuthRequestAccessCode = null);
 
 /// <summary>
 /// 专用于 DELETE /api/two-factor/authenticator 的请求体。
@@ -70,9 +78,16 @@ public sealed record SendEmailRequest(
 /// （vaultwarden src/api/core/two_factor/email.rs:26-40 SendEmailLoginData，camelCase；ClientHeaders 无需 Bearer）。
 /// </summary>
 public sealed record SendEmailLoginRequest(
+    [property: JsonPropertyName("email")] string? Email,
+    [property: JsonPropertyName("masterPasswordHash")] string? MasterPasswordHash,
+    [property: JsonPropertyName("deviceIdentifier")] string DeviceIdentifier,
+    [property: JsonPropertyName("ssoEmail2FaSessionToken")] string? SsoEmail2FaSessionToken = null,
+    [property: JsonPropertyName("authRequestId")] string? AuthRequestId = null,
+    [property: JsonPropertyName("authRequestAccessCode")] string? AuthRequestAccessCode = null);
+
+public sealed record ResendNewDeviceOtpRequest(
     [property: JsonPropertyName("email")] string Email,
-    [property: JsonPropertyName("masterPasswordHash")] string MasterPasswordHash,
-    [property: JsonPropertyName("deviceIdentifier")] string DeviceIdentifier);
+    [property: JsonPropertyName("masterPasswordHash")] string MasterPasswordHash);
 
 /// <summary>
 /// 验证邮箱验证码并启用邮箱两步验证。

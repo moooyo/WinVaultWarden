@@ -24,6 +24,67 @@ public sealed class VaultRepromptCoverageTests
     }
 
     [Fact]
+    public async Task DeniedClone_DoesNotReadDraft()
+    {
+        var service = new RecordingVaultUiService(reprompt: true);
+        var vm = new VaultViewModel(service, reprompt: new DenyingItemGate());
+
+        var result = await vm.BeginCloneAsync(
+            "cipher-a",
+            _ => Task.FromResult<string?>("wrong"));
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.Equal(0, service.GetDraftCalls);
+    }
+
+    [Fact]
+    public async Task HiddenPasswordOrganizationItemRejectsSensitiveActionsBeforeReadingSecrets()
+    {
+        var clipboard = new RecordingClipboard();
+        var service = new RecordingVaultUiService(reprompt: true, canViewPassword: false);
+        var vm = new VaultViewModel(service, clipboard, reprompt: new GrantingItemGate());
+        vm.SelectedItem = vm.Items.Single();
+
+        var edit = await vm.BeginEditAsync("cipher-a", _ => Task.FromResult<string?>("master"));
+        var clone = await vm.BeginCloneAsync("cipher-a", _ => Task.FromResult<string?>("master"));
+        var copy = await vm.CopyPrimaryAsync("cipher-a", _ => Task.FromResult<string?>("master"));
+        var unlock = await vm.UnlockDetailAsync("cipher-a", _ => Task.FromResult<string?>("master"));
+
+        Assert.All(new[] { edit, clone, copy }, result => Assert.Equal(UiOperationStatus.Failed, result.Status));
+        Assert.Equal(UiOperationStatus.Failed, unlock.Status);
+        Assert.Contains("隐藏密码", edit.Error);
+        Assert.Contains("隐藏密码", clone.Error);
+        Assert.Contains("隐藏密码", copy.Error);
+        Assert.Contains("隐藏密码", unlock.Error);
+        Assert.Equal(0, service.GetDraftCalls);
+        Assert.Equal(0, service.SensitiveDetailReads);
+        Assert.Null(clipboard.Text);
+        Assert.False(vm.IsEditing);
+        Assert.False(vm.ShowSensitiveUnlock);
+    }
+
+    [Fact]
+    public async Task PermissionRevokedDuringAuthorizationReturnsFailureInsteadOfExposingDraft()
+    {
+        var service = new RecordingVaultUiService(
+            reprompt: true,
+            canViewPassword: true,
+            rejectDraftRead: true);
+        var vm = new VaultViewModel(service, reprompt: new GrantingItemGate());
+
+        var edit = await vm.BeginEditAsync("cipher-a", _ => Task.FromResult<string?>("master"));
+        var clone = await vm.BeginCloneAsync("cipher-a", _ => Task.FromResult<string?>("master"));
+
+        Assert.Equal(UiOperationStatus.Failed, edit.Status);
+        Assert.Equal(UiOperationStatus.Failed, clone.Status);
+        Assert.Contains("权限已被撤销", edit.Error);
+        Assert.Contains("权限已被撤销", clone.Error);
+        Assert.Equal(2, service.GetDraftCalls);
+        Assert.Null(vm.EditorDraft);
+        Assert.False(vm.IsEditing);
+    }
+
+    [Fact]
     public void LockedProjection_DoesNotContainTotpOrOtherSecrets()
     {
         var service = new RecordingVaultUiService(reprompt: true);
@@ -201,7 +262,10 @@ public sealed class VaultRepromptCoverageTests
             Task.FromResult<IReadOnlyList<AttachmentItem>>([]);
     }
 
-    private sealed class RecordingVaultUiService(bool reprompt)
+    private sealed class RecordingVaultUiService(
+        bool reprompt,
+        bool canViewPassword = true,
+        bool rejectDraftRead = false)
         : IVaultUiService
     {
         public int GetDraftCalls { get; private set; }
@@ -215,6 +279,8 @@ public sealed class VaultRepromptCoverageTests
                 Id = "cipher-a",
                 Name = "A",
                 Kind = VaultItemKind.Login,
+                CanViewPassword = canViewPassword,
+                CanClone = true,
             },
         ];
         public CipherAccessPolicy GetAccessPolicy(string id) =>
@@ -240,6 +306,11 @@ public sealed class VaultRepromptCoverageTests
         public CipherEditorDraft GetDraft(string id)
         {
             GetDraftCalls++;
+            if (rejectDraftRead)
+            {
+                throw new Core.Services.OrganizationCipherOperationException(
+                    "Password viewing permission was revoked.");
+            }
             return CipherEditorDraft.CreateDefault(VaultItemKind.Login);
         }
         public Task<string> SaveCipherAsync(CipherEditorDraft draft, string? editingId, CancellationToken ct = default) => Task.FromResult(editingId ?? "new");

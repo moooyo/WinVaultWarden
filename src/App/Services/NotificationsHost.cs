@@ -65,11 +65,11 @@ public sealed class NotificationsHost : IAsyncDisposable
 public sealed class SessionTerminationHost : IDisposable
 {
     private readonly ISessionTerminationSource _source;
-    private readonly Action<SessionTerminationNotice> _onTermination;
+    private readonly Action<AppLifecycleIntent, SessionTerminationNotice> _onTermination;
 
     public SessionTerminationHost(
         ISessionTerminationSource source,
-        Action<SessionTerminationNotice> onTermination)
+        Action<AppLifecycleIntent, SessionTerminationNotice> onTermination)
     {
         _source = source;
         _onTermination = onTermination;
@@ -78,9 +78,18 @@ public sealed class SessionTerminationHost : IDisposable
 
     private void OnTerminationRequested(SessionTerminationNotice notice)
     {
-        try { _onTermination(notice); }
+        try { _onTermination(LifecycleIntentFor(notice.Reason), notice); }
         catch { }
     }
+
+    public static AppLifecycleIntent LifecycleIntentFor(SessionTerminationReason reason) =>
+        reason switch
+        {
+            SessionTerminationReason.InvalidSecurityStamp => AppLifecycleIntent.RemoteLogout,
+            SessionTerminationReason.RequiredPasswordChange => AppLifecycleIntent.RemoteLogout,
+            SessionTerminationReason.PinPolicyEnforcementFailed => AppLifecycleIntent.RemoteLogout,
+            _ => AppLifecycleIntent.RemoteLogout,
+        };
 
     public void Dispose() =>
         _source.TerminationRequested -= OnTerminationRequested;

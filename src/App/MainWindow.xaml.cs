@@ -65,9 +65,7 @@ public sealed partial class MainWindow : Window
 
         _idleTimer = DispatcherQueue.CreateTimer();
         _idleTimer.Interval = TimeSpan.FromSeconds(10);
-        _idleTimer.Tick += (_, _) => _timeout.Tick(
-            IdleTimeoutPolicy.MinutesForIndex(AppPreferences.Current.SessionTimeoutIndex),
-            IdleTimeoutPolicy.ActionForIndex(AppPreferences.Current.TimeoutActionIndex));
+        _idleTimer.Tick += (_, _) => EnforceCurrentTimeoutPolicy();
 
         // 输入活动:挂到根内容(覆盖全窗口),handledEventsToo 以捕获子控件已处理事件。
         if (Content is UIElement root)
@@ -164,8 +162,11 @@ public sealed partial class MainWindow : Window
     private void OnSessionSwitch(object sender, Microsoft.Win32.SessionSwitchEventArgs e)
     {
         if (e.Reason == Microsoft.Win32.SessionSwitchReason.SessionLock)
-            DispatcherQueue.TryEnqueue(async () =>
-                await _lifecycle.RequestAsync(AppLifecycleIntent.Lock));
+            DispatcherQueue.TryEnqueue(() =>
+                _timeout.HandleSystemLock(
+                    CurrentVaultSnapshot(),
+                    AppPreferences.Current.SessionTimeoutIndex,
+                    AppPreferences.Current.TimeoutActionIndex));
     }
 
     private void OnFirstActivated(object sender, WindowActivatedEventArgs args)
@@ -186,22 +187,52 @@ public sealed partial class MainWindow : Window
     private void PopulateFolderNavigation()
     {
         var vaultService = global::App.App.Services.GetRequiredService<IVaultUiService>();
-        var folders = VaultNavItemBuilder.BuildFolderItems(vaultService.GetFilters());
-        FoldersNavItem.MenuItems.Clear();
-        FoldersNavItem.Visibility = folders.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        var filters = vaultService.GetFilters();
+        PopulateNavigationGroup(
+            FoldersNavItem,
+            VaultNavItemBuilder.BuildFolderItems(filters));
+        PopulateNavigationGroup(
+            OrganizationsNavItem,
+            VaultNavItemBuilder.BuildOrganizationItems(filters));
+        PopulateNavigationGroup(
+            CollectionsNavItem,
+            VaultNavItemBuilder.BuildCollectionItems(filters));
 
-        foreach (var folder in folders)
+        var vault = global::App.App.Services.GetRequiredService<IVaultService>();
+        SendNavItem.Visibility = VaultPolicyEvaluator.IsEnabledForUser(
+            vault.Snapshot,
+            Core.Enums.OrganizationPolicyType.DisableSend)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private static void PopulateNavigationGroup(
+        NavigationViewItem group,
+        IReadOnlyList<ViewModels.Models.VaultFolderNavigationItem> items)
+    {
+        group.MenuItems.Clear();
+        group.Visibility = items.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        foreach (var item in items)
         {
-            FoldersNavItem.MenuItems.Add(new NavigationViewItem
+            group.MenuItems.Add(new NavigationViewItem
             {
-                Content = folder.Label,
-                Tag = folder.Tag,
-                Icon = new FontIcon { Glyph = folder.Glyph },
+                Content = item.Label,
+                Tag = item.Tag,
+                Icon = new FontIcon { Glyph = item.Glyph },
             });
         }
     }
 
     public void RefreshFolderNavigation() => PopulateFolderNavigation();
+
+    public void RefreshVaultSnapshot()
+    {
+        PopulateFolderNavigation();
+        RefreshVaultList();
+        if (ContentFrame.Content is Views.SettingsPage settingsPage)
+            settingsPage.RefreshPolicyRestrictions();
+        EnforceCurrentTimeoutPolicy();
+    }
 
     /// <summary>供 NotificationsHost 在 VaultChanged 时调用：若当前页面是 VaultPage 则刷新列表。</summary>
     public void RefreshVaultList()
@@ -250,9 +281,16 @@ public sealed partial class MainWindow : Window
     public void ExitAfterLifecycle()
     {
         _realExit = true;
-        _tray?.Dispose();
-        _tray = null;
-        Microsoft.UI.Xaml.Application.Current.Exit();
+        try
+        {
+            _tray?.Dispose();
+            _tray = null;
+            Microsoft.UI.Xaml.Application.Current.Exit();
+        }
+        finally
+        {
+            Environment.Exit(0);
+        }
     }
 
     // 登录成功:显示主导航壳。
@@ -275,9 +313,19 @@ public sealed partial class MainWindow : Window
                 global::App.App.Services.GetRequiredService<Services.PasskeyBridgeServer>().Start();
 
             _timeout.Start();
-            _idleTimer?.Start();
+            EnforceCurrentTimeoutPolicy();
+            if (_timeout.IsArmed)
+                _idleTimer?.Start();
         }));
     }
+
+    private static IVaultSnapshot CurrentVaultSnapshot() =>
+        global::App.App.Services.GetRequiredService<IVaultService>().Snapshot;
+
+    private void EnforceCurrentTimeoutPolicy() => _timeout.Tick(
+        CurrentVaultSnapshot(),
+        AppPreferences.Current.SessionTimeoutIndex,
+        AppPreferences.Current.TimeoutActionIndex);
 
     private void ApplyLoginWindowLayout()
     {
@@ -394,9 +442,36 @@ public sealed partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(tag))
             return;
 
+        var currentVaultPage = ContentFrame.Content as Views.VaultPage;
+        var vaultCreateGateActive = currentVaultPage is not null
+            && global::App.App.Services.GetRequiredService<IVaultUiService>()
+                .HasPendingOrInFlightCipherCreate();
+
         if (tag.StartsWith("vault:", StringComparison.Ordinal))
         {
+            if (vaultCreateGateActive)
+            {
+                currentVaultPage!.ViewModel.SelectFilterByTag(tag);
+                return;
+            }
+
             _nav.GoToVault(tag);
+            return;
+        }
+
+        if (vaultCreateGateActive
+            && currentVaultPage!.ViewModel.EditorDraft is not null
+            && tag is not ("gen" or "lock" or "logout"))
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "保存结果待确认",
+                Content = "请先同步确认新条目的保存结果，再离开密码库。",
+                CloseButtonText = "知道了",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = Nav.XamlRoot,
+            };
+            await global::App.Views.DialogHelper.ShowTrackedAsync(dialog);
             return;
         }
 

@@ -20,7 +20,7 @@ public class PasswordHistoryCryptoTests
         var dto = new CipherDto(
             Id: "c1", Type: 1, Name: crypto.Encrypt(System.Text.Encoding.UTF8.GetBytes("Item"), key).ToString(),
             Notes: null, Key: null, OrganizationId: null, FolderId: null, Favorite: false, Reprompt: 0,
-            Login: null, Card: null, Identity: null, SecureNote: null, SshKey: null, Fields: null,
+            Login: new LoginDto(null, null, null, []), Card: null, Identity: null, SecureNote: null, SshKey: null, Fields: null,
             CreationDate: null, RevisionDate: null, DeletedDate: null, Attachments: null,
             PasswordHistory: new[] { new PasswordHistoryDto(encOld, "2026-01-02T03:04:05.0000000Z") });
 
@@ -63,7 +63,13 @@ public class PasswordHistoryCryptoTests
     public void Encrypt_EmptyHistory_SendsNull()
     {
         var crypto = new CryptoService();
-        var cipher = new Cipher { Id = "c1", Type = Core.Enums.CipherType.Login, Name = "n" };
+        var cipher = new Cipher
+        {
+            Id = "c1",
+            Type = Core.Enums.CipherType.Login,
+            Name = "n",
+            Login = new CipherLogin(null, null, null, []),
+        };
         var req = new CipherEncryptor(crypto).Encrypt(cipher, Key());
         Assert.Null(req.PasswordHistory);
     }

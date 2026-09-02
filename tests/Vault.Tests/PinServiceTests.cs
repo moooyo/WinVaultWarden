@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Core.Enums;
 using Core.Models;
+using Core.Services;
 using Crypto;
 using Vault;
 using Xunit;
@@ -86,6 +87,29 @@ public class PinServiceTests
         // M2 层1:PIN 最短 6 位,服务层强制(纵深)。
         var (pin, _, _, _) = Unlocked();
         Assert.Throws<ArgumentException>(() => pin.SetPin("123"));
+    }
+
+    [Fact]
+    public void SetPin_WhenOrganizationPolicyDisablesPin_ThrowsBeforePersisting()
+    {
+        var (pin, session, store, _) = Unlocked();
+        session.SetSnapshot(new DecryptedVault(session.Account, [], [], 0, 0)
+        {
+            Organizations = [new VaultOrganization("org-1", "Team", 2, 2, true)],
+            Policies =
+            [
+                new VaultOrganizationPolicy(
+                    "policy-1",
+                    "org-1",
+                    (int)OrganizationPolicyType.RemoveUnlockWithPin,
+                    true,
+                    "{}"),
+            ],
+        });
+
+        Assert.Throws<OrganizationPolicyException>(() => pin.SetPin("123456"));
+        store.TryLoad(out var persisted);
+        Assert.Null(persisted.PinProtectedUserKey);
     }
 
     [Theory]

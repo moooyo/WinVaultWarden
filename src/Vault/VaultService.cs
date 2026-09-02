@@ -18,6 +18,12 @@ public sealed class VaultService : IVaultService
 
     public IReadOnlyList<DeviceInfo> GetDevices() => _session.Devices;
 
+    public IReadOnlyList<VaultOrganization> GetOrganizations() => _session.Organizations;
+
+    public IReadOnlyList<VaultCollection> GetCollections() => _session.Collections;
+
+    public IReadOnlyList<VaultOrganizationPolicy> GetPolicies() => _session.Policies;
+
     public VaultSessionLease CaptureLease() => _session.CaptureLease();
 
     public bool IsCurrent(VaultSessionLease lease) => _session.IsCurrent(lease);

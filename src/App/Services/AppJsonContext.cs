@@ -3,16 +3,27 @@ using Core.Models;
 
 namespace App.Services;
 
-// session.bin(DPAPI 内层)与 preferences.json 的本地持久化。
-// 沿用历史 Web 语义;偏好文件额外缩进(WriteIndented)。
+// Source-generated metadata for DPAPI storage and local preferences.
+// Indented output keeps the existing human-readable preference format.
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     PropertyNameCaseInsensitive = true,
     WriteIndented = true)]
 [JsonSerializable(typeof(PersistedSession))]
+[JsonSerializable(typeof(PersistedAccountCryptographicState))]
+[JsonSerializable(typeof(PersistedSessionCollection))]
+[JsonSerializable(typeof(PersistedSessionIndex))]
+[JsonSerializable(typeof(PersistedSessionBlobEnvelope))]
+[JsonSerializable(typeof(PersistedDeviceKeyLedger))]
+[JsonSerializable(typeof(PersistedCipherCreatePendingLedger))]
+[JsonSerializable(typeof(PersistedTrustedDeviceApprovalLedger))]
+[JsonSerializable(typeof(PersistedTdeV2JitPendingLedger))]
+[JsonSerializable(typeof(PersistedLoginWithDeviceQuarantineLedger))]
+[JsonSerializable(typeof(PersistedAccountDeletionTombstoneLedger))]
+[JsonSerializable(typeof(VaultCacheCollection))]
 [JsonSerializable(typeof(ServerEndpoints))]
 [JsonSerializable(typeof(AppPreferencesData))]
 [JsonSerializable(typeof(SavedSearchViewData))]
 [JsonSerializable(typeof(List<SavedSearchViewData>))]
 [JsonSerializable(typeof(Core.Models.VaultCacheEntry))]
-public partial class AppJsonContext : JsonSerializerContext;
+internal partial class AppJsonContext : JsonSerializerContext;

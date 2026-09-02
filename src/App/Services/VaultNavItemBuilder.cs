@@ -9,6 +9,8 @@ namespace App.Services;
 public static class VaultNavItemBuilder
 {
     private const string FolderGlyph = "\uE8B7";
+    private const string OrganizationGlyph = "\uE716";
+    private const string CollectionGlyph = "\uE8B7";
 
     public static IReadOnlyList<VaultFolderNavigationItem> BuildFolderItems(IEnumerable<FilterNode> filters) =>
         filters
@@ -17,5 +19,27 @@ public static class VaultNavItemBuilder
                 f.Label,
                 $"vault:folder:{f.FolderId}",
                 f.Glyph.Length > 0 ? f.Glyph : FolderGlyph))
+            .ToList();
+
+    public static IReadOnlyList<VaultFolderNavigationItem> BuildOrganizationItems(
+        IEnumerable<FilterNode> filters) =>
+        filters
+            .Where(filter => filter.Kind == FilterKind.Organization
+                && !string.IsNullOrWhiteSpace(filter.OrganizationId))
+            .Select(filter => new VaultFolderNavigationItem(
+                filter.Label,
+                $"vault:organization:{filter.OrganizationId}",
+                filter.Glyph.Length > 0 ? filter.Glyph : OrganizationGlyph))
+            .ToList();
+
+    public static IReadOnlyList<VaultFolderNavigationItem> BuildCollectionItems(
+        IEnumerable<FilterNode> filters) =>
+        filters
+            .Where(filter => filter.Kind == FilterKind.Collection
+                && !string.IsNullOrWhiteSpace(filter.CollectionId))
+            .Select(filter => new VaultFolderNavigationItem(
+                filter.Label,
+                $"vault:collection:{filter.CollectionId}",
+                filter.Glyph.Length > 0 ? filter.Glyph : CollectionGlyph))
             .ToList();
 }

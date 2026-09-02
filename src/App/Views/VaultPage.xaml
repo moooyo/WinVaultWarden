@@ -111,6 +111,61 @@
                 </controls:DetailCard.CardContent>
             </controls:DetailCard>
         </DataTemplate>
+        <DataTemplate x:Key="BankAccountTemplate" x:DataType="models:BankAccountDetail">
+            <controls:DetailCard Title="银行账户">
+                <controls:DetailCard.CardContent>
+                    <StackPanel Spacing="2">
+                        <controls:FieldRow Label="银行" Value="{x:Bind BankName}" />
+                        <controls:FieldRow Label="账户持有人" Value="{x:Bind NameOnAccount}" />
+                        <controls:FieldRow Label="账户类型" Value="{x:Bind AccountType}" />
+                        <controls:FieldRow Label="账号" Value="{x:Bind AccountNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="路由号码" Value="{x:Bind RoutingNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="分行号码" Value="{x:Bind BranchNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="PIN" Value="{x:Bind Pin}" IsSecret="True" />
+                        <controls:FieldRow Label="SWIFT / BIC" Value="{x:Bind SwiftCode}" IsSecret="True" />
+                        <controls:FieldRow Label="IBAN" Value="{x:Bind Iban}" IsSecret="True" />
+                        <controls:FieldRow Label="银行联系电话" Value="{x:Bind BankContactPhone}" />
+                    </StackPanel>
+                </controls:DetailCard.CardContent>
+            </controls:DetailCard>
+        </DataTemplate>
+        <DataTemplate x:Key="DriversLicenseTemplate" x:DataType="models:DriversLicenseDetail">
+            <controls:DetailCard Title="驾驶证">
+                <controls:DetailCard.CardContent>
+                    <StackPanel Spacing="2">
+                        <controls:FieldRow Label="姓名" Value="{x:Bind FullName}" />
+                        <controls:FieldRow Label="出生日期" Value="{x:Bind DateOfBirth}" IsSecret="True" />
+                        <controls:FieldRow Label="驾驶证号" Value="{x:Bind LicenseNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="签发国家/地区" Value="{x:Bind IssuingCountry}" />
+                        <controls:FieldRow Label="签发州/省" Value="{x:Bind IssuingState}" />
+                        <controls:FieldRow Label="签发日期" Value="{x:Bind IssueDate}" IsSecret="True" />
+                        <controls:FieldRow Label="到期日期" Value="{x:Bind ExpirationDate}" IsSecret="True" />
+                        <controls:FieldRow Label="签发机关" Value="{x:Bind IssuingAuthority}" />
+                        <controls:FieldRow Label="驾驶证类别" Value="{x:Bind LicenseClass}" />
+                    </StackPanel>
+                </controls:DetailCard.CardContent>
+            </controls:DetailCard>
+        </DataTemplate>
+        <DataTemplate x:Key="PassportTemplate" x:DataType="models:PassportDetail">
+            <controls:DetailCard Title="护照">
+                <controls:DetailCard.CardContent>
+                    <StackPanel Spacing="2">
+                        <controls:FieldRow Label="姓名" Value="{x:Bind FullName}" />
+                        <controls:FieldRow Label="出生日期" Value="{x:Bind DateOfBirth}" IsSecret="True" />
+                        <controls:FieldRow Label="性别" Value="{x:Bind Sex}" IsSecret="True" />
+                        <controls:FieldRow Label="出生地" Value="{x:Bind BirthPlace}" IsSecret="True" />
+                        <controls:FieldRow Label="国籍" Value="{x:Bind Nationality}" />
+                        <controls:FieldRow Label="签发国家/地区" Value="{x:Bind IssuingCountry}" />
+                        <controls:FieldRow Label="护照号码" Value="{x:Bind PassportNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="护照类型" Value="{x:Bind PassportType}" />
+                        <controls:FieldRow Label="身份证件号码" Value="{x:Bind NationalIdentificationNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="签发机关" Value="{x:Bind IssuingAuthority}" />
+                        <controls:FieldRow Label="签发日期" Value="{x:Bind IssueDate}" IsSecret="True" />
+                        <controls:FieldRow Label="到期日期" Value="{x:Bind ExpirationDate}" IsSecret="True" />
+                    </StackPanel>
+                </controls:DetailCard.CardContent>
+            </controls:DetailCard>
+        </DataTemplate>
 
     </Page.Resources>
 
@@ -123,6 +178,9 @@
                         <Setter Target="VaultDetailColumn.Width" Value="*" />
                         <Setter Target="VaultListPane.Visibility" Value="Visible" />
                         <Setter Target="VaultDetailPane.Visibility" Value="Visible" />
+                        <Setter Target="PendingCipherCreateActions.Orientation" Value="Horizontal" />
+                        <Setter Target="PendingCipherCreateCheckButton.HorizontalAlignment" Value="Left" />
+                        <Setter Target="PendingCipherCreateAbandonButton.HorizontalAlignment" Value="Left" />
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="NarrowList">
@@ -131,6 +189,9 @@
                         <Setter Target="VaultDetailColumn.Width" Value="0" />
                         <Setter Target="VaultListPane.Visibility" Value="Visible" />
                         <Setter Target="VaultDetailPane.Visibility" Value="Collapsed" />
+                        <Setter Target="PendingCipherCreateActions.Orientation" Value="Vertical" />
+                        <Setter Target="PendingCipherCreateCheckButton.HorizontalAlignment" Value="Stretch" />
+                        <Setter Target="PendingCipherCreateAbandonButton.HorizontalAlignment" Value="Stretch" />
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="NarrowDetail">
@@ -139,6 +200,9 @@
                         <Setter Target="VaultDetailColumn.Width" Value="*" />
                         <Setter Target="VaultListPane.Visibility" Value="Collapsed" />
                         <Setter Target="VaultDetailPane.Visibility" Value="Visible" />
+                        <Setter Target="PendingCipherCreateActions.Orientation" Value="Vertical" />
+                        <Setter Target="PendingCipherCreateCheckButton.HorizontalAlignment" Value="Stretch" />
+                        <Setter Target="PendingCipherCreateAbandonButton.HorizontalAlignment" Value="Stretch" />
                     </VisualState.Setters>
                 </VisualState>
             </VisualStateGroup>
@@ -152,22 +216,82 @@
             <ColumnDefinition x:Name="VaultDetailColumn" Width="*" />
         </Grid.ColumnDefinitions>
 
-        <StackPanel x:Name="VaultBusyPanel"
-                    Grid.Row="0"
-                    Grid.ColumnSpan="2"
+        <StackPanel x:Name="VaultGlobalStatusPanel" Grid.Row="0" Grid.ColumnSpan="2">
+            <StackPanel x:Name="VaultBusyPanel"
+                        Margin="12,8,12,0"
+                        HorizontalAlignment="Center"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <ProgressRing x:Name="VaultBusyRing"
+                              Width="20"
+                              Height="20"
+                              AutomationProperties.AutomationId="VaultBusyRing"
+                              IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
+                <TextBlock Text="{x:Bind ViewModel.BusyMessage, Mode=OneWay}"
+                           VerticalAlignment="Center"
+                           AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+
+            <Border x:Name="PendingCipherCreateRecoveryPanel"
                     Margin="12,8,12,0"
-                    HorizontalAlignment="Center"
-                    Orientation="Horizontal"
-                    Spacing="8"
-                    Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <ProgressRing x:Name="VaultBusyRing"
-                          Width="20"
-                          Height="20"
-                          AutomationProperties.AutomationId="VaultBusyRing"
-                          IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
-            <TextBlock Text="{x:Bind ViewModel.BusyMessage, Mode=OneWay}"
-                       VerticalAlignment="Center"
-                       AutomationProperties.LiveSetting="Polite" />
+                    Padding="12"
+                    Style="{StaticResource CardBorderStyle}"
+                    Visibility="{x:Bind ViewModel.HasPendingCipherCreate, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                    AutomationProperties.LiveSetting="Polite">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Glyph="&#xE7BA;"
+                              FontSize="18"
+                              Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                              VerticalAlignment="Top" />
+                    <StackPanel Grid.Column="1" Spacing="6">
+                        <TextBlock Text="{x:Bind ViewModel.PendingCipherCreateTitle, Mode=OneWay}"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   TextWrapping="WrapWholeWords" />
+                        <TextBlock Text="{x:Bind ViewModel.PendingCipherCreateMessage, Mode=OneWay}"
+                                   TextWrapping="WrapWholeWords" />
+                        <TextBlock Text="再次同步检查只读取服务器状态，不会重新提交创建请求。"
+                                   Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                        <TextBlock Text="{x:Bind ViewModel.PendingCipherCreateDraftMessage, Mode=OneWay}"
+                                   Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                        <StackPanel x:Name="PendingCipherCreateActions"
+                                    Margin="0,4,0,0"
+                                    Orientation="Horizontal"
+                                    Spacing="8">
+                            <Button x:Name="PendingCipherCreateCheckButton"
+                                    HorizontalAlignment="Left"
+                                    Command="{x:Bind ViewModel.SyncCommand}"
+                                    IsEnabled="{x:Bind ViewModel.CanCheckPendingCipherCreate, Mode=OneWay}"
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    AutomationProperties.Name="再次同步检查待确认条目"
+                                    AutomationProperties.AutomationId="PendingCipherCreateCheckButton">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE895;" FontSize="14" />
+                                    <TextBlock Text="再次同步检查" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="PendingCipherCreateAbandonButton"
+                                    HorizontalAlignment="Left"
+                                    IsEnabled="{x:Bind ViewModel.CanAbandonPendingCipherCreate, Mode=OneWay}"
+                                    Click="OnAbandonPendingCipherCreateClick"
+                                    AutomationProperties.Name="放弃待确认状态"
+                                    AutomationProperties.AutomationId="PendingCipherCreateAbandonButton">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE74D;" FontSize="14"
+                                              Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                    <TextBlock Text="放弃待确认状态…"
+                                               TextWrapping="Wrap"
+                                               Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
         </StackPanel>
 
         <!-- 列表 -->
@@ -205,7 +329,7 @@
             <CommandBar Grid.Row="1" DefaultLabelPosition="Right" HorizontalAlignment="Left"
                         Background="Transparent">
                 <AppBarButton x:Name="AddCipherButton" Icon="Add" Label="新增"
-                              IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}">
+                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanBeginCipherCreate, ViewModel.CanStartVaultOperation), Mode=OneWay}">
                     <AppBarButton.Flyout>
                         <MenuFlyout>
                             <MenuFlyoutItem Text="登录" Click="OnAddLoginClick">
@@ -233,6 +357,27 @@
                                     <FontIcon Glyph="&#xE72E;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="银行账户"
+                                            Click="OnAddBankAccountClick"
+                                            Visibility="{x:Bind ViewModel.CanCreateNewCipherTypes, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE825;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="驾驶证"
+                                            Click="OnAddDriversLicenseClick"
+                                            Visibility="{x:Bind ViewModel.CanCreateNewCipherTypes, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE77B;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="护照"
+                                            Click="OnAddPassportClick"
+                                            Visibility="{x:Bind ViewModel.CanCreateNewCipherTypes, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8A5;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
                             <MenuFlyoutSeparator />
                             <MenuFlyoutItem x:Name="AddFolderMenuItem"
                                             Text="文件夹"
@@ -256,31 +401,69 @@
                               Click="OnSelectAllClick"
                               IsEnabled="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay}" />
                 <AppBarButton x:Name="MoveSelectedButton" Icon="MoveToFolder" Label="移动"
-                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.HasSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}">
+                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanMoveSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}">
                     <AppBarButton.Flyout>
                         <MenuFlyout x:Name="MoveFolderFlyout" Opening="OnMoveSelectedFlyoutOpening" />
                     </AppBarButton.Flyout>
                 </AppBarButton>
+                <AppBarButton x:Name="TransferSelectedToOrganizationButton"
+                              Label="转移到组织"
+                              Click="OnTransferSelectedToOrganizationClick"
+                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanTransferSelectionToOrganization, ViewModel.CanStartVaultOperation), Mode=OneWay}"
+                              Visibility="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE8AB;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton x:Name="AddSelectedToCollectionsButton"
+                              Label="加入集合"
+                              Click="OnAddSelectedToCollectionsClick"
+                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanManageSelectionCollections, ViewModel.CanStartVaultOperation), Mode=OneWay}"
+                              Visibility="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE8B7;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton x:Name="RemoveSelectedFromCollectionsButton"
+                              Label="移出集合"
+                              Click="OnRemoveSelectedFromCollectionsClick"
+                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanManageSelectionCollections, ViewModel.CanStartVaultOperation), Mode=OneWay}"
+                              Visibility="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE74D;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton Label="归档"
+                              Command="{x:Bind ViewModel.ArchiveSelectedCommand}"
+                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanArchiveSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}"
+                              Visibility="{x:Bind ViewModel.ShowArchiveSelectionAction, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE7B8;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton Icon="Undo" Label="取消归档"
+                              Command="{x:Bind ViewModel.UnarchiveSelectedCommand}"
+                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanUnarchiveSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}"
+                              Visibility="{x:Bind ViewModel.ShowUnarchiveSelectionAction, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                 <AppBarButton Icon="Delete" Label="移到回收站"
                               Command="{x:Bind ViewModel.SoftDeleteSelectedCommand}"
-                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.HasSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}"
+                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanDeleteSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                               Visibility="{x:Bind ViewModel.IsTrashFilterSelected, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}" />
                 <AppBarButton Icon="Undo" Label="恢复"
                               Command="{x:Bind ViewModel.RestoreSelectedCommand}"
-                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.HasSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}"
+                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanRestoreSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                               Visibility="{x:Bind ViewModel.IsTrashFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                 <AppBarButton x:Name="PermanentDeleteButton" Icon="Delete" Label="永久删除"
                               Click="OnPermanentDeleteSelectedClick"
-                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.HasSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}"
+                              IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanDeleteSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                               Visibility="{x:Bind ViewModel.IsTrashFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
             </CommandBar>
-            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="12" Margin="0,4,0,0"
+            <StackPanel Grid.Row="3" Spacing="6" Margin="0,4,0,0"
                         Visibility="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <TextBlock VerticalAlignment="Center"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           Text="{x:Bind ViewModel.SelectedCount, Mode=OneWay}" />
-                <TextBlock VerticalAlignment="Center" Text="项已选" />
-                <Button Content="完成" Command="{x:Bind ViewModel.ToggleSelectionModeCommand}" />
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock VerticalAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="{x:Bind ViewModel.SelectedCount, Mode=OneWay}" />
+                    <TextBlock VerticalAlignment="Center" Text="项已选" />
+                    <Button Content="完成" Command="{x:Bind ViewModel.ToggleSelectionModeCommand}" />
+                </StackPanel>
+                <InfoBar x:Name="VaultSelectionPlacementErrorInfoBar"
+                         Severity="Warning"
+                         IsClosable="False"
+                         IsOpen="{x:Bind ViewModel.HasSelectionPlacementError, Mode=OneWay}"
+                         Message="{x:Bind ViewModel.SelectionPlacementError, Mode=OneWay}" />
             </StackPanel>
             <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8"
                         Visibility="{x:Bind ViewModel.IsFolderFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}">
@@ -300,9 +483,9 @@
                          Message="显示的是上次同步的数据,可能已过期。" />
                 <InfoBar x:Name="VaultCommittedWarningInfoBar"
                          Severity="Warning"
-                         IsOpen="{x:Bind ViewModel.HasOperationWarning, Mode=OneWay}"
+                         IsOpen="{x:Bind ViewModel.ShowOperationWarningInfo, Mode=OneWay}"
                          IsClosable="False"
-                         Title="已保存，需要同步"
+                         Title="{x:Bind ViewModel.OperationWarningTitle, Mode=OneWay}"
                          Message="{x:Bind ViewModel.OperationWarning, Mode=OneWay}"
                          AutomationProperties.LiveSetting="Polite" />
                 <InfoBar x:Name="VaultSkippedInfoBar"
@@ -310,6 +493,12 @@
                          IsClosable="True"
                          IsOpen="{x:Bind ViewModel.HasSkippedCiphers, Mode=OneWay}"
                          Message="{x:Bind ViewModel.SkippedCipherMessage, Mode=OneWay}" />
+                <InfoBar x:Name="VaultOrganizationUnavailableInfoBar"
+                         Severity="Warning"
+                         IsClosable="False"
+                         IsOpen="{x:Bind ViewModel.HasUnsupportedOrganizationCiphers, Mode=OneWay}"
+                         Title="共享保险库不可用"
+                         Message="{x:Bind ViewModel.UnsupportedOrganizationCipherMessage, Mode=OneWay}" />
                 <!-- 紧凑单行:排序 + 筛选(分面下拉,含激活计数徽标) + 视图(已保存视图 + 保存当前视图) -->
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <ComboBox x:Name="SortComboBox"
@@ -468,6 +657,7 @@
                                         AutomationProperties.Name="复制"
                                         AutomationProperties.AutomationId="VaultRowCopyButton"
                                         ToolTipService.ToolTip="复制主值"
+                                        IsEnabled="{x:Bind CanViewPassword}"
                                         Click="OnRowCopyPrimaryClick">
                                     <FontIcon Glyph="&#xE8C8;" FontSize="14" />
                                 </Button>
@@ -479,26 +669,49 @@
                                     <Button.Flyout>
                                         <MenuFlyout>
                                             <MenuFlyoutItem Text="编辑"
+                                                            IsEnabled="{x:Bind CanModify}"
                                                             Click="OnRowEditClick"
                                                             Visibility="{x:Bind local:VaultPage.VisibleIfFalse(IsDeleted)}">
                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE70F;" /></MenuFlyoutItem.Icon>
                                             </MenuFlyoutItem>
+                                            <MenuFlyoutItem Text="创建副本"
+                                                            IsEnabled="{x:Bind CanClone}"
+                                                            Click="OnRowCloneClick"
+                                                            Visibility="{x:Bind local:VaultPage.VisibleIfFalse(IsDeleted)}">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B0;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
                                             <MenuFlyoutItem Text="收藏 / 取消收藏"
+                                                            IsEnabled="{x:Bind CanFavorite}"
                                                             Click="OnRowFavoriteClick"
                                                             Visibility="{x:Bind local:VaultPage.VisibleIfFalse(IsDeleted)}">
                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE734;" /></MenuFlyoutItem.Icon>
                                             </MenuFlyoutItem>
+                                            <MenuFlyoutItem Text="归档"
+                                                            IsEnabled="{x:Bind ShowArchiveAction}"
+                                                            Click="OnRowArchiveClick"
+                                                            Visibility="{x:Bind local:VaultPage.VisibleIfTrue(ShowArchiveAction)}">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7B8;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem Text="取消归档"
+                                                            IsEnabled="{x:Bind ShowUnarchiveAction}"
+                                                            Click="OnRowUnarchiveClick"
+                                                            Visibility="{x:Bind local:VaultPage.VisibleIfTrue(ShowUnarchiveAction)}">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7A7;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
                                             <MenuFlyoutItem Text="移到回收站"
+                                                            IsEnabled="{x:Bind CanDelete}"
                                                             Click="OnRowSoftDeleteClick"
                                                             Visibility="{x:Bind local:VaultPage.VisibleIfFalse(IsDeleted)}">
                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
                                             </MenuFlyoutItem>
                                             <MenuFlyoutItem Text="恢复"
+                                                            IsEnabled="{x:Bind CanRestore}"
                                                             Click="OnRowRestoreClick"
                                                             Visibility="{x:Bind local:VaultPage.VisibleIfTrue(IsDeleted)}">
                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7A7;" /></MenuFlyoutItem.Icon>
                                             </MenuFlyoutItem>
                                             <MenuFlyoutItem Text="永久删除"
+                                                            IsEnabled="{x:Bind CanDelete}"
                                                             Click="OnRowPermanentDeleteClick"
                                                             Visibility="{x:Bind local:VaultPage.VisibleIfTrue(IsDeleted)}">
                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
@@ -559,6 +772,9 @@
             <TextBlock Grid.Row="5" Text="回收站为空" Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                        Margin="0,8" HorizontalAlignment="Center"
                        Visibility="{x:Bind ViewModel.IsTrashEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+            <TextBlock Grid.Row="5" Text="归档为空" Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                       Margin="0,8" HorizontalAlignment="Center"
+                       Visibility="{x:Bind ViewModel.IsArchiveEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
         </Grid>
 
         <!-- 详情 -->
@@ -568,6 +784,7 @@
                 <!-- 窄屏详情态返回列表入口:仅 NarrowDetail 可见,由 code-behind 切换。 -->
                 <Button x:Name="VaultNarrowBackButton"
                         HorizontalAlignment="Left"
+                        IsEnabled="{x:Bind ViewModel.CanCancelEditor, Mode=OneWay}"
                         Click="OnVaultNarrowBackClick"
                         AutomationProperties.AutomationId="VaultNarrowBackButton"
                         AutomationProperties.Name="返回列表"
@@ -576,10 +793,12 @@
                         <FontIcon Glyph="&#xE72B;" FontSize="14" /><TextBlock Text="返回列表" />
                     </StackPanel>
                 </Button>
-                <StackPanel x:Name="CipherEditorPanel"
-                            x:Load="{x:Bind ViewModel.IsEditing, Mode=OneWay}"
-                            Spacing="12"
-                            Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <ContentControl x:Name="CipherEditorPanel"
+                                x:Load="{x:Bind ViewModel.IsEditing, Mode=OneWay}"
+                                IsEnabled="{x:Bind ViewModel.CanEditEditorDraft, Mode=OneWay}"
+                                HorizontalContentAlignment="Stretch"
+                                Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Spacing="12">
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -593,12 +812,19 @@
                             <ComboBox x:Name="CipherEditorTypeBox"
                                       Header="类型"
                                       HorizontalAlignment="Stretch"
+                                      IsEnabled="{x:Bind ViewModel.CanChangeEditorType, Mode=OneWay}"
                                       SelectionChanged="OnCipherEditorTypeChanged">
                                 <ComboBoxItem Content="登录" Tag="Login" />
                                 <ComboBoxItem Content="支付卡" Tag="Card" />
                                 <ComboBoxItem Content="身份" Tag="Identity" />
                                 <ComboBoxItem Content="笔记" Tag="Note" />
                                 <ComboBoxItem Content="SSH 密钥" Tag="Ssh" />
+                                <ComboBoxItem Content="银行账户" Tag="BankAccount"
+                                              Visibility="{x:Bind ViewModel.CanCreateNewCipherTypes, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                <ComboBoxItem Content="驾驶证" Tag="DriversLicense"
+                                              Visibility="{x:Bind ViewModel.CanCreateNewCipherTypes, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                                <ComboBoxItem Content="护照" Tag="Passport"
+                                              Visibility="{x:Bind ViewModel.CanCreateNewCipherTypes, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                             </ComboBox>
                         </StackPanel>
 
@@ -606,13 +832,14 @@
                                 Grid.Column="1"
                                 Content="取消"
                                 VerticalAlignment="Bottom"
+                                IsEnabled="{x:Bind ViewModel.CanCancelEditor, Mode=OneWay}"
                                 Click="OnCancelCipherEditorClick" />
                         <Button x:Name="SaveCipherEditorButton"
                                 Grid.Column="2"
                                 Content="保存"
                                 VerticalAlignment="Bottom"
                                 Style="{StaticResource AccentButtonStyle}"
-                                IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
+                                IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanSaveEditorDraft, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                                 Click="OnSaveCipherEditorClick" />
                     </Grid>
 
@@ -631,6 +858,32 @@
                                 <TextBox Header="项目名称（必填）"
                                          HorizontalAlignment="Stretch"
                                          Text="{x:Bind ViewModel.EditorDraft.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <ComboBox x:Name="CipherEditorDestinationBox"
+                                          Header="保存到"
+                                          HorizontalAlignment="Stretch"
+                                          ItemsSource="{x:Bind ViewModel.EditorDestinations, Mode=OneWay}"
+                                          SelectedItem="{x:Bind ViewModel.EditorSelectedDestination, Mode=TwoWay}"
+                                          IsEnabled="{x:Bind ViewModel.CanChooseEditorDestination, Mode=OneWay}"
+                                          PlaceholderText="没有可写入的位置">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="models:CipherDestinationOption">
+                                            <TextBlock Text="{x:Bind DisplayName}" TextTrimming="CharacterEllipsis" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <StackPanel Spacing="6"
+                                            Visibility="{x:Bind ViewModel.ShowEditorCollectionOptions, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="集合" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                                    <ItemsControl ItemsSource="{x:Bind ViewModel.EditorCollectionOptions, Mode=OneWay}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="models:CipherCollectionOption">
+                                                <CheckBox Content="{x:Bind Name}"
+                                                          IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
+                                                          IsEnabled="{x:Bind CanSelect}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
                                 <ComboBox x:Name="CipherEditorFolderBox"
                                           Header="文件夹"
                                           HorizontalAlignment="Stretch"
@@ -772,6 +1025,64 @@
                         </controls:DetailCard.CardContent>
                     </controls:DetailCard>
 
+                    <controls:DetailCard Title="银行账户"
+                                         Visibility="{x:Bind ViewModel.EditorDraft.IsBankAccount, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <controls:DetailCard.CardContent>
+                            <StackPanel Spacing="10">
+                                <TextBox Header="银行" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.BankAccount.BankName, Mode=TwoWay}" />
+                                <TextBox Header="账户持有人" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.BankAccount.NameOnAccount, Mode=TwoWay}" />
+                                <TextBox Header="账户类型" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.BankAccount.AccountType, Mode=TwoWay}" />
+                                <PasswordBox Header="账号" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.BankAccount.AccountNumber, Mode=TwoWay}" />
+                                <PasswordBox Header="路由号码" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.BankAccount.RoutingNumber, Mode=TwoWay}" />
+                                <PasswordBox Header="分行号码" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.BankAccount.BranchNumber, Mode=TwoWay}" />
+                                <PasswordBox Header="PIN" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.BankAccount.Pin, Mode=TwoWay}" />
+                                <PasswordBox Header="SWIFT / BIC" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.BankAccount.SwiftCode, Mode=TwoWay}" />
+                                <PasswordBox Header="IBAN" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.BankAccount.Iban, Mode=TwoWay}" />
+                                <TextBox Header="银行联系电话" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.BankAccount.BankContactPhone, Mode=TwoWay}" />
+                            </StackPanel>
+                        </controls:DetailCard.CardContent>
+                    </controls:DetailCard>
+
+                    <controls:DetailCard Title="驾驶证"
+                                         Visibility="{x:Bind ViewModel.EditorDraft.IsDriversLicense, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <controls:DetailCard.CardContent>
+                            <StackPanel Spacing="10">
+                                <TextBox Header="名" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.DriversLicense.FirstName, Mode=TwoWay}" />
+                                <TextBox Header="中间名" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.DriversLicense.MiddleName, Mode=TwoWay}" />
+                                <TextBox Header="姓" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.DriversLicense.LastName, Mode=TwoWay}" />
+                                <PasswordBox Header="出生日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.DriversLicense.DateOfBirth, Mode=TwoWay}" />
+                                <PasswordBox Header="驾驶证号" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.DriversLicense.LicenseNumber, Mode=TwoWay}" />
+                                <TextBox Header="签发国家/地区" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.DriversLicense.IssuingCountry, Mode=TwoWay}" />
+                                <TextBox Header="签发州/省" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.DriversLicense.IssuingState, Mode=TwoWay}" />
+                                <PasswordBox Header="签发日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.DriversLicense.IssueDate, Mode=TwoWay}" />
+                                <PasswordBox Header="到期日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.DriversLicense.ExpirationDate, Mode=TwoWay}" />
+                                <TextBox Header="签发机关" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.DriversLicense.IssuingAuthority, Mode=TwoWay}" />
+                                <TextBox Header="驾驶证类别" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.DriversLicense.LicenseClass, Mode=TwoWay}" />
+                            </StackPanel>
+                        </controls:DetailCard.CardContent>
+                    </controls:DetailCard>
+
+                    <controls:DetailCard Title="护照"
+                                         Visibility="{x:Bind ViewModel.EditorDraft.IsPassport, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <controls:DetailCard.CardContent>
+                            <StackPanel Spacing="10">
+                                <TextBox Header="姓" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.Passport.Surname, Mode=TwoWay}" />
+                                <TextBox Header="名" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.Passport.GivenName, Mode=TwoWay}" />
+                                <PasswordBox Header="出生日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.Passport.DateOfBirth, Mode=TwoWay}" />
+                                <PasswordBox Header="性别" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.Passport.Sex, Mode=TwoWay}" />
+                                <PasswordBox Header="出生地" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.Passport.BirthPlace, Mode=TwoWay}" />
+                                <TextBox Header="国籍" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.Passport.Nationality, Mode=TwoWay}" />
+                                <TextBox Header="签发国家/地区" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.Passport.IssuingCountry, Mode=TwoWay}" />
+                                <PasswordBox Header="护照号码" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.Passport.PassportNumber, Mode=TwoWay}" />
+                                <TextBox Header="护照类型" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.Passport.PassportType, Mode=TwoWay}" />
+                                <PasswordBox Header="身份证件号码" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.Passport.NationalIdentificationNumber, Mode=TwoWay}" />
+                                <TextBox Header="签发机关" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.Passport.IssuingAuthority, Mode=TwoWay}" />
+                                <PasswordBox Header="签发日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.Passport.IssueDate, Mode=TwoWay}" />
+                                <PasswordBox Header="到期日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.Passport.ExpirationDate, Mode=TwoWay}" />
+                            </StackPanel>
+                        </controls:DetailCard.CardContent>
+                    </controls:DetailCard>
+
                     <controls:DetailCard Title="安全笔记"
                                          Visibility="{x:Bind ViewModel.EditorDraft.IsSecureNote, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <controls:DetailCard.CardContent>
@@ -812,6 +1123,8 @@
                                                         <ComboBoxItem Content="文本" Tag="Text" />
                                                         <ComboBoxItem Content="隐藏" Tag="Hidden" />
                                                         <ComboBoxItem Content="布尔值" Tag="Boolean" />
+                                                        <ComboBoxItem Content="Linked" Tag="Linked" IsEnabled="False" />
+                                                        <ComboBoxItem Content="Unsupported" Tag="Unsupported" IsEnabled="False" />
                                                     </ComboBox>
                                                     <TextBox x:Name="CustomFieldTextValueBox"
                                                              Header="值"
@@ -848,7 +1161,8 @@
                             </StackPanel>
                         </controls:DetailCard.CardContent>
                     </controls:DetailCard>
-                </StackPanel>
+                    </StackPanel>
+                </ContentControl>
 
                 <StackPanel Spacing="12"
                             Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}">
@@ -899,7 +1213,7 @@
                                    Visibility="{x:Bind ViewModel.Detail.HasAttachments, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}" />
                         <ItemsControl x:Name="AttachmentsItems"
                                       ItemsSource="{x:Bind ViewModel.Detail.Attachments, Mode=OneWay}"
-                                      IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
+                                      IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanModifySelectedItem, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                                       Visibility="{x:Bind ViewModel.Detail.HasAttachments, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="models:AttachmentItem">
@@ -945,7 +1259,7 @@
                         <Button x:Name="AddAttachmentButton"
                                 Content="添加附件"
                                 HorizontalAlignment="Left"
-                                IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
+                                IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanModifySelectedItem, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                                 Click="OnAddAttachmentClick" />
                     </StackPanel>
                     <!-- 自定义字段 -->
@@ -968,24 +1282,63 @@
                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                TextWrapping="Wrap"
                                Visibility="{x:Bind ViewModel.OperationError, Mode=OneWay, Converter={StaticResource EmptyToCollapsed}}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="TransferCipherToOrganizationButton"
+                                Click="OnTransferCipherToOrganizationClick"
+                                IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.CanTransferSelectedItem, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE8AB;" FontSize="14" />
+                                <TextBlock Text="转移到组织" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="ManageCipherCollectionsButton"
+                                Click="OnManageCipherCollectionsClick"
+                                IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.CanManageSelectedItemCollections, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE8B7;" FontSize="14" />
+                                <TextBlock Text="管理集合" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
                     <!-- 操作:常规(非回收站) -->
                     <Grid ColumnSpacing="8"
                           Visibility="{x:Bind ViewModel.IsSelectedItemDeleted, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <Button x:Name="EditCipherButton" HorizontalAlignment="Stretch" Click="OnEditCipherClick">
+                        <Button x:Name="EditCipherButton" HorizontalAlignment="Stretch"
+                                IsEnabled="{x:Bind ViewModel.CanModifySelectedItem, Mode=OneWay}"
+                                Click="OnEditCipherClick">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE70F;" FontSize="14" /><TextBlock Text="编辑" />
                             </StackPanel>
                         </Button>
                         <Button x:Name="DeleteCipherButton" Grid.Column="1" HorizontalAlignment="Stretch"
-                                IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
+                                IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanDeleteSelectedItem, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                                 Click="OnDeleteCipherClick">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                                 <TextBlock Text="删除" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="ArchiveCipherButton" Grid.Column="2" HorizontalAlignment="Stretch"
+                                IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanArchiveSelectedItem, ViewModel.CanStartVaultOperation), Mode=OneWay}"
+                                Click="OnArchiveCipherClick"
+                                Visibility="{x:Bind ViewModel.CanArchiveSelectedItem, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE7B8;" FontSize="14" /><TextBlock Text="归档" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="UnarchiveCipherButton" Grid.Column="2" HorizontalAlignment="Stretch"
+                                IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanUnarchiveSelectedItem, ViewModel.CanStartVaultOperation), Mode=OneWay}"
+                                Click="OnUnarchiveCipherClick"
+                                Visibility="{x:Bind ViewModel.CanUnarchiveSelectedItem, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE7A7;" FontSize="14" /><TextBlock Text="取消归档" />
                             </StackPanel>
                         </Button>
                     </Grid>
@@ -997,14 +1350,14 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Button x:Name="RestoreCipherButton" HorizontalAlignment="Stretch"
-                                IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
+                                IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanRestoreSelectedItem, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                                 Click="OnRestoreCipherClick">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE7A7;" FontSize="14" /><TextBlock Text="恢复" />
                             </StackPanel>
                         </Button>
                         <Button x:Name="PermanentDeleteCipherButton" Grid.Column="1" HorizontalAlignment="Stretch"
-                                IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
+                                IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanDeleteSelectedItem, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                                 Click="OnPermanentDeleteCipherClick">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />

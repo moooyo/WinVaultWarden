@@ -120,7 +120,7 @@ public sealed class SendUiService : ISendUiService
     public async Task<IReadOnlyList<SendListItem>> GetSendsAsync(CancellationToken ct = default)
     {
         if (IsDemo)
-            return _session!.Sends.Select(ToListItem).ToList();
+            return _session!.Sends.Select(send => ToListItem(send)).ToList();
 
         var context = CaptureMutationContext();
         long readEpoch;
@@ -138,7 +138,7 @@ public sealed class SendUiService : ISendUiService
             var items = snapshot.Observations
                 .Where(observation => observation.DecryptStatus == SendDecryptStatus.Decrypted)
                 .GroupBy(observation => observation.Id, StringComparer.Ordinal)
-                .Select(group => ToListItem(group.First().Value!))
+                .Select(group => ToListItem(group.First().Value!, snapshot.IsStale))
                 .ToList();
             return ApplyReconciliationNoLock(context.Scope, snapshot, items);
         });
@@ -163,6 +163,8 @@ public sealed class SendUiService : ISendUiService
 
         var snapshot = await _read.ObserveSendsAsync(ct);
         ValidateSnapshotContext(context, snapshot);
+        if (snapshot.IsStale)
+            return null;
         return ApplySnapshotForContext(context, () =>
         {
             if (readEpoch != CurrentEpochNoLock(context.Scope)
@@ -755,10 +757,16 @@ public sealed class SendUiService : ISendUiService
         SendReconciliationState state) =>
         new(sendId, "已提交的 Send", type, "待服务器确认", null, state);
 
-    private SendListItem ToListItem(Send send)
+    private SendListItem ToListItem(Send send, bool isReadOnly = false)
     {
         var deletion = send.DeletionDate.LocalDateTime.ToString("yyyy/M/d HH:mm");
-        return new SendListItem(send.Id, send.Name, MapType(send.Type), $"{deletion} 截止", send.ShareUrl);
+        return new SendListItem(
+            send.Id,
+            send.Name,
+            MapType(send.Type),
+            $"{deletion} 截止",
+            send.ShareUrl,
+            IsReadOnly: isReadOnly);
     }
 
     private SendDraftModel ToDraftModel(SendEditorDraft draft, string? id) => new()

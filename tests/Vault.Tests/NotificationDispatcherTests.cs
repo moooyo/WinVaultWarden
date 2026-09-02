@@ -1,6 +1,7 @@
 using System.Text;
 using Api;
 using Api.Dtos;
+using Core.Abstractions;
 using Core.Enums;
 using Core.Models;
 using Core.Services;
@@ -106,14 +107,22 @@ public class NotificationDispatcherTests
     private NotificationDispatcher NewDispatcher(
         VaultSession session,
         IVaultApiClientProvider? clients = null,
-        ISyncService? sync = null)
+        ISyncService? sync = null,
+        IDeviceIdentifierProvider? deviceIdentifierProvider = null,
+        ISessionTerminationSink? termination = null,
+        ITokenStore? tokenStore = null,
+        VaultCacheService? cache = null)
     {
         clients ??= ClientsWith();
         return new NotificationDispatcher(
             clients,
             new VaultDecryptor(_crypto),
             session,
-            sync ?? new FakeNotificationSyncService());
+            sync ?? new FakeNotificationSyncService(),
+            termination: termination,
+            deviceIdentifierProvider: deviceIdentifierProvider,
+            tokenStore: tokenStore,
+            cache: cache);
     }
 
     // ─────────────────────────── 测试场景 ───────────────────────────
@@ -142,6 +151,31 @@ public class NotificationDispatcherTests
         Assert.Equal("c-1", cipherApi.LastGetCipherId);
         var cipher = Assert.Single(session.Ciphers, c => c.Id == "c-1");
         Assert.Equal("GitHub", cipher.Name);
+        Assert.Equal(1, vaultChangedCount);
+    }
+
+    [Fact]
+    public async Task OrganizationCipherPush_UsesFullSyncInsteadOfUserKeyDecryption()
+    {
+        var dto = MakeEncryptedCipherDto("c-org", "Shared") with { OrganizationId = "org-1" };
+        var cipherApi = new FakeAttachmentApiClient { GetCipherResult = dto };
+        var session = NewUnlockedSession(out var lease);
+        var sync = new FakeNotificationSyncService();
+        var dispatcher = NewDispatcher(
+            session,
+            ClientsWith(cipherApi: cipherApi),
+            sync);
+        var vaultChangedCount = 0;
+        dispatcher.VaultChanged += () => vaultChangedCount++;
+
+        await dispatcher.DispatchAsync(
+            lease,
+            new NotificationMessage((int)UpdateType.SyncCipherCreate, "c-org"),
+            CancellationToken.None);
+
+        Assert.Equal(1, sync.SyncCalls);
+        Assert.Same(lease, Assert.Single(sync.Leases));
+        Assert.Empty(session.Ciphers);
         Assert.Equal(1, vaultChangedCount);
     }
 
@@ -195,6 +229,24 @@ public class NotificationDispatcherTests
             CancellationToken.None);
 
         Assert.Empty(cipherApi.Calls);
+        Assert.Empty(session.Ciphers);
+        Assert.Equal(1, vaultChangedCount);
+    }
+
+    [Fact]
+    public async Task ModernCipherDelete_Push_RemovesCipherAndRaisesVaultChanged()
+    {
+        var session = NewUnlockedSession(out var lease);
+        session.UpsertCipher(new Cipher { Id = "c-modern", Type = CipherType.Login, Name = "Delete" });
+        var dispatcher = NewDispatcher(session);
+        var vaultChangedCount = 0;
+        dispatcher.VaultChanged += () => vaultChangedCount++;
+
+        await dispatcher.DispatchAsync(
+            lease,
+            new NotificationMessage((int)UpdateType.SyncCipherDelete, "c-modern"),
+            CancellationToken.None);
+
         Assert.Empty(session.Ciphers);
         Assert.Equal(1, vaultChangedCount);
     }
@@ -327,6 +379,10 @@ public class NotificationDispatcherTests
     [InlineData((int)UpdateType.SyncVault)]
     [InlineData((int)UpdateType.SyncOrgKeys)]
     [InlineData((int)UpdateType.SyncSettings)]
+    [InlineData((int)UpdateType.SyncOrganizations)]
+    [InlineData((int)UpdateType.SyncOrganizationStatusChanged)]
+    [InlineData((int)UpdateType.SyncOrganizationCollectionSettingChanged)]
+    [InlineData((int)UpdateType.SyncPolicy)]
     public async Task BulkSyncPush_CallsSyncAsyncAndRaisesVaultChanged(int type)
     {
         var sync = new FakeNotificationSyncService();
@@ -343,6 +399,84 @@ public class NotificationDispatcherTests
 
         Assert.Equal(1, sync.SyncCalls);
         Assert.Equal(1, vaultChangedCount);
+    }
+
+    [Fact]
+    public async Task SyncOrgKeys_AfterSuccessfulSyncRequestsConnectionRebuild()
+    {
+        var sync = new FakeNotificationSyncService();
+        var session = NewUnlockedSession(out var lease);
+        var dispatcher = NewDispatcher(session, sync: sync);
+        var rebuildCount = 0;
+        dispatcher.ConnectionRebuildRequested += () => rebuildCount++;
+
+        await dispatcher.DispatchAsync(
+            lease,
+            new NotificationMessage((int)UpdateType.SyncOrgKeys, null),
+            CancellationToken.None);
+
+        Assert.Equal(1, sync.SyncCalls);
+        Assert.Equal(1, rebuildCount);
+    }
+
+    [Fact]
+    public async Task SyncOrgKeys_WhenSyncFailsDoesNotRequestConnectionRebuild()
+    {
+        var sync = new FakeNotificationSyncService
+        {
+            SyncException = new HttpRequestException("sync failed"),
+        };
+        var session = NewUnlockedSession(out var lease);
+        var dispatcher = NewDispatcher(session, sync: sync);
+        var rebuildCount = 0;
+        dispatcher.ConnectionRebuildRequested += () => rebuildCount++;
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => dispatcher.DispatchAsync(
+            lease,
+            new NotificationMessage((int)UpdateType.SyncOrgKeys, null),
+            CancellationToken.None));
+
+        Assert.Equal(0, rebuildCount);
+    }
+
+    [Fact]
+    public async Task CurrentContextNotification_IsIgnored()
+    {
+        const string deviceId = "1a3eb29f-fdc6-4074-9d74-1b439aa3ac38";
+        var sync = new FakeNotificationSyncService();
+        var session = NewUnlockedSession(out var lease);
+        var dispatcher = NewDispatcher(
+            session,
+            sync: sync,
+            deviceIdentifierProvider: new FixedDeviceIdentifierProvider(deviceId));
+
+        await dispatcher.DispatchAsync(
+            lease,
+            new NotificationMessage(
+                (int)UpdateType.SyncVault,
+                null,
+                ContextId: deviceId.ToUpperInvariant()),
+            CancellationToken.None);
+
+        Assert.Equal(0, sync.SyncCalls);
+    }
+
+    [Fact]
+    public async Task NotificationForDifferentAccount_IsIgnored()
+    {
+        var sync = new FakeNotificationSyncService();
+        var session = NewUnlockedSession(out var lease);
+        var dispatcher = NewDispatcher(session, sync: sync);
+
+        await dispatcher.DispatchAsync(
+            lease,
+            new NotificationMessage(
+                (int)UpdateType.SyncVault,
+                null,
+                UserId: "account-b"),
+            CancellationToken.None);
+
+        Assert.Equal(0, sync.SyncCalls);
     }
 
     /// <summary>
@@ -410,6 +544,142 @@ public class NotificationDispatcherTests
             CancellationToken.None);
 
         Assert.Equal(1, loggedOutCount);
+    }
+
+    [Fact]
+    public async Task LogOut_PurgesExactBindingBeforePublishingTermination()
+    {
+        var session = NewUnlockedSession(out var lease);
+        var tokenStore = new RecordingRemovalTokenStore();
+        var cacheStore = new FakeCacheStore();
+        var cache = new VaultCacheService(
+            cacheStore,
+            new VaultDecryptor(_crypto),
+            session);
+        var termination = new SessionTerminationSignal();
+        SessionTerminationNotice? notice = null;
+        var purgeObservedBeforeTermination = false;
+        termination.TerminationRequested += value =>
+        {
+            notice = value;
+            purgeObservedBeforeTermination = tokenStore.RemovedBindings.Count == 1
+                && cacheStore.ClearCount == 1;
+        };
+        var dispatcher = NewDispatcher(
+            session,
+            termination: termination,
+            tokenStore: tokenStore,
+            cache: cache);
+
+        await dispatcher.DispatchAsync(
+            lease,
+            new NotificationMessage((int)UpdateType.LogOut, null),
+            CancellationToken.None);
+
+        var removed = Assert.Single(tokenStore.RemovedBindings);
+        Assert.Equal(lease.AccountId, removed.AccountId);
+        Assert.Equal(lease.Endpoints, removed.Endpoints);
+        var cleared = Assert.Single(cacheStore.ClearedBindings);
+        Assert.Equal(lease.AccountId, cleared.AccountId);
+        Assert.Equal(lease.Endpoints, cleared.Endpoints);
+        Assert.True(purgeObservedBeforeTermination);
+        Assert.Equal(SessionTerminationReason.RemoteLogout, notice?.Reason);
+        Assert.Equal(VaultState.Locked, session.State);
+        Assert.False(session.IsCurrent(lease));
+    }
+
+    [Fact]
+    public async Task LogOut_PersistenceFailuresStillLockAndPublishTermination()
+    {
+        var session = NewUnlockedSession(out var lease);
+        var tokenStore = new RecordingRemovalTokenStore
+        {
+            RemoveResult = false,
+            RemoveException = new IOException("token removal failed"),
+        };
+        var cacheStore = new FakeCacheStore
+        {
+            BeforeClear = () => throw new UnauthorizedAccessException("cache removal failed"),
+        };
+        var cache = new VaultCacheService(
+            cacheStore,
+            new VaultDecryptor(_crypto),
+            session);
+        var termination = new SessionTerminationSignal();
+        var notices = 0;
+        termination.TerminationRequested += _ => notices++;
+        var loggedOut = 0;
+        var dispatcher = NewDispatcher(
+            session,
+            termination: termination,
+            tokenStore: tokenStore,
+            cache: cache);
+        dispatcher.LoggedOut += () => loggedOut++;
+
+        var exception = await Assert.ThrowsAsync<AuthSessionPersistenceException>(() =>
+            dispatcher.DispatchAsync(
+                lease,
+                new NotificationMessage((int)UpdateType.LogOut, null),
+                CancellationToken.None));
+
+        Assert.IsType<AggregateException>(exception.InnerException);
+        Assert.Single(tokenStore.RemovedBindings);
+        Assert.Equal(1, cacheStore.ClearAttemptCount);
+        Assert.Equal(1, notices);
+        Assert.Equal(1, loggedOut);
+        Assert.Equal(VaultState.Locked, session.State);
+        Assert.False(session.IsCurrent(lease));
+    }
+
+    [Fact]
+    public async Task LogOut_RemoveReturningFalseStillLocksSignalsAndReportsFailure()
+    {
+        var session = NewUnlockedSession(out var lease);
+        var tokenStore = new RecordingRemovalTokenStore { RemoveResult = false };
+        var termination = new SessionTerminationSignal();
+        var notices = 0;
+        termination.TerminationRequested += _ => notices++;
+        var dispatcher = NewDispatcher(
+            session,
+            termination: termination,
+            tokenStore: tokenStore);
+
+        var exception = await Assert.ThrowsAsync<AuthSessionPersistenceException>(() =>
+            dispatcher.DispatchAsync(
+                lease,
+                new NotificationMessage((int)UpdateType.LogOut, null),
+                CancellationToken.None));
+
+        Assert.IsType<AggregateException>(exception.InnerException);
+        Assert.Equal(1, notices);
+        Assert.Equal(VaultState.Locked, session.State);
+        Assert.False(session.IsCurrent(lease));
+    }
+
+    [Fact]
+    public async Task LogOut_InvalidatesLeaseBeforeAccountScopedPurge()
+    {
+        var session = NewUnlockedSession(out var lease);
+        var observedOldLeaseCurrent = true;
+        var observedState = VaultState.Unlocked;
+        var tokenStore = new RecordingRemovalTokenStore
+        {
+            BeforeRemove = () =>
+            {
+                observedOldLeaseCurrent = session.IsCurrent(lease);
+                observedState = session.State;
+            },
+        };
+        var dispatcher = NewDispatcher(session, tokenStore: tokenStore);
+
+        await dispatcher.DispatchAsync(
+            lease,
+            new NotificationMessage((int)UpdateType.LogOut, null),
+            CancellationToken.None);
+
+        Assert.False(observedOldLeaseCurrent);
+        Assert.Equal(VaultState.Locked, observedState);
+        Assert.Single(tokenStore.RemovedBindings);
     }
 
     /// <summary>
@@ -697,7 +967,7 @@ public sealed class FakeNotificationReadonlyApiClient : IReadonlyApiClient
         => throw new NotImplementedException();
     public Task<Api.Dtos.SendResponseDto> GetSendAsync(string sendId, CancellationToken ct = default)
         => throw new NotImplementedException();
-    public Task SendTwoFactorEmailLoginAsync(string email, string masterPasswordHash, string deviceIdentifier, CancellationToken ct = default)
+    public Task SendTwoFactorEmailLoginAsync(Api.Dtos.SendEmailLoginRequest request, CancellationToken ct = default)
         => throw new NotImplementedException();
 }
 
@@ -709,16 +979,62 @@ public sealed class FakeNotificationSyncService : Core.Services.ISyncService
 {
     public int SyncCalls { get; private set; }
     public List<VaultSessionLease> Leases { get; } = new();
+    public Exception? SyncException { get; set; }
+    public Exception? NextSyncException { get; set; }
 
     public Task<IReadOnlyList<Core.Models.Cipher>> SyncAsync(
         VaultSessionLease lease, CancellationToken ct = default)
     {
         SyncCalls++;
         Leases.Add(lease);
-        return Task.FromResult<IReadOnlyList<Core.Models.Cipher>>(Array.Empty<Core.Models.Cipher>());
+        if (NextSyncException is { } next)
+        {
+            NextSyncException = null;
+            return Task.FromException<IReadOnlyList<Core.Models.Cipher>>(next);
+        }
+        return SyncException is null
+            ? Task.FromResult<IReadOnlyList<Core.Models.Cipher>>(Array.Empty<Core.Models.Cipher>())
+            : Task.FromException<IReadOnlyList<Core.Models.Cipher>>(SyncException);
     }
 
     public Task<IReadOnlyList<Core.Models.Cipher>> SyncAsync(CancellationToken ct = default) =>
         throw new InvalidOperationException(
             "Notification tests must use the explicit lease overload.");
+
+}
+
+public sealed class FixedDeviceIdentifierProvider(string identifier) : IDeviceIdentifierProvider
+{
+    public string GetDeviceIdentifier() => identifier;
+}
+
+public sealed class RecordingRemovalTokenStore : ITokenStore
+{
+    public bool RemoveResult { get; init; } = true;
+    public Exception? RemoveException { get; init; }
+    public Action? BeforeRemove { get; init; }
+    public List<(string AccountId, ServerEndpoints Endpoints)> RemovedBindings { get; } = [];
+
+    public bool TryLoad(out PersistedSession session)
+    {
+        session = null!;
+        return false;
+    }
+
+    public void Save(PersistedSession session)
+    {
+    }
+
+    public void Clear()
+    {
+    }
+
+    public bool Remove(string accountId, ServerEndpoints endpoints)
+    {
+        RemovedBindings.Add((accountId, endpoints));
+        BeforeRemove?.Invoke();
+        if (RemoveException is not null)
+            throw RemoveException;
+        return RemoveResult;
+    }
 }

@@ -1,5 +1,6 @@
 using System.Text;
 using Api;
+using Core.Enums;
 using Core.Models;
 using Xunit;
 
@@ -7,6 +8,19 @@ namespace Api.Tests;
 
 public class SignalRMessagePackTests
 {
+    [Fact]
+    public void UpdateType_contains_the_complete_official_wire_range()
+    {
+        var officialValues = Enum.GetValues<UpdateType>()
+            .Where(value => value != UpdateType.None)
+            .Select(value => (int)value)
+            .Order()
+            .ToArray();
+
+        Assert.Equal(Enumerable.Range(0, 28), officialValues);
+        Assert.Equal(100, (int)UpdateType.None);
+    }
+
     // ----- minimal msgpack helpers (test-only) -----
 
     private static void Str(List<byte> b, string s)
@@ -63,6 +77,22 @@ public class SignalRMessagePackTests
 
         outb.AddRange(m);
         return outb.ToArray();
+    }
+
+    private static byte[] InvocationFrame(
+        int argumentPropertyCount,
+        Action<List<byte>> writeArgumentProperties)
+    {
+        var message = new List<byte>();
+        Arr(message, 5);
+        message.Add(1);
+        Map(message, 0);
+        message.Add(0xc0);
+        Str(message, "ReceiveMessage");
+        Arr(message, 1);
+        Map(message, argumentPropertyCount);
+        writeArgumentProperties(message);
+        return FrameOf(message.ToArray());
     }
 
     // ----------------------------------------------------------------
@@ -172,6 +202,223 @@ public class SignalRMessagePackTests
     public void Returns_false_for_empty_span()
     {
         Assert.False(SignalRMessagePack.TryParseInvocation(ReadOnlySpan<byte>.Empty, out _));
+    }
+
+    [Fact]
+    public void Parses_every_coalesced_hub_message_in_wire_order()
+    {
+        var combined = Frame(1, "cipher-first")
+            .Concat(new byte[] { 0x02, 0x91, 0x06 })
+            .Concat(Frame(7, "folder-second"))
+            .ToArray();
+
+        Assert.True(SignalRMessagePack.TryParseInvocations(combined, out var notifications));
+        Assert.Collection(
+            notifications,
+            first =>
+            {
+                Assert.Equal(1, first.Type);
+                Assert.Equal("cipher-first", first.EntityId);
+            },
+            second =>
+            {
+                Assert.Equal(7, second.Type);
+                Assert.Equal("folder-second", second.EntityId);
+            });
+    }
+
+    [Fact]
+    public void Unknown_invocation_target_is_ignored_without_hiding_notifications()
+    {
+        var unknownInvocation = new List<byte>();
+        Arr(unknownInvocation, 5);
+        unknownInvocation.Add(1);
+        Map(unknownInvocation, 0);
+        unknownInvocation.Add(0xc0);
+        Str(unknownInvocation, "UnknownTarget");
+        Arr(unknownInvocation, 0);
+
+        var combined = Frame(1, "cipher-first")
+            .Concat(FrameOf(unknownInvocation.ToArray()))
+            .Concat(Frame(7, "folder-second"))
+            .ToArray();
+
+        Assert.True(SignalRMessagePack.TryParseInvocations(combined, out var notifications));
+        Assert.Equal(["cipher-first", "folder-second"],
+            notifications.Select(notification => notification.EntityId));
+    }
+
+    [Fact]
+    public void Malformed_unknown_invocation_tail_is_rejected()
+    {
+        var malformedUnknownInvocation = new List<byte>();
+        Arr(malformedUnknownInvocation, 5);
+        malformedUnknownInvocation.Add(1);
+        Map(malformedUnknownInvocation, 0);
+        malformedUnknownInvocation.Add(0xc0);
+        Str(malformedUnknownInvocation, "UnknownTarget");
+        malformedUnknownInvocation.Add(0);
+
+        var combined = Frame(1, "cipher-first")
+            .Concat(FrameOf(malformedUnknownInvocation.ToArray()))
+            .ToArray();
+
+        Assert.False(SignalRMessagePack.TryParseInvocations(combined, out var notifications));
+        Assert.Empty(notifications);
+    }
+
+    [Fact]
+    public void Coalesced_message_with_truncated_tail_is_rejected()
+    {
+        var combined = Frame(1, "cipher-first")
+            .Concat(new byte[] { 0x05, 0x91 })
+            .ToArray();
+
+        Assert.False(SignalRMessagePack.TryParseInvocations(combined, out var notifications));
+        Assert.Empty(notifications);
+    }
+
+    [Fact]
+    public void Coalesced_message_with_invalid_messagepack_tail_is_rejected()
+    {
+        var combined = Frame(1, "cipher-first")
+            .Concat(new byte[] { 0x01, 0xc1 })
+            .ToArray();
+
+        Assert.False(SignalRMessagePack.TryParseInvocations(combined, out var notifications));
+        Assert.Empty(notifications);
+    }
+
+    [Fact]
+    public void Coalesced_message_with_invalid_receive_message_tail_is_rejected()
+    {
+        var invalidReceiveMessage = InvocationFrame(2, message =>
+        {
+            Str(message, "ContextId"); message.Add(0xc0);
+            Str(message, "Payload"); Map(message, 0);
+        });
+        var combined = Frame(1, "cipher-first")
+            .Concat(invalidReceiveMessage)
+            .ToArray();
+
+        Assert.False(SignalRMessagePack.TryParseInvocations(combined, out var notifications));
+        Assert.Empty(notifications);
+    }
+
+    [Fact]
+    public void Invalid_five_byte_length_prefix_is_rejected()
+    {
+        Assert.False(SignalRMessagePack.TryParseInvocations(
+            new byte[] { 0x80, 0x80, 0x80, 0x80, 0x80 },
+            out _));
+        Assert.False(SignalRMessagePack.TryParseInvocations(
+            new byte[] { 0xff, 0xff, 0xff, 0xff, 0x08 },
+            out _));
+    }
+
+    [Fact]
+    public void Frame_larger_than_receive_limit_is_rejected_before_payload_allocation()
+    {
+        // 1,048,577 encoded as a SignalR little-endian base-128 VarInt.
+        var oversizedLengthPrefix = new byte[] { 0x81, 0x80, 0x40 };
+
+        Assert.False(SignalRMessagePack.TryParseInvocations(oversizedLengthPrefix, out _));
+    }
+
+    [Fact]
+    public void Single_invocation_parser_rejects_a_trailing_second_frame()
+    {
+        var combined = Frame(1, "cipher-first")
+            .Concat(Frame(7, "folder-second"))
+            .ToArray();
+
+        Assert.False(SignalRMessagePack.TryParseInvocation(combined, out _));
+    }
+
+    [Fact]
+    public void Missing_notification_type_is_rejected_instead_of_defaulting_to_cipher_update()
+    {
+        var frame = InvocationFrame(2, message =>
+        {
+            Str(message, "ContextId"); message.Add(0xc0);
+            Str(message, "Payload");
+            Map(message, 1);
+            Str(message, "Id"); Str(message, "cipher-1");
+        });
+
+        Assert.False(SignalRMessagePack.TryParseInvocation(frame, out _));
+    }
+
+    [Fact]
+    public void Notification_type_outside_wire_byte_range_is_rejected()
+    {
+        var frame = InvocationFrame(3, message =>
+        {
+            Str(message, "ContextId"); message.Add(0xc0);
+            Str(message, "Type");
+            message.Add(0xcd); message.Add(0x01); message.Add(0x00);
+            Str(message, "Payload"); Map(message, 0);
+        });
+
+        Assert.False(SignalRMessagePack.TryParseInvocation(frame, out _));
+    }
+
+    [Fact]
+    public void Parses_organization_collection_settings_and_context()
+    {
+        var frame = InvocationFrame(3, message =>
+        {
+            Str(message, "ContextId"); Str(message, "device-context");
+            Str(message, "Type"); message.Add(19);
+            Str(message, "Payload");
+            Map(message, 4);
+            Str(message, "OrganizationId"); Str(message, "org-1");
+            Str(message, "LimitCollectionCreation"); message.Add(0xc3);
+            Str(message, "LimitCollectionDeletion"); message.Add(0xc2);
+            Str(message, "LimitItemDeletion"); message.Add(0xc3);
+        });
+
+        Assert.True(SignalRMessagePack.TryParseInvocation(frame, out var notification));
+        Assert.Equal(19, notification.Type);
+        Assert.Equal("device-context", notification.ContextId);
+        Assert.Equal("org-1", notification.OrganizationId);
+        Assert.True(notification.LimitCollectionCreation);
+        Assert.False(notification.LimitCollectionDeletion);
+        Assert.True(notification.LimitItemDeletion);
+    }
+
+    [Fact]
+    public void Parses_cipher_delete_metadata_and_messagepack_timestamp()
+    {
+        const long seconds = 1_725_000_000;
+        const uint nanoseconds = 123_456_700;
+        var packed = ((ulong)nanoseconds << 34) | (ulong)seconds;
+        var timestamp = new byte[8];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(timestamp, packed);
+        var frame = InvocationFrame(3, message =>
+        {
+            Str(message, "ContextId"); message.Add(0xc0);
+            Str(message, "Type"); message.Add(9);
+            Str(message, "Payload");
+            Map(message, 5);
+            Str(message, "Id"); Str(message, "cipher-9");
+            Str(message, "UserId"); Str(message, "user-1");
+            Str(message, "OrganizationId"); Str(message, "org-1");
+            Str(message, "CollectionIds");
+            Arr(message, 2); Str(message, "collection-1"); Str(message, "collection-2");
+            Str(message, "RevisionDate");
+            message.Add(0xd7); message.Add(0xff); message.AddRange(timestamp);
+        });
+
+        Assert.True(SignalRMessagePack.TryParseInvocation(frame, out var notification));
+        Assert.Equal(9, notification.Type);
+        Assert.Equal("cipher-9", notification.EntityId);
+        Assert.Equal("user-1", notification.UserId);
+        Assert.Equal("org-1", notification.OrganizationId);
+        Assert.Equal(["collection-1", "collection-2"], notification.CollectionIds);
+        Assert.Equal(
+            DateTimeOffset.FromUnixTimeSeconds(seconds).AddTicks(nanoseconds / 100),
+            notification.RevisionDate);
     }
 
     // ----------------------------------------------------------------

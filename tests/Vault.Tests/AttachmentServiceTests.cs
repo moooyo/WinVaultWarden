@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Net;
 using Api;
 using Api.Dtos;
 using Core.Enums;
@@ -14,6 +15,9 @@ namespace Vault.Tests;
 
 public class AttachmentServiceTests
 {
+    private static readonly DateTimeOffset DefaultRevision =
+        new(2026, 6, 24, 1, 2, 3, 456, TimeSpan.Zero);
+
     private readonly CryptoService _crypto = new();
     private readonly AttachmentCryptoService _attCrypto;
     private readonly VaultDecryptor _decryptor;
@@ -66,7 +70,7 @@ public class AttachmentServiceTests
             bytes.LongLength,
             _ => ValueTask.FromResult<Stream>(new MemoryStream(bytes, writable: false)));
 
-    // 把 sync 后的整库快照塞进真实 VaultSession,使 service 能从 session.Ciphers 读回附件。
+    // Applies the post-sync vault to the real session so the service reads committed attachments.
     private sealed class FakeSync : ISyncService
     {
         private readonly VaultSession _session;
@@ -96,19 +100,21 @@ public class AttachmentServiceTests
             Core.Session.VaultSessionLease lease, CancellationToken ct = default) => SyncAsync(ct);
     }
 
-    private VaultSession NewUnlockedSession()
+    private VaultSession NewUnlockedSession(params Cipher[] ciphers)
     {
         var session = new VaultSession();
         session.BeginAccountSession("test-account", "test@test.com", new Core.Models.ServerOrigin("https://vault.example"));
         session.SetUnlockedKey(_userKey);
+        if (ciphers.Length > 0)
+            session.SetSnapshot(SnapshotWith(ciphers));
         return session;
     }
 
-    private static DecryptedVault SnapshotWith(Cipher cipher)
+    private static DecryptedVault SnapshotWith(params Cipher[] ciphers)
         => new(
             new AccountInfo("test-account", "me@example.com", new ServerOrigin("https://vault.example"), "M", string.Empty),
             Array.Empty<Folder>(),
-            new[] { cipher },
+            ciphers,
             SkippedCipherCount: 0,
             SkippedFolderCount: 0);
 
@@ -118,10 +124,11 @@ public class AttachmentServiceTests
             Id = id,
             Type = CipherType.Login,
             Name = "Item",
+            RevisionDate = DefaultRevision,
             Attachments = attachments,
         };
 
-    // 构造一个携带"新格式"附件的 CipherDto(att.Key 用 itemKey 包裹)。
+    // Builds a modern attachment whose independent key is wrapped by the item key.
     private CipherDto CipherDtoWithNewFormatAttachment(
         string cipherId, string attId, string fileName, byte[] plaintext, string downloadUrl,
         SymmetricCryptoKey itemKey, string? cipherKeyEnc, out byte[] encryptedBuffer)
@@ -150,7 +157,7 @@ public class AttachmentServiceTests
     [Fact]
     public async Task Upload_WrapsWithItemKey_UploadsToReturnedUrl_AndReturnsRefreshedList()
     {
-        var session = NewUnlockedSession();
+        var session = NewUnlockedSession(CipherWithAttachments("c-1"));
         var api = new FakeAttachmentApiClient
         {
             GetCipherResult = BuildCipherDto("c-1", cipherKeyEnc: null),
@@ -169,20 +176,21 @@ public class AttachmentServiceTests
 
         Assert.Equal(new[] { "get-cipher", "create-v2", "upload" }, api.Calls);
         Assert.Equal(1, sync.Calls);
-        // create 请求:key 是 type-2 EncString;fileName 是加密后的(非明文);fileSize == buffer 长度。
+        // Metadata contains only encrypted values and the exact encrypted payload length.
         var req = api.LastCreateRequest!;
         Assert.StartsWith("2.", req.Key);
         Assert.StartsWith("2.", req.FileName);
         Assert.NotEqual("report.pdf", req.FileName);
         Assert.Equal(api.LastUploadBuffer!.LongLength, req.FileSize);
-        // upload 到 create 返回的 Url,文件名是加密后的 fileName,缓冲首字节为 EncArrayBuffer 版本 2。
+        Assert.Equal(DefaultRevision.UtcDateTime, req.LastKnownRevisionDate);
+        // The payload uses the returned URL and EncArrayBuffer version 2.
         Assert.Equal(FileUploadType.Direct, api.LastUploadType);
         Assert.Equal("/ciphers/c-1/attachment/att-1", api.LastUploadUrl);
         Assert.Equal("c-1", api.LastUploadCipherId);
         Assert.Equal("att-1", api.LastUploadAttachmentId);
         Assert.Equal(req.FileName, api.LastUploadFileName);
         Assert.Equal((byte)2, api.LastUploadBuffer![0]);
-        // 返回的是重同步后 session 里该 cipher 的附件列表。
+        // The result comes from the post-upload synchronized session snapshot.
         var att = Assert.Single(result);
         Assert.Equal("att-1", att.Id);
         Assert.Equal("report.pdf", att.FileName);
@@ -191,9 +199,16 @@ public class AttachmentServiceTests
     [Fact]
     public async Task Upload_WithCipherKey_WrapsUnderItemKeyNotUserKey()
     {
-        var session = NewUnlockedSession();
         var itemKey = new SymmetricCryptoKey(RandomNumberGenerator.GetBytes(64));
         var cipherKeyEnc = _crypto.Encrypt(itemKey.FullKey, _userKey).ToString();
+        var session = NewUnlockedSession(new Cipher
+        {
+            Id = "c-2",
+            Type = CipherType.Login,
+            Key = cipherKeyEnc,
+            Name = "Item",
+            RevisionDate = DefaultRevision,
+        });
         var api = new FakeAttachmentApiClient
         {
             GetCipherResult = BuildCipherDto("c-2", cipherKeyEnc),
@@ -203,11 +218,215 @@ public class AttachmentServiceTests
 
         await service.UploadAsync("c-2", Source("f.bin", [1, 2, 3]), TestContext.Current.CancellationToken);
 
-        // 包裹用 itemKey:用 itemKey 能 unwrap 出 attKey,用 userKey 则 MAC 失败。
+        // Only the item key can unwrap the independent attachment key.
         var wrapped = api.LastCreateRequest!.Key;
         var attKey = _attCrypto.UnwrapKey(wrapped, itemKey);
         Assert.Equal(64, attKey.FullKey.Length);
         Assert.Throws<CryptographicException>(() => _attCrypto.UnwrapKey(wrapped, _userKey));
+    }
+
+    [Fact]
+    public async Task Upload_SnapshotReplacementBeforeSlot_UsesLatestCompatibleRevision()
+    {
+        var opening = CipherWithAttachments("c-replaced");
+        var replacementRevision = DefaultRevision.AddMinutes(5);
+        var replacement = new Cipher
+        {
+            Id = opening.Id,
+            Type = opening.Type,
+            Name = "Updated locally",
+            Key = opening.Key,
+            RevisionDate = replacementRevision,
+        };
+        var session = NewUnlockedSession(opening);
+        var api = new FakeAttachmentApiClient
+        {
+            GetCipherResult = BuildCipherDto(opening.Id, cipherKeyEnc: null),
+            AfterGetCipher = _ => session.SetSnapshot(SnapshotWith(replacement)),
+        };
+        var service = CreateService(
+            FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api),
+            session,
+            new FakeSync(session, SnapshotWith(replacement)));
+
+        await service.UploadAsync(
+            opening.Id,
+            Source("fresh.bin", [1, 2, 3]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(replacementRevision.UtcDateTime, api.LastCreateRequest!.LastKnownRevisionDate);
+        Assert.Equal(["get-cipher", "create-v2", "upload"], api.Calls);
+    }
+
+    [Fact]
+    public async Task Upload_EncryptionKeyReplacementBeforeSlot_ThrowsRecoverableConflictWithoutCreate()
+    {
+        var opening = CipherWithAttachments("c-key-changed");
+        var session = NewUnlockedSession(opening);
+        var api = new FakeAttachmentApiClient
+        {
+            GetCipherResult = BuildCipherDto(opening.Id, cipherKeyEnc: null),
+            AfterGetCipher = _ => session.SetSnapshot(SnapshotWith(new Cipher
+            {
+                Id = opening.Id,
+                Type = CipherType.Login,
+                Name = "Rekeyed",
+                Key = "2.changed-item-key",
+                RevisionDate = DefaultRevision.AddMinutes(1),
+            })),
+        };
+        var compensation = new FakeCompensationClient();
+        var service = CreateService(
+            FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api),
+            session,
+            new FakeSync(session, null),
+            compensation);
+
+        var error = await Assert.ThrowsAsync<AttachmentRevisionConflictException>(() =>
+            service.UploadAsync(
+                opening.Id,
+                Source("stale.bin", [1, 2, 3]),
+                TestContext.Current.CancellationToken));
+
+        Assert.True(error.CanRetryAfterSync);
+        Assert.Equal(opening.Id, error.CipherId);
+        Assert.Equal(["get-cipher"], api.Calls);
+        Assert.Null(api.LastCreateRequest);
+        Assert.Null(api.LastUploadBuffer);
+        Assert.Empty(compensation.Deletes);
+    }
+
+    [Fact]
+    public async Task Upload_LeaseInvalidatedAfterCipherRead_DoesNotCreateSlot()
+    {
+        var cipher = CipherWithAttachments("c-expired-before-slot");
+        var session = NewUnlockedSession(cipher);
+        var api = new FakeAttachmentApiClient
+        {
+            GetCipherResult = BuildCipherDto(cipher.Id, cipherKeyEnc: null),
+            AfterGetCipher = _ => session.Lock(),
+        };
+        var service = CreateService(
+            FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api),
+            session,
+            new FakeSync(session, null));
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            service.UploadAsync(
+                cipher.Id,
+                Source("expired.bin", [1]),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(["get-cipher"], api.Calls);
+        Assert.Null(api.LastCreateRequest);
+        Assert.Null(api.LastUploadBuffer);
+    }
+
+    [Fact]
+    public async Task Upload_ForeignAccountSnapshot_IsRejectedBeforeNetworkAccess()
+    {
+        var cipher = CipherWithAttachments("c-account-bound");
+        var session = NewUnlockedSession(cipher);
+        session.SetSnapshot(new DecryptedVault(
+            new AccountInfo(
+                "other-account",
+                "other@example.com",
+                new ServerOrigin("https://vault.example"),
+                "O",
+                string.Empty),
+            [],
+            [cipher],
+            0,
+            0));
+        var api = new FakeAttachmentApiClient
+        {
+            GetCipherResult = BuildCipherDto(cipher.Id, cipherKeyEnc: null),
+        };
+        var service = CreateService(
+            FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api),
+            session,
+            new FakeSync(session, null));
+
+        var error = await Assert.ThrowsAsync<AttachmentRevisionConflictException>(() =>
+            service.UploadAsync(
+                cipher.Id,
+                Source("foreign.bin", [1]),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(cipher.Id, error.CipherId);
+        Assert.True(error.CanRetryAfterSync);
+        Assert.Empty(api.Calls);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.Conflict)]
+    public async Task Upload_SlotRevisionConflict_DoesNotUploadBytes(
+        HttpStatusCode statusCode)
+    {
+        var cipher = CipherWithAttachments("c-server-conflict");
+        var session = NewUnlockedSession(cipher);
+        var writeError = new VaultWriteException(
+            statusCode,
+            "The item cannot be saved because it is out of date.",
+            validationErrors: null);
+        var api = new FakeAttachmentApiClient
+        {
+            GetCipherResult = BuildCipherDto(cipher.Id, cipherKeyEnc: null),
+            CreateThrows = writeError,
+        };
+        var compensation = new FakeCompensationClient();
+        var service = CreateService(
+            FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api),
+            session,
+            new FakeSync(session, null),
+            compensation);
+
+        var error = await Assert.ThrowsAsync<AttachmentRevisionConflictException>(() =>
+            service.UploadAsync(
+                cipher.Id,
+                Source("conflict.bin", [1, 2]),
+                TestContext.Current.CancellationToken));
+
+        Assert.Same(writeError, error.InnerException);
+        Assert.Equal(DefaultRevision, error.LastKnownRevisionDate);
+        Assert.True(error.CanRetryAfterSync);
+        Assert.Equal(["get-cipher", "create-v2"], api.Calls);
+        Assert.Null(api.LastUploadBuffer);
+        Assert.Empty(compensation.Deletes);
+    }
+
+    [Fact]
+    public async Task Upload_NonRevisionBadRequestPreservesServerErrorAndDoesNotUploadBytes()
+    {
+        var cipher = CipherWithAttachments("c-server-rejection");
+        var session = NewUnlockedSession(cipher);
+        var writeError = new VaultWriteException(
+            HttpStatusCode.BadRequest,
+            "Not enough storage available for this organization.",
+            validationErrors: null);
+        var api = new FakeAttachmentApiClient
+        {
+            GetCipherResult = BuildCipherDto(cipher.Id, cipherKeyEnc: null),
+            CreateThrows = writeError,
+        };
+        var compensation = new FakeCompensationClient();
+        var service = CreateService(
+            FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api),
+            session,
+            new FakeSync(session, null),
+            compensation);
+
+        var error = await Assert.ThrowsAsync<VaultWriteException>(() =>
+            service.UploadAsync(
+                cipher.Id,
+                Source("rejected.bin", [1, 2]),
+                TestContext.Current.CancellationToken));
+
+        Assert.Same(writeError, error);
+        Assert.Equal(["get-cipher", "create-v2"], api.Calls);
+        Assert.Null(api.LastUploadBuffer);
+        Assert.Empty(compensation.Deletes);
     }
 
     [Fact]
@@ -226,7 +445,7 @@ public class AttachmentServiceTests
 
         Assert.Equal(tooBig.Length, ex.ActualBytes);
         Assert.Equal(AttachmentService.MaxPlaintextBytes, ex.MaxBytes);
-        // 超限发生在加密/网络之前:不应有任何 API 调用。
+        // Oversized files are rejected before encryption or network access.
         Assert.Empty(api.Calls);
     }
 
@@ -259,7 +478,7 @@ public class AttachmentServiceTests
     {
         var session = NewUnlockedSession();
         var plaintext = Encoding.UTF8.GetBytes("legacy body");
-        // 旧格式:att.Key 为空,文件体直接用 itemKey(=userKey) 加密。
+        // Legacy payloads are encrypted directly with the item key.
         var encryptedBuffer = _attCrypto.EncryptFile(plaintext, _userKey);
         var encName = _attCrypto.EncryptFileName("legacy.bin", _userKey);
         var att = new CipherAttachmentDto(
@@ -311,7 +530,7 @@ public class AttachmentServiceTests
     [Fact]
     public async Task Operations_WhenLocked_Throw()
     {
-        var session = new VaultSession(); // 未解锁,UserKey 为 null
+        var session = new VaultSession();
         var api = new FakeAttachmentApiClient { GetCipherResult = BuildCipherDto("c-8", null) };
         var service = CreateService(FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api), session, new FakeSync(session, null));
 
@@ -325,6 +544,142 @@ public class AttachmentServiceTests
     }
 
     [Fact]
+    public async Task OrganizationCipherOperations_AreRejectedBeforeMutation()
+    {
+        var session = NewUnlockedSession();
+        session.SetSnapshot(SnapshotWith(new Cipher
+        {
+            Id = "org-item",
+            Type = CipherType.Login,
+            OrganizationId = "org-1",
+            Name = "Shared",
+            RevisionDate = DefaultRevision,
+            CanEdit = false,
+            CanViewPassword = false,
+            Login = new CipherLogin(null, null, null, []),
+        }));
+        var api = new FakeAttachmentApiClient
+        {
+            GetCipherResult = BuildCipherDto("org-item", null) with { OrganizationId = "org-1" },
+        };
+        var service = CreateService(
+            FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api),
+            session,
+            new FakeSync(session, null));
+
+        await Assert.ThrowsAsync<OrganizationCipherOperationException>(() =>
+            service.UploadAsync(
+                "org-item",
+                Source("file.bin", [1]),
+                TestContext.Current.CancellationToken));
+        await using var destination = new MemoryStream();
+        await Assert.ThrowsAsync<OrganizationCipherOperationException>(() =>
+            service.DownloadAsync(
+                "org-item",
+                "attachment",
+                destination,
+                TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<OrganizationCipherOperationException>(() =>
+            service.DeleteAsync(
+                "org-item",
+                "attachment",
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(["get-cipher", "get-cipher"], api.Calls);
+    }
+
+    [Fact]
+    public async Task OrganizationCipherOperations_UseOrganizationAndItemKeysWhenPermitted()
+    {
+        using var rsa = RSA.Create(2048);
+        using var organizationKey = new SymmetricCryptoKey(RandomNumberGenerator.GetBytes(64));
+        using var itemKey = new SymmetricCryptoKey(RandomNumberGenerator.GetBytes(64));
+        var privateKeyBytes = rsa.ExportPkcs8PrivateKey();
+        var encryptedPrivateKey = _crypto.Encrypt(privateKeyBytes, _userKey).ToString();
+        CryptographicOperations.ZeroMemory(privateKeyBytes);
+        var encryptedOrganizationKey = _crypto.EncryptRsa(
+            organizationKey.FullKey,
+            rsa.ExportSubjectPublicKeyInfo()).ToString();
+        var encryptedItemKey = _crypto.Encrypt(itemKey.FullKey, organizationKey).ToString();
+        var plaintext = Encoding.UTF8.GetBytes("organization attachment");
+        var dto = CipherDtoWithNewFormatAttachment(
+            "org-editable",
+            "att-existing",
+            "existing.txt",
+            plaintext,
+            "https://files.example/org-attachment",
+            itemKey,
+            encryptedItemKey,
+            out var encryptedDownload) with
+        {
+            OrganizationId = "org-1",
+            Edit = true,
+            ViewPassword = true,
+        };
+        var cipher = new Cipher
+        {
+            Id = "org-editable",
+            Type = CipherType.Login,
+            OrganizationId = "org-1",
+            CollectionIds = ["collection-1"],
+            Key = encryptedItemKey,
+            Name = "Shared",
+            RevisionDate = DefaultRevision,
+            CanEdit = true,
+            CanViewPassword = true,
+            CanDelete = true,
+            CanRestore = true,
+            Login = new CipherLogin(null, null, null, []),
+        };
+        var snapshot = SnapshotWith(cipher) with
+        {
+            Organizations =
+            [
+                new VaultOrganization("org-1", "Team", 2, 2, true)
+                {
+                    EncryptedKey = encryptedOrganizationKey,
+                },
+            ],
+            Collections = [new VaultCollection("collection-1", "org-1", "Shared", false, false, false, null)],
+        };
+        var session = NewUnlockedSession();
+        session.SetEncryptedPrivateKey(encryptedPrivateKey);
+        session.SetSnapshot(snapshot);
+        var api = new FakeAttachmentApiClient
+        {
+            GetCipherResult = dto,
+            DownloadBytes = encryptedDownload,
+        };
+        var service = CreateService(
+            FakeVaultApiClientProvider.ForAuthenticated<IAttachmentApiClient>(api),
+            session,
+            new FakeSync(session, snapshot));
+
+        await service.UploadAsync(
+            cipher.Id,
+            Source("new.txt", Encoding.UTF8.GetBytes("new attachment")),
+            TestContext.Current.CancellationToken);
+        using var uploadedAttachmentKey = _attCrypto.UnwrapKey(api.LastCreateRequest!.Key, itemKey);
+
+        await using var destination = new MemoryStream();
+        await service.DownloadAsync(
+            cipher.Id,
+            "att-existing",
+            destination,
+            TestContext.Current.CancellationToken);
+        await service.DeleteAsync(
+            cipher.Id,
+            "att-existing",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(64, uploadedAttachmentKey.FullKey.Length);
+        Assert.Equal(plaintext, destination.ToArray());
+        Assert.Equal(
+            ["get-cipher", "create-v2", "upload", "get-cipher", "download", "delete"],
+            api.Calls);
+    }
+
+    [Fact]
     public void MaxPlaintextBytes_IsHundredMegabytes_AndMatchesCoreLimit()
     {
         Assert.Equal(100L * 1024 * 1024, Core.Services.AttachmentLimits.MaxPlaintextBytes);
@@ -334,7 +689,7 @@ public class AttachmentServiceTests
     [Fact]
     public async Task Upload_WhenDataUploadFails_DeletesOrphanAndRethrowsOriginal()
     {
-        var session = NewUnlockedSession();
+        var session = NewUnlockedSession(CipherWithAttachments("c-1"));
         var boom = new InvalidOperationException("network died mid-upload");
         var api = new FakeAttachmentApiClient
         {
@@ -353,25 +708,25 @@ public class AttachmentServiceTests
             sync,
             compensation);
 
-        // 第二步上传抛异常 → 原始异常按原样重抛(不被包成 VaultRefreshException)。
+        // The original second-step upload error remains observable.
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.UploadAsync("c-1", Source("report.pdf", Encoding.UTF8.GetBytes("data")), TestContext.Current.CancellationToken));
         Assert.Same(boom, ex);
 
-        // 触发一次补偿删除,针对第一步 create 返回的 attachmentId。
+        // Cleanup targets the attachment ID created by the first step.
         Assert.Equal(new[] { "get-cipher", "create-v2", "upload" }, api.Calls);
         var deleted = Assert.Single(compensation.Deletes);
         Assert.Same(api.CreateAuthorization, deleted.Binding);
         Assert.Equal("c-1", deleted.CipherId);
         Assert.Equal("att-orphan", deleted.AttachmentId);
-        // 上传失败后不应再重同步。
+        // Failed payload transfer must not trigger a sync.
         Assert.Equal(0, sync.Calls);
     }
 
     [Fact]
     public async Task Upload_WhenCancelledDuringDataUpload_StillUsesIndependentCompensationToken()
     {
-        var session = NewUnlockedSession();
+        var session = NewUnlockedSession(CipherWithAttachments("c-2"));
         var api = new FakeAttachmentApiClient
         {
             GetCipherResult = BuildCipherDto("c-2", cipherKeyEnc: null),
@@ -399,7 +754,7 @@ public class AttachmentServiceTests
     [Fact]
     public async Task Upload_UnknownTransport_CompensatesCreatedAttachmentWithoutReadingBody()
     {
-        var session = NewUnlockedSession();
+        var session = NewUnlockedSession(CipherWithAttachments("c-unknown"));
         var api = new FakeAttachmentApiClient
         {
             GetCipherResult = BuildCipherDto("c-unknown", cipherKeyEnc: null),
@@ -433,7 +788,7 @@ public class AttachmentServiceTests
     [Fact]
     public async Task Upload_LeaseExpiresAfterDataUpload_CompensatesBeforeRemoteCommitPoint()
     {
-        var session = NewUnlockedSession();
+        var session = NewUnlockedSession(CipherWithAttachments("c-lease"));
         var api = new FakeAttachmentApiClient
         {
             GetCipherResult = BuildCipherDto("c-lease", cipherKeyEnc: null),
@@ -466,7 +821,7 @@ public class AttachmentServiceTests
     [Fact]
     public async Task Upload_SyncCancellationAfterCommitPoint_ReturnsRefreshFailureWithoutCompensation()
     {
-        var session = NewUnlockedSession();
+        var session = NewUnlockedSession(CipherWithAttachments("c-committed"));
         var api = new FakeAttachmentApiClient
         {
             GetCipherResult = BuildCipherDto("c-committed", cipherKeyEnc: null),
@@ -506,7 +861,7 @@ public class AttachmentServiceTests
     [Fact]
     public async Task Upload_WhenCompensatingDeleteAlsoFails_ThrowsTypedCleanupError()
     {
-        var session = NewUnlockedSession();
+        var session = NewUnlockedSession(CipherWithAttachments("c-3"));
         var original = new TimeoutException("upload timed out");
         var api = new FakeAttachmentApiClient
         {

@@ -56,6 +56,19 @@ public class TwoFactorWireTests
         Assert.Contains("\"type\":0", json);
     }
 
+    [Fact]
+    public void DisableTwoFactorRequest_OtpOmitsMasterPasswordAndAccessCode()
+    {
+        var request = new DisableTwoFactorRequest(null, 7, Otp: "123456");
+        using var json = JsonDocument.Parse(
+            JsonSerializer.Serialize(request, ApiJsonContext.Default.DisableTwoFactorRequest));
+
+        Assert.Equal(7, json.RootElement.GetProperty("type").GetInt32());
+        Assert.Equal("123456", json.RootElement.GetProperty("otp").GetString());
+        Assert.False(json.RootElement.TryGetProperty("masterPasswordHash", out _));
+        Assert.False(json.RootElement.TryGetProperty("authRequestAccessCode", out _));
+    }
+
     // ── DisableAuthenticatorRequest ──────────────────────────────────────────
 
     [Fact]

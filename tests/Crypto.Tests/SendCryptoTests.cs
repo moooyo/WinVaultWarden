@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Core.Enums;
 using Crypto;
+using Crypto.V2;
 using Xunit;
 
 namespace Crypto.Tests;
@@ -74,6 +75,43 @@ public class SendCryptoTests
         Assert.Equal(seed, unwrapped);
         // 用户密钥有 MacKey,key 字段应为 type 2(AesCbc256_HmacSha256)
         Assert.StartsWith("2.", wrapped);
+    }
+
+    [Fact]
+    public void WrapSeed_UnwrapSeed_RoundTripsUnderV2UserKeyAsOctetStream()
+    {
+        var service = NewService();
+        using var userKey = V2UserKey.Generate();
+        var seed = service.GenerateSeed();
+
+        var wrapped = service.WrapSeed(seed, userKey);
+        var unwrapped = service.UnwrapSeed(wrapped, userKey);
+
+        Assert.StartsWith("7.", wrapped);
+        Assert.Equal(seed, unwrapped);
+    }
+
+    [Fact]
+    public void UnwrapSeed_V2WrongContentTypeFailsClosed()
+    {
+        var service = NewService();
+        using var userKey = V2UserKey.Generate();
+        var wrongContentType = userKey.Encrypt(service.GenerateSeed(), CoseContentFormat.Utf8);
+
+        Assert.Throws<CryptographicException>(() => service.UnwrapSeed(wrongContentType, userKey));
+    }
+
+    [Fact]
+    public void UnwrapSeed_V1UnauthenticatedEnvelopeFailsClosed()
+    {
+        var crypto = new CryptoService();
+        var service = new SendCryptoService(crypto);
+        using var unauthenticatedKey = new SymmetricCryptoKey(RandomNumberGenerator.GetBytes(32));
+        var envelope = crypto.Encrypt(service.GenerateSeed(), unauthenticatedKey).ToString();
+
+        Assert.StartsWith("0.", envelope);
+        Assert.Throws<CryptographicException>(() =>
+            service.UnwrapSeed(envelope, unauthenticatedKey));
     }
 
     [Fact]

@@ -60,6 +60,13 @@
                                             Visibility="{x:Bind IsCurrent, Converter={StaticResource BoolToVis}}">
                                         <TextBlock Text="当前设备" FontSize="12" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
                                     </Border>
+                                    <Border Background="{ThemeResource SystemFillColorSuccessBrush}"
+                                            CornerRadius="4" Padding="6,1"
+                                            Visibility="{x:Bind IsTrusted, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="可信设备"
+                                                   FontSize="12"
+                                                   Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                                    </Border>
                                 </StackPanel>
                             </tk:SettingsCard.Header>
                         </tk:SettingsCard>

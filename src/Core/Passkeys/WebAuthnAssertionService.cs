@@ -36,10 +36,10 @@ public static class WebAuthnAssertionService
         ArgumentNullException.ThrowIfNull(credential);
         ArgumentNullException.ThrowIfNull(request);
 
-        var credentialId = Required(credential.CredentialId, "credential id");
+        var storedCredentialId = Required(credential.CredentialId, "credential id");
         var keyValue = Required(credential.KeyValue, "private key");
         var credentialRpId = Required(credential.RpId, "rpId");
-        WebAuthnCrypto.DecodeBase64Url(credentialId);
+        var credentialId = CredentialId.DecodeStorage(storedCredentialId);
         WebAuthnCrypto.DecodeBase64Url(request.Challenge);
 
         var effectiveRpId = string.IsNullOrWhiteSpace(request.RpId) ? HostFromOrigin(request.Origin) : request.RpId;
@@ -47,9 +47,23 @@ public static class WebAuthnAssertionService
             throw new InvalidOperationException("The requested rpId is not valid for the origin.");
         if (!string.Equals(credentialRpId, effectiveRpId, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("The credential rpId does not match the request rpId.");
-        if (request.AllowedCredentialIds.Count > 0
-            && !request.AllowedCredentialIds.Contains(credentialId, StringComparer.Ordinal))
-            throw new InvalidOperationException("The credential is not in allowCredentials.");
+        if (request.AllowedCredentialIds.Count > 0)
+        {
+            var isAllowed = false;
+            foreach (var allowedId in request.AllowedCredentialIds)
+            {
+                if (!CredentialId.TryDecodeWire(allowedId, out var allowedBytes))
+                {
+                    throw new InvalidOperationException(
+                        "allowCredentials contains a non-canonical credential ID.");
+                }
+
+                isAllowed |= CredentialId.FixedTimeEquals(credentialId, allowedBytes);
+            }
+
+            if (!isAllowed)
+                throw new InvalidOperationException("The credential is not in allowCredentials.");
+        }
 
         if (!request.ApprovalEvidence.Approved)
             throw new InvalidOperationException("Passkey approval is required.");
@@ -63,7 +77,7 @@ public static class WebAuthnAssertionService
         var signature = WebAuthnCrypto.SignAssertion(keyValue, authenticatorData, clientDataJson);
 
         return new WebAuthnAssertionResult(
-            credentialId,
+            CredentialId.EncodeForWire(credentialId),
             WebAuthnCrypto.EncodeBase64Url(authenticatorData),
             WebAuthnCrypto.EncodeBase64Url(clientDataJson),
             WebAuthnCrypto.EncodeBase64Url(signature),

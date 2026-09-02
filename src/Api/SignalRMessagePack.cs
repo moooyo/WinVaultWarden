@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Globalization;
 using System.Text;
 using Core.Models;
 
@@ -13,6 +14,14 @@ namespace Api;
 /// </summary>
 public static class SignalRMessagePack
 {
+    /// <summary>
+    /// Maximum size of one complete WebSocket binary message accepted from the hub.
+    /// This bounds both the accumulated transport message and every framed HubMessage.
+    /// </summary>
+    public const int MaxReceiveMessageSize = 1 * 1024 * 1024;
+
+    private const int MaxLengthPrefixSize = 5;
+
     // ----------------------------------------------------------------
     // Public surface
     // ----------------------------------------------------------------
@@ -33,54 +42,177 @@ public static class SignalRMessagePack
     public static bool TryParseInvocation(ReadOnlySpan<byte> frame, out NotificationMessage msg)
     {
         msg = default!;
-        try
+        if (!TryReadFrame(frame, out var prefixLength, out var payloadLength)
+            || prefixLength + payloadLength != frame.Length)
+            return false;
+
+        return TryParseInvocationPayload(
+            frame.Slice(prefixLength, payloadLength),
+            out msg,
+            out _);
+    }
+
+    /// <summary>
+    /// Splits one complete WebSocket binary message into SignalR length-prefixed
+    /// HubMessages and returns all matching notification invocations in wire order.
+    /// Returns false when any frame is incomplete, malformed, exceeds
+    /// <see cref="MaxReceiveMessageSize"/>, or violates the ReceiveMessage contract.
+    /// </summary>
+    public static bool TryParseInvocations(
+        ReadOnlySpan<byte> message,
+        out IReadOnlyList<NotificationMessage> notifications)
+    {
+        notifications = Array.Empty<NotificationMessage>();
+        if (message.Length > MaxReceiveMessageSize)
+            return false;
+
+        List<NotificationMessage>? parsed = null;
+        var position = 0;
+        while (position < message.Length)
         {
-            int pos = 0;
+            var remaining = message[position..];
+            if (!TryReadFrame(remaining, out var prefixLength, out var payloadLength))
+                return false;
 
-            // --- 1. Read the 7-bit varint length prefix ---
-            if (pos >= frame.Length) return false;
-            int msgLen = 0;
-            int shift = 0;
-            byte b;
-            do
+            var payload = remaining.Slice(prefixLength, payloadLength);
+            if (TryParseInvocationPayload(
+                    payload,
+                    out var notification,
+                    out var validMessage))
             {
-                if (pos >= frame.Length) return false;
-                b = frame[pos++];
-                msgLen |= (b & 0x7f) << shift;
-                shift += 7;
-            } while ((b & 0x80) != 0);
-
-            // Remaining bytes must be at least msgLen (there may be no trailing data)
-            if (pos + msgLen > frame.Length) return false;
-            var payload = frame.Slice(pos, msgLen);
-
-            // --- 2. Decode the MessagePack value ---
-            int ppos = 0;
-            var value = ReadValue(payload, ref ppos);
-
-            // --- 3. Validate outer array: length >= 5, [0]==1L, [3]=="ReceiveMessage" ---
-            if (value is not object?[] arr) return false;
-            if (arr.Length < 5) return false;
-            if (arr[0] is not long msgType || msgType != 1L) return false;
-            if (arr[3] is not string methodName || methodName != "ReceiveMessage") return false;
-
-            // --- 4. Unpack args ---
-            if (arr[4] is not object?[] args || args.Length < 1) return false;
-            if (args[0] is not Dictionary<string, object?> argsDict) return false;
-
-            int notifType = 0;
-            if (argsDict.TryGetValue("Type", out var typeVal) && typeVal is long tl)
-                notifType = (int)tl;
-
-            string? entityId = null;
-            if (argsDict.TryGetValue("Payload", out var payloadVal) &&
-                payloadVal is Dictionary<string, object?> payloadDict)
+                parsed ??= new List<NotificationMessage>();
+                parsed.Add(notification);
+            }
+            else if (!validMessage)
             {
-                if (payloadDict.TryGetValue("Id", out var idVal) && idVal is string idStr)
-                    entityId = idStr;
+                return false;
             }
 
-            msg = new NotificationMessage(notifType, entityId);
+            position += prefixLength + payloadLength;
+        }
+
+        if (parsed is not null)
+            notifications = parsed;
+        return true;
+    }
+
+    private static bool TryReadFrame(
+        ReadOnlySpan<byte> source,
+        out int prefixLength,
+        out int payloadLength)
+    {
+        prefixLength = 0;
+        payloadLength = 0;
+        if (source.IsEmpty)
+            return false;
+
+        uint length = 0;
+        byte byteRead = 0;
+        var availablePrefixBytes = Math.Min(MaxLengthPrefixSize, source.Length);
+        while (prefixLength < availablePrefixBytes)
+        {
+            byteRead = source[prefixLength];
+            length |= (uint)(byteRead & 0x7f) << (prefixLength * 7);
+            prefixLength++;
+            if ((byteRead & 0x80) == 0)
+                break;
+        }
+
+        if ((byteRead & 0x80) != 0)
+            return false;
+        if (prefixLength == MaxLengthPrefixSize && byteRead > 7)
+            return false;
+        if (length > MaxReceiveMessageSize)
+            return false;
+        if ((ulong)prefixLength + length > (ulong)source.Length)
+            return false;
+
+        payloadLength = (int)length;
+        return true;
+    }
+
+    private static bool TryParseInvocationPayload(
+        ReadOnlySpan<byte> payload,
+        out NotificationMessage msg,
+        out bool validMessage)
+    {
+        msg = default!;
+        validMessage = false;
+        try
+        {
+            // Decode exactly one MessagePack value from the framed payload.
+            int ppos = 0;
+            var value = ReadValue(payload, ref ppos);
+            if (ppos != payload.Length) return false;
+            validMessage = true;
+
+            // Non-invocation HubMessages such as ping remain safe to ignore.
+            if (value is not object?[] arr) return false;
+            if (arr.Length == 0) return false;
+            if (arr[0] is not long msgType || msgType != 1L) return false;
+
+            // A type-1 invocation must be structurally complete. Invocations for other
+            // targets are valid but irrelevant to this client; a malformed or invalid
+            // ReceiveMessage must fail the entire coalesced transport message.
+            validMessage = false;
+            if (arr.Length < 5) return false;
+            if (arr[3] is not string methodName) return false;
+            if (arr[4] is not object?[] args) return false;
+            if (methodName != "ReceiveMessage")
+            {
+                validMessage = true;
+                return false;
+            }
+
+            // Unpack args.
+            if (args.Length < 1) return false;
+            if (args[0] is not Dictionary<string, object?> argsDict) return false;
+
+            if (!argsDict.TryGetValue("Type", out var typeVal)
+                || typeVal is not long rawType
+                || rawType is < byte.MinValue or > byte.MaxValue)
+                return false;
+            if (!argsDict.TryGetValue("Payload", out var payloadVal)
+                || payloadVal is not Dictionary<string, object?> payloadDict)
+                return false;
+            if (!TryReadOptionalString(argsDict, "ContextId", out var contextId)
+                || !TryReadOptionalString(payloadDict, "Id", out var entityId)
+                || !TryReadOptionalString(payloadDict, "UserId", out var userId)
+                || !TryReadOptionalString(payloadDict, "OrganizationId", out var organizationId)
+                || !TryReadOptionalStringArray(payloadDict, "CollectionIds", out var collectionIds)
+                || !TryReadOptionalTimestamp(payloadDict, "RevisionDate", out var revisionDate)
+                || !TryReadOptionalTimestamp(payloadDict, "Date", out var date)
+                || !TryReadOptionalBoolean(payloadDict, "Enabled", out var enabled)
+                || !TryReadOptionalBoolean(
+                    payloadDict,
+                    "LimitCollectionCreation",
+                    out var limitCollectionCreation)
+                || !TryReadOptionalBoolean(
+                    payloadDict,
+                    "LimitCollectionDeletion",
+                    out var limitCollectionDeletion)
+                || !TryReadOptionalBoolean(
+                    payloadDict,
+                    "LimitItemDeletion",
+                    out var limitItemDeletion)
+                || !TryReadOptionalInt32(payloadDict, "Reason", out var logoutReason))
+                return false;
+
+            msg = new NotificationMessage(
+                (int)rawType,
+                entityId,
+                contextId,
+                userId,
+                organizationId,
+                collectionIds,
+                revisionDate,
+                date,
+                enabled,
+                limitCollectionCreation,
+                limitCollectionDeletion,
+                limitItemDeletion,
+                logoutReason);
+            validMessage = true;
             return true;
         }
         catch
@@ -242,6 +374,136 @@ public static class SignalRMessagePack
     // ----------------------------------------------------------------
     // Private helpers
     // ----------------------------------------------------------------
+
+    private static bool TryReadOptionalString(
+        Dictionary<string, object?> source,
+        string name,
+        out string? value)
+    {
+        value = null;
+        if (!source.TryGetValue(name, out var raw) || raw is null)
+            return true;
+        if (raw is not string text)
+            return false;
+        value = text;
+        return true;
+    }
+
+    private static bool TryReadOptionalStringArray(
+        Dictionary<string, object?> source,
+        string name,
+        out IReadOnlyList<string>? value)
+    {
+        value = null;
+        if (!source.TryGetValue(name, out var raw) || raw is null)
+            return true;
+        if (raw is not object?[] items)
+            return false;
+
+        var result = new string[items.Length];
+        for (var index = 0; index < items.Length; index++)
+        {
+            if (items[index] is not string item)
+                return false;
+            result[index] = item;
+        }
+        value = result;
+        return true;
+    }
+
+    private static bool TryReadOptionalBoolean(
+        Dictionary<string, object?> source,
+        string name,
+        out bool? value)
+    {
+        value = null;
+        if (!source.TryGetValue(name, out var raw) || raw is null)
+            return true;
+        if (raw is not bool boolean)
+            return false;
+        value = boolean;
+        return true;
+    }
+
+    private static bool TryReadOptionalInt32(
+        Dictionary<string, object?> source,
+        string name,
+        out int? value)
+    {
+        value = null;
+        if (!source.TryGetValue(name, out var raw) || raw is null)
+            return true;
+        if (raw is not long number || number is < int.MinValue or > int.MaxValue)
+            return false;
+        value = (int)number;
+        return true;
+    }
+
+    private static bool TryReadOptionalTimestamp(
+        Dictionary<string, object?> source,
+        string name,
+        out DateTimeOffset? value)
+    {
+        value = null;
+        if (!source.TryGetValue(name, out var raw) || raw is null)
+            return true;
+        if (raw is string text)
+        {
+            if (!DateTimeOffset.TryParse(
+                    text,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind,
+                    out var parsed))
+                return false;
+            value = parsed;
+            return true;
+        }
+        if (raw is not byte[] extension || !TryReadTimestampExtension(extension, out var timestamp))
+            return false;
+        value = timestamp;
+        return true;
+    }
+
+    private static bool TryReadTimestampExtension(
+        ReadOnlySpan<byte> extension,
+        out DateTimeOffset value)
+    {
+        value = default;
+        if (extension.Length is not (5 or 9 or 13) || extension[0] != byte.MaxValue)
+            return false;
+
+        try
+        {
+            uint nanoseconds;
+            long seconds;
+            if (extension.Length == 5)
+            {
+                nanoseconds = 0;
+                seconds = BinaryPrimitives.ReadUInt32BigEndian(extension[1..]);
+            }
+            else if (extension.Length == 9)
+            {
+                var packed = BinaryPrimitives.ReadUInt64BigEndian(extension[1..]);
+                nanoseconds = (uint)(packed >> 34);
+                seconds = (long)(packed & 0x00000003FFFFFFFFUL);
+            }
+            else
+            {
+                nanoseconds = BinaryPrimitives.ReadUInt32BigEndian(extension.Slice(1, 4));
+                seconds = BinaryPrimitives.ReadInt64BigEndian(extension[5..]);
+            }
+
+            if (nanoseconds >= 1_000_000_000)
+                return false;
+            value = DateTimeOffset.FromUnixTimeSeconds(seconds)
+                .AddTicks(nanoseconds / 100);
+            return true;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return false;
+        }
+    }
 
     private static Dictionary<string, object?> ReadMap(ReadOnlySpan<byte> buf, ref int pos, int count, int depth)
     {

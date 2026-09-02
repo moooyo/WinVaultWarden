@@ -123,12 +123,19 @@ public sealed class BrowserPasskeyRequestHandler
         var ciphers = _vault.GetCiphers(lease);
 
         // excludeCredentials:若本库已有该 rpId 的凭据且其 CredentialId 在排除列表 → InvalidStateError。
-        var excluded = (payload.ExcludeCredentials ?? []).Select(c => c.Id).Where(x => !string.IsNullOrWhiteSpace(x)).ToHashSet(StringComparer.Ordinal);
-        if (excluded.Count > 0 && ExistingCredentialsForRp(ciphers, rpId).Any(c => excluded.Contains(c.CredentialId!)))
+        var excluded = (payload.ExcludeCredentials ?? [])
+            .Select(credential => CredentialId.DecodeWire(credential.Id))
+            .ToArray();
+        if (excluded.Length > 0
+            && ExistingCredentialsForRp(ciphers, rpId).Any(credential =>
+                CredentialId.TryDecodeStorage(credential.CredentialId, out var storedId, out _)
+                && excluded.Any(excludedId => CredentialId.FixedTimeEquals(storedId, excludedId))))
+        {
             return Error(requestId, "credential_excluded");
+        }
 
         var existingLogins = ciphers
-            .Where(c => !c.IsDeleted && c.Type == CipherType.Login)
+            .Where(c => !c.IsDeleted && !c.IsArchived && c.Type == CipherType.Login)
             .Select(c => new PasskeyLoginTarget(c.Id, c.Name, c.Reprompt))
             .ToArray();
 
@@ -230,11 +237,10 @@ public sealed class BrowserPasskeyRequestHandler
 
         var allowedCredentialIds = (payload.AllowCredentials ?? [])
             .Select(credential => credential.Id)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
             .ToArray();
         var allowed = allowedCredentialIds.Length == 0
             ? null
-            : allowedCredentialIds.ToHashSet(StringComparer.Ordinal);
+            : allowedCredentialIds.Select(CredentialId.DecodeWire).ToArray();
 
         // Every matching discoverable credential is offered to the user; no FirstOrDefault default.
         var candidates = FindCredentials(lease, validated.CanonicalRpId, allowed);
@@ -266,7 +272,8 @@ public sealed class BrowserPasskeyRequestHandler
         // selection and rejected before signing.
         var selected = candidates.SingleOrDefault(candidate =>
             candidate.Cipher.Id == approval.CipherId
-            && candidate.Credential.CredentialId == approval.CredentialId);
+            && CredentialId.TryDecodeStorage(approval.CredentialId, out var approvedId, out _)
+            && CredentialId.FixedTimeEquals(candidate.CredentialIdBytes, approvedId));
         if (approval.Evidence.Approved && selected is null)
             return Error(requestId, PasskeyErrorCodes.InternalError);
 
@@ -315,16 +322,41 @@ public sealed class BrowserPasskeyRequestHandler
     private IReadOnlyList<PasskeyCredentialCandidate> FindCredentials(
         VaultSessionLease lease,
         string rpId,
-        IReadOnlySet<string>? allowed)
+        IReadOnlyList<byte[]>? allowed)
     {
-        return _vault.GetCiphers(lease)
-            .Where(cipher => !cipher.IsDeleted && cipher.Type == CipherType.Login && cipher.Login?.HasFido2Credentials == true)
-            .SelectMany(cipher => cipher.Login!.Fido2Credentials.Select(
-                credential => new PasskeyCredentialCandidate(cipher, credential)))
-            .Where(candidate =>
-                string.Equals(candidate.Credential.RpId, rpId, StringComparison.Ordinal)
-                && candidate.Credential.CredentialId is { Length: > 0 } id
-                && (allowed is null || allowed.Contains(id)))
+        var candidates = new List<PasskeyCredentialCandidate>();
+        foreach (var cipher in _vault.GetCiphers(lease))
+        {
+            if (cipher.IsDeleted
+                || cipher.IsArchived
+                || cipher.Type != CipherType.Login
+                || cipher.Login?.HasFido2Credentials != true)
+            {
+                continue;
+            }
+
+            foreach (var credential in cipher.Login.Fido2Credentials)
+            {
+                if (!string.Equals(credential.RpId, rpId, StringComparison.Ordinal)
+                    || !CredentialId.TryDecodeStorage(
+                        credential.CredentialId,
+                        out var credentialIdBytes,
+                        out _)
+                    || (allowed is not null
+                        && !allowed.Any(allowedId =>
+                            CredentialId.FixedTimeEquals(credentialIdBytes, allowedId))))
+                {
+                    continue;
+                }
+
+                candidates.Add(new PasskeyCredentialCandidate(
+                    cipher,
+                    credential,
+                    credentialIdBytes));
+            }
+        }
+
+        return candidates
             .OrderBy(candidate => candidate.Cipher.Name, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(candidate => candidate.Credential.UserName, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(candidate => candidate.Credential.CredentialId, StringComparer.Ordinal)
@@ -353,7 +385,10 @@ public sealed class BrowserPasskeyRequestHandler
         IReadOnlyList<Cipher> ciphers,
         string rpId) =>
         ciphers
-            .Where(cipher => !cipher.IsDeleted && cipher.Type == CipherType.Login && cipher.Login?.HasFido2Credentials == true)
+            .Where(cipher => !cipher.IsDeleted
+                && !cipher.IsArchived
+                && cipher.Type == CipherType.Login
+                && cipher.Login?.HasFido2Credentials == true)
             .SelectMany(cipher => cipher.Login!.Fido2Credentials)
             .Where(credential => string.Equals(credential.RpId, rpId, StringComparison.OrdinalIgnoreCase)
                 && !string.IsNullOrWhiteSpace(credential.CredentialId));
@@ -384,8 +419,10 @@ public sealed class BrowserPasskeyRequestHandler
             Id = existing.Id,
             Type = existing.Type,
             OrganizationId = existing.OrganizationId,
+            CollectionIds = existing.CollectionIds,
             FolderId = existing.FolderId,
             Key = existing.Key,
+            UsesBlobEncryption = existing.UsesBlobEncryption,
             Favorite = existing.Favorite,
             Reprompt = existing.Reprompt,
             Name = existing.Name,
@@ -393,19 +430,37 @@ public sealed class BrowserPasskeyRequestHandler
             CreationDate = existing.CreationDate,
             RevisionDate = existing.RevisionDate,
             DeletedDate = existing.DeletedDate,
+            ArchivedDate = existing.ArchivedDate,
+            CanEdit = existing.CanEdit,
+            CanViewPassword = existing.CanViewPassword,
+            CanDelete = existing.CanDelete,
+            CanRestore = existing.CanRestore,
             Login = existing.Login with
             {
-                Fido2Credentials = [.. existing.Login.Fido2Credentials, credential],
+                Fido2Credentials =
+                [
+                    .. existing.Login.Fido2Credentials.Select(NormalizeCredentialIdForWrite),
+                    credential,
+                ],
             },
             Card = existing.Card,
             Identity = existing.Identity,
             SecureNote = existing.SecureNote,
             Ssh = existing.Ssh,
+            BankAccount = existing.BankAccount,
+            DriversLicense = existing.DriversLicense,
+            Passport = existing.Passport,
             Fields = existing.Fields,
             Attachments = existing.Attachments,
             PasswordHistory = existing.PasswordHistory,
         };
     }
+
+    private static CipherFido2Credential NormalizeCredentialIdForWrite(
+        CipherFido2Credential credential) =>
+        CredentialId.TryNormalizeStorage(credential.CredentialId, out var normalized)
+            ? credential with { CredentialId = normalized }
+            : credential;
 
     private static PasskeyUserVerificationRequirement
         GetUserVerificationRequirementForCreate(JsonElement? authenticatorSelection)
@@ -465,5 +520,8 @@ public sealed class BrowserPasskeyRequestHandler
     private static BrowserPasskeyResponse Error(string? id, string code) =>
         new(id, "error", false, Error: new BrowserPasskeyError(code, Message: null!));
 
-    private sealed record PasskeyCredentialCandidate(Cipher Cipher, CipherFido2Credential Credential);
+    private sealed record PasskeyCredentialCandidate(
+        Cipher Cipher,
+        CipherFido2Credential Credential,
+        byte[] CredentialIdBytes);
 }

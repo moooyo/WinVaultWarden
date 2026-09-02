@@ -17,13 +17,22 @@
 
     <ScrollViewer x:Name="GeneratorContent" MaxHeight="660">
         <StackPanel Spacing="14">
+            <InfoBar AutomationProperties.AutomationId="GeneratorPolicyNotice"
+                     IsClosable="False"
+                     IsOpen="{x:Bind ViewModel.HasGeneratorPolicyNotice, Mode=OneWay}"
+                     Message="{x:Bind ViewModel.GeneratorPolicyNotice, Mode=OneWay}"
+                     Severity="Informational" />
+
             <TabView x:Name="GeneratorTabs"
                      IsAddTabButtonVisible="False"
                      CanDragTabs="False"
                      CanReorderTabs="False"
                      TabWidthMode="Equal"
                      SelectionChanged="OnGeneratorTabSelectionChanged">
-                <TabViewItem x:Name="PasswordTab" Header="密码" IsClosable="False">
+                <TabViewItem x:Name="PasswordTab"
+                             Header="密码"
+                             IsClosable="False"
+                             IsEnabled="{x:Bind ViewModel.CanUsePasswordMode, Mode=OneWay}">
                     <StackPanel Spacing="14" Padding="0,12,0,0">
                         <Border Style="{StaticResource CardBorderStyle}"
                                 Padding="{StaticResource CardContentPaddingCompact}">
@@ -80,7 +89,7 @@
                                     </Grid.ColumnDefinitions>
                                     <Slider MinWidth="96"
                                             VerticalAlignment="Center"
-                                            Minimum="5"
+                                            Minimum="{x:Bind ViewModel.MinimumPasswordLength, Mode=OneWay}"
                                             Maximum="128"
                                             StepFrequency="1"
                                             AutomationProperties.Name="密码长度滑块"
@@ -88,7 +97,7 @@
                                             Value="{x:Bind ViewModel.LengthValue, Mode=TwoWay}" />
                                     <NumberBox Grid.Column="1"
                                                Width="84"
-                                               Minimum="5"
+                                               Minimum="{x:Bind ViewModel.MinimumPasswordLength, Mode=OneWay}"
                                                Maximum="128"
                                                SpinButtonPlacementMode="Inline"
                                                AutomationProperties.Name="密码长度数值"
@@ -109,26 +118,30 @@
                                     </Grid.RowDefinitions>
                                     <CheckBox Content="A-Z"
                                               AutomationProperties.AutomationId="IncludeUppercaseCheckBox"
+                                              IsEnabled="{x:Bind ViewModel.CanToggleUppercase, Mode=OneWay}"
                                               IsChecked="{x:Bind ViewModel.IncludeUppercase, Mode=TwoWay}" />
                                     <CheckBox Grid.Column="1"
                                               Content="a-z"
                                               AutomationProperties.AutomationId="IncludeLowercaseCheckBox"
+                                              IsEnabled="{x:Bind ViewModel.CanToggleLowercase, Mode=OneWay}"
                                               IsChecked="{x:Bind ViewModel.IncludeLowercase, Mode=TwoWay}" />
                                     <CheckBox Grid.Row="1"
                                               Content="0-9"
                                               AutomationProperties.AutomationId="IncludeNumbersCheckBox"
+                                              IsEnabled="{x:Bind ViewModel.CanToggleNumbers, Mode=OneWay}"
                                               IsChecked="{x:Bind ViewModel.IncludeNumbers, Mode=TwoWay}" />
                                     <CheckBox Grid.Row="1"
                                               Grid.Column="1"
                                               Content="!@#$%^&amp;*"
                                               AutomationProperties.AutomationId="IncludeSpecialCheckBox"
+                                              IsEnabled="{x:Bind ViewModel.CanToggleSpecial, Mode=OneWay}"
                                               IsChecked="{x:Bind ViewModel.IncludeSpecial, Mode=TwoWay}" />
                                 </Grid>
                             </tk:SettingsCard>
 
                             <tk:SettingsCard Header="数字最少个数">
                                 <NumberBox Width="84"
-                                           Minimum="0"
+                                           Minimum="{x:Bind ViewModel.PolicyMinimumNumbers, Mode=OneWay}"
                                            Maximum="128"
                                            SpinButtonPlacementMode="Inline"
                                            IsEnabled="{x:Bind ViewModel.IncludeNumbers, Mode=OneWay}"
@@ -138,7 +151,7 @@
 
                             <tk:SettingsCard Header="符号最少个数">
                                 <NumberBox Width="84"
-                                           Minimum="0"
+                                           Minimum="{x:Bind ViewModel.PolicyMinimumSpecial, Mode=OneWay}"
                                            Maximum="128"
                                            SpinButtonPlacementMode="Inline"
                                            IsEnabled="{x:Bind ViewModel.IncludeSpecial, Mode=OneWay}"
@@ -154,7 +167,10 @@
                     </StackPanel>
                 </TabViewItem>
 
-                <TabViewItem Header="密码短语" IsClosable="False">
+                <TabViewItem x:Name="PassphraseTab"
+                             Header="密码短语"
+                             IsClosable="False"
+                             IsEnabled="{x:Bind ViewModel.CanUsePassphraseMode, Mode=OneWay}">
                     <StackPanel Spacing="14" Padding="0,12,0,0">
                         <Border Style="{StaticResource CardBorderStyle}"
                                 Padding="{StaticResource CardContentPaddingCompact}">
@@ -205,7 +221,7 @@
                         <StackPanel Spacing="{StaticResource SpacingXSmall}">
                             <tk:SettingsCard Header="单词数">
                                 <NumberBox Width="84"
-                                           Minimum="3"
+                                           Minimum="{x:Bind ViewModel.MinimumPassphraseWordCount, Mode=OneWay}"
                                            Maximum="20"
                                            SpinButtonPlacementMode="Inline"
                                            AutomationProperties.AutomationId="PassphraseWordCountNumberBox"
@@ -220,18 +236,20 @@
 
                             <tk:SettingsCard Header="首字母大写">
                                 <ToggleSwitch AutomationProperties.AutomationId="PassphraseCapitalizeToggle"
+                                              IsEnabled="{x:Bind ViewModel.CanTogglePassphraseCapitalize, Mode=OneWay}"
                                               IsOn="{x:Bind ViewModel.PassphraseCapitalize, Mode=TwoWay}" />
                             </tk:SettingsCard>
 
                             <tk:SettingsCard Header="包含数字">
                                 <ToggleSwitch AutomationProperties.AutomationId="PassphraseIncludeNumberToggle"
+                                              IsEnabled="{x:Bind ViewModel.CanTogglePassphraseIncludeNumber, Mode=OneWay}"
                                               IsOn="{x:Bind ViewModel.PassphraseIncludeNumber, Mode=TwoWay}" />
                             </tk:SettingsCard>
                         </StackPanel>
                     </StackPanel>
                 </TabViewItem>
 
-                <TabViewItem Header="用户名" IsClosable="False">
+                <TabViewItem x:Name="UsernameTab" Header="用户名" IsClosable="False">
                     <StackPanel Spacing="14" Padding="0,12,0,0">
                         <Border Style="{StaticResource CardBorderStyle}"
                                 Padding="{StaticResource CardContentPaddingCompact}">
@@ -251,7 +269,9 @@
                                         Height="32"
                                         Padding="0"
                                         AutomationProperties.Name="重新生成用户名"
+                                        AutomationProperties.AutomationId="UsernameRegenerateButton"
                                         ToolTipService.ToolTip="重新生成"
+                                        IsEnabled="{x:Bind ViewModel.CanGenerate, Mode=OneWay}"
                                         Command="{x:Bind ViewModel.RegenerateCommand}">
                                     <FontIcon Glyph="&#xE895;" FontSize="14" />
                                 </Button>
@@ -260,7 +280,9 @@
                                         Height="32"
                                         Padding="0"
                                         AutomationProperties.Name="复制用户名"
+                                        AutomationProperties.AutomationId="UsernameCopyButton"
                                         ToolTipService.ToolTip="复制"
+                                        IsEnabled="{x:Bind ViewModel.CanGenerate, Mode=OneWay}"
                                         Command="{x:Bind ViewModel.CopyCommand}">
                                     <FontIcon Glyph="&#xE8C8;" FontSize="14" />
                                 </Button>
@@ -269,19 +291,50 @@
 
                         <TextBlock Text="选项" Style="{StaticResource SectionHeaderTextBlockStyle}" />
                         <StackPanel Spacing="{StaticResource SpacingXSmall}">
-                            <tk:SettingsCard Header="类型">
-                                <TextBlock Text="随机单词"
-                                           AutomationProperties.AutomationId="UsernameTypeText" />
+                            <tk:SettingsCard Header="类型" HorizontalContentAlignment="Stretch">
+                                <ComboBox HorizontalAlignment="Stretch"
+                                          MinWidth="0"
+                                          AutomationProperties.Name="用户名类型"
+                                          AutomationProperties.AutomationId="UsernameTypeComboBox"
+                                          SelectedIndex="{x:Bind ViewModel.UsernameTypeIndex, Mode=TwoWay}">
+                                    <ComboBoxItem Content="随机单词" />
+                                    <ComboBoxItem Content="加号邮箱" />
+                                    <ComboBoxItem Content="全域邮箱" />
+                                </ComboBox>
                             </tk:SettingsCard>
 
-                            <tk:SettingsCard Header="首字母大写">
+                            <tk:SettingsCard Header="首字母大写"
+                                             Visibility="{x:Bind ViewModel.ShowUsernameWordOptions, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                                 <ToggleSwitch AutomationProperties.AutomationId="UsernameCapitalizeToggle"
-                                              IsOn="{x:Bind ViewModel.UsernameCapitalize, Mode=TwoWay}" />
+                                               IsOn="{x:Bind ViewModel.UsernameCapitalize, Mode=TwoWay}" />
                             </tk:SettingsCard>
 
-                            <tk:SettingsCard Header="包含数字">
+                            <tk:SettingsCard Header="包含 4 位数字"
+                                             Visibility="{x:Bind ViewModel.ShowUsernameWordOptions, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                                 <ToggleSwitch AutomationProperties.AutomationId="UsernameIncludeNumberToggle"
-                                              IsOn="{x:Bind ViewModel.UsernameIncludeNumber, Mode=TwoWay}" />
+                                               IsOn="{x:Bind ViewModel.UsernameIncludeNumber, Mode=TwoWay}" />
+                            </tk:SettingsCard>
+
+                            <tk:SettingsCard Header="邮箱地址"
+                                             HorizontalContentAlignment="Stretch"
+                                             Visibility="{x:Bind ViewModel.ShowUsernameEmail, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                <TextBox HorizontalAlignment="Stretch"
+                                         MinWidth="0"
+                                         PlaceholderText="name@example.com"
+                                         AutomationProperties.Name="加号邮箱地址"
+                                         AutomationProperties.AutomationId="UsernameEmailTextBox"
+                                         Text="{x:Bind ViewModel.UsernameEmail, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </tk:SettingsCard>
+
+                            <tk:SettingsCard Header="域名"
+                                             HorizontalContentAlignment="Stretch"
+                                             Visibility="{x:Bind ViewModel.ShowUsernameDomain, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                <TextBox HorizontalAlignment="Stretch"
+                                         MinWidth="0"
+                                         PlaceholderText="example.com"
+                                         AutomationProperties.Name="全域邮箱域名"
+                                         AutomationProperties.AutomationId="UsernameDomainTextBox"
+                                         Text="{x:Bind ViewModel.UsernameDomain, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </tk:SettingsCard>
                         </StackPanel>
                     </StackPanel>

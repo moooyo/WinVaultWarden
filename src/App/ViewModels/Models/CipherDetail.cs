@@ -2,7 +2,10 @@ namespace App.ViewModels.Models;
 
 public record CustomField(string Label, string Value, CipherEditorFieldType Type = CipherEditorFieldType.Text)
 {
-    public bool IsSecret => Type == CipherEditorFieldType.Hidden;
+    public bool IsSecret => Type is
+        CipherEditorFieldType.Hidden or
+        CipherEditorFieldType.Linked or
+        CipherEditorFieldType.Unsupported;
 }
 
 public sealed record PasswordHistoryItem(string Password, string DateLabel);
@@ -31,6 +34,10 @@ public abstract class CipherDetail
     public DateTimeOffset Created { get; init; }
     public DateTimeOffset Edited { get; init; }
     public bool IsDeleted { get; init; }
+    public bool IsArchived { get; init; }
+    public bool CanEdit { get; init; } = true;
+    public bool CanDelete { get; init; } = true;
+    public bool CanRestore { get; init; } = true;
     public bool Favorite { get; init; }
     public bool Reprompt { get; init; }
 
@@ -95,4 +102,50 @@ public sealed class SshDetail : CipherDetail
     public string? PublicKey { get; init; }
     public string? PrivateKey { get; init; }
     public string? Fingerprint { get; init; }
+}
+
+public sealed class BankAccountDetail : CipherDetail
+{
+    public override VaultItemKind Kind => VaultItemKind.BankAccount;
+    public string? BankName { get; init; }
+    public string? NameOnAccount { get; init; }
+    public string? AccountType { get; init; }
+    public string? AccountNumber { get; init; }
+    public string? RoutingNumber { get; init; }
+    public string? BranchNumber { get; init; }
+    public string? Pin { get; init; }
+    public string? SwiftCode { get; init; }
+    public string? Iban { get; init; }
+    public string? BankContactPhone { get; init; }
+}
+
+public sealed class DriversLicenseDetail : CipherDetail
+{
+    public override VaultItemKind Kind => VaultItemKind.DriversLicense;
+    public string? FullName { get; init; }
+    public string? DateOfBirth { get; init; }
+    public string? LicenseNumber { get; init; }
+    public string? IssuingCountry { get; init; }
+    public string? IssuingState { get; init; }
+    public string? IssueDate { get; init; }
+    public string? ExpirationDate { get; init; }
+    public string? IssuingAuthority { get; init; }
+    public string? LicenseClass { get; init; }
+}
+
+public sealed class PassportDetail : CipherDetail
+{
+    public override VaultItemKind Kind => VaultItemKind.Passport;
+    public string? FullName { get; init; }
+    public string? DateOfBirth { get; init; }
+    public string? Sex { get; init; }
+    public string? BirthPlace { get; init; }
+    public string? Nationality { get; init; }
+    public string? IssuingCountry { get; init; }
+    public string? PassportNumber { get; init; }
+    public string? PassportType { get; init; }
+    public string? NationalIdentificationNumber { get; init; }
+    public string? IssuingAuthority { get; init; }
+    public string? IssueDate { get; init; }
+    public string? ExpirationDate { get; init; }
 }

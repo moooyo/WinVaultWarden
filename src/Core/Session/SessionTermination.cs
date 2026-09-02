@@ -3,7 +3,10 @@ namespace Core.Session;
 public enum SessionTerminationReason
 {
     InvalidRefreshToken,
+    InvalidSecurityStamp,
+    RequiredPasswordChange,
     RemoteLogout,
+    PinPolicyEnforcementFailed,
 }
 
 /// <summary>

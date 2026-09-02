@@ -41,7 +41,6 @@ public class EmergencyAccessServiceTests
         public Task<EmergencyAccessViewResponse> ViewAsync(string id, CancellationToken ct = default){ Calls.Add($"view:{id}"); return ViewHandler?.Invoke(id, ct) ?? Task.FromResult(ViewResult); }
         public Task<EmergencyAccessTakeoverResponse> TakeoverAsync(string id, CancellationToken ct = default){ Calls.Add($"takeover:{id}"); return Task.FromResult(TakeoverResult); }
         public Task PasswordAsync(string id, EmergencyAccessPasswordRequest request, CancellationToken ct = default){ Calls.Add($"password:{id}"); LastPassword = request; return Task.CompletedTask; }
-        public Task DeleteAccountAsync(DeleteAccountRequest request, CancellationToken ct = default){ Calls.Add("delacct"); return Task.CompletedTask; }
     }
 
     private static VaultSession UnlockedSession(out SymmetricCryptoKey userKey)

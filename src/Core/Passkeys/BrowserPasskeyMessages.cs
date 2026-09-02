@@ -176,6 +176,15 @@ public static class PasskeyRequestParser
                 out error);
         }
 
+        foreach (var credential in payload.ExcludeCredentials ?? [])
+        {
+            if (!ValidateCredentialId(credential.Id, "excludeCredentials.id", out error))
+            {
+                parsed = null;
+                return false;
+            }
+        }
+
         parsed = new ParsedPasskeyRequest(request.Id!, request.Type!, payload);
         error = null;
         return true;
@@ -199,7 +208,7 @@ public static class PasskeyRequestParser
 
         foreach (var credential in payload.AllowCredentials ?? [])
         {
-            if (!ValidateBase64Url(credential.Id, "allowCredentials.id", out error))
+            if (!ValidateCredentialId(credential.Id, "allowCredentials.id", out error))
             {
                 parsed = null;
                 return false;
@@ -243,6 +252,23 @@ public static class PasskeyRequestParser
             error = new BrowserPasskeyError("invalid_request", $"Passkey request {fieldName} must be base64url.");
             return false;
         }
+    }
+
+    private static bool ValidateCredentialId(
+        string? value,
+        string fieldName,
+        out BrowserPasskeyError? error)
+    {
+        if (!CredentialId.TryDecodeWire(value, out _))
+        {
+            error = new BrowserPasskeyError(
+                "invalid_request",
+                $"Passkey request {fieldName} must be canonical base64url.");
+            return false;
+        }
+
+        error = null;
+        return true;
     }
 
     private static byte[] DecodeBase64Url(string value)

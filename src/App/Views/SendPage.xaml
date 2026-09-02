@@ -30,6 +30,11 @@
                      Severity="Warning"
                      IsOpen="{x:Bind ViewModel.ShowNotice, Mode=OneWay}"
                      Message="{x:Bind ViewModel.Notice, Mode=OneWay}" />
+            <InfoBar x:Name="SendOfflineInfoBar"
+                     IsClosable="False"
+                     Severity="Warning"
+                     IsOpen="{x:Bind ViewModel.ShowStaleInfo, Mode=OneWay}"
+                     Message="正在显示离线缓存中的 Send。请先成功同步密码库，再进行新增、编辑或删除。" />
         </StackPanel>
 
         <Grid Grid.Row="1" ColumnSpacing="12">
@@ -38,8 +43,10 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Text="Send" Style="{ThemeResource TitleTextBlockStyle}" />
-            <Button Grid.Column="1"
+            <Button x:Name="AddSendButton"
+                    Grid.Column="1"
                     Style="{ThemeResource AccentButtonStyle}"
+                    IsEnabled="{x:Bind ViewModel.CanCreateSend, Mode=OneWay}"
                     Click="OnAddSendClick">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <FontIcon Glyph="&#xE710;" FontSize="14" />

@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="App.Views.LoginPage"
+    Unloaded="OnUnloaded"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:App.ViewModels"
+    xmlns:services="using:App.Services"
     xmlns:converters="using:App.Converters"
     xmlns:views="using:App.Views">
 
@@ -110,6 +112,49 @@
                                 Margin="0,18,0,0"
                                 Spacing="14"
                                 Visibility="{x:Bind ViewModel.IsAccountStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel x:Name="SavedAccountsPanel"
+                                    Spacing="8"
+                                    Visibility="{x:Bind ViewModel.ShowSavedAccounts, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Text="已保存账户"
+                                       Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.SavedAccounts, Mode=OneWay}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="services:SavedAccountOption">
+                                        <Button HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Stretch"
+                                                Padding="10,8"
+                                                Click="OnSavedAccountClick">
+                                            <Grid ColumnSpacing="10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="32" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border Width="32" Height="32" CornerRadius="16"
+                                                        Background="{ThemeResource AccentFillColorSecondaryBrush}">
+                                                    <TextBlock Text="{x:Bind Initial}"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"
+                                                               FontWeight="SemiBold" />
+                                                </Border>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="{x:Bind Email}"
+                                                               FontWeight="SemiBold"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{x:Bind ServerUrl}"
+                                                               Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                                <FontIcon Grid.Column="2" Glyph="&#xE73E;" FontSize="14"
+                                                          VerticalAlignment="Center"
+                                                          Visibility="{x:Bind IsActive, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                            </Grid>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
                         <ComboBox x:Name="ServerOptionBox"
                                   Header="登录到"
                                   HorizontalAlignment="Stretch"
@@ -137,12 +182,76 @@
                                  MinHeight="38"
                                  InputScope="EmailSmtpAddress" />
 
+                        <Button x:Name="SsoLoginButton"
+                                AutomationProperties.AutomationId="SsoLoginButton"
+                                Content="使用企业 SSO 登录"
+                                Command="{x:Bind ViewModel.LoginWithSsoCommand, Mode=OneWay}"
+                                IsEnabled="{x:Bind ViewModel.CanUseSso, Mode=OneWay}"
+                                MinHeight="38"
+                                HorizontalAlignment="Stretch" />
+
+                        <HyperlinkButton x:Name="CancelSsoButton"
+                                         AutomationProperties.AutomationId="CancelSsoButton"
+                                         Content="取消 SSO 登录"
+                                         Command="{x:Bind ViewModel.CancelSsoCommand, Mode=OneWay}"
+                                         HorizontalAlignment="Center"
+                                         Visibility="{x:Bind ViewModel.ShowCancelSso, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
                         <HyperlinkButton x:Name="GoToRegisterButton"
                                          AutomationProperties.AutomationId="GoToRegisterButton"
                                          Content="没有账户？注册"
+                                         IsEnabled="{x:Bind ViewModel.CanEditServer, Mode=OneWay}"
                                          HorizontalAlignment="Center"
                                          Click="OnGoToRegisterClick" />
 
+                    </StackPanel>
+
+                    <StackPanel x:Name="AccountDeletionRecoveryStage"
+                                Margin="0,18,0,0"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsAccountDeletionRecoveryStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <InfoBar x:Name="AccountDeletionRecoveryInfoBar"
+                                 IsOpen="True"
+                                 IsClosable="False"
+                                 Severity="Warning"
+                                 Title="{x:Bind ViewModel.AccountDeletionRecoveryTitle, Mode=OneWay}"
+                                 Message="{x:Bind ViewModel.AccountDeletionRecoveryMessage, Mode=OneWay}" />
+
+                        <Button x:Name="RetryConfirmedAccountDeletionCleanupButton"
+                                AutomationProperties.AutomationId="RetryConfirmedAccountDeletionCleanupButton"
+                                Content="重试本地清理"
+                                Command="{x:Bind ViewModel.RetryConfirmedAccountDeletionCleanupCommand, Mode=OneWay}"
+                                IsEnabled="{x:Bind ViewModel.CanRunAccountDeletionRecoveryAction, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.ShowRetryConfirmedAccountDeletionCleanup, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                MinHeight="38"
+                                HorizontalAlignment="Stretch" />
+
+                        <Button x:Name="ClearPendingAccountDeletionLocalDataButton"
+                                AutomationProperties.AutomationId="ClearPendingAccountDeletionLocalDataButton"
+                                Content="仅清除此设备"
+                                Click="OnClearPendingAccountDeletionClick"
+                                IsEnabled="{x:Bind ViewModel.CanRunAccountDeletionRecoveryAction, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.ShowClearPendingAccountDeletion, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                MinHeight="38"
+                                HorizontalAlignment="Stretch" />
+
+                        <Button x:Name="ContinueFromAccountDeletionRecoveryButton"
+                                AutomationProperties.AutomationId="ContinueFromAccountDeletionRecoveryButton"
+                                Content="{x:Bind ViewModel.AccountDeletionRecoveryContinueText, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.ContinueFromAccountDeletionRecoveryCommand, Mode=OneWay}"
+                                IsEnabled="{x:Bind ViewModel.CanContinueFromAccountDeletionRecovery, Mode=OneWay}"
+                                 MinHeight="38"
+                                 HorizontalAlignment="Stretch" />
+
+                        <Button x:Name="RequestFullLocalResetButton"
+                                AutomationProperties.AutomationId="RequestFullLocalResetButton"
+                                Content="清除全部本机数据并退出"
+                                Click="OnRequestFullLocalResetClick"
+                                IsEnabled="{x:Bind ViewModel.CanRequestFullLocalReset, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.ShowFullLocalResetAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                MinHeight="38"
+                                HorizontalAlignment="Stretch" />
                     </StackPanel>
 
                     <StackPanel x:Name="LoginPasswordStage"
@@ -175,16 +284,174 @@
                             </StackPanel>
                         </Grid>
 
+                        <StackPanel x:Name="LoginWithDeviceQuarantinePanel"
+                                    Spacing="10"
+                                    Visibility="{x:Bind ViewModel.ShowLoginWithDeviceQuarantineNotice, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <InfoBar x:Name="LoginWithDeviceQuarantineInfoBar"
+                                     IsOpen="True"
+                                     IsClosable="False"
+                                     Severity="Warning"
+                                     Title="{x:Bind ViewModel.LoginWithDeviceQuarantineTitle, Mode=OneWay}"
+                                     Message="{x:Bind ViewModel.LoginWithDeviceQuarantineMessage, Mode=OneWay}" />
+
+                            <Button x:Name="ClearLoginWithDeviceQuarantineButton"
+                                    AutomationProperties.AutomationId="ClearLoginWithDeviceQuarantineButton"
+                                    Content="检查/撤销其他设备会话后清除此隔离"
+                                    Click="OnClearLoginWithDeviceQuarantineClick"
+                                    IsEnabled="{x:Bind ViewModel.CanClearLoginWithDeviceQuarantine, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.ShowLoginWithDeviceQuarantineClearAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    HorizontalAlignment="Stretch"
+                                    MinHeight="38" />
+                        </StackPanel>
+
                         <PasswordBox x:Name="MasterPasswordBox"
                                      Header="主密码"
                                      MinHeight="38"
                                      Password="{x:Bind ViewModel.MasterPassword, Mode=TwoWay}" />
+
+                        <Button x:Name="LoginWithDeviceButton"
+                                AutomationProperties.AutomationId="LoginWithDeviceButton"
+                                Content="使用设备登录"
+                                Command="{x:Bind ViewModel.LoginWithDeviceCommand, Mode=OneWay}"
+                                IsEnabled="{x:Bind ViewModel.CanStartLoginWithDevice, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.ShowLoginWithDeviceOption, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                MinHeight="38"
+                                HorizontalAlignment="Stretch" />
+                    </StackPanel>
+
+                    <StackPanel x:Name="LoginWithDeviceStage"
+                                Margin="0,18,0,0"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsLoginWithDeviceStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Width="34"
+                                    Height="34"
+                                    CornerRadius="17"
+                                    Background="{ThemeResource AccentFillColorSecondaryBrush}">
+                                <TextBlock Text="{x:Bind ViewModel.AccountInitial, Mode=OneWay}"
+                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind ViewModel.AccountSummary, Mode=OneWay}"
+                                           FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind ViewModel.ServerSummary, Mode=OneWay}"
+                                           Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="10"
+                                    HorizontalAlignment="Center">
+                            <ProgressRing Width="20"
+                                          Height="20"
+                                          IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
+                            <TextBlock Text="正在等待另一台设备批准"
+                                       VerticalAlignment="Center"
+                                       AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+
+                        <TextBox x:Name="LoginWithDeviceFingerprintBox"
+                                 AutomationProperties.AutomationId="LoginWithDeviceFingerprintBox"
+                                 Header="指纹短语"
+                                 Text="{x:Bind ViewModel.LoginWithDeviceFingerprint, Mode=OneWay}"
+                                 IsReadOnly="True"
+                                 TextWrapping="Wrap"
+                                 FontFamily="Consolas"
+                                 Visibility="{x:Bind ViewModel.HasLoginWithDeviceFingerprint, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                        <StackPanel Visibility="{x:Bind ViewModel.HasLoginWithDeviceExpiry, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Text="请求有效期至"
+                                       Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                            <TextBlock x:Name="LoginWithDeviceExpiryText"
+                                       AutomationProperties.AutomationId="LoginWithDeviceExpiryText"
+                                       Text="{x:Bind ViewModel.LoginWithDeviceExpiryText, Mode=OneWay}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <Button x:Name="CancelLoginWithDeviceButton"
+                                AutomationProperties.AutomationId="CancelLoginWithDeviceButton"
+                                Content="取消设备登录"
+                                Command="{x:Bind ViewModel.CancelLoginWithDeviceCommand, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.ShowCancelLoginWithDevice, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                MinHeight="38"
+                                HorizontalAlignment="Stretch" />
+                    </StackPanel>
+
+                    <StackPanel x:Name="LoginDeviceVerificationStage"
+                                Margin="0,18,0,0"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsDeviceVerificationStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBox x:Name="DeviceVerificationCodeTextBox"
+                                 AutomationProperties.AutomationId="DeviceVerificationCodeTextBox"
+                                 Header="设备验证码"
+                                 PlaceholderText="输入邮箱中的验证码"
+                                 Text="{x:Bind ViewModel.DeviceVerificationCode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 InputScope="Number"
+                                 MaxLength="16"
+                                 MinHeight="38" />
+
+                        <HyperlinkButton x:Name="ResendNewDeviceCodeButton"
+                                         AutomationProperties.AutomationId="ResendNewDeviceCodeButton"
+                                         Content="重新发送验证码"
+                                         HorizontalAlignment="Center"
+                                         Command="{x:Bind ViewModel.ResendNewDeviceCodeCommand, Mode=OneWay}"
+                                         IsEnabled="{x:Bind ViewModel.CanResendNewDeviceCode, Mode=OneWay}" />
+                    </StackPanel>
+
+                    <StackPanel x:Name="LoginPasswordChangeRequiredStage"
+                                Margin="0,18,0,0"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsPasswordChangeRequiredStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <InfoBar IsOpen="True"
+                                 IsClosable="False"
+                                 Severity="Warning"
+                                 Title="需要更新主密码"
+                                 Message="{x:Bind ViewModel.RequiredPasswordPolicySummary, Mode=OneWay}" />
+
+                        <PasswordBox x:Name="NewMasterPasswordBox"
+                                     AutomationProperties.AutomationId="NewMasterPasswordBox"
+                                     Header="新主密码"
+                                     Password="{x:Bind ViewModel.NewMasterPassword, Mode=TwoWay}"
+                                     MinHeight="38" />
+
+                        <PasswordBox x:Name="ConfirmNewMasterPasswordBox"
+                                     AutomationProperties.AutomationId="ConfirmNewMasterPasswordBox"
+                                     Header="确认新主密码"
+                                     Password="{x:Bind ViewModel.ConfirmNewMasterPassword, Mode=TwoWay}"
+                                     MinHeight="38" />
+
+                        <TextBox x:Name="MasterPasswordHintTextBox"
+                                 AutomationProperties.AutomationId="MasterPasswordHintTextBox"
+                                 Header="密码提示（可选）"
+                                 Text="{x:Bind ViewModel.MasterPasswordHint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 MaxLength="50"
+                                 MinHeight="38" />
+
+                        <Button Content="切换账户"
+                                Command="{x:Bind ViewModel.SwitchAccountCommand, Mode=OneWay}"
+                                HorizontalAlignment="Stretch" />
                     </StackPanel>
 
                     <StackPanel x:Name="LoginTwoFactorStage"
                                 Margin="0,18,0,0"
                                 Spacing="14"
                                 Visibility="{x:Bind ViewModel.IsTwoFactorStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <InfoBar x:Name="LoginWithDeviceTwoFactorExpiryInfoBar"
+                                 IsOpen="{x:Bind ViewModel.ShowLoginWithDeviceTwoFactorExpiry, Mode=OneWay}"
+                                 IsClosable="False"
+                                 Severity="Informational"
+                                 Title="设备登录请求有效期"
+                                 Message="{x:Bind ViewModel.LoginWithDeviceExpiryText, Mode=OneWay}" />
+
                         <ComboBox x:Name="TwoFactorProviderBox"
                                   Header="验证方式"
                                   HorizontalAlignment="Stretch"
@@ -200,26 +467,121 @@
                         </ComboBox>
 
                         <TextBox x:Name="TwoFactorCodeTextBox"
-                                 Header="验证码"
-                                 PlaceholderText="000000"
+                                 Header="{x:Bind ViewModel.TwoFactorInputHeader, Mode=OneWay}"
+                                 PlaceholderText="{x:Bind ViewModel.TwoFactorInputPlaceholder, Mode=OneWay}"
                                  Text="{x:Bind ViewModel.TwoFactorCode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  MinHeight="38"
-                                 MaxLength="32" />
+                                 MaxLength="128"
+                                 Visibility="{x:Bind ViewModel.ShowTwoFactorCodeInput, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                        <InfoBar x:Name="RecoveryCodeWarningInfoBar"
+                                 IsOpen="{x:Bind ViewModel.ShowRecoveryCodeWarning, Mode=OneWay}"
+                                 IsClosable="False"
+                                 Severity="Warning"
+                                 Title="恢复代码会停用两步验证"
+                                 Message="验证成功后，账户当前配置的所有两步验证方式都会被移除。" />
 
                         <CheckBox Content="记住此设备"
-                                  IsChecked="{x:Bind ViewModel.RememberDevice, Mode=TwoWay}" />
+                                  IsChecked="{x:Bind ViewModel.RememberDevice, Mode=TwoWay}"
+                                  Visibility="{x:Bind ViewModel.ShowRememberDevice, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
 
                         <HyperlinkButton x:Name="ResendEmailCodeButton"
                                          Content="重发验证码"
                                          HorizontalAlignment="Center"
                                          Command="{x:Bind ViewModel.ResendEmailCodeCommand, Mode=OneWay}"
                                          Visibility="{x:Bind ViewModel.ShowResendEmailCode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                        <HyperlinkButton x:Name="RecoveryCodeModeButton"
+                                         Content="{x:Bind ViewModel.RecoveryCodeActionText, Mode=OneWay}"
+                                         HorizontalAlignment="Center"
+                                         Command="{x:Bind ViewModel.ToggleRecoveryCodeModeCommand, Mode=OneWay}"
+                                         Visibility="{x:Bind ViewModel.ShowRecoveryCodeSwitch, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    </StackPanel>
+
+                    <StackPanel x:Name="LoginTrustedDeviceApprovalStage"
+                                Margin="0,18,0,0"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsTrustedDeviceApprovalStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Width="34"
+                                    Height="34"
+                                    CornerRadius="17"
+                                    Background="{ThemeResource AccentFillColorSecondaryBrush}">
+                                <TextBlock Text="{x:Bind ViewModel.AccountInitial, Mode=OneWay}"
+                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind ViewModel.AccountSummary, Mode=OneWay}"
+                                           FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind ViewModel.ServerSummary, Mode=OneWay}"
+                                           Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Grid>
+
+                        <ComboBox x:Name="DeviceApprovalMethodBox"
+                                  AutomationProperties.AutomationId="DeviceApprovalMethodBox"
+                                  Header="批准方式"
+                                  ItemsSource="{x:Bind ViewModel.ApprovalMethodOptions, Mode=OneWay}"
+                                  SelectedIndex="{x:Bind ViewModel.SelectedApprovalMethodIndex, Mode=TwoWay}"
+                                  Visibility="{x:Bind ViewModel.ShowApprovalMethodPicker, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                  HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:TrustedDeviceApprovalMethodOption">
+                                    <TextBlock Text="{x:Bind DisplayName}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+
+                        <TextBox x:Name="DeviceApprovalFingerprintBox"
+                                 AutomationProperties.AutomationId="DeviceApprovalFingerprintBox"
+                                 Header="指纹短语"
+                                 Text="{x:Bind ViewModel.ApprovalFingerprint, Mode=OneWay}"
+                                 IsReadOnly="True"
+                                 TextWrapping="Wrap"
+                                 FontFamily="Consolas"
+                                 Visibility="{x:Bind ViewModel.HasApprovalFingerprint, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                        <CheckBox Content="批准后信任此设备"
+                                  IsChecked="{x:Bind ViewModel.TrustCurrentDeviceAfterApproval, Mode=TwoWay}" />
+
+                        <Button Content="取消等待"
+                                Command="{x:Bind ViewModel.CancelTrustedDeviceApprovalCommand, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.ShowCancelDeviceApproval, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                HorizontalAlignment="Stretch" />
+
+                        <Button Content="切换账户"
+                                Command="{x:Bind ViewModel.SwitchAccountCommand, Mode=OneWay}"
+                                HorizontalAlignment="Stretch" />
+                    </StackPanel>
+
+                    <StackPanel x:Name="LoginTdeV2JitProvisioningStage"
+                                Margin="0,18,0,0"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsTdeV2JitProvisioningStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock Text="此企业账户尚未建立加密密钥。继续后将完成账户恢复注册。"
+                                   TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                        <CheckBox Content="同时信任此设备"
+                                  IsEnabled="{x:Bind ViewModel.CanChooseTrustCurrentDeviceAfterJit, Mode=OneWay}"
+                                  IsChecked="{x:Bind ViewModel.TrustCurrentDeviceAfterApproval, Mode=TwoWay}" />
+                        <Button Content="切换账户"
+                                Command="{x:Bind ViewModel.SwitchAccountCommand, Mode=OneWay}"
+                                HorizontalAlignment="Stretch" />
                     </StackPanel>
 
                     <StackPanel x:Name="LoginUnlockStage"
                                 Margin="0,18,0,0"
                                 Spacing="14"
-                                Visibility="{x:Bind ViewModel.IsUnlockStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                Visibility="{x:Bind ViewModel.ShowUnlockPanel, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid ColumnSpacing="10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -249,7 +611,8 @@
                         <PasswordBox x:Name="UnlockPasswordBox"
                                      Header="主密码"
                                      MinHeight="38"
-                                     Password="{x:Bind ViewModel.MasterPassword, Mode=TwoWay}" />
+                                     Password="{x:Bind ViewModel.MasterPassword, Mode=TwoWay}"
+                                     Visibility="{x:Bind ViewModel.IsUnlockStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
 
                         <Button x:Name="HelloUnlockButton"
                                 AutomationProperties.AutomationId="HelloUnlockButton"
@@ -313,9 +676,15 @@
 
                         <HyperlinkButton x:Name="UseMasterPasswordButton"
                                          AutomationProperties.AutomationId="UseMasterPasswordButton"
-                                         Content="用主密码解锁"
+                                         Content="{x:Bind ViewModel.AlternativeUnlockText, Mode=OneWay}"
                                          HorizontalAlignment="Center"
                                          Command="{x:Bind ViewModel.UseMasterPasswordCommand, Mode=OneWay}" />
+
+                        <Button x:Name="PinSwitchAccountButton"
+                                Content="切换账户"
+                                Command="{x:Bind ViewModel.SwitchAccountCommand, Mode=OneWay}"
+                                MinHeight="36"
+                                HorizontalAlignment="Stretch" />
                     </StackPanel>
 
                     <Button x:Name="PrimaryAuthButton"
@@ -323,6 +692,7 @@
                             Click="OnLogin"
                             Style="{ThemeResource AccentButtonStyle}"
                             IsEnabled="{x:Bind ViewModel.CanUsePrimaryAction, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.ShowPrimaryAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                             MinHeight="40"
                             FontWeight="SemiBold"
                             HorizontalAlignment="Stretch">

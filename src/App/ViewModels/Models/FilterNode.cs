@@ -1,6 +1,6 @@
 namespace App.ViewModels.Models;
 
-public enum FilterKind { AllItems, Favorites, Trash, Type, Folder }
+public enum FilterKind { AllItems, Favorites, Archive, Trash, Type, Folder, Organization, Collection }
 
 // 栏② 过滤/文件夹节点。
 public sealed class FilterNode
@@ -14,4 +14,6 @@ public sealed class FilterNode
     // Type 节点用:对应的 VaultItemKind;Folder 节点用:FolderId。
     public VaultItemKind? TypeFilter { get; init; }
     public string? FolderId { get; init; }
+    public string? OrganizationId { get; init; }
+    public string? CollectionId { get; init; }
 }

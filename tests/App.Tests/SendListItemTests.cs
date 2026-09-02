@@ -20,4 +20,18 @@ public class SendListItemTests
 
         Assert.Equal("删除日期 ", item.DeleteDateAccessibleLabel);
     }
+
+    [Fact]
+    public void OfflineItem_CannotBeModified()
+    {
+        var item = new SendListItem(
+            "id-offline",
+            "Cached",
+            SendType.Text,
+            "later",
+            null,
+            IsReadOnly: true);
+
+        Assert.False(item.CanModify);
+    }
 }

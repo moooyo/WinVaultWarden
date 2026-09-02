@@ -2,6 +2,7 @@ using Core.Enums;
 using Core.Models;
 using Core.Services;
 using Vault;
+using Vault.Porting;
 using Xunit;
 
 namespace Vault.Tests;
@@ -19,7 +20,7 @@ public class VaultExportServiceTests
             _folders = folders ?? Array.Empty<Folder>();
         }
 
-        public Core.Session.IVaultSnapshot Snapshot => throw new NotSupportedException();
+        public Core.Session.IVaultSnapshot Snapshot { get; } = new EmptySnapshot();
         public IReadOnlyList<Cipher> GetCiphers() => _ciphers;
         public IReadOnlyList<Folder> GetFolders() => _folders;
         public IReadOnlyList<DeviceInfo> GetDevices() => Array.Empty<DeviceInfo>();
@@ -30,6 +31,19 @@ public class VaultExportServiceTests
             throw new OperationCanceledException(lease.CancellationToken);
         public IReadOnlyList<Cipher> GetCiphers(Core.Session.VaultSessionLease lease) =>
             throw new OperationCanceledException(lease.CancellationToken);
+
+        private sealed class EmptySnapshot : Core.Session.IVaultSnapshot
+        {
+            public Core.Session.VaultState State => Core.Session.VaultState.Unlocked;
+            public IReadOnlyList<Cipher> Ciphers => Array.Empty<Cipher>();
+            public IReadOnlyList<Folder> Folders => Array.Empty<Folder>();
+            public IReadOnlyList<DeviceInfo> Devices => Array.Empty<DeviceInfo>();
+            public AccountInfo Account => AccountInfo.Empty;
+            public int SkippedCipherCount => 0;
+            public int SkippedFolderCount => 0;
+            public bool DataStale => false;
+            public long Generation => 1;
+        }
     }
 
     private static Cipher[] ActiveAndTrashed() => new[]
@@ -46,6 +60,60 @@ public class VaultExportServiceTests
         var json = svc.Export(ExportFormat.Json);
         Assert.Contains("Active", json);
         Assert.DoesNotContain("Trashed", json);
+    }
+
+    [Fact]
+    public void PersonalExport_ExcludesOrganizationOwnedItems()
+    {
+        var personal = new Cipher
+        {
+            Id = "personal",
+            Type = CipherType.Login,
+            Name = "Personal",
+            Login = new CipherLogin(null, null, null, []),
+        };
+        var organization = new Cipher
+        {
+            Id = "shared",
+            Type = CipherType.Login,
+            OrganizationId = "org-1",
+            Name = "Shared",
+            Login = new CipherLogin(null, null, null, []),
+        };
+        var service = new VaultExportService(new FakeVaultService([personal, organization]));
+
+        var json = service.Export(ExportFormat.Json);
+
+        Assert.Contains("Personal", json);
+        Assert.DoesNotContain("Shared", json);
+    }
+
+    [Fact]
+    public void Export_DisablePersonalVaultExportPolicyFailsBeforePlaintextSerialization()
+    {
+        var session = new VaultSession();
+        session.BeginAccountSession(
+            "account",
+            "me@example.com",
+            new ServerOrigin("https://vault.example"));
+        session.SetUnlockedKey(new Crypto.SymmetricCryptoKey(new byte[64]));
+        session.SetSnapshot(new DecryptedVault(session.Account, [], ActiveAndTrashed(), 0, 0)
+        {
+            Organizations = [new VaultOrganization("org-1", "Team", 2, 2, true)],
+            Policies =
+            [
+                new VaultOrganizationPolicy(
+                    "policy-1",
+                    "org-1",
+                    (int)OrganizationPolicyType.DisablePersonalVaultExport,
+                    true,
+                    "null"),
+            ],
+        });
+        var service = new VaultExportService(new VaultService(session));
+
+        Assert.False(service.CanExport);
+        Assert.Throws<OrganizationPolicyException>(() => service.Export(ExportFormat.Json));
     }
 
     [Fact]
@@ -90,5 +158,28 @@ public class VaultExportServiceTests
 
         Assert.Contains(lines, l => l.Contains("Active"));
         Assert.DoesNotContain(lines, l => l.Contains("Trashed"));
+    }
+
+    [Theory]
+    [InlineData(CipherType.Card)]
+    [InlineData(CipherType.Identity)]
+    [InlineData(CipherType.SshKey)]
+    [InlineData(CipherType.BankAccount)]
+    [InlineData(CipherType.DriversLicense)]
+    [InlineData(CipherType.Passport)]
+    [InlineData((CipherType)999)]
+    public void Export_Csv_TypeWithoutOfficialCsvShape_RejectsEntireExport(CipherType type)
+    {
+        var service = new VaultExportService(new FakeVaultService(
+        [
+            ActiveAndTrashed()[0],
+            new Cipher { Id = "unsupported", Type = type, Name = "Unsupported" },
+        ]));
+
+        var exception = Assert.Throws<UnsupportedCipherCsvExportException>(() =>
+            service.Export(ExportFormat.Csv));
+
+        Assert.Equal(type, exception.CipherType);
+        Assert.Contains("JSON", exception.Message, StringComparison.Ordinal);
     }
 }

@@ -57,6 +57,33 @@ public class RealSendUiServiceTests
     }
 
     [Fact]
+    public async Task GetSendsAsync_StaleSnapshotIsVisibleButReadOnly()
+    {
+        var session = NewUnlockedSession(out var lease);
+        session.SetSnapshot(
+            new Vault.DecryptedVault(session.Account, [], [], 0, 0),
+            dataStale: true);
+        var read = new MutableSendService
+        {
+            Sends = [CoreSend("cached", CoreSendType.Text, "离线 Send")],
+            SessionLeaseProvider = () => lease,
+            IsStale = true,
+        };
+        var service = new SendUiService(
+            read,
+            new FakeSendWriteService(),
+            new FakeSendAccessService(),
+            session);
+
+        var item = Assert.Single(await service.GetSendsAsync(CancellationToken.None));
+
+        Assert.Equal("离线 Send", item.Name);
+        Assert.True(item.IsReadOnly);
+        Assert.False(item.CanModify);
+        Assert.Null(await service.GetEditDraftAsync(item.Id, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task CreateSendAsync_TextDraft_CallsSaveTextWithMappedDraftAndAbsoluteDeletionDate()
     {
         var write = new FakeSendWriteService();
@@ -614,6 +641,7 @@ public class RealSendUiServiceTests
         public IReadOnlyList<Send> Sends { get; set; } = [];
         public Exception? Error { get; set; }
         public Func<Core.Session.VaultSessionLease>? SessionLeaseProvider { get; set; }
+        public bool IsStale { get; set; }
 
         public Task<IReadOnlyList<Send>> GetSendsAsync(CancellationToken ct = default)
         {
@@ -632,7 +660,9 @@ public class RealSendUiServiceTests
                     SendDecryptStatus.Decrypted,
                     send,
                     send.RawMutationWitness)).ToArray(),
-                SessionLeaseProvider?.Invoke());
+                SessionLeaseProvider?.Invoke(),
+                IsComplete: true,
+                IsStale: IsStale);
         }
     }
 

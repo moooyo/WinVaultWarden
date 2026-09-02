@@ -1,6 +1,7 @@
 using App.ViewModels.Models;
 using Core.Enums;
 using Core.Models;
+using Core.Services;
 
 namespace App.Services;
 
@@ -11,32 +12,57 @@ public static class CipherDraftMapper
 {
     public static Cipher ToCipher(CipherEditorDraft draft, Cipher? original)
     {
+        if (original is { CanViewPassword: false })
+        {
+            throw new OrganizationCipherOperationException(
+                "An editor draft cannot update a cipher whose protected fields are hidden.");
+        }
+
+        var baseline = ValidateEditBaseline(draft, original);
         var type = TypeFor(draft.Type);
         var fields = draft.CustomFields
-            .Where(f => !string.IsNullOrWhiteSpace(f.Name))
+            .Where(f => f.PreserveWhenNameBlank || !string.IsNullOrWhiteSpace(f.Name))
             .Select(ToField)
             .ToArray();
+        var organizationId = baseline?.OrganizationId ?? NullIfBlank(draft.OrganizationId);
+        var selectedCollectionIds = draft.CollectionIds.Count > 0
+            ? draft.CollectionIds.ToArray()
+            : string.IsNullOrWhiteSpace(draft.CollectionId)
+                ? Array.Empty<string>()
+                : [draft.CollectionId!];
+        var collectionIds = baseline?.CollectionIds
+            ?? (organizationId is null ? Array.Empty<string>() : selectedCollectionIds);
 
         return new Cipher
         {
-            Id = original?.Id ?? string.Empty,
+            Id = baseline?.CipherId ?? string.Empty,
             Type = type,
-            OrganizationId = original?.OrganizationId,
+            OrganizationId = organizationId,
+            CollectionIds = collectionIds,
             // 保留原条目的包裹密钥,让 CipherEncryptor 编辑时复用同一条目密钥(不轮换),避免损坏既有附件。
-            Key = original?.Key,
+            Key = baseline?.Key,
+            UsesBlobEncryption = original?.UsesBlobEncryption ?? false,
             FolderId = NullIfBlank(draft.FolderId),
             Favorite = draft.Favorite,
             Reprompt = draft.Reprompt,
             Name = draft.Name.Trim(),
             Notes = NullIfBlank(draft.Notes),
             CreationDate = original?.CreationDate ?? default,
-            RevisionDate = original?.RevisionDate ?? default,
+            RevisionDate = baseline?.RevisionDate ?? default,
             DeletedDate = original?.DeletedDate,
+            ArchivedDate = original?.ArchivedDate,
+            CanEdit = original?.CanEdit ?? true,
+            CanViewPassword = original?.CanViewPassword ?? true,
+            CanDelete = original?.CanDelete ?? true,
+            CanRestore = original?.CanRestore ?? true,
             Login = type == CipherType.Login ? ToLogin(draft.Login, original?.Login) : null,
             Card = type == CipherType.Card ? ToCard(draft.Card) : null,
             Identity = type == CipherType.Identity ? ToIdentity(draft.Identity) : null,
             SecureNote = type == CipherType.SecureNote ? new CipherSecureNote(draft.SecureNote.Type) : null,
             Ssh = type == CipherType.SshKey ? ToSsh(draft.SshKey) : null,
+            BankAccount = type == CipherType.BankAccount ? ToBankAccount(draft.BankAccount) : null,
+            DriversLicense = type == CipherType.DriversLicense ? ToDriversLicense(draft.DriversLicense) : null,
+            Passport = type == CipherType.Passport ? ToPassport(draft.Passport) : null,
             Fields = fields,
             PasswordHistory = BuildPasswordHistory(draft, original, DateTimeOffset.UtcNow),
         };
@@ -46,6 +72,12 @@ public static class CipherDraftMapper
     public static IReadOnlyList<PasswordHistoryEntry> BuildPasswordHistory(
         CipherEditorDraft draft, Cipher? original, DateTimeOffset now)
     {
+        if (original is { CanViewPassword: false })
+        {
+            throw new OrganizationCipherOperationException(
+                "Password history cannot be read when protected fields are hidden.");
+        }
+
         var baseline = original?.PasswordHistory ?? Array.Empty<PasswordHistoryEntry>();
         if (draft.Type != VaultItemKind.Login || original?.Login is null)
             return baseline;
@@ -65,11 +97,19 @@ public static class CipherDraftMapper
 
     public static CipherEditorDraft ToDraft(Cipher cipher)
     {
+        if (!cipher.CanViewPassword)
+        {
+            throw new OrganizationCipherOperationException(
+                "An editor draft cannot expose a cipher whose protected fields are hidden.");
+        }
+
         var draft = new CipherEditorDraft
         {
             Type = KindFor(cipher.Type),
             Name = cipher.Name,
             FolderId = cipher.FolderId,
+            OrganizationId = cipher.OrganizationId,
+            CollectionId = cipher.CollectionIds.FirstOrDefault(),
             Favorite = cipher.Favorite,
             Reprompt = cipher.Reprompt,
             Notes = cipher.Notes ?? string.Empty,
@@ -124,12 +164,96 @@ public static class CipherDraftMapper
             case CipherType.SecureNote when cipher.SecureNote is { } note:
                 draft.SecureNote.Type = note.Type;
                 break;
+            case CipherType.BankAccount when cipher.BankAccount is { } account:
+                draft.BankAccount.BankName = account.BankName ?? string.Empty;
+                draft.BankAccount.NameOnAccount = account.NameOnAccount ?? string.Empty;
+                draft.BankAccount.AccountType = account.AccountType ?? string.Empty;
+                draft.BankAccount.AccountNumber = account.AccountNumber ?? string.Empty;
+                draft.BankAccount.RoutingNumber = account.RoutingNumber ?? string.Empty;
+                draft.BankAccount.BranchNumber = account.BranchNumber ?? string.Empty;
+                draft.BankAccount.Pin = account.Pin ?? string.Empty;
+                draft.BankAccount.SwiftCode = account.SwiftCode ?? string.Empty;
+                draft.BankAccount.Iban = account.Iban ?? string.Empty;
+                draft.BankAccount.BankContactPhone = account.BankContactPhone ?? string.Empty;
+                break;
+            case CipherType.DriversLicense when cipher.DriversLicense is { } license:
+                draft.DriversLicense.FirstName = license.FirstName ?? string.Empty;
+                draft.DriversLicense.MiddleName = license.MiddleName ?? string.Empty;
+                draft.DriversLicense.LastName = license.LastName ?? string.Empty;
+                draft.DriversLicense.DateOfBirth = license.DateOfBirth ?? string.Empty;
+                draft.DriversLicense.LicenseNumber = license.LicenseNumber ?? string.Empty;
+                draft.DriversLicense.IssuingCountry = license.IssuingCountry ?? string.Empty;
+                draft.DriversLicense.IssuingState = license.IssuingState ?? string.Empty;
+                draft.DriversLicense.IssueDate = license.IssueDate ?? string.Empty;
+                draft.DriversLicense.ExpirationDate = license.ExpirationDate ?? string.Empty;
+                draft.DriversLicense.IssuingAuthority = license.IssuingAuthority ?? string.Empty;
+                draft.DriversLicense.LicenseClass = license.LicenseClass ?? string.Empty;
+                break;
+            case CipherType.Passport when cipher.Passport is { } passport:
+                draft.Passport.Surname = passport.Surname ?? string.Empty;
+                draft.Passport.GivenName = passport.GivenName ?? string.Empty;
+                draft.Passport.DateOfBirth = passport.DateOfBirth ?? string.Empty;
+                draft.Passport.Sex = passport.Sex ?? string.Empty;
+                draft.Passport.BirthPlace = passport.BirthPlace ?? string.Empty;
+                draft.Passport.Nationality = passport.Nationality ?? string.Empty;
+                draft.Passport.IssuingCountry = passport.IssuingCountry ?? string.Empty;
+                draft.Passport.PassportNumber = passport.PassportNumber ?? string.Empty;
+                draft.Passport.PassportType = passport.PassportType ?? string.Empty;
+                draft.Passport.NationalIdentificationNumber = passport.NationalIdentificationNumber ?? string.Empty;
+                draft.Passport.IssuingAuthority = passport.IssuingAuthority ?? string.Empty;
+                draft.Passport.IssueDate = passport.IssueDate ?? string.Empty;
+                draft.Passport.ExpirationDate = passport.ExpirationDate ?? string.Empty;
+                break;
         }
 
         foreach (var field in cipher.Fields)
             draft.CustomFields.Add(ToFieldDraft(field));
 
+        draft.ReplaceCollectionIds(cipher.CollectionIds);
+
+        if (!string.IsNullOrWhiteSpace(cipher.Id))
+        {
+            draft.SetEditBaseline(new CipherEditBaseline(
+                cipher.Id,
+                cipher.Type,
+                cipher.RevisionDate,
+                cipher.OrganizationId,
+                cipher.Key,
+                cipher.CollectionIds));
+        }
+
         return draft;
+    }
+
+    public static bool HasMatchingEditBaseline(CipherEditorDraft draft, Cipher current)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        ArgumentNullException.ThrowIfNull(current);
+        var baseline = draft.EditBaseline;
+        return baseline is not null
+            && string.Equals(baseline.CipherId, current.Id, StringComparison.Ordinal)
+            && baseline.CipherType == current.Type
+            && baseline.CipherType == TypeFor(draft.Type)
+            && baseline.RevisionDate == current.RevisionDate
+            && string.Equals(baseline.OrganizationId, current.OrganizationId, StringComparison.Ordinal)
+            && string.Equals(baseline.Key, current.Key, StringComparison.Ordinal)
+            && baseline.CollectionIds.ToHashSet(StringComparer.Ordinal)
+                .SetEquals(current.CollectionIds);
+    }
+
+    private static CipherEditBaseline? ValidateEditBaseline(
+        CipherEditorDraft draft,
+        Cipher? original)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        if (original is null)
+            return null;
+        if (!HasMatchingEditBaseline(draft, original))
+        {
+            throw new CipherEditConflictException(
+                "The cipher changed after the editor was opened. Reload it before saving.");
+        }
+        return draft.EditBaseline;
     }
 
     private static CipherLogin ToLogin(LoginEditorDraft login, CipherLogin? original)
@@ -145,6 +269,8 @@ public static class CipherDraftMapper
             NullIfBlank(login.Totp),
             uris)
         {
+            PasswordRevisionDate = original?.PasswordRevisionDate,
+            AutofillOnPageLoad = original?.AutofillOnPageLoad,
             Fido2Credentials = original?.Fido2Credentials ?? Array.Empty<CipherFido2Credential>(),
         };
     }
@@ -182,18 +308,64 @@ public static class CipherDraftMapper
         NullIfBlank(ssh.PublicKey),
         NullIfBlank(ssh.KeyFingerprint));
 
+    private static CipherBankAccount ToBankAccount(BankAccountEditorDraft account) => new(
+        NullIfBlank(account.BankName),
+        NullIfBlank(account.NameOnAccount),
+        NullIfBlank(account.AccountType),
+        NullIfBlank(account.AccountNumber),
+        NullIfBlank(account.RoutingNumber),
+        NullIfBlank(account.BranchNumber),
+        NullIfBlank(account.Pin),
+        NullIfBlank(account.SwiftCode),
+        NullIfBlank(account.Iban),
+        NullIfBlank(account.BankContactPhone));
+
+    private static CipherDriversLicense ToDriversLicense(DriversLicenseEditorDraft license) => new(
+        NullIfBlank(license.FirstName),
+        NullIfBlank(license.MiddleName),
+        NullIfBlank(license.LastName),
+        NullIfBlank(license.DateOfBirth),
+        NullIfBlank(license.LicenseNumber),
+        NullIfBlank(license.IssuingCountry),
+        NullIfBlank(license.IssuingState),
+        NullIfBlank(license.IssueDate),
+        NullIfBlank(license.ExpirationDate),
+        NullIfBlank(license.IssuingAuthority),
+        NullIfBlank(license.LicenseClass));
+
+    private static CipherPassport ToPassport(PassportEditorDraft passport) => new(
+        NullIfBlank(passport.Surname),
+        NullIfBlank(passport.GivenName),
+        NullIfBlank(passport.DateOfBirth),
+        NullIfBlank(passport.Sex),
+        NullIfBlank(passport.BirthPlace),
+        NullIfBlank(passport.Nationality),
+        NullIfBlank(passport.IssuingCountry),
+        NullIfBlank(passport.PassportNumber),
+        NullIfBlank(passport.PassportType),
+        NullIfBlank(passport.NationalIdentificationNumber),
+        NullIfBlank(passport.IssuingAuthority),
+        NullIfBlank(passport.IssueDate),
+        NullIfBlank(passport.ExpirationDate));
+
     private static CipherField ToField(CustomFieldEditorDraft field)
     {
         var type = field.Type switch
         {
             CipherEditorFieldType.Hidden => CipherFieldType.Hidden,
             CipherEditorFieldType.Boolean => CipherFieldType.Boolean,
+            CipherEditorFieldType.Linked => CipherFieldType.Linked,
+            CipherEditorFieldType.Unsupported => CipherFieldType.Unsupported,
             _ => CipherFieldType.Text,
         };
         var value = field.Type == CipherEditorFieldType.Boolean
             ? (field.BooleanValue ? "true" : "false")
             : NullIfBlank(field.Value);
-        return new CipherField(field.Name.Trim(), value, type);
+        var linkedId = type is CipherFieldType.Linked or CipherFieldType.Unsupported
+            ? field.LinkedId
+            : null;
+        var rawType = type == CipherFieldType.Unsupported ? field.RawType : null;
+        return new CipherField(field.Name.Trim(), value, type, linkedId, rawType);
     }
 
     private static CustomFieldEditorDraft ToFieldDraft(CipherField field)
@@ -202,6 +374,8 @@ public static class CipherDraftMapper
         {
             CipherFieldType.Hidden => CipherEditorFieldType.Hidden,
             CipherFieldType.Boolean => CipherEditorFieldType.Boolean,
+            CipherFieldType.Linked => CipherEditorFieldType.Linked,
+            CipherFieldType.Unsupported => CipherEditorFieldType.Unsupported,
             _ => CipherEditorFieldType.Text,
         };
         return new CustomFieldEditorDraft
@@ -211,6 +385,9 @@ public static class CipherDraftMapper
             Value = type == CipherEditorFieldType.Boolean ? string.Empty : (field.Value ?? string.Empty),
             BooleanValue = type == CipherEditorFieldType.Boolean
                 && string.Equals(field.Value, "true", StringComparison.OrdinalIgnoreCase),
+            LinkedId = field.LinkedId,
+            RawType = field.RawType,
+            PreserveWhenNameBlank = true,
         };
     }
 
@@ -221,6 +398,9 @@ public static class CipherDraftMapper
         VaultItemKind.Identity => CipherType.Identity,
         VaultItemKind.Note => CipherType.SecureNote,
         VaultItemKind.Ssh => CipherType.SshKey,
+        VaultItemKind.BankAccount => CipherType.BankAccount,
+        VaultItemKind.DriversLicense => CipherType.DriversLicense,
+        VaultItemKind.Passport => CipherType.Passport,
         _ => CipherType.Login,
     };
 
@@ -231,6 +411,9 @@ public static class CipherDraftMapper
         CipherType.Identity => VaultItemKind.Identity,
         CipherType.SecureNote => VaultItemKind.Note,
         CipherType.SshKey => VaultItemKind.Ssh,
+        CipherType.BankAccount => VaultItemKind.BankAccount,
+        CipherType.DriversLicense => VaultItemKind.DriversLicense,
+        CipherType.Passport => VaultItemKind.Passport,
         _ => VaultItemKind.Login,
     };
 

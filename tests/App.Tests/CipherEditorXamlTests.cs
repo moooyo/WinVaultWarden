@@ -9,7 +9,7 @@ public class CipherEditorXamlTests
     private static readonly XNamespace X = "http://schemas.microsoft.com/winfx/2006/xaml";
 
     [Fact]
-    public void VaultPage_AddMenu_ContainsCipherTypesAndFolder()
+    public void VaultPage_AddMenu_GatesNegotiatedCipherTypesByCapability()
     {
         var document = LoadVaultPageXaml();
         var addButton = RequireByName(document, "AddCipherButton");
@@ -23,7 +23,40 @@ public class CipherEditorXamlTests
         Assert.Contains("身份", flyoutItems);
         Assert.Contains("笔记", flyoutItems);
         Assert.Contains("SSH 密钥", flyoutItems);
+        Assert.Contains("银行账户", flyoutItems);
+        Assert.Contains("驾驶证", flyoutItems);
+        Assert.Contains("护照", flyoutItems);
         Assert.Contains("文件夹", flyoutItems);
+        Assert.All(
+            addButton.Descendants(Xaml + "MenuFlyoutItem")
+                .Where(item => item.Attribute("Text")?.Value is "银行账户" or "驾驶证" or "护照"),
+            item => Assert.Contains(
+                "CanCreateNewCipherTypes",
+                item.Attribute("Visibility")?.Value));
+    }
+
+    [Fact]
+    public void VaultPage_EditorTypeSelector_GatesNegotiatedTypesByCapability()
+    {
+        var document = LoadVaultPageXaml();
+        var typeBox = RequireByName(document, "CipherEditorTypeBox");
+        var tags = typeBox.Elements(Xaml + "ComboBoxItem")
+            .Select(item => item.Attribute("Tag")?.Value)
+            .ToArray();
+
+        Assert.Equal(
+            new[]
+            {
+                "Login", "Card", "Identity", "Note", "Ssh",
+                "BankAccount", "DriversLicense", "Passport",
+            },
+            tags);
+        Assert.All(
+            typeBox.Elements(Xaml + "ComboBoxItem").Skip(5),
+            item => Assert.Contains(
+                "CanCreateNewCipherTypes",
+                item.Attribute("Visibility")?.Value));
+        Assert.Contains("CanChangeEditorType", typeBox.Attribute("IsEnabled")?.Value);
     }
 
     [Fact]
@@ -35,11 +68,38 @@ public class CipherEditorXamlTests
         RequireByName(document, "CancelCipherEditorButton");
         RequireByName(document, "CipherEditorPanel");
         RequireByName(document, "CipherEditorTypeBox");
+        RequireByName(document, "CipherEditorDestinationBox");
         RequireByName(document, "CipherEditorFolderBox");
         RequireByName(document, "AddCustomFieldButton");
         RequireByName(document, "RemoveCustomFieldButton");
         RequireByName(document, "CustomFieldsEditorItems");
         RequireByName(document, "AddFolderMenuItem");
+    }
+
+    [Fact]
+    public void VaultPage_PendingCreateRecoveryIsGlobalAndKeepsBothActionsReachable()
+    {
+        var document = LoadVaultPageXaml();
+        var editor = RequireByName(document, "CipherEditorPanel");
+        var statusPanel = RequireByName(document, "VaultGlobalStatusPanel");
+        var recovery = RequireByName(document, "PendingCipherCreateRecoveryPanel");
+        var reconcile = RequireByName(document, "PendingCipherCreateCheckButton");
+        var abandon = RequireByName(document, "PendingCipherCreateAbandonButton");
+        var back = RequireByName(document, "VaultNarrowBackButton");
+
+        Assert.Contains("CanEditEditorDraft", editor.Attribute("IsEnabled")?.Value);
+        Assert.Equal("0", statusPanel.Attribute("Grid.Row")?.Value);
+        Assert.Equal("2", statusPanel.Attribute("Grid.ColumnSpan")?.Value);
+        Assert.Contains(statusPanel, recovery.Ancestors());
+        Assert.DoesNotContain(
+            recovery.Ancestors(),
+            ancestor => ancestor.Attribute(X + "Name")?.Value is "VaultListPane" or "VaultDetailPane");
+        Assert.Contains("HasPendingCipherCreate", recovery.Attribute("Visibility")?.Value);
+        Assert.Contains("SyncCommand", reconcile.Attribute("Command")?.Value);
+        Assert.Contains("CanCheckPendingCipherCreate", reconcile.Attribute("IsEnabled")?.Value);
+        Assert.Contains("CanAbandonPendingCipherCreate", abandon.Attribute("IsEnabled")?.Value);
+        Assert.Equal("OnAbandonPendingCipherCreateClick", abandon.Attribute("Click")?.Value);
+        Assert.Contains("CanCancelEditor", back.Attribute("IsEnabled")?.Value);
     }
 
     [Fact]
@@ -51,6 +111,33 @@ public class CipherEditorXamlTests
         Assert.Equal("文件夹", folderItem.Attribute("Text")?.Value);
         Assert.Null(folderItem.Attribute("IsEnabled")); // no longer disabled
         Assert.Equal("OnAddFolderClick", folderItem.Attribute("Click")?.Value);
+    }
+
+    [Fact]
+    public void VaultPage_RowMenu_ExposesGuardedCloneAction()
+    {
+        var document = LoadVaultPageXaml();
+        var clone = document.Descendants(Xaml + "MenuFlyoutItem")
+            .Single(item => item.Attribute("Click")?.Value == "OnRowCloneClick");
+
+        Assert.Equal("创建副本", clone.Attribute("Text")?.Value);
+        Assert.Contains("CanClone", clone.Attribute("IsEnabled")?.Value);
+        Assert.Contains("IsDeleted", clone.Attribute("Visibility")?.Value);
+    }
+
+    [Fact]
+    public void VaultPage_SensitiveActionsBindToPermissionCapabilities()
+    {
+        var document = LoadVaultPageXaml();
+        var rowEdit = document.Descendants(Xaml + "MenuFlyoutItem")
+            .Single(item => item.Attribute("Click")?.Value == "OnRowEditClick");
+        var rowCopy = document.Descendants(Xaml + "Button")
+            .Single(item => item.Attribute("Click")?.Value == "OnRowCopyPrimaryClick");
+        var detailEdit = RequireByName(document, "EditCipherButton");
+
+        Assert.Contains("CanModify", rowEdit.Attribute("IsEnabled")?.Value);
+        Assert.Contains("CanViewPassword", rowCopy.Attribute("IsEnabled")?.Value);
+        Assert.Contains("CanModifySelectedItem", detailEdit.Attribute("IsEnabled")?.Value);
     }
 
     [Fact]
@@ -83,6 +170,20 @@ public class CipherEditorXamlTests
         var templateText = folderBox.Descendants().First(e => e.Name.LocalName == "TextBlock");
         Assert.Contains("Label", templateText.Attribute("Text")?.Value);
         Assert.Equal("Stretch", folderBox.Attribute("HorizontalAlignment")?.Value);
+    }
+
+    [Fact]
+    public void VaultPage_DestinationComboBox_UsesCompiledBindings()
+    {
+        var document = LoadVaultPageXaml();
+        var destination = RequireByName(document, "CipherEditorDestinationBox");
+
+        Assert.Contains("EditorDestinations", destination.Attribute("ItemsSource")?.Value);
+        Assert.Contains("EditorSelectedDestination", destination.Attribute("SelectedItem")?.Value);
+        Assert.Contains("CanChooseEditorDestination", destination.Attribute("IsEnabled")?.Value);
+        Assert.Null(destination.Attribute("DisplayMemberPath"));
+        var templateText = destination.Descendants().First(element => element.Name.LocalName == "TextBlock");
+        Assert.Contains("DisplayName", templateText.Attribute("Text")?.Value);
     }
 
     [Fact]
@@ -135,8 +236,11 @@ public class CipherEditorXamlTests
         Assert.Contains("TypeIndex", typeBox.Attribute("SelectedIndex")?.Value);
         Assert.Contains("Mode=TwoWay", typeBox.Attribute("SelectedIndex")?.Value);
         Assert.Equal(
-            new[] { "Text", "Hidden", "Boolean" },
+            new[] { "Text", "Hidden", "Boolean", "Linked", "Unsupported" },
             typeBox.Elements(Xaml + "ComboBoxItem").Select(item => item.Attribute("Tag")?.Value));
+        Assert.All(
+            typeBox.Elements(Xaml + "ComboBoxItem").Skip(3),
+            item => Assert.Equal("False", item.Attribute("IsEnabled")?.Value));
 
         Assert.Equal(Xaml + "TextBox", textValue.Name);
         Assert.Contains("Value", textValue.Attribute("Text")?.Value);

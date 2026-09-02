@@ -28,10 +28,17 @@ public class VaultHealthServiceTests
     private sealed class FakePwned : IPwnedPasswordsClient
     { public Task<int> GetBreachCountAsync(string p, CancellationToken ct = default) => Task.FromResult(0); }
 
-    private static Cipher Login(string id, string name, string? pw, string? uri = null, bool deleted = false) => new()
+    private static Cipher Login(
+        string id,
+        string name,
+        string? pw,
+        string? uri = null,
+        bool deleted = false,
+        bool canViewPassword = true) => new()
     {
         Id = id, Type = CipherType.Login, Name = name,
         DeletedDate = deleted ? DateTimeOffset.UtcNow : null,
+        CanViewPassword = canViewPassword,
         Login = new CipherLogin("u", pw, null, uri is null ? Array.Empty<CipherLoginUri>() : new[] { new CipherLoginUri(uri, null) }),
     };
 
@@ -71,6 +78,36 @@ public class VaultHealthServiceTests
         Assert.Empty(r.Reused);
     }
 
+    [Fact]
+    public void AnalyzeOffline_HiddenPasswords_DoNotAffectPasswordFindingsOrCounts()
+    {
+        var report = New(
+            Login("visible", "Visible", "shared-password"),
+            Login("hidden-shared", "Hidden shared", "shared-password", canViewPassword: false),
+            Login("hidden-weak", "Hidden weak", "123456", canViewPassword: false))
+            .AnalyzeOffline();
+
+        Assert.Empty(report.Reused);
+        Assert.DoesNotContain(report.Weak, finding =>
+            finding.Item.CipherId is "hidden-shared" or "hidden-weak");
+    }
+
+    [Fact]
+    public void AnalyzeOffline_HiddenPasswordPermission_DoesNotSuppressUriAudit()
+    {
+        var report = New(Login(
+            "hidden",
+            "Hidden password",
+            "123456",
+            "http://example.com",
+            canViewPassword: false)).AnalyzeOffline();
+
+        var finding = Assert.Single(report.Unsecured);
+        Assert.Equal("hidden", finding.Item.CipherId);
+        Assert.Empty(report.Reused);
+        Assert.Empty(report.Weak);
+    }
+
     private sealed class MapPwned : IPwnedPasswordsClient
     {
         private readonly Dictionary<string, int> _map;
@@ -94,6 +131,30 @@ public class VaultHealthServiceTests
         Assert.Equal(2, exposed.Count);                       // 两条用了泄露密码
         Assert.All(exposed, e => Assert.Equal(42, e.BreachCount));
         Assert.Equal(1, pwned.Calls["leaked-pw"]);            // 去重：每唯一密码只查一次
+    }
+
+    [Fact]
+    public async Task CheckExposure_HiddenPasswords_AreNotQueriedReportedOrCounted()
+    {
+        var pwned = new MapPwned(new()
+        {
+            ["visible-password"] = 42,
+            ["hidden-password"] = 99,
+        });
+        var service = HealthService(
+            pwned,
+            Login("visible", "Visible", "visible-password"),
+            Login("hidden", "Hidden", "hidden-password", canViewPassword: false),
+            Login("hidden-duplicate", "Hidden duplicate", "visible-password", canViewPassword: false));
+
+        var result = await service.CheckExposureAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(BreachCheckStatus.Succeeded, result.Status);
+        Assert.Equal(1, result.SuccessfulQueries);
+        Assert.Equal(0, result.FailedQueries);
+        Assert.Equal("visible", Assert.Single(result.Findings).Item.CipherId);
+        Assert.Equal(1, pwned.Calls["visible-password"]);
+        Assert.DoesNotContain("hidden-password", pwned.Calls.Keys);
     }
 
     // ── Task 14: 显式 BreachCheckResult 状态 ─────────────────────────────────

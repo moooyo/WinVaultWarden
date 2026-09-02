@@ -56,7 +56,7 @@ public class PinUnlockXamlTests
     {
         var xaml = LoadLoginPageXaml();
         Assert.Contains("HyperlinkButton", xaml);
-        Assert.Contains("用主密码解锁", xaml);
+        Assert.Contains("Content=\"{x:Bind ViewModel.AlternativeUnlockText, Mode=OneWay}\"", xaml);
     }
 
     [Fact]

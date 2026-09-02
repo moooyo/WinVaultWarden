@@ -213,7 +213,7 @@ public sealed class SendWriteService : ISendWriteService
     private async Task<CreatedFileSend> CreateFileCoreAsync(
         VaultSessionLease lease,
         ISendApiClient api,
-        SymmetricCryptoKey userKey,
+        VaultUserKey userKey,
         SendDraftModel draft,
         SendFileSource file,
         byte[] seed,
@@ -344,13 +344,15 @@ public sealed class SendWriteService : ISendWriteService
 
     // 解析本次写入应使用的 seed:创建(Id 为空)生成新 seed;更新必须从 draft.Key 解包复用原 seed,
     // 绝不为更新生成新 seed —— 否则服务端仍以旧 seed 加密的字段(文件名/文件字节/文本)将永久无法解密。
-    private byte[] ResolveSeed(SendDraftModel draft, SymmetricCryptoKey userKey)
+    private byte[] ResolveSeed(SendDraftModel draft, VaultUserKey userKey)
     {
         if (string.IsNullOrEmpty(draft.Id))
             return _crypto.GenerateSeed();
         if (string.IsNullOrWhiteSpace(draft.Key))
             throw new InvalidOperationException("更新 Send 需要原始 wrapped key。");
-        return _crypto.UnwrapSeed(draft.Key, userKey);
+        return userKey.Legacy is { } legacy
+            ? _crypto.UnwrapSeed(draft.Key, legacy)
+            : _crypto.UnwrapSeed(draft.Key, userKey.V2!);
     }
 
     // 密码变更三态 → 服务端 password 字段语义:Keep 不传(null,服务端保留原值);Set 传新证明;
@@ -366,14 +368,16 @@ public sealed class SendWriteService : ISendWriteService
     // 组装通用字段(name/notes/key/password 证明/到期/删除日期/标志位)。
     // 返回可变 SendRequest 以便调用方补填 Type/Text/File/FileLength。
     private MutableSendRequest BuildBaseRequest(
-        SendDraftModel draft, byte[] seed, SymmetricCryptoKey cryptoKey, SymmetricCryptoKey userKey)
+        SendDraftModel draft, byte[] seed, SymmetricCryptoKey cryptoKey, VaultUserKey userKey)
     {
         return new MutableSendRequest
         {
             Id = string.IsNullOrEmpty(draft.Id) ? null : draft.Id,
             Name = _crypto.EncryptField(draft.Name, cryptoKey),
             Notes = draft.Notes is null ? null : _crypto.EncryptField(draft.Notes, cryptoKey),
-            Key = _crypto.WrapSeed(seed, userKey),
+            Key = userKey.Legacy is { } legacy
+                ? _crypto.WrapSeed(seed, legacy)
+                : _crypto.WrapSeed(seed, userKey.V2!),
             Password = ResolvePasswordProof(draft.PasswordChange, seed),
             MaxAccessCount = draft.MaxAccessCount,
             ExpirationDate = ToIso(draft.ExpirationDate),
@@ -393,13 +397,29 @@ public sealed class SendWriteService : ISendWriteService
         return draft.ExistingAuthType;
     }
 
-    private SymmetricCryptoKey CopyUserKey(VaultSessionLease expectedSession)
+    private VaultUserKey CopyUserKey(VaultSessionLease expectedSession)
     {
-        if (_session.TryCopyUserKey(expectedSession, out var copiedKey))
-            return copiedKey!;
+        VaultPolicyEvaluator.ThrowIfEnabled(
+            _session,
+            OrganizationPolicyType.DisableSend,
+            "An organization policy disables Send.");
+        if (!_session.TryCopyUserKeyMaterial(expectedSession, out var copiedKey))
+        {
+            _session.ThrowIfExpired(expectedSession);
+            throw new InvalidOperationException("Vault is locked.");
+        }
 
-        _session.ThrowIfExpired(expectedSession);
-        throw new InvalidOperationException("Vault is locked.");
+        try
+        {
+            if (_session.IsDataStale(expectedSession))
+                throw new SendStateStaleException();
+            return copiedKey!;
+        }
+        catch
+        {
+            copiedKey!.Dispose();
+            throw;
+        }
     }
 
     private static void EnsureSupportedExistingAuthentication(SendDraftModel draft)

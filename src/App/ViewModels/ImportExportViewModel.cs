@@ -108,6 +108,7 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
     private const string MissingPreviewMessage = "请先为当前文件生成有效预览。";
     private const string PreviewChangedMessage = "导入预览已变化，请重新预览后再导入。";
     private const string ImportFailureMessage = "导入失败，请确认文件仍有效且密码库已解锁。";
+    private const string ExportPolicyMessage = "组织策略已禁用个人密码库导出。";
 
     private readonly IVaultExportService _export;
     private readonly IVaultImportService _import;
@@ -172,6 +173,7 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBusy))]
     [NotifyPropertyChangedFor(nameof(CanOperate))]
+    [NotifyPropertyChangedFor(nameof(CanExport))]
     [NotifyPropertyChangedFor(nameof(CanImport))]
     [NotifyPropertyChangedFor(nameof(HasSucceededStatus))]
     [NotifyPropertyChangedFor(nameof(HasWarningStatus))]
@@ -189,6 +191,9 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
 
     public bool IsBusy => OperationStatus == UiOperationStatus.Busy;
     public bool CanOperate => !IsBusy;
+    public bool CanExport => !IsBusy && _export.CanExport;
+    public bool ShowExportPolicyInfo => !_export.CanExport;
+    public string ExportPolicyNotice => ExportPolicyMessage;
     public bool HasSucceededStatus =>
         OperationStatus == UiOperationStatus.Succeeded && !OperationHasWarning;
     public bool HasWarningStatus =>
@@ -221,6 +226,9 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
     {
         if (!Enum.IsDefined(kind))
             throw new ArgumentOutOfRangeException(nameof(kind));
+
+        if (kind == ImportExportOperationKind.Export && !_export.CanExport)
+            return UiOperationResult<ImportExportOperationScope>.Failure(ExportPolicyMessage);
 
         if (!_operations.TryEnter(out var gateLease) || gateLease is null)
             return UiOperationResult<ImportExportOperationScope>.Busy();
