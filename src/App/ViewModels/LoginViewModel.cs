@@ -7,6 +7,7 @@ using Core.Enums;
 using Core.Models;
 using Core.Services;
 using Core.Session;
+using System.Collections.ObjectModel;
 
 namespace App.ViewModels;
 
@@ -156,7 +157,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowTwoFactorProviderPicker))]
-    public partial IReadOnlyList<TwoFactorProviderOption> TwoFactorProviderOptions { get; set; } = Array.Empty<TwoFactorProviderOption>();
+    public partial ObservableCollection<TwoFactorProviderOption> TwoFactorProviderOptions { get; set; } = new();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowResendEmailCode))]
@@ -234,7 +235,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowApprovalMethodPicker))]
-    public partial IReadOnlyList<TrustedDeviceApprovalMethodOption> ApprovalMethodOptions { get; set; } = [];
+    public partial ObservableCollection<TrustedDeviceApprovalMethodOption> ApprovalMethodOptions { get; set; } = new();
 
     [ObservableProperty]
     public partial int SelectedApprovalMethodIndex { get; set; }
@@ -250,7 +251,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSavedAccounts))]
     [NotifyPropertyChangedFor(nameof(ShowSavedAccounts))]
-    public partial IReadOnlyList<SavedAccountOption> SavedAccounts { get; set; } = [];
+    public partial ObservableCollection<SavedAccountOption> SavedAccounts { get; set; } = new();
 
     // 页面据 FocusRequestId 单调递增触发一次编程式焦点(而非直接绑定 FocusTarget,避免同值不触发)。
     [ObservableProperty]
@@ -1344,7 +1345,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         MasterPassword = string.Empty;
         DeviceVerificationCode = string.Empty;
         TwoFactorCode = string.Empty;
-        TwoFactorProviderOptions = [];
+        TwoFactorProviderOptions = new();
         _twoFactorProviders = [];
         _twoFactorProviderData = new Dictionary<int, string>();
         _isSsoTwoFactor = false;
@@ -1383,7 +1384,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         DeviceVerificationCode = string.Empty;
         Pin = string.Empty;
         TwoFactorCode = string.Empty;
-        TwoFactorProviderOptions = [];
+        TwoFactorProviderOptions = new();
         _twoFactorProviders = [];
         _twoFactorProviderData = new Dictionary<int, string>();
         IsRecoveryCodeMode = false;
@@ -2808,11 +2809,13 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         TwoFactorCode = string.Empty;
         IsRecoveryCodeMode = !IsRecoveryCodeMode;
         TwoFactorProviderOptions = IsRecoveryCodeMode
-            ? [new TwoFactorProviderOption(RecoveryCodeProvider, ProviderDisplayName(RecoveryCodeProvider))]
-            : _twoFactorProviders
+            ? new ObservableCollection<TwoFactorProviderOption>
+            {
+                new(RecoveryCodeProvider, ProviderDisplayName(RecoveryCodeProvider)),
+            }
+            : new ObservableCollection<TwoFactorProviderOption>(_twoFactorProviders
                 .Where(IsSupportedTwoFactorProvider)
-                .Select(provider => new TwoFactorProviderOption(provider, ProviderDisplayName(provider)))
-                .ToArray();
+                .Select(provider => new TwoFactorProviderOption(provider, ProviderDisplayName(provider))));
         SelectedTwoFactorProviderIndex = 0;
         SetStatus(
             IsRecoveryCodeMode
@@ -2905,7 +2908,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         DeviceVerificationCode = string.Empty;
         Pin = string.Empty;
         TwoFactorCode = string.Empty;
-        TwoFactorProviderOptions = [];
+        TwoFactorProviderOptions = new();
         _twoFactorProviders = [];
         _twoFactorProviderData = new Dictionary<int, string>();
         IsRecoveryCodeMode = false;
@@ -3216,12 +3219,12 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 if (supported.Count == 0)
                 {
                     IsRecoveryCodeMode = true;
-                    TwoFactorProviderOptions =
-                    [
+                    TwoFactorProviderOptions = new ObservableCollection<TwoFactorProviderOption>
+                    {
                         new TwoFactorProviderOption(
                             RecoveryCodeProvider,
                             ProviderDisplayName(RecoveryCodeProvider)),
-                    ];
+                    };
                     SelectedTwoFactorProviderIndex = 0;
                     SetStatus(
                         HasLegacyDuoChallenge()
@@ -3234,9 +3237,8 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                     break;
                 }
                 IsRecoveryCodeMode = false;
-                TwoFactorProviderOptions = supported
-                    .Select(p => new TwoFactorProviderOption(p, ProviderDisplayName(p)))
-                    .ToList();
+                TwoFactorProviderOptions = new ObservableCollection<TwoFactorProviderOption>(supported
+                    .Select(p => new TwoFactorProviderOption(p, ProviderDisplayName(p))));
                 SelectedTwoFactorProviderIndex = 0;
                 SetStatus(
                     IsWebAuthnMode
@@ -3303,7 +3305,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     {
         _approvalLease = null;
         _approvalMethod = TrustedDeviceApprovalMethod.Device;
-        ApprovalMethodOptions = [];
+        ApprovalMethodOptions = new();
         SelectedApprovalMethodIndex = 0;
         ApprovalFingerprint = string.Empty;
         Stage = LoginStage.TrustedDeviceSso;
@@ -3318,7 +3320,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             _trustedDeviceApproval?.Cancel(lease);
         _approvalLease = null;
         _approvalMethod = TrustedDeviceApprovalMethod.Device;
-        ApprovalMethodOptions = [];
+        ApprovalMethodOptions = new();
         SelectedApprovalMethodIndex = 0;
         ApprovalFingerprint = string.Empty;
     }
@@ -3543,7 +3545,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     {
         _twoFactorProviders = Array.Empty<int>();
         _twoFactorProviderData = new Dictionary<int, string>();
-        TwoFactorProviderOptions = Array.Empty<TwoFactorProviderOption>();
+        TwoFactorProviderOptions = new();
         TwoFactorCode = string.Empty;
         IsRecoveryCodeMode = false;
     }
@@ -3653,10 +3655,10 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         _approvalMethod = ApprovalMethodOptions[index].Method;
     }
 
-    private static IReadOnlyList<TrustedDeviceApprovalMethodOption> CreateApprovalMethodOptions(
+    private static ObservableCollection<TrustedDeviceApprovalMethodOption> CreateApprovalMethodOptions(
         AuthResult.TrustedDeviceApprovalRequired approval)
     {
-        var options = new List<TrustedDeviceApprovalMethodOption>(2);
+        var options = new ObservableCollection<TrustedDeviceApprovalMethodOption>();
         if (approval.HasLoginApprovingDevice)
         {
             options.Add(new TrustedDeviceApprovalMethodOption(
@@ -3800,7 +3802,9 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     private void RefreshSavedAccounts()
     {
-        SavedAccounts = _savedAccountService?.GetAccounts() ?? [];
+        SavedAccounts = _savedAccountService is null
+            ? new()
+            : new ObservableCollection<SavedAccountOption>(_savedAccountService.GetAccounts());
     }
 
     private void NotifyTwoFactorModeProperties()

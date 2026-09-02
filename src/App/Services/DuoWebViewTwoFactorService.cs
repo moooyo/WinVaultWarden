@@ -131,10 +131,10 @@ public sealed class DuoWebViewTwoFactorService : IDuoTwoFactorService
             CoreWebView2ProcessFailedEventArgs>? processFailedHandler = null;
         try
         {
-            var environment = await CoreWebView2Environment.CreateAsync(
-                browserExecutableFolder: null,
-                userDataFolder: GetUserDataFolder(),
-                options: null);
+            var environment = await CoreWebView2Environment.CreateWithOptionsAsync(
+                null,
+                GetUserDataFolder(),
+                null);
             if (Volatile.Read(ref terminalState) != 0)
                 throw new DuoTwoFactorCancelledException();
 

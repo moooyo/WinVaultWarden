@@ -11,7 +11,8 @@ public sealed class DuoWebViewSecuritySourceTests
 
         Assert.Contains("AppStorageLayout.CreateDefault().RootPath", source, StringComparison.Ordinal);
         Assert.Contains("Path.Combine(AppStorageLayout.CreateDefault().RootPath, \"WebView2\")", source, StringComparison.Ordinal);
-        Assert.Contains("userDataFolder: GetUserDataFolder()", source, StringComparison.Ordinal);
+        Assert.Contains("CoreWebView2Environment.CreateWithOptionsAsync(", source, StringComparison.Ordinal);
+        Assert.Contains("GetUserDataFolder()", source, StringComparison.Ordinal);
         Assert.Contains("CreateCoreWebView2ControllerOptions()", source, StringComparison.Ordinal);
         Assert.Contains("ProfileName = \"WinVaultWarden-Duo\"", source, StringComparison.Ordinal);
         Assert.Contains("IsInPrivateModeEnabled = true", source, StringComparison.Ordinal);

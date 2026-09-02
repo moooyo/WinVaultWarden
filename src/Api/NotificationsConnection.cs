@@ -90,6 +90,7 @@ public sealed class NotificationsConnection : INotificationsConnection
         // Accumulate all fragments until EndOfMessage so we handle fragmented frames.
         var ackChunk = new byte[256];
         using var ackStream = new MemoryStream();
+        WebSocketMessageType? ackMessageType = null;
         WebSocketReceiveResult ackResult;
         do
         {
@@ -103,7 +104,9 @@ public sealed class NotificationsConnection : INotificationsConnection
             AppendHandshakeFragment(
                 ackStream,
                 ackResult.MessageType,
-                ackChunk.AsSpan(0, ackResult.Count));
+                ackChunk.AsSpan(0, ackResult.Count),
+                ackMessageType);
+            ackMessageType ??= ackResult.MessageType;
         }
         while (!ackResult.EndOfMessage);
 
@@ -177,12 +180,20 @@ public sealed class NotificationsConnection : INotificationsConnection
     internal static void AppendHandshakeFragment(
         MemoryStream destination,
         WebSocketMessageType messageType,
-        ReadOnlySpan<byte> fragment)
+        ReadOnlySpan<byte> fragment,
+        WebSocketMessageType? expectedMessageType = null)
     {
         ArgumentNullException.ThrowIfNull(destination);
-        if (messageType != WebSocketMessageType.Text)
+        if (messageType is not (
+            WebSocketMessageType.Text or WebSocketMessageType.Binary))
             throw new InvalidDataException(
-                $"SignalR handshake response must be a text message, not {messageType}.");
+                $"SignalR handshake response must be text or binary, not {messageType}.");
+        if (expectedMessageType is not null
+            && messageType != expectedMessageType)
+        {
+            throw new InvalidDataException(
+                "SignalR handshake response fragments changed message type.");
+        }
         if (fragment.Length > MaxHandshakeResponseSize - destination.Length)
             throw new InvalidDataException(
                 $"SignalR handshake response exceeds the {MaxHandshakeResponseSize}-byte limit.");

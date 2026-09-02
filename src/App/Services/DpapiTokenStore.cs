@@ -134,6 +134,7 @@ public sealed class DpapiTokenStore : ITokenStore
                 if (legacy is not null)
                 {
                     session = legacy.Sessions[0];
+                    TryWriteLegacyMigrationBestEffort(session);
                     return true;
                 }
 
@@ -463,20 +464,25 @@ public sealed class DpapiTokenStore : ITokenStore
             : MigrateLegacy(legacy);
     }
 
-    private void TryMigrateLegacyBestEffort(PersistedSessionCollection legacy)
+    private void TryWriteLegacyMigrationBestEffort(PersistedSession session)
     {
+        if (_migrationWriter is null)
+            return;
+
         try
         {
-            MigrateLegacy(legacy);
+            _migrationWriter(session);
         }
-        catch (Exception exception) when (IsReadableFailure(exception))
+        catch (Exception exception) when (exception is
+            IOException
+            or UnauthorizedAccessException
+            or CryptographicException)
         {
         }
     }
 
     private PersistedSessionIndex MigrateLegacy(PersistedSessionCollection legacy)
     {
-        _migrationWriter?.Invoke(legacy.Sessions[0]);
         var entries = new List<PersistedSessionIndexEntry>(legacy.Sessions.Count);
         var createdBlobPaths = new List<string>(legacy.Sessions.Count);
         var indexCommitted = false;

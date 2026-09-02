@@ -40,16 +40,16 @@ public sealed class NotificationsConnectionProtocolTests
     }
 
     [Fact]
-    public void Binary_handshake_fragment_is_rejected_before_write()
+    public void Binary_handshake_fragment_is_accepted()
     {
         using var response = new MemoryStream();
 
-        Assert.Throws<InvalidDataException>(() =>
-            NotificationsConnection.AppendHandshakeFragment(
-                response,
-                WebSocketMessageType.Binary,
-                new byte[] { 0x7b, 0x7d, 0x1e }));
-        Assert.Equal(0, response.Length);
+        NotificationsConnection.AppendHandshakeFragment(
+            response,
+            WebSocketMessageType.Binary,
+            new byte[] { 0x7b, 0x7d, 0x1e });
+
+        Assert.Equal(new byte[] { 0x7b, 0x7d, 0x1e }, response.ToArray());
     }
 
     [Fact]
@@ -65,7 +65,8 @@ public sealed class NotificationsConnectionProtocolTests
             NotificationsConnection.AppendHandshakeFragment(
                 response,
                 WebSocketMessageType.Binary,
-                new byte[] { 0x7d, 0x1e }));
+                new byte[] { 0x7d, 0x1e },
+                WebSocketMessageType.Text));
         Assert.Equal(1, response.Length);
     }
 

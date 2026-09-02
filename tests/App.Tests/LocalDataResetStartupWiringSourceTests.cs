@@ -323,6 +323,10 @@ public sealed class LocalDataResetStartupWiringSourceTests
         Assert.Contains("FileFlagOpenReparsePoint", source, StringComparison.Ordinal);
         Assert.Contains("FileFlagBackupSemantics", source, StringComparison.Ordinal);
         Assert.Contains(
+            "FileListDirectory | FileReadAttributes",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "FileAttributeNormal | FileFlagOpenReparsePoint",
             source,
             StringComparison.Ordinal);

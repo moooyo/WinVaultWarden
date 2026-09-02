@@ -1043,6 +1043,7 @@ internal static class LocalDataResetFileSystem
     private const string ReplacementStagingSuffix = ".staging";
     private const uint GenericRead = 0x80000000;
     private const uint GenericWrite = 0x40000000;
+    private const uint FileListDirectory = 0x00000001;
     private const uint FileReadAttributes = 0x00000080;
     private const uint FileShareRead = 0x00000001;
     private const uint FileShareWrite = 0x00000002;
@@ -1105,7 +1106,7 @@ internal static class LocalDataResetFileSystem
             share |= FileShareDelete;
         var handle = OpenNativeHandle(
             path,
-            FileReadAttributes,
+            FileListDirectory | FileReadAttributes,
             share,
             OpenExisting,
             FileFlagOpenReparsePoint | FileFlagBackupSemantics);
@@ -3101,32 +3102,46 @@ public sealed class LocalDataResetStartupCoordinator
                 _layout.RootPath,
                 replaceExisting: false);
             var installedPin = LocalDataResetFileSystem.PinDirectory(_layout.RootPath);
-            if (!MoveIntentReplacementMatches(intent, installedPin))
+            try
+            {
+                if (!MoveIntentReplacementMatches(intent, installedPin))
+                {
+                    throw new LocalDataResetCorruptStateException(
+                        "The installed replacement identity changed.");
+                }
+                _faultHook?.Invoke(
+                    LocalDataResetFaultPoint.AfterRootCreatedBeforeGeneration,
+                    _layout.RootPath);
+                return installedPin;
+            }
+            catch
             {
                 installedPin.Dispose();
-                throw new LocalDataResetCorruptStateException(
-                    "The installed replacement identity changed.");
+                throw;
             }
-            _faultHook?.Invoke(
-                LocalDataResetFaultPoint.AfterRootCreatedBeforeGeneration,
-                _layout.RootPath);
-            return installedPin;
         }
 
         if (staging.Kind == LocalDataResetPathKind.Absent
             && root.Kind == LocalDataResetPathKind.Directory)
         {
             var installedPin = LocalDataResetFileSystem.PinDirectory(_layout.RootPath);
-            if (!MoveIntentReplacementMatches(intent, installedPin))
+            try
+            {
+                if (!MoveIntentReplacementMatches(intent, installedPin))
+                {
+                    throw new LocalDataResetCorruptStateException(
+                        "The installed replacement identity does not match its intent.");
+                }
+                _faultHook?.Invoke(
+                    LocalDataResetFaultPoint.AfterRootCreatedBeforeGeneration,
+                    _layout.RootPath);
+                return installedPin;
+            }
+            catch
             {
                 installedPin.Dispose();
-                throw new LocalDataResetCorruptStateException(
-                    "The installed replacement identity does not match its intent.");
+                throw;
             }
-            _faultHook?.Invoke(
-                LocalDataResetFaultPoint.AfterRootCreatedBeforeGeneration,
-                _layout.RootPath);
-            return installedPin;
         }
 
         throw new LocalDataResetAmbiguousStateException();

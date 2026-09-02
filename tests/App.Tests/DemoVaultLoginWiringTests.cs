@@ -1,4 +1,7 @@
 using System.Xml.Linq;
+using System.Collections.ObjectModel;
+using App.Services;
+using App.ViewModels;
 using Xunit;
 
 namespace App.Tests;
@@ -102,6 +105,20 @@ public class DemoVaultLoginWiringTests
             element => element.Attribute("IsChecked")?.Value?.Contains(
                 "TrustCurrentDeviceAfterApproval",
                 StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public void LoginPage_ItemsSourcesUseNativeAotCompatibleCollections()
+    {
+        Assert.Equal(
+            typeof(ObservableCollection<TrustedDeviceApprovalMethodOption>),
+            typeof(LoginViewModel).GetProperty(nameof(LoginViewModel.ApprovalMethodOptions))!.PropertyType);
+        Assert.Equal(
+            typeof(ObservableCollection<TwoFactorProviderOption>),
+            typeof(LoginViewModel).GetProperty(nameof(LoginViewModel.TwoFactorProviderOptions))!.PropertyType);
+        Assert.Equal(
+            typeof(ObservableCollection<SavedAccountOption>),
+            typeof(LoginViewModel).GetProperty(nameof(LoginViewModel.SavedAccounts))!.PropertyType);
     }
 
     [Fact]
