@@ -201,7 +201,7 @@ public static class ServiceConfiguration
             sp.GetRequiredService<IClipboardService>(),
             sp.GetRequiredService<VaultSession>(),
             sp.GetRequiredService<IAppLifecycleCoordinator>())));
-        services.AddTransient<GeneratorViewModel>(sp =>
+        services.AddSingleton<GeneratorViewModel>(sp =>
             TrackSensitive(sp, ActivatorUtilities.CreateInstance<GeneratorViewModel>(sp)));
         services.AddTransient<SettingsViewModel>(sp =>
             new SettingsViewModel(

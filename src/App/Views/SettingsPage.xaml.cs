@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
+using System.ComponentModel;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace App.Views;
@@ -31,6 +32,8 @@ public sealed partial class SettingsPage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        ViewModel.PropertyChanged -= OnSettingsPropertyChanged;
+        ViewModel.PropertyChanged += OnSettingsPropertyChanged;
 
         ViewModel.ApplyPolicyRestrictions();
         _suppressPinToggle = true;
@@ -47,12 +50,25 @@ public sealed partial class SettingsPage : Page
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        ViewModel.PropertyChanged -= OnSettingsPropertyChanged;
         CancelAccountDeletion();
         base.OnNavigatedFrom(e);
     }
 
-    private void OnSettingsPageUnloaded(object sender, RoutedEventArgs e) =>
+    private void OnSettingsPageUnloaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.PropertyChanged -= OnSettingsPropertyChanged;
         CancelAccountDeletion();
+    }
+
+    private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(SettingsViewModel.SelectedSectionIndex))
+            return;
+
+        SettingsFeedbackInfoBar.IsOpen = false;
+        DispatcherQueue.TryEnqueue(() => SettingsScrollViewer.ChangeView(0, 0, null, true));
+    }
 
     private void CancelAccountDeletion()
     {
@@ -65,7 +81,13 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    public void RefreshPolicyRestrictions() => ViewModel.ApplyPolicyRestrictions();
+    public void RefreshPolicyRestrictions()
+    {
+        ViewModel.ApplyPolicyRestrictions();
+        _suppressPinToggle = true;
+        PinToggle.IsOn = ViewModel.IsPinSet;
+        _suppressPinToggle = false;
+    }
 
     private async Task LoadWindowsHelloAvailabilityAsync()
     {
@@ -73,9 +95,6 @@ public sealed partial class SettingsPage : Page
 
         _suppressHelloToggle = true;
         HelloToggle.IsEnabled = ViewModel.CanToggleWindowsHello;
-        HelloCard.Description = ViewModel.IsWindowsHelloAvailable
-            ? "使用 Windows Hello 快速解锁密码库"
-            : "此设备未启用 Windows Hello";
         _suppressHelloToggle = false;
     }
 
@@ -97,9 +116,48 @@ public sealed partial class SettingsPage : Page
 
     private void OnExportDiagnosticsClick(object sender, RoutedEventArgs e)
     {
-        var package = new DataPackage();
-        package.SetText(AboutInfo.ToDiagnosticsText());
-        Clipboard.SetContent(package);
+        try
+        {
+            var package = new DataPackage();
+            package.SetText(AboutInfo.ToDiagnosticsText());
+            Clipboard.SetContent(package);
+            SettingsFeedbackInfoBar.Severity = InfoBarSeverity.Success;
+            SettingsFeedbackInfoBar.Message = "诊断信息已复制。";
+        }
+        catch
+        {
+            SettingsFeedbackInfoBar.Severity = InfoBarSeverity.Error;
+            SettingsFeedbackInfoBar.Message = "无法写入剪贴板，请重试。";
+        }
+        SettingsFeedbackInfoBar.IsOpen = true;
+    }
+
+    private ScrollViewer CreateDialogBody(UIElement content)
+    {
+        var scroller = new ScrollViewer
+        {
+            Content = content,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalScrollMode = ScrollMode.Disabled,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollMode = ScrollMode.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        };
+        var root = XamlRoot;
+        void ResizeBody()
+        {
+            scroller.Width = ResponsiveDialogSizing.Clamp(root.Size.Width, 480, 96);
+            scroller.MaxHeight = Math.Max(0, root.Size.Height - 200);
+        }
+        void OnRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => ResizeBody();
+        scroller.Loaded += (_, _) =>
+        {
+            ResizeBody();
+            root.Changed += OnRootChanged;
+        };
+        scroller.Unloaded += (_, _) => root.Changed -= OnRootChanged;
+        ResizeBody();
+        return scroller;
     }
 
     // ── 编辑资料 ─────────────────────────────────────────────────────────────
@@ -110,7 +168,7 @@ public sealed partial class SettingsPage : Page
         {
             PlaceholderText = "显示名称",
             Text = string.Empty,
-            MinWidth = 320,
+            MinWidth = 0,
         };
         AutomationProperties.SetAutomationId(nameBox, "EditProfileNameBox");
 
@@ -130,7 +188,7 @@ public sealed partial class SettingsPage : Page
         var dialog = new ContentDialog
         {
             Title = "编辑资料",
-            Content = panel,
+            Content = CreateDialogBody(panel),
             PrimaryButtonText = "保存",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
@@ -161,13 +219,13 @@ public sealed partial class SettingsPage : Page
 
     private async void OnChangePasswordCardClick(object sender, RoutedEventArgs e)
     {
-        var currentBox = new PasswordBox { PlaceholderText = "当前主密码", MinWidth = 320 };
+        var currentBox = new PasswordBox { Header = "当前主密码", PlaceholderText = "当前主密码", MinWidth = 0 };
         AutomationProperties.SetAutomationId(currentBox, "ChangePasswordCurrentBox");
 
-        var newBox = new PasswordBox { PlaceholderText = "新主密码" };
+        var newBox = new PasswordBox { Header = "新主密码", PlaceholderText = "新主密码" };
         AutomationProperties.SetAutomationId(newBox, "ChangePasswordNewBox");
 
-        var confirmBox = new PasswordBox { PlaceholderText = "确认新主密码" };
+        var confirmBox = new PasswordBox { Header = "确认新主密码", PlaceholderText = "确认新主密码" };
         AutomationProperties.SetAutomationId(confirmBox, "ChangePasswordConfirmBox");
 
         var hintBox = new TextBox { PlaceholderText = "密码提示（可选）" };
@@ -188,7 +246,7 @@ public sealed partial class SettingsPage : Page
         var dialog = new ContentDialog
         {
             Title = "修改主密码",
-            Content = panel,
+            Content = CreateDialogBody(panel),
             PrimaryButtonText = "修改",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
@@ -241,7 +299,7 @@ public sealed partial class SettingsPage : Page
 
     private async void OnChangeKdfCardClick(object sender, RoutedEventArgs e)
     {
-        var currentBox = new PasswordBox { PlaceholderText = "当前主密码", MinWidth = 320 };
+        var currentBox = new PasswordBox { Header = "当前主密码", PlaceholderText = "当前主密码", MinWidth = 0 };
         AutomationProperties.SetAutomationId(currentBox, "ChangeKdfCurrentBox");
 
         var iterationsBox = new NumberBox
@@ -269,7 +327,7 @@ public sealed partial class SettingsPage : Page
         var dialog = new ContentDialog
         {
             Title = "加密设置",
-            Content = panel,
+            Content = CreateDialogBody(panel),
             PrimaryButtonText = "应用",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
@@ -335,10 +393,10 @@ public sealed partial class SettingsPage : Page
 
     private async Task<string?> PromptSetPinAsync()
     {
-        var pinBox = new PasswordBox { PlaceholderText = $"PIN（至少 {Core.Services.PinPolicy.MinLength} 位）", MinWidth = 320 };
+        var pinBox = new PasswordBox { Header = $"PIN（至少 {Core.Services.PinPolicy.MinLength} 位）", PlaceholderText = $"PIN（至少 {Core.Services.PinPolicy.MinLength} 位）", MinWidth = 0 };
         AutomationProperties.SetAutomationId(pinBox, "SetPinBox");
 
-        var confirmBox = new PasswordBox { PlaceholderText = "确认 PIN" };
+        var confirmBox = new PasswordBox { Header = "确认 PIN", PlaceholderText = "确认 PIN" };
         AutomationProperties.SetAutomationId(confirmBox, "SetPinConfirmBox");
 
         var errorText = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
@@ -354,7 +412,7 @@ public sealed partial class SettingsPage : Page
         var dialog = new ContentDialog
         {
             Title = "设置 PIN",
-            Content = panel,
+            Content = CreateDialogBody(panel),
             PrimaryButtonText = "设置",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
@@ -493,7 +551,7 @@ public sealed partial class SettingsPage : Page
             };
             AutomationProperties.SetAutomationId(contentPanel, "TwoFactorContentPanel");
 
-            var rootPanel = new StackPanel { Spacing = 4, MinWidth = 360 };
+            var rootPanel = new StackPanel { Spacing = 4, MinWidth = 0 };
             rootPanel.Children.Add(loadingPanel);
             rootPanel.Children.Add(errorPanel);
             rootPanel.Children.Add(contentPanel);
@@ -501,7 +559,7 @@ public sealed partial class SettingsPage : Page
             var menuDialog = new ContentDialog
             {
                 Title = "双重验证",
-                Content = rootPanel,
+                Content = CreateDialogBody(rootPanel),
                 CloseButtonText = "关闭",
                 XamlRoot = XamlRoot,
             };
@@ -539,9 +597,12 @@ public sealed partial class SettingsPage : Page
                     provider.Type == (int)TwoFactorProviderType.Email && provider.Enabled);
                 var webAuthnEnabled = providers.Any(provider =>
                     provider.Type == (int)TwoFactorProviderType.WebAuthn && provider.Enabled);
+                enableTotpButton.Content = totpEnabled ? "重新配置 TOTP 验证器" : "启用 TOTP 验证器";
+                enableEmailButton.Content = emailEnabled ? "重新配置邮箱验证码" : "启用邮箱验证码";
+                disableButton.IsEnabled = providers.Any(provider => provider.Enabled);
                 infoText.Text = providers.Count == 0
                     ? "尚未配置任何双重验证方式。"
-                    : $"TOTP 验证器：{(totpEnabled ? "已启用" : "未启用")}　电子邮件验证码：{(emailEnabled ? "已启用" : "未启用")}　安全密钥：{(webAuthnEnabled ? "已启用" : "未启用")}";
+                    : $"TOTP 验证器：{(totpEnabled ? "已启用" : "未启用")}\n邮箱验证码：{(emailEnabled ? "已启用" : "未启用")}\n安全密钥：{(webAuthnEnabled ? "已启用" : "未启用")}";
                 contentPanel.Visibility = Visibility.Visible;
             }
 
@@ -579,7 +640,7 @@ public sealed partial class SettingsPage : Page
         }
         catch (Exception)
         {
-            // async void 边界保护，异常不逃逸
+            ViewModel.OperationError = "无法加载双重验证设置，请稍后重试。";
         }
     }
 
@@ -588,7 +649,7 @@ public sealed partial class SettingsPage : Page
     private async Task ShowEnableTotpDialogAsync()
     {
         // 步骤 1：输入主密码
-        var pwBox = new PasswordBox { PlaceholderText = "当前主密码", MinWidth = 360 };
+        var pwBox = new PasswordBox { Header = "当前主密码", PlaceholderText = "当前主密码", MinWidth = 0 };
         AutomationProperties.SetAutomationId(pwBox, "TotpSetupPasswordBox");
 
         var step1Error = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
@@ -604,7 +665,7 @@ public sealed partial class SettingsPage : Page
         var step1Dialog = new ContentDialog
         {
             Title = "启用 TOTP 验证器 — 第 1 步",
-            Content = step1Panel,
+            Content = CreateDialogBody(step1Panel),
             PrimaryButtonText = "下一步",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
@@ -654,7 +715,7 @@ public sealed partial class SettingsPage : Page
             Text = otpauth,
             IsTextSelectionEnabled = true,
             TextWrapping = TextWrapping.Wrap,
-            FontSize = 11,
+            FontSize = 12,
             Foreground = Application.Current.Resources.TryGetValue("TextFillColorSecondaryBrush", out var sb2)
                 ? (Microsoft.UI.Xaml.Media.Brush)sb2 : null,
         };
@@ -668,7 +729,7 @@ public sealed partial class SettingsPage : Page
         step2Error.SetValue(TextBlock.ForegroundProperty,
             Application.Current.Resources["SystemFillColorCriticalBrush"]);
 
-        var step2Panel = new StackPanel { Spacing = 8, MinWidth = 360 };
+        var step2Panel = new StackPanel { Spacing = 8, MinWidth = 0 };
         step2Panel.Children.Add(new TextBlock { Text = "请将以下密钥添加到您的验证器应用，然后输入验证码", TextWrapping = TextWrapping.Wrap });
         step2Panel.Children.Add(new TextBlock { Text = "密钥（Base32）：", Margin = new Microsoft.UI.Xaml.Thickness(0, 8, 0, 0) });
         step2Panel.Children.Add(secretText);
@@ -681,7 +742,7 @@ public sealed partial class SettingsPage : Page
         var step2Dialog = new ContentDialog
         {
             Title = "启用 TOTP 验证器 — 第 2 步",
-            Content = step2Panel,
+            Content = CreateDialogBody(step2Panel),
             PrimaryButtonText = "启用",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
@@ -761,7 +822,7 @@ public sealed partial class SettingsPage : Page
         AutomationProperties.SetAutomationId(recoveryPasswordBox, "TotpRecoveryPasswordBox");
         AutomationProperties.SetName(recoveryPasswordBox, "用于获取恢复码的当前主密码");
 
-        var step3Panel = new StackPanel { Spacing = 8, MinWidth = 360 };
+        var step3Panel = new StackPanel { Spacing = 8, MinWidth = 0 };
         step3Panel.Children.Add(new TextBlock { Text = "TOTP 验证器已启用。请妥善保存恢复码，账户锁定时可凭此找回。", TextWrapping = TextWrapping.Wrap });
         step3Panel.Children.Add(recoveryWarning);
         step3Panel.Children.Add(rcText);
@@ -770,7 +831,7 @@ public sealed partial class SettingsPage : Page
         var step3Dialog = new ContentDialog
         {
             Title = "TOTP 启用成功",
-            Content = step3Panel,
+            Content = CreateDialogBody(step3Panel),
             PrimaryButtonText = activation.HasRecoveryCode ? string.Empty : "重新获取恢复码",
             CloseButtonText = "完成",
             DefaultButton = ContentDialogButton.Close,
@@ -831,7 +892,7 @@ public sealed partial class SettingsPage : Page
     private async Task ShowEnableEmailDialogAsync()
     {
         // 步骤 1：密码 + 邮箱
-        var emailPwBox = new PasswordBox { PlaceholderText = "当前主密码", MinWidth = 360 };
+        var emailPwBox = new PasswordBox { Header = "当前主密码", PlaceholderText = "当前主密码", MinWidth = 0 };
         AutomationProperties.SetAutomationId(emailPwBox, "EmailSetupPasswordBox");
 
         var emailAddressBox = new TextBox { PlaceholderText = "验证邮箱地址" };
@@ -851,7 +912,7 @@ public sealed partial class SettingsPage : Page
         var step1Dialog = new ContentDialog
         {
             Title = "启用邮箱验证码 — 第 1 步",
-            Content = step1Panel,
+            Content = CreateDialogBody(step1Panel),
             PrimaryButtonText = "发送验证码",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
@@ -891,7 +952,7 @@ public sealed partial class SettingsPage : Page
         step2Error.SetValue(TextBlock.ForegroundProperty,
             Application.Current.Resources["SystemFillColorCriticalBrush"]);
 
-        var step2Panel = new StackPanel { Spacing = 8, MinWidth = 360 };
+        var step2Panel = new StackPanel { Spacing = 8, MinWidth = 0 };
         step2Panel.Children.Add(new TextBlock { Text = $"验证码已发送至 {emailAddressBox.Text.Trim()}，请输入：", TextWrapping = TextWrapping.Wrap });
         step2Panel.Children.Add(tokenBox);
         step2Panel.Children.Add(step2Error);
@@ -899,7 +960,7 @@ public sealed partial class SettingsPage : Page
         var step2Dialog = new ContentDialog
         {
             Title = "启用邮箱验证码 — 第 2 步",
-            Content = step2Panel,
+            Content = CreateDialogBody(step2Panel),
             PrimaryButtonText = "启用",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
@@ -981,7 +1042,7 @@ public sealed partial class SettingsPage : Page
         var verificationInput = new PasswordBox
         {
             PlaceholderText = "当前主密码",
-            MinWidth = 360,
+            MinWidth = 0,
             MaxLength = 4096,
         };
         AutomationProperties.SetAutomationId(
@@ -1094,7 +1155,7 @@ public sealed partial class SettingsPage : Page
         var passwordDialog = new ContentDialog
         {
             Title = "管理安全密钥",
-            Content = passwordPanel,
+            Content = CreateDialogBody(passwordPanel),
             PrimaryButtonText = "继续",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
@@ -1266,7 +1327,7 @@ public sealed partial class SettingsPage : Page
 
                 var content = new StackPanel
                 {
-                    MinWidth = 420,
+                    MinWidth = 0,
                     Spacing = 12,
                     Children =
                     {
@@ -1284,7 +1345,7 @@ public sealed partial class SettingsPage : Page
                 managementDialog = new ContentDialog
                 {
                     Title = "安全密钥",
-                    Content = content,
+                    Content = CreateDialogBody(content),
                     PrimaryButtonText = "添加安全密钥",
                     IsPrimaryButtonEnabled = ViewModel.CanRegisterWebAuthn,
                     CloseButtonText = "完成",
@@ -1429,10 +1490,10 @@ public sealed partial class SettingsPage : Page
             return;
         }
 
-        var disablePwBox = new PasswordBox { PlaceholderText = "当前主密码", MinWidth = 360 };
+        var disablePwBox = new PasswordBox { Header = "当前主密码", PlaceholderText = "当前主密码", MinWidth = 0 };
         AutomationProperties.SetAutomationId(disablePwBox, "DisableTwoFactorPasswordBox");
 
-        var providerCombo = new ComboBox { MinWidth = 280, PlaceholderText = "选择要禁用的验证方式" };
+        var providerCombo = new ComboBox { MinWidth = 0, PlaceholderText = "选择要禁用的验证方式" };
         AutomationProperties.SetAutomationId(providerCombo, "DisableTwoFactorProviderCombo");
 
         foreach (var p in enabledProviders)
@@ -1458,7 +1519,7 @@ public sealed partial class SettingsPage : Page
         var disableDialog = new ContentDialog
         {
             Title = "禁用双重验证",
-            Content = disablePanel,
+            Content = CreateDialogBody(disablePanel),
             PrimaryButtonText = "禁用",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
@@ -1673,13 +1734,14 @@ public sealed partial class SettingsPage : Page
 
         var credentialBox = new PasswordBox
         {
-            MinWidth = 360,
+            MinWidth = 0,
             PlaceholderText = preflight.CredentialRequirement
                 == AccountDeletionCredentialRequirement.MasterPassword
                     ? "当前主密码"
                     : "邮件验证码",
         };
         activeSecretBox = credentialBox;
+        credentialBox.Header = credentialBox.PlaceholderText;
         AutomationProperties.SetAutomationId(
             credentialBox,
             preflight.CredentialRequirement == AccountDeletionCredentialRequirement.MasterPassword
@@ -1710,8 +1772,9 @@ public sealed partial class SettingsPage : Page
         var credentialDialog = new ContentDialog
         {
             Title = "最终确认",
-            Content = credentialPanel,
+            Content = CreateDialogBody(credentialPanel),
             PrimaryButtonText = "永久删除账户",
+            IsPrimaryButtonEnabled = false,
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
@@ -1719,6 +1782,9 @@ public sealed partial class SettingsPage : Page
         AutomationProperties.SetAutomationId(
             credentialDialog,
             "DeleteAccountCredentialDialog");
+        void OnCredentialChanged(object sender, RoutedEventArgs args) =>
+            credentialDialog.IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(credentialBox.Password);
+        credentialBox.PasswordChanged += OnCredentialChanged;
 
         char[]? credentialCharacters = null;
         try
@@ -1772,6 +1838,7 @@ public sealed partial class SettingsPage : Page
         }
         finally
         {
+            credentialBox.PasswordChanged -= OnCredentialChanged;
             if (credentialCharacters is not null)
                 Array.Clear(credentialCharacters);
             credentialBox.Password = string.Empty;
@@ -1783,7 +1850,13 @@ public sealed partial class SettingsPage : Page
         AccountDeletionPreflight preflight,
         CancellationToken ct)
     {
-        var panel = new StackPanel { Spacing = 12, MinWidth = 400 };
+        var panel = new StackPanel { Spacing = 12, MinWidth = 0 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"{preflight.Binding.NormalizedEmail}\n{preflight.Binding.Endpoints.WebVault.Value}",
+            TextWrapping = TextWrapping.Wrap,
+            IsTextSelectionEnabled = true,
+        });
         panel.Children.Add(new InfoBar
         {
             IsOpen = true,
@@ -1810,7 +1883,7 @@ public sealed partial class SettingsPage : Page
         var dialog = new ContentDialog
         {
             Title = "永久删除账户？",
-            Content = panel,
+            Content = CreateDialogBody(panel),
             PrimaryButtonText = "我了解，继续",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
@@ -1829,7 +1902,7 @@ public sealed partial class SettingsPage : Page
         {
             Header = "逐字输入当前邮箱",
             PlaceholderText = normalizedEmail,
-            MinWidth = 360,
+            MinWidth = 0,
         };
         AutomationProperties.SetAutomationId(emailBox, "DeleteAccountEmailConfirmationBox");
         var error = new TextBlock
@@ -1854,13 +1927,17 @@ public sealed partial class SettingsPage : Page
         var dialog = new ContentDialog
         {
             Title = "确认账户邮箱",
-            Content = panel,
+            Content = CreateDialogBody(panel),
             PrimaryButtonText = "继续",
+            IsPrimaryButtonEnabled = false,
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
         };
         AutomationProperties.SetAutomationId(dialog, "DeleteAccountEmailConfirmationDialog");
+        void OnEmailConfirmationChanged(object sender, TextChangedEventArgs args) =>
+            dialog.IsPrimaryButtonEnabled = string.Equals(emailBox.Text, normalizedEmail, StringComparison.Ordinal);
+        emailBox.TextChanged += OnEmailConfirmationChanged;
 
         try
         {
@@ -1878,6 +1955,7 @@ public sealed partial class SettingsPage : Page
         }
         finally
         {
+            emailBox.TextChanged -= OnEmailConfirmationChanged;
             emailBox.Text = string.Empty;
         }
     }

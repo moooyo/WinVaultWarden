@@ -103,6 +103,157 @@ public class GeneratorViewModelTests
         Assert.Equal(vm.MinSpecial, vm.MinSpecialValue);
     }
 
+    private sealed class UnavailableClipboard : IClipboardService
+    {
+        public void SetText(string text) => throw new InvalidOperationException("Clipboard unavailable.");
+    }
+
+    [Fact]
+    public void ModeSwitch_RestoresEachModesUnchangedValue()
+    {
+        var vm = new GeneratorViewModel();
+        var password = vm.GeneratedPassword;
+        vm.Mode = GeneratorMode.Passphrase;
+        var passphrase = vm.GeneratedPassword;
+        vm.Mode = GeneratorMode.Username;
+        var username = vm.GeneratedPassword;
+
+        vm.Mode = GeneratorMode.Password;
+        Assert.Equal(password, vm.GeneratedPassword);
+        vm.Mode = GeneratorMode.Passphrase;
+        Assert.Equal(passphrase, vm.GeneratedPassword);
+        vm.Mode = GeneratorMode.Username;
+        Assert.Equal(username, vm.GeneratedPassword);
+    }
+
+    [Fact]
+    public void ReopeningWorkspace_PreservesCurrentValueAndOptions()
+    {
+        var vm = new GeneratorViewModel { Mode = GeneratorMode.Passphrase, PassphraseWordCount = 9 };
+        var generated = vm.GeneratedPassword;
+
+        vm.PrepareForDisplay();
+
+        Assert.Equal(GeneratorMode.Passphrase, vm.Mode);
+        Assert.Equal(9, vm.PassphraseWordCount);
+        Assert.Equal(generated, vm.GeneratedPassword);
+    }
+
+    [Fact]
+    public void ModeSwitch_DoesNotRestoreValueWithOutdatedOptions()
+    {
+        var vm = new GeneratorViewModel();
+        vm.Mode = GeneratorMode.Passphrase;
+        vm.Length = 28;
+
+        vm.Mode = GeneratorMode.Password;
+
+        Assert.Equal(28, vm.GeneratedPassword.Length);
+    }
+
+    [Fact]
+    public void ModeSelectorTemporaryDeselection_DoesNotResetCurrentMode()
+    {
+        var vm = new GeneratorViewModel { Mode = GeneratorMode.Passphrase };
+        var generated = vm.GeneratedPassword;
+
+        vm.ModeIndex = -1;
+
+        Assert.Equal(GeneratorMode.Passphrase, vm.Mode);
+        Assert.Equal(generated, vm.GeneratedPassword);
+    }
+
+    [Fact]
+    public void ClipboardFailure_DoesNotRecordOrReportSuccessfulCopy()
+    {
+        var vm = new GeneratorViewModel(new UnavailableClipboard());
+
+        var copied = vm.TryCopyCurrentValue();
+
+        Assert.False(copied);
+        Assert.True(vm.CopyFailed);
+        Assert.True(vm.HasCopyFeedback);
+        Assert.Empty(vm.History);
+    }
+
+    [Fact]
+    public void MissingClipboard_DoesNotRecordHistory()
+    {
+        var vm = new GeneratorViewModel();
+
+        Assert.False(vm.TryCopyCurrentValue());
+        Assert.Empty(vm.History);
+    }
+
+    [Fact]
+    public void SuccessfulCopy_RecordsCredentialTypeAndSignalsHistoryAvailability()
+    {
+        var vm = new GeneratorViewModel(new RecordingClipboard()) { Mode = GeneratorMode.Passphrase };
+        var notifications = new List<string?>();
+        vm.PropertyChanged += (_, args) => notifications.Add(args.PropertyName);
+
+        Assert.True(vm.TryCopyCurrentValue());
+
+        Assert.False(vm.CopyFailed);
+        Assert.True(vm.HasHistory);
+        Assert.False(vm.IsHistoryEmpty);
+        Assert.Equal(GeneratorMode.Passphrase, vm.History[0].Mode);
+        Assert.Contains(nameof(vm.HasHistory), notifications);
+    }
+
+    [Fact]
+    public void ClearSensitive_PreventsStaleHistoryCopyAndCachedValueRestoration()
+    {
+        var clipboard = new RecordingClipboard();
+        var vm = new GeneratorViewModel(clipboard);
+        vm.CopyCommand.Execute(null);
+        var staleHistory = vm.History[0];
+        vm.Mode = GeneratorMode.Passphrase;
+        vm.ClearSensitive();
+
+        vm.Mode = GeneratorMode.Password;
+        vm.RegenerateCommand.Execute(null);
+        vm.CopyHistoryItemCommand.Execute(staleHistory);
+
+        Assert.False(vm.CanCopy);
+        Assert.Equal(string.Empty, vm.GeneratedPassword);
+        Assert.Empty(vm.History);
+        Assert.Equal(1, clipboard.SecretCount);
+        Assert.False(vm.HasCopyFeedback);
+    }
+
+    [Fact]
+    public void ReopeningAfterUnlock_DoesNotRestorePrelockCachedValue()
+    {
+        var vm = new GeneratorViewModel { Length = 64 };
+        var previous = vm.GeneratedPassword;
+        vm.ClearSensitive();
+
+        vm.PrepareForDisplay();
+
+        Assert.True(vm.CanGenerate);
+        Assert.Equal(64, vm.GeneratedPassword.Length);
+        Assert.NotEqual(previous, vm.GeneratedPassword);
+        Assert.Empty(vm.History);
+    }
+
+    [Fact]
+    public void Copy_RechecksPolicyAndRequiresReviewBeforeCopyingChangedResult()
+    {
+        var session = CreatePolicySession();
+        var clipboard = new RecordingClipboard();
+        var vm = new GeneratorViewModel(clipboard, vault: session);
+        SetPolicySnapshot(session, Policy("updated", "org-a", """{"minLength":40}"""));
+
+        Assert.False(vm.TryCopyCurrentValue());
+
+        Assert.Equal(40, vm.GeneratedPassword.Length);
+        Assert.Empty(vm.History);
+        Assert.Equal(0, clipboard.SecretCount);
+        Assert.True(vm.TryCopyCurrentValue());
+        Assert.Equal(40, clipboard.Text!.Length);
+    }
+
     [Fact]
     public void ReducingLength_NormalizesMinimumsAndRaisesBoundValueNotifications()
     {

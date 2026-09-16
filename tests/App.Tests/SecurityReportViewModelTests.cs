@@ -8,6 +8,31 @@ namespace App.Tests;
 
 public class SecurityReportViewModelTests
 {
+    [Fact]
+    public async Task ReusedGroups_ProjectIndependentItemSnapshotsWithExactNavigationIds()
+    {
+        var sourceItems = new[]
+        {
+            new HealthItemRef("login-a", "Same name", "first@example.test"),
+            new HealthItemRef("login-b", "Same name", "second@example.test"),
+        };
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport([new ReusedGroup(2, sourceItems)], [], []),
+        };
+        var viewModel = new SecurityReportViewModel(service);
+
+        await viewModel.LoadOfflineAsync();
+        sourceItems[0] = new HealthItemRef("replaced", "Changed later", null);
+
+        var group = Assert.Single(viewModel.ReusedGroups);
+        Assert.Equal(2, group.Count);
+        Assert.Equal(new[] { "login-a", "login-b" }, group.Items.Select(item => item.CipherId));
+        Assert.Equal("first@example.test", group.Items[0].Username);
+        viewModel.ClearSensitive();
+        Assert.Empty(viewModel.ReusedGroups);
+    }
+
     // ── LoadOfflineAsync ─────────────────────────────────────────────────────────
 
     [Fact]
@@ -176,6 +201,33 @@ public class SecurityReportViewModelTests
         Assert.NotEmpty(vm.ExposedItems);
         Assert.False(vm.IsCheckingExposed);
         Assert.True(vm.ShowExposedCount);
+    }
+
+    [Fact]
+    public async Task ReloadOfflineReport_InvalidatesExposureResultsFromPreviousSnapshot()
+    {
+        var vm = new SecurityReportViewModel(new MockVaultHealthUiService());
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+        Assert.NotEmpty(vm.ExposedItems);
+
+        await vm.LoadOfflineAsync();
+
+        Assert.Empty(vm.ExposedItems);
+        Assert.Equal(ExposureCheckState.NotStarted, vm.ExposureState);
+        Assert.False(vm.ShowExposedCount);
+    }
+
+    [Fact]
+    public async Task CancelExposedCheck_ClearsPreviousFailureInsteadOfShowingItAsNotStarted()
+    {
+        var vm = new SecurityReportViewModel(new ThrowingHealthUiService("unavailable"));
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+        Assert.True(vm.HasExposedError);
+
+        vm.CancelExposedCheck();
+
+        Assert.Null(vm.ExposedError);
+        Assert.Equal(ExposureCheckState.NotStarted, vm.ExposureState);
     }
 
     [Fact]

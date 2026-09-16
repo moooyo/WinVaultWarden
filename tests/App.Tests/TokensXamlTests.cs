@@ -52,12 +52,12 @@ public class TokensXamlTests
     }
 
     [Fact]
-    public void CardContentPaddingCompact_Is12()
+    public void CardContentPaddingCompact_Is16()
     {
         var doc = Load();
         var pad = RequireKey(doc, "CardContentPaddingCompact");
         Assert.Equal("Thickness", pad.Name.LocalName);
-        Assert.Equal("12", pad.Value);
+        Assert.Equal("16", pad.Value);
     }
 
     [Fact]

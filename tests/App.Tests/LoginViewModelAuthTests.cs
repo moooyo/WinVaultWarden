@@ -21,9 +21,12 @@ public class LoginViewModelAuthTests
             Email = "me@example.com",
         };
 
+        Assert.False(vm.ShowAccountContext);
+
         await vm.LoginCommand.ExecuteAsync(null);
 
         Assert.True(vm.IsPasswordStage);
+        Assert.True(vm.ShowAccountContext);
         Assert.Equal("https://vault.example", vm.ServerSummary);
         Assert.Equal("me@example.com", vm.AccountSummary);
         Assert.Null(auth.LoginCall);
@@ -846,14 +849,18 @@ public class LoginViewModelAuthTests
         Assert.Equal(LoginFocusTarget.MasterPassword, vm.FocusTarget);
     }
 
-    [Fact]
-    public async Task TypedNetworkFailure_ShowsStableLocalizedMessage()
+    [Theory]
+    [InlineData(AuthFailureKind.Network, "无法连接服务器，请检查网络后重试。")]
+    [InlineData(AuthFailureKind.RateLimited, "登录请求过于频繁，请稍后重试。")]
+    public async Task TypedAuthenticationFailure_ShowsStableLocalizedMessage(
+        AuthFailureKind kind,
+        string expectedStatus)
     {
         var auth = new FakeAuthService
         {
             LoginResult = new AuthResult.Failure(
                 "sensitive endpoint detail",
-                AuthFailureKind.Network),
+                kind),
         };
         var vm = new LoginViewModel(auth)
         {
@@ -866,20 +873,24 @@ public class LoginViewModelAuthTests
         vm.MasterPassword = "master";
         await vm.LoginCommand.ExecuteAsync(null);
 
-        Assert.Equal("无法连接服务器，请检查网络后重试。", vm.Status);
+        Assert.Equal(expectedStatus, vm.Status);
         Assert.DoesNotContain("sensitive endpoint detail", vm.Status);
         Assert.Equal(LoginStatusKind.Error, vm.StatusKind);
     }
 
-    [Fact]
-    public async Task TwoFactorNetworkFailure_PreservesAttemptAndCanRetry()
+    [Theory]
+    [InlineData(AuthFailureKind.Network, "无法连接服务器，请检查网络后重试。")]
+    [InlineData(AuthFailureKind.RateLimited, "登录请求过于频繁，请稍后重试。")]
+    public async Task TwoFactorTransientFailure_PreservesAttemptAndCanRetry(
+        AuthFailureKind kind,
+        string expectedStatus)
     {
         var auth = new FakeAuthService
         {
             LoginResult = new AuthResult.TwoFactorRequired([0]),
             SubmitResult = new AuthResult.Failure(
                 "sensitive endpoint detail",
-                AuthFailureKind.Network),
+                kind),
         };
         var vm = new LoginViewModel(auth)
         {
@@ -897,7 +908,7 @@ public class LoginViewModelAuthTests
         await vm.LoginCommand.ExecuteAsync(null);
 
         Assert.True(vm.IsTwoFactorStage);
-        Assert.Equal("无法连接服务器，请检查网络后重试。", vm.Status);
+        Assert.Equal(expectedStatus, vm.Status);
         Assert.Equal(LoginFocusTarget.TwoFactorCode, vm.FocusTarget);
         Assert.Equal(0, auth.AbandonCalls);
 

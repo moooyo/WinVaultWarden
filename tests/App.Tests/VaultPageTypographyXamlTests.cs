@@ -22,22 +22,20 @@ public class VaultPageTypographyXamlTests
             && e.Attribute("Text")?.Value == text);
 
     [Fact]
-    public void SectionLabels_UseSectionHeaderStyle()
+    public void OptionalSectionsHaveNamedNativeHeaders()
     {
         var doc = Load();
-        foreach (var label in new[] { "备注", "项目历史" })
-        {
-            var tb = ByText(doc, label);
-            Assert.Equal("{StaticResource SectionHeaderTextBlockStyle}", tb.Attribute("Style")?.Value);
-            Assert.Null(tb.Attribute("Foreground"));
-        }
+        Assert.Contains(doc.Descendants(), element => element.Name.LocalName == "DetailCard"
+            && element.Attribute("Title")?.Value == "备注");
+        Assert.Contains(doc.Descendants(), element => element.Name.LocalName == "Expander"
+            && element.Attribute("Header")?.Value == "项目历史");
     }
 
     [Fact]
     public void RowSubtitleAndHistory_UseCaptionSecondaryStyle()
     {
         var doc = Load();
-        var subtitle = ByText(doc, "{x:Bind Subtitle}");
+        var subtitle = ByText(doc, "{Binding Subtitle}");
         Assert.Equal("{StaticResource CaptionSecondaryTextBlockStyle}", subtitle.Attribute("Style")?.Value);
         Assert.Null(subtitle.Attribute("FontSize"));
 

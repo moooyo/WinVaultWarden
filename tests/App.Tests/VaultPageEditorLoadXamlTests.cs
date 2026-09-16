@@ -21,7 +21,7 @@ public class VaultPageEditorLoadXamlTests
     }
 
     [Fact]
-    public void CipherEditorPanel_HasXLoadBoundToIsEditing()
+    public void CipherEditorPanelKeepsItsVisualTreeAndUsesAnEmptyPresentationDraft()
     {
         var doc = LoadVaultPageXaml();
 
@@ -30,10 +30,10 @@ public class VaultPageEditorLoadXamlTests
                 && e.Attribute(X + "Name")?.Value == "CipherEditorPanel");
         Assert.NotNull(panel);
 
-        var xLoad = panel!.Attribute(X + "Load")?.Value;
-        Assert.False(string.IsNullOrEmpty(xLoad), "CipherEditorPanel must declare x:Load");
-        Assert.Contains("x:Bind", xLoad!);
-        Assert.Contains("ViewModel.IsEditing", xLoad!);
-        Assert.Contains("Mode=OneWay", xLoad!);
+        Assert.Null(panel!.Attribute(X + "Load"));
+        Assert.Contains("ViewModel.IsEditing", panel.Attribute("Visibility")?.Value);
+        Assert.Contains("ViewModel.CanEditEditorDraft", panel.Attribute("IsEnabled")?.Value);
+        Assert.Contains("ViewModel.EditorDisplayDraft.Name", panel.ToString());
+        Assert.DoesNotContain("ViewModel.EditorDraft.", panel.ToString());
     }
 }

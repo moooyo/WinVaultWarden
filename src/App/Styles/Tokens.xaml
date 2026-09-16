@@ -13,7 +13,7 @@
     <!-- ============ 圆角 / 内边距 ============ -->
     <CornerRadius x:Key="CardCornerRadius">8</CornerRadius>
     <Thickness x:Key="CardContentPadding">16</Thickness>
-    <Thickness x:Key="CardContentPaddingCompact">12</Thickness>
+    <Thickness x:Key="CardContentPaddingCompact">16</Thickness>
     <Thickness x:Key="PageContentPadding">24</Thickness>
 
     <!-- ============ 字体 ============ -->

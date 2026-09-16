@@ -286,7 +286,7 @@ public sealed class DpapiVaultCacheStore : ICacheStore
                     AppJsonContext.Default.VaultCacheEntry);
                 if (legacy is null || !legacy.TryMigrate(out var normalizedLegacy))
                     return StrictCollectionReadStatus.Corrupt;
-                collection = VaultCacheCollection.FromMostRecent([normalizedLegacy]);
+                collection = VaultCacheCollection.FromMostRecent((VaultCacheEntry[])[normalizedLegacy]);
                 return StrictCollectionReadStatus.Found;
             }
 
@@ -378,7 +378,7 @@ public sealed class DpapiVaultCacheStore : ICacheStore
                 AppJsonContext.Default.VaultCacheEntry);
             if (legacy is null || !legacy.TryMigrate(out var normalized))
                 return false;
-            collection = VaultCacheCollection.FromMostRecent([normalized]);
+            collection = VaultCacheCollection.FromMostRecent((VaultCacheEntry[])[normalized]);
             return true;
         }
         finally

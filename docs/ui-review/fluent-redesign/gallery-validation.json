@@ -1,0 +1,188 @@
+{
+  "generatedAt": "2026-09-15T14:29:02.340Z",
+  "scope": "Offline review gallery only; no application runtime or security behavior is verified.",
+  "proposalOnly": true,
+  "browser": "Microsoft Edge, headless",
+  "viewports": [
+    {
+      "width": 1600,
+      "height": 1000
+    },
+    {
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "scenarioCount": 58,
+  "inventoryCount": 178,
+  "passed": true,
+  "checks": [
+    {
+      "name": "Default vault proposal and source counts",
+      "passed": true,
+      "scenarios": 58,
+      "coverage": 178,
+      "selected": "vault-overview",
+      "theme": "light",
+      "frameFits": true,
+      "overflow": false,
+      "title": "Vault overview and navigation"
+    },
+    {
+      "name": "Desktop fitted preview has no page overflow",
+      "passed": true,
+      "frameFits": true,
+      "overflow": false
+    },
+    {
+      "name": "Scenario search",
+      "passed": true,
+      "matches": 3,
+      "titles": [
+        "Login details",
+        "Manage two-step protection",
+        "Set up an authenticator"
+      ]
+    },
+    {
+      "name": "Empty screen search",
+      "passed": true
+    },
+    {
+      "name": "Dark theme forwarding and export target",
+      "passed": true,
+      "theme": "dark",
+      "src": "frames/vault-overview.html?theme=dark",
+      "png": "renders/vault-overview-dark.png",
+      "download": "vault-overview-dark.png",
+      "full": "renders/vault-overview-dark.png"
+    },
+    {
+      "name": "Original and optimized image comparison",
+      "passed": true,
+      "visible": true,
+      "iframeHidden": true,
+      "baseline": 1165,
+      "proposal": 1280,
+      "label": "Related baseline: 08-vault-live.png. The original capture retains its recorded theme and state."
+    },
+    {
+      "name": "Explicit missing-baseline state",
+      "passed": true,
+      "scenario": "login-two-step"
+    },
+    {
+      "name": "Product frame navigation updates gallery metadata",
+      "passed": true,
+      "selected": "vault-editor-login",
+      "title": "Edit login",
+      "src": "frames/vault-editor-login.html?theme=dark"
+    },
+    {
+      "name": "Reject navigation messages from the parent window",
+      "passed": true
+    },
+    {
+      "name": "Reject unknown scenario IDs from the product frame",
+      "passed": true
+    },
+    {
+      "name": "Complete coverage matrix",
+      "passed": true,
+      "rows": 178,
+      "visible": 178
+    },
+    {
+      "name": "Coverage scope filter",
+      "passed": true,
+      "rows": 18
+    },
+    {
+      "name": "Source coverage search",
+      "passed": true,
+      "rows": 1
+    },
+    {
+      "name": "Keyboard tab activation and focus",
+      "passed": true
+    },
+    {
+      "name": "Keyboard return to screen workspace",
+      "passed": true
+    },
+    {
+      "name": "Selected-screen traceability filter",
+      "passed": true,
+      "rows": 2
+    },
+    {
+      "name": "Review note rail toggle",
+      "passed": true
+    },
+    {
+      "name": "390px gallery viewport",
+      "passed": true,
+      "width": 390,
+      "scrollWidth": 390,
+      "menuVisible": true,
+      "notesHidden": true,
+      "title": "Vault overview and navigation"
+    },
+    {
+      "name": "Mobile navigation opens with search focus",
+      "passed": true
+    },
+    {
+      "name": "Mobile scenario selection closes navigation",
+      "passed": true
+    },
+    {
+      "name": "Mobile coverage retains a contained horizontal table",
+      "passed": true,
+      "documentWidth": 390,
+      "viewport": 390,
+      "tableScrollable": true
+    },
+    {
+      "name": "All scenario frames and exported image targets exist",
+      "passed": true,
+      "expected": 176,
+      "missing": []
+    },
+    {
+      "name": "No external network requests",
+      "passed": true,
+      "requests": []
+    },
+    {
+      "name": "No browser script errors",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "name": "All linked original native captures exist",
+      "passed": true,
+      "baselines": 33,
+      "missing": []
+    },
+    {
+      "name": "Source inventory links resolve to original atlas anchors",
+      "passed": true,
+      "sourceIds": 178,
+      "missing": []
+    }
+  ],
+  "visualInspection": {
+    "passed": true,
+    "views": [
+      "1600 × 1000 light desktop overview",
+      "1600 × 1000 dark before/after comparison",
+      "390 × 844 light mobile workspace"
+    ],
+    "observations": [
+      "Review controls and proposal scope are visible.",
+      "Preview frames retain their 1280 × 900 aspect ratio.",
+      "Mobile controls remain readable; full-size image access is available."
+    ]
+  }
+}

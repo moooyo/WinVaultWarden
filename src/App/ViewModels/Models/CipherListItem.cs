@@ -3,8 +3,9 @@ namespace App.ViewModels.Models;
 public enum VaultItemKind { Login, Card, Identity, Note, Ssh, BankAccount, DriversLicense, Passport }
 
 // 栏③ 列表项。Subtitle 随类型不同(登录=用户名,网站=域名等)。
-public sealed class CipherListItem
+public sealed partial class CipherListItem
 {
+    public override string ToString() => Name;
     public required string Id { get; init; }
     public required string Name { get; init; }
     public string Subtitle { get; init; } = string.Empty;

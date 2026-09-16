@@ -5,10 +5,10 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Border Style="{StaticResource CardBorderStyle}"
             Padding="{StaticResource CardContentPaddingCompact}">
-        <StackPanel Spacing="4">
+        <StackPanel Spacing="12">
             <TextBlock x:Name="TitleText"
                        Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
-            <ContentPresenter Content="{x:Bind CardContent, Mode=OneWay}" />
+            <ContentPresenter x:Name="CardContentPresenter" />
         </StackPanel>
     </Border>
 </UserControl>

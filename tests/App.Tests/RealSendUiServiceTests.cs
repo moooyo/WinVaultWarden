@@ -15,6 +15,41 @@ namespace App.Tests;
 
 public class RealSendUiServiceTests
 {
+    [Fact]
+    public async Task GetSendsAsync_PreservesAccessAndRetentionMetadataIndependently()
+    {
+        var now = DateTimeOffset.Parse("2026-09-16T08:00:00Z");
+        var send = new Send
+        {
+            Id = "restricted-file",
+            Name = "Review attachment",
+            Type = CoreSendType.File,
+            DeletionDate = now.AddDays(7),
+            ExpirationDate = now.AddHours(3),
+            Disabled = true,
+            AccessCount = 3,
+            MaxAccessCount = 5,
+            HasPassword = true,
+            AuthType = SendAuthType.Password,
+            File = new SendFile("review.txt", 4096, "4 KiB", "file-id"),
+            ShareUrl = "https://vault.example/#/send/id/seed",
+        };
+        var service = new SendUiService(new FakeSendService(send), new FakeSendWriteService(), new FakeSendAccessService());
+
+        var item = Assert.Single(await service.GetSendsAsync());
+
+        Assert.Equal(send.DeletionDate, item.DeletionDateTime);
+        Assert.Equal(send.ExpirationDate, item.ExpirationDate);
+        Assert.Equal(3, item.AccessCount);
+        Assert.Equal(5, item.MaxAccessCount);
+        Assert.Equal(4096, item.FileSize);
+        Assert.True(item.HasPassword);
+        Assert.Equal(SendAuthType.Password, item.AuthType);
+        Assert.Equal(SendAvailabilityState.Disabled, item.GetAvailability(now).State);
+        Assert.Equal(send.ShareUrl, item.Link);
+        Assert.True(item.CanModify);
+    }
+
     private static Vault.VaultSession NewUnlockedSession(out VaultSessionLease lease)
     {
         var session = new Vault.VaultSession();

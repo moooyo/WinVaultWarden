@@ -3,7 +3,7 @@ namespace App.ViewModels.Models;
 public enum FilterKind { AllItems, Favorites, Archive, Trash, Type, Folder, Organization, Collection }
 
 // 栏② 过滤/文件夹节点。
-public sealed class FilterNode
+public sealed partial class FilterNode
 {
     public required string Label { get; init; }
     public string Glyph { get; init; } = "";

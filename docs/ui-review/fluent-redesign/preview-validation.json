@@ -1,0 +1,111 @@
+{
+  "generatedAt": "2026-09-16T03:51:52.205Z",
+  "scope": "selected-frame-check",
+  "proposalOnly": true,
+  "frames": 10,
+  "scenarios": 98,
+  "inventory": 178,
+  "errors": [],
+  "results": [
+    {
+      "id": "vault-detail-login",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-login",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 22,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-overview",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-github",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-folder-work",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-login",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-login",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 22,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-overview",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-github",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-folder-work",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    }
+  ]
+}

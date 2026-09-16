@@ -13,7 +13,7 @@ public class VaultPageAttachmentXamlTests
     public void AttachmentHeader_BoundToDetailAttachmentHeader()
     {
         var xaml = LoadXamlText();
-        Assert.Contains("Text=\"{x:Bind ViewModel.Detail.AttachmentHeader, Mode=OneWay}\"", xaml);
+        Assert.Contains("Header=\"{x:Bind ViewModel.Detail.AttachmentHeader, Mode=OneWay}\"", xaml);
     }
 
     [Fact]
@@ -75,7 +75,7 @@ public class VaultPageAttachmentXamlTests
             .Single(e => e.Attribute(X + "Name")?.Value == "AttachmentsItems");
 
         var typeIcon = itemsControl.Descendants(Xaml + "FontIcon").First();
-        Assert.Equal("{x:Bind Glyph}", typeIcon.Attribute("Glyph")?.Value);
+        Assert.Equal("{Binding Glyph}", typeIcon.Attribute("Glyph")?.Value);
     }
 
     private static string LoadXamlText() => File.ReadAllText(FindXamlPath());

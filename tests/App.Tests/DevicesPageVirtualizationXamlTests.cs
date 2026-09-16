@@ -24,7 +24,8 @@ public class DevicesPageVirtualizationXamlTests
         var doc = LoadDevicesPageXaml();
 
         var repeater = doc.Descendants()
-            .FirstOrDefault(e => e.Name.LocalName == "ItemsRepeater");
+            .FirstOrDefault(e => e.Name.LocalName == "ItemsRepeater"
+                && e.Attribute("ItemsSource")?.Value == "{x:Bind ViewModel.Devices}");
         Assert.NotNull(repeater);
         Assert.Equal("{x:Bind ViewModel.Devices}", repeater!.Attribute("ItemsSource")?.Value);
 

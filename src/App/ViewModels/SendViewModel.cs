@@ -37,6 +37,8 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     public partial SendListItem? SelectedMenuItem { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanCreateSend))]
+    [NotifyCanExecuteChangedFor(nameof(OpenReceivedLinkCommand))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
@@ -60,6 +62,11 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     public partial string? Notice { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCopyFeedback))]
+    public partial string? CopyFeedback { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(OpenReceivedLinkCommand))]
     public partial string ReceivedLinkUrl { get; set; } = string.Empty;
 
     [ObservableProperty]
@@ -93,10 +100,18 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     public bool ShowError => LoadState == DataPageState.Error;
     public bool ShowEmpty => LoadState == DataPageState.Empty;
     public bool ShowContent => LoadState == DataPageState.Content;
-    public bool CanCreateSend => !IsReadOnly;
+    public bool CanCreateSend => !IsReadOnly && !IsBusy;
     public bool ShowStaleInfo => IsReadOnly;
     public bool HasReceivedText => !string.IsNullOrEmpty(ReceivedText);
     public bool HasReceivedFile => !string.IsNullOrEmpty(ReceivedFileName);
+    public bool HasCopyFeedback => !string.IsNullOrEmpty(CopyFeedback);
+    public bool CanOpenReceivedLink => !IsBusy && !string.IsNullOrWhiteSpace(ReceivedLinkUrl);
+    public bool IsAllFilter => SelectedFilterTag == "send:all";
+    public bool IsTextFilter => SelectedFilterTag == "send:text";
+    public bool IsFileFilter => SelectedFilterTag == "send:file";
+    public string AllFilterLabel => $"全部 · {Items.Count}";
+    public string TextFilterLabel => $"文本 · {Items.Count(item => item.Type == SendType.Text)}";
+    public string FileFilterLabel => $"文件 · {Items.Count(item => item.Type == SendType.File)}";
 
     internal SendViewModel(
         ISendUiService service,
@@ -156,7 +171,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
                         Items.Add(send);
                     ApplyFilter();
                     UpdateReconciliationNotice();
-                    LoadState = Items.Count == 0 ? DataPageState.Empty : DataPageState.Content;
+                    LoadState = FilteredItems.Count == 0 ? DataPageState.Empty : DataPageState.Content;
                     LoadedSession = expectedSession;
                     IsReadOnly = IsExpectedSessionDataStale(expectedSession);
                     return true;
@@ -331,7 +346,13 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         return _session.IsDataStale(expectedSession);
     }
 
-    partial void OnSelectedFilterTagChanged(string value) => ApplyFilter();
+    partial void OnSelectedFilterTagChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsAllFilter));
+        OnPropertyChanged(nameof(IsTextFilter));
+        OnPropertyChanged(nameof(IsFileFilter));
+        ApplyFilter();
+    }
 
     private void ApplyFilter()
     {
@@ -345,6 +366,19 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         foreach (var item in source) FilteredItems.Add(item);
         OnPropertyChanged(nameof(HasItems));
         OnPropertyChanged(nameof(NoItems));
+        OnPropertyChanged(nameof(AllFilterLabel));
+        OnPropertyChanged(nameof(TextFilterLabel));
+        OnPropertyChanged(nameof(FileFilterLabel));
+        if (LoadState is DataPageState.Empty or DataPageState.Content)
+            LoadState = FilteredItems.Count == 0 ? DataPageState.Empty : DataPageState.Content;
+    }
+
+    public void RefreshAvailability(DateTimeOffset now)
+    {
+        for (var index = 0; index < Items.Count; index++)
+            Items[index] = Items[index] with { DisplayTime = now };
+        for (var index = 0; index < FilteredItems.Count; index++)
+            FilteredItems[index] = FilteredItems[index] with { DisplayTime = now };
     }
 
     // 创建 Send:写闸门去重,返回明确四态结果。失败(已知异常)保留草稿与 draft.ReplacementFile 供重试,
@@ -748,12 +782,39 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     {
         if (item is null)
             return;
-        var link = _service.CopyShareLink(item);
-        if (!string.IsNullOrWhiteSpace(link))
-            _clipboard?.SetSecretText(link);
+        TryCommitForExpectedSession(LoadedSession, () =>
+        {
+            CopyFeedback = null;
+            try
+            {
+                var link = _service.CopyShareLink(item);
+                if (string.IsNullOrWhiteSpace(link) || _clipboard is null)
+                {
+                    Error = "链接尚不可用，请刷新列表后重试。";
+                    return true;
+                }
+
+                _clipboard.SetSecretText(link);
+                Error = null;
+                var availability = item.GetAvailability(DateTimeOffset.UtcNow);
+                CopyFeedback = availability.State switch
+                {
+                    SendAvailabilityState.Available => "链接已复制。请仅与预期接收者分享。",
+                    SendAvailabilityState.Unknown or SendAvailabilityState.AwaitingConfirmation =>
+                        "链接已复制。请同步确认接收者的访问状态。",
+                    _ => "链接已复制。此 Send 当前不可访问，请检查停用状态、访问期限和访问次数。",
+                };
+            }
+            catch (Exception ex) when (ex is InvalidOperationException
+                or System.Runtime.InteropServices.COMException or UnauthorizedAccessException)
+            {
+                Error = "无法复制链接，请稍后重试。";
+            }
+            return true;
+        });
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanOpenReceivedLink))]
     private async Task OpenReceivedLinkAsync(CancellationToken ct = default)
     {
         var (requestId, operationCts) = BeginReceiveOperation(ct);
@@ -937,6 +998,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         LastReceived = null;
         Error = null;
         Notice = null;
+        CopyFeedback = null;
         Items.Clear();
         FilteredItems.Clear();
         LoadedSession = null;

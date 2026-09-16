@@ -90,6 +90,7 @@ public sealed class LifecycleWiringSourceTests
     public void FrameReset_ClearsContentAndBothNavigationStacks()
     {
         var source = Read("src", "App", "Services", "FrameNavigationService.cs");
+        Assert.Contains("frame.CacheSize = 0", source);
         Assert.Contains("frame.Content = null", source);
         Assert.Contains("frame.BackStack.Clear()", source);
         Assert.Contains("frame.ForwardStack.Clear()", source);

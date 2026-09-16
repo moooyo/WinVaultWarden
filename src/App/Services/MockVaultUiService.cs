@@ -21,7 +21,7 @@ public interface IVaultUiService
     IReadOnlyList<FilterNode> GetFilters();
     CipherEditorDraft GetDraft(string id);
     IReadOnlyList<CipherDestinationOption> GetCipherDestinations() =>
-        [CipherDestinationOption.Personal];
+        (CipherDestinationOption[])[CipherDestinationOption.Personal];
     IReadOnlyList<CipherCollectionOption> GetCipherCollectionOptions(
         string organizationId,
         IReadOnlyCollection<string>? selectedCollectionIds = null,
@@ -135,7 +135,7 @@ public sealed class MockVaultUiService : IVaultUiService
     public VaultCapabilities Capabilities { get; set; }
 
     public IReadOnlyList<CipherDestinationOption> GetCipherDestinations() =>
-        [CipherDestinationOption.Personal];
+        (CipherDestinationOption[])[CipherDestinationOption.Personal];
 
     public IReadOnlyList<CipherListItem> GetItems() =>
         _details.Select(d => new CipherListItem

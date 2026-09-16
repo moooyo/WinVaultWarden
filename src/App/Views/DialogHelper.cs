@@ -19,6 +19,7 @@ public static class DialogHelper
         Action? clearSensitive = null,
         CancellationToken ct = default)
     {
+        ApplyHostTheme(dialog);
         var registry = global::App.App.Services
             .GetRequiredService<global::App.Services.ITransientOperationRegistry>();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -48,6 +49,7 @@ public static class DialogHelper
     {
         ArgumentNullException.ThrowIfNull(dialog);
         ArgumentNullException.ThrowIfNull(expectedSession);
+        ApplyHostTheme(dialog);
         var services = global::App.App.Services;
         var registry = services.GetRequiredService<ITransientOperationRegistry>();
         var lifecycle = services.GetRequiredService<IAppLifecycleCoordinator>();
@@ -79,6 +81,13 @@ public static class DialogHelper
         {
             return ContentDialogResult.None;
         }
+    }
+
+    private static void ApplyHostTheme(ContentDialog dialog)
+    {
+        // Popups do not inherit an application window's explicit light/dark preference.
+        if (dialog.XamlRoot?.Content is FrameworkElement host)
+            dialog.RequestedTheme = host.RequestedTheme;
     }
 
     // 破坏性操作的统一确认弹窗。各页/壳复用,保证交互与文案约定一致。

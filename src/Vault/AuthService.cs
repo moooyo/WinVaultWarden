@@ -5615,6 +5615,9 @@ public sealed class AuthService : IAuthService
         ConnectTokenResult.Error { HttpStatus: 400 or 401 } => new AuthResult.Failure(
             "Authentication credentials were rejected.",
             AuthFailureKind.InvalidCredentials),
+        ConnectTokenResult.Error { HttpStatus: 429 } => new AuthResult.Failure(
+            "The authentication server has temporarily limited requests. Try again later.",
+            AuthFailureKind.RateLimited),
         ConnectTokenResult.Error => new AuthResult.Failure(
             "Authentication failed.",
             AuthFailureKind.Unspecified),

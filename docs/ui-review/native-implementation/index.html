@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Actual WinVaultWarden native implementation captures from a Debug and Native AOT review session using synthetic data.">
+  <title>Native implementation review</title>
+  <style>
+    :root { color-scheme: light; --canvas:#f3f6fa; --paper:#fff; --ink:#172c45; --muted:#60718a; --line:#d5dfeb; --accent:#245ea8; --wash:#e8f0fa; font:15px/1.6 'Segoe UI',Arial,sans-serif; color:var(--ink); background:var(--canvas); }
+    * { box-sizing:border-box; }
+    body { margin:0; }
+    a { color:var(--accent); text-underline-offset:3px; }
+    a:focus-visible,button:focus-visible { outline:3px solid #4387d6; outline-offset:4px; }
+    button { font:inherit; cursor:pointer; }
+    main { max-width:1600px; margin:auto; padding:46px 36px 34px; }
+    header { max-width:970px; }
+    .eyebrow { color:var(--accent); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700; margin:0 0 12px; }
+    h1 { font:700 clamp(30px,4vw,46px)/1.18 Tahoma,'Segoe UI',sans-serif; letter-spacing:-1.4px; margin:0; }
+    .intro { color:var(--muted); font-size:17px; margin:19px 0 16px; }
+    .context { border-left:3px solid var(--accent); background:var(--wash); border-radius:0 6px 6px 0; padding:13px 17px; font-size:13px; margin:0; }
+    .prototype { margin:17px 0 0; font-size:13px; color:var(--muted); }
+    .toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:17px 0; margin:31px 0 25px; }
+    .filters { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+    .filter-label { font-size:12px; color:var(--muted); margin-right:5px; }
+    .filter { color:var(--ink); background:var(--paper); border:1px solid var(--line); padding:6px 14px; border-radius:6px; font-size:13px; }
+    .filter[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .result { color:var(--muted); font-size:12px; margin:0; }
+    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:23px; }
+    .capture { min-width:0; margin:0; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:var(--paper); }
+    .image-link { display:block; position:relative; padding:12px; background:#e6ecf4; aspect-ratio:1.48; border-bottom:1px solid var(--line); }
+    .capture[data-theme="dark"] .image-link { background:#283547; }
+    .image-link img { display:block; height:100%; width:100%; object-fit:contain; }
+    .image-hint { position:absolute; right:10px; bottom:10px; color:var(--ink); background:var(--paper); border:1px solid var(--line); padding:3px 8px; border-radius:4px; font-size:11px; opacity:0; }
+    .image-link:hover .image-hint,.image-link:focus-visible .image-hint { opacity:1; }
+    figcaption { padding:17px 19px 16px; }
+    .card-meta { display:flex; gap:12px; align-items:center; justify-content:space-between; font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.55px; }
+    .captured { color:var(--accent); font-weight:700; }
+    .captured::before { content:''; display:inline-block; width:6px; height:6px; background:currentColor; border-radius:50%; margin-right:6px; vertical-align:1px; }
+    h2 { font-size:17px; font-weight:650; margin:9px 0 5px; line-height:1.45; }
+    .filename { font:11px/1.6 Consolas,'Courier New',monospace; color:var(--muted); overflow-wrap:anywhere; margin:0; }
+    .card-links { display:flex; gap:17px; border-top:1px solid var(--line); margin-top:14px; padding-top:11px; font-size:12px; }
+    .card-links a { text-decoration:none; }
+    .empty { color:var(--muted); padding:40px 16px; text-align:center; border:1px dashed var(--line); border-radius:8px; }
+    [hidden] { display:none!important; }
+    footer { color:var(--muted); font-size:12px; margin-top:35px; padding-top:19px; border-top:1px solid var(--line); }
+    footer p { margin:5px 0; }
+    @media (max-width:1150px) { .grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media (max-width:650px) { main { padding:28px 16px; } .grid { grid-template-columns:1fr; gap:18px; } .intro { font-size:15px; } h1 { letter-spacing:-.9px; } .toolbar { margin-top:25px; } }
+    @media (prefers-color-scheme:dark) { :root { color-scheme:dark; --canvas:#101a27; --paper:#182638; --ink:#e6edf6; --muted:#a3b2c7; --line:#34445a; --accent:#91bdff; --wash:#203751; } .filter[aria-pressed="true"] { color:#14243a; } .image-link { background:#283547; } }
+    @media print { @page { size:A4 landscape; margin:12mm; } :root { color-scheme:light; background:white; color:#172c45; } main { padding:0; } .toolbar,.card-links,.image-hint { display:none; } .grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin-top:22px; } .capture { break-inside:avoid; } h1 { font-size:30px; } .intro { font-size:13px; } .context,.prototype,footer { font-size:11px; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">WinVaultWarden · Captured application UI</p>
+    <h1>Native implementation review</h1>
+    <p class="intro">These screenshots show the actual native WinUI client with synthetic test data. This implementation review session includes Debug and Native AOT client builds.</p>
+    <p class="context">Each image records a visible application state from this session. The gallery preserves the original files, including any visible defects. It does not claim complete scenario coverage or that every pictured interaction was validated.</p>
+    <p class="prototype">The earlier <a href="../fluent-redesign/index.html">Fluent redesign</a> is a design prototype. Use this gallery to review the implemented native application.</p>
+  </header>
+  <div class="toolbar">
+    <div class="filters" role="group" aria-label="Filter captures by theme">
+      <span class="filter-label">Captured theme</span>
+      <button class="filter" type="button" data-filter="all" aria-pressed="true">All</button>
+      <button class="filter" type="button" data-filter="light" aria-pressed="false">Light</button>
+      <button class="filter" type="button" data-filter="dark" aria-pressed="false">Dark</button>
+
+    </div>
+    <p class="result" id="result" aria-live="polite">25 captures available</p>
+  </div>
+  <section class="grid" aria-label="Native implementation screenshots">
+    <figure class="capture" data-theme="light">
+      <a class="image-link" href="devices-light.jpg" target="_blank" rel="noopener" aria-label="Open Devices at original size"><img src="devices-light.jpg" alt="Native application capture: Devices, light theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Light theme</span></div><h2>Devices</h2><p class="filename">devices-light.jpg</p><div class="card-links"><a href="devices-light.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="devices-light.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="light">
+      <a class="image-link" href="emergency-access-light.jpg" target="_blank" rel="noopener" aria-label="Open Emergency access at original size"><img src="emergency-access-light.jpg" alt="Native application capture: Emergency access, light theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Light theme</span></div><h2>Emergency access</h2><p class="filename">emergency-access-light.jpg</p><div class="card-links"><a href="emergency-access-light.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="emergency-access-light.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="dark">
+      <a class="image-link" href="generator-dark.jpg" target="_blank" rel="noopener" aria-label="Open Generator at original size"><img src="generator-dark.jpg" alt="Native application capture: Generator, dark theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Dark theme</span></div><h2>Generator</h2><p class="filename">generator-dark.jpg</p><div class="card-links"><a href="generator-dark.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="generator-dark.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="dark">
+      <a class="image-link" href="import-export-dark.jpg" target="_blank" rel="noopener" aria-label="Open Import export at original size"><img src="import-export-dark.jpg" alt="Native application capture: Import export, dark theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Dark theme</span></div><h2>Import export</h2><p class="filename">import-export-dark.jpg</p><div class="card-links"><a href="import-export-dark.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="import-export-dark.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="light">
+      <a class="image-link" href="import-export-light.jpg" target="_blank" rel="noopener" aria-label="Open Import export at original size"><img src="import-export-light.jpg" alt="Native application capture: Import export, light theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Light theme</span></div><h2>Import export</h2><p class="filename">import-export-light.jpg</p><div class="card-links"><a href="import-export-light.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="import-export-light.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="dark">
+      <a class="image-link" href="reprompt-dark.jpg" target="_blank" rel="noopener" aria-label="Open Reprompt at original size"><img src="reprompt-dark.jpg" alt="Native application capture: Reprompt, dark theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Dark theme</span></div><h2>Reprompt</h2><p class="filename">reprompt-dark.jpg</p><div class="card-links"><a href="reprompt-dark.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="reprompt-dark.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="dark">
+      <a class="image-link" href="security-report-expanded-dark.jpg" target="_blank" rel="noopener" aria-label="Open Security report expanded at original size"><img src="security-report-expanded-dark.jpg" alt="Native application capture: Security report expanded, dark theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Dark theme</span></div><h2>Security report expanded</h2><p class="filename">security-report-expanded-dark.jpg</p><div class="card-links"><a href="security-report-expanded-dark.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="security-report-expanded-dark.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="light">
+      <a class="image-link" href="security-report-expanded-light.jpg" target="_blank" rel="noopener" aria-label="Open Security report expanded at original size"><img src="security-report-expanded-light.jpg" alt="Native application capture: Security report expanded, light theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Light theme</span></div><h2>Security report expanded</h2><p class="filename">security-report-expanded-light.jpg</p><div class="card-links"><a href="security-report-expanded-light.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="security-report-expanded-light.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="dark">
+      <a class="image-link" href="send-dark.jpg" target="_blank" rel="noopener" aria-label="Open Send at original size"><img src="send-dark.jpg" alt="Native application capture: Send, dark theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Dark theme</span></div><h2>Send</h2><p class="filename">send-dark.jpg</p><div class="card-links"><a href="send-dark.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="send-dark.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="light">
+      <a class="image-link" href="send-light.jpg" target="_blank" rel="noopener" aria-label="Open Send at original size"><img src="send-light.jpg" alt="Native application capture: Send, light theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Light theme</span></div><h2>Send</h2><p class="filename">send-light.jpg</p><div class="card-links"><a href="send-light.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="send-light.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="dark">
+      <a class="image-link" href="settings-preferences-dark.jpg" target="_blank" rel="noopener" aria-label="Open Settings preferences at original size"><img src="settings-preferences-dark.jpg" alt="Native application capture: Settings preferences, dark theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Dark theme</span></div><h2>Settings preferences</h2><p class="filename">settings-preferences-dark.jpg</p><div class="card-links"><a href="settings-preferences-dark.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="settings-preferences-dark.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="light">
+      <a class="image-link" href="settings-security-light.jpg" target="_blank" rel="noopener" aria-label="Open Settings security at original size"><img src="settings-security-light.jpg" alt="Native application capture: Settings security, light theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Light theme</span></div><h2>Settings security</h2><p class="filename">settings-security-light.jpg</p><div class="card-links"><a href="settings-security-light.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="settings-security-light.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="dark">
+      <a class="image-link" href="unlock-dark.jpg" target="_blank" rel="noopener" aria-label="Open Unlock at original size"><img src="unlock-dark.jpg" alt="Native application capture: Unlock, dark theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Dark theme</span></div><h2>Unlock</h2><p class="filename">unlock-dark.jpg</p><div class="card-links"><a href="unlock-dark.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="unlock-dark.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="light">
+      <a class="image-link" href="unlock-light.jpg" target="_blank" rel="noopener" aria-label="Open Unlock at original size"><img src="unlock-light.jpg" alt="Native application capture: Unlock, light theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Light theme</span></div><h2>Unlock</h2><p class="filename">unlock-light.jpg</p><div class="card-links"><a href="unlock-light.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="unlock-light.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="dark">
+      <a class="image-link" href="vault-authorized-login-dark.jpg" target="_blank" rel="noopener" aria-label="Open Vault authorized login at original size"><img src="vault-authorized-login-dark.jpg" alt="Native application capture: Vault authorized login, dark theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Dark theme</span></div><h2>Vault authorized login</h2><p class="filename">vault-authorized-login-dark.jpg</p><div class="card-links"><a href="vault-authorized-login-dark.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="vault-authorized-login-dark.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="dark">
+      <a class="image-link" href="vault-detail-login-dark.jpg" target="_blank" rel="noopener" aria-label="Open Vault detail login at original size"><img src="vault-detail-login-dark.jpg" alt="Native application capture: Vault detail login, dark theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Dark theme</span></div><h2>Vault detail login</h2><p class="filename">vault-detail-login-dark.jpg</p><div class="card-links"><a href="vault-detail-login-dark.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="vault-detail-login-dark.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="light">
+      <a class="image-link" href="vault-detail-login-light.jpg" target="_blank" rel="noopener" aria-label="Open Vault detail login at original size"><img src="vault-detail-login-light.jpg" alt="Native application capture: Vault detail login, light theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Light theme</span></div><h2>Vault detail login</h2><p class="filename">vault-detail-login-light.jpg</p><div class="card-links"><a href="vault-detail-login-light.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="vault-detail-login-light.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="dark">
+      <a class="image-link" href="vault-detail-narrow-dark.jpg" target="_blank" rel="noopener" aria-label="Open Vault detail narrow at original size"><img src="vault-detail-narrow-dark.jpg" alt="Native application capture: Vault detail narrow, dark theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Dark theme</span></div><h2>Vault detail narrow</h2><p class="filename">vault-detail-narrow-dark.jpg</p><div class="card-links"><a href="vault-detail-narrow-dark.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="vault-detail-narrow-dark.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="dark">
+      <a class="image-link" href="vault-editor-login-dark.jpg" target="_blank" rel="noopener" aria-label="Open Vault editor login at original size"><img src="vault-editor-login-dark.jpg" alt="Native application capture: Vault editor login, dark theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Dark theme</span></div><h2>Vault editor login</h2><p class="filename">vault-editor-login-dark.jpg</p><div class="card-links"><a href="vault-editor-login-dark.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="vault-editor-login-dark.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="dark">
+      <a class="image-link" href="vault-list-narrow-dark.jpg" target="_blank" rel="noopener" aria-label="Open Vault list narrow at original size"><img src="vault-list-narrow-dark.jpg" alt="Native application capture: Vault list narrow, dark theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Dark theme</span></div><h2>Vault list narrow</h2><p class="filename">vault-list-narrow-dark.jpg</p><div class="card-links"><a href="vault-list-narrow-dark.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="vault-list-narrow-dark.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="dark">
+      <a class="image-link" href="vault-new-login-dark.jpg" target="_blank" rel="noopener" aria-label="Open Vault new login at original size"><img src="vault-new-login-dark.jpg" alt="Native application capture: Vault new login, dark theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Dark theme</span></div><h2>Vault new login</h2><p class="filename">vault-new-login-dark.jpg</p><div class="card-links"><a href="vault-new-login-dark.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="vault-new-login-dark.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="dark">
+      <a class="image-link" href="vault-no-selection-dark.jpg" target="_blank" rel="noopener" aria-label="Open Vault no selection at original size"><img src="vault-no-selection-dark.jpg" alt="Native application capture: Vault no selection, dark theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Dark theme</span></div><h2>Vault no selection</h2><p class="filename">vault-no-selection-dark.jpg</p><div class="card-links"><a href="vault-no-selection-dark.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="vault-no-selection-dark.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="light">
+      <a class="image-link" href="vault-no-selection-light.jpg" target="_blank" rel="noopener" aria-label="Open Vault no selection at original size"><img src="vault-no-selection-light.jpg" alt="Native application capture: Vault no selection, light theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Light theme</span></div><h2>Vault no selection</h2><p class="filename">vault-no-selection-light.jpg</p><div class="card-links"><a href="vault-no-selection-light.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="vault-no-selection-light.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="dark">
+      <a class="image-link" href="vault-offline-dark.jpg" target="_blank" rel="noopener" aria-label="Open Vault offline at original size"><img src="vault-offline-dark.jpg" alt="Native application capture: Vault offline, dark theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Dark theme</span></div><h2>Vault offline</h2><p class="filename">vault-offline-dark.jpg</p><div class="card-links"><a href="vault-offline-dark.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="vault-offline-dark.jpg" download>Download image</a></div></figcaption>
+    </figure>
+<figure class="capture" data-theme="light">
+      <a class="image-link" href="vault-restored-context-light.jpg" target="_blank" rel="noopener" aria-label="Open Vault restored context at original size"><img src="vault-restored-context-light.jpg" alt="Native application capture: Vault restored context, light theme" loading="lazy" decoding="async"><span class="image-hint">Open original size ↗</span></a>
+      <figcaption><div class="card-meta"><span class="captured">Native capture</span><span>Light theme</span></div><h2>Vault restored context</h2><p class="filename">vault-restored-context-light.jpg</p><div class="card-links"><a href="vault-restored-context-light.jpg" target="_blank" rel="noopener">Open original size ↗</a><a href="vault-restored-context-light.jpg" download>Download image</a></div></figcaption>
+    </figure>
+  </section>
+  <p class="empty" id="empty" hidden>No captures match this theme.</p>
+  <footer>
+    <p>Theme labels are derived from filenames. Images are displayed without cropping or retouching; open the original to inspect its native resolution.</p>
+    <p>Generated 2026-09-16T05:37:29.108Z from this directory by <a href="../../../scripts/ui-review/build-native-review.mjs">build-native-review.mjs</a>. Rebuild to include newly added JPG or PNG files.</p>
+  </footer>
+</main>
+<script>
+  'use strict';
+  const cards = [...document.querySelectorAll('.capture')];
+  const buttons = [...document.querySelectorAll('[data-filter]')];
+  for (const button of buttons) {
+    button.addEventListener('click', () => {
+      const selected = button.dataset.filter;
+      let visible = 0;
+      for (const card of cards) {
+        card.hidden = selected !== 'all' && card.dataset.theme !== selected;
+        if (!card.hidden) visible++;
+      }
+      for (const item of buttons) item.setAttribute('aria-pressed', String(item === button));
+      document.getElementById('result').textContent = 'Showing ' + visible + ' of ' + cards.length + ' captures';
+      document.getElementById('empty').hidden = visible !== 0;
+    });
+  }
+</script>
+</body>
+</html>

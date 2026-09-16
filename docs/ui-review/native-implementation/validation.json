@@ -1,0 +1,72 @@
+{
+  "generatedAt": "2026-09-16T05:37:30Z",
+  "status": "passed",
+  "scope": "Native WinUI implementation of the approved Fluent redesign, with representative native UI verification and automated regressions.",
+  "builds": [
+    {
+      "configuration": "Debug",
+      "platform": "x64",
+      "status": "passed"
+    },
+    {
+      "configuration": "Release Native AOT",
+      "platform": "x64",
+      "status": "passed",
+      "executable": "artifacts/ui-native-release/App.exe",
+      "sha256": "C95B1A61CE460234F4FC76E50D1538FE7FA74F4A66511964431695E1F869E180",
+      "browserNativeHostIncluded": false
+    }
+  ],
+  "automatedTests": [
+    {
+      "suite": "App.Tests",
+      "passed": 2028,
+      "failed": 0
+    },
+    {
+      "suite": "Vault.Tests",
+      "passed": 1553,
+      "failed": 0
+    }
+  ],
+  "totalTestsPassed": 3581,
+  "nativeChecks": [
+    "DPAPI-backed synthetic account unlock in Debug and Native AOT.",
+    "Initial vault state has no selected credential.",
+    "Work folder and GitHub query survive Send navigation and return without reopening details.",
+    "Protected login verification updates password, TOTP, notes, and both website addresses under Native AOT.",
+    "Existing login editor loads with original folder and masked password; cancellation leaves the app responsive.",
+    "New login editor starts empty, rejects an empty required name, and cancels without stale values or recursive binding.",
+    "Native AOT client created and encrypted a synthetic login named UI implementation check; successful save returned its detail.",
+    "Offline unlock with the tunnel stopped, followed by tunnel restoration and manual synchronization, clears offline status without another unlock.",
+    "Reused-password result expansion succeeds in Debug and Native AOT; Amazon and Reddit actions open their respective credentials.",
+    "Generator workspace displays results and successful copy feedback updates the session history.",
+    "Send list renders actual availability and retention information; creation dialog opens and cancels.",
+    "Import/export cards, device registration list, settings categories, and emergency-access return navigation render correctly.",
+    "A roughly 755-pixel-wide native window switches between list and detail views through the return action.",
+    "Lock removes the vault shell from the active UI tree; page caches and navigation metadata are cleared by the lifecycle path.",
+    "Forced dark and system light themes render, including a protected-field confirmation popup that inherits dark theme."
+  ],
+  "fixture": {
+    "server": "http://127.0.0.1:18083",
+    "remoteHost": "test-env",
+    "backend": "Vaultwarden 1.37.2",
+    "account": "review@winvaultwarden.example",
+    "data": "Synthetic data only.",
+    "addedDuringVerification": "UI implementation check",
+    "credentialHandling": "Master password loaded from DPAPI ciphertext into memory only; no memory dumps or plaintext credential files were created."
+  },
+  "gallery": {
+    "captures": 25,
+    "validation": "gallery-validation.json",
+    "status": "passed"
+  },
+  "logsDirectory": "artifacts/ui-review/native-validation",
+  "limitations": [
+    "Captures are representative native states, not exhaustive coverage of all 98 prototype scenarios.",
+    "Newer cipher types and trusted-device functionality remain gated by real backend capabilities.",
+    "External authentication enrollment, real email delivery, account deletion, and external breach checks were not exercised.",
+    "The local review build omits browser-native-host packaging; MSIX packaging and signing were outside this task.",
+    "Upstream reference assemblies emit IL3058 compatibility warnings. Native AOT compilation and the listed native flows passed."
+  ]
+}

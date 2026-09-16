@@ -1,0 +1,2997 @@
+{
+  "generatedAt": "2026-09-16T03:59:00.185Z",
+  "type": "design-proposal",
+  "implemented": false,
+  "frame": {
+    "width": 1280,
+    "height": 900
+  },
+  "themes": [
+    "light",
+    "dark"
+  ],
+  "scenarioCount": 98,
+  "inventoryCount": 178,
+  "scenarios": [
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "login-account",
+      "title": "Connect to your vault",
+      "group": "Authentication",
+      "page": "login",
+      "variant": "account",
+      "changes": [
+        "Make the selected server explicit before entering account information.",
+        "Use a compact, centered sign-in form with a clear Continue action and secondary enterprise sign-in."
+      ],
+      "notes": "Saved accounts and self-hosted server entry remain supported. Debug demo access is not a production sign-in option.",
+      "baselineFilename": "05-login-self-hosted.png",
+      "sourceIds": [
+        "page.login",
+        "auth.login.account",
+        "auth.register.success-navigation"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "login-password",
+      "title": "Sign in with a master password",
+      "group": "Authentication",
+      "page": "login",
+      "variant": "password",
+      "changes": [
+        "Preserve account and server identity across steps.",
+        "Keep password entry, reveal, and the sign-in action together; place device sign-in as a secondary route."
+      ],
+      "notes": "The form is a sign-in proposal; no password or master key is sent to the review artifact.",
+      "baselineFilename": "06-login-password.png",
+      "sourceIds": [
+        "auth.login.password",
+        "auth.login.password-change-required",
+        "auth.login.jit-encryption"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "register-account",
+      "title": "Create an account",
+      "group": "Authentication",
+      "page": "register",
+      "variant": "form",
+      "changes": [
+        "Group server and identity separately from the master-password fields.",
+        "Explain the password hint briefly and keep field errors next to the affected input."
+      ],
+      "notes": "Registration completion and email verification continue to follow the existing server responses and Web Vault continuation.",
+      "baselineFilename": "02-register.png",
+      "sourceIds": [
+        "page.register",
+        "auth.register.form",
+        "auth.register.email-verification",
+        "auth.register.uncertain"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "login-two-step",
+      "title": "Verify two-step login",
+      "group": "Authentication",
+      "page": "login",
+      "variant": "two-step",
+      "changes": [
+        "Name the active verification method and account before the code field.",
+        "Keep alternate methods, recovery, and resend actions secondary to verification."
+      ],
+      "notes": "The representative screen depicts a code-based challenge. Security keys and Duo use their existing method-specific action without a code field.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "auth.login.2fa-code",
+        "auth.login.verify-device",
+        "auth.login.2fa-webauthn",
+        "auth.login.2fa-duo"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "login-recovery",
+      "title": "Use a recovery code",
+      "group": "Authentication",
+      "page": "login",
+      "variant": "recovery",
+      "changes": [
+        "State the consequence of recovery before the input: configured two-factor methods are removed.",
+        "Keep the return-to-another-method action easy to find and avoid making destructive recovery the default route."
+      ],
+      "notes": "Recovery is a separate existing authentication branch with higher consequence than a normal one-time code.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "auth.login.2fa-recovery"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "login-locked",
+      "title": "Unlock your vault",
+      "group": "Authentication",
+      "page": "login",
+      "variant": "locked",
+      "changes": [
+        "Show the locked account and server while keeping vault contents out of the composition.",
+        "Distinguish unlocking from signing out; preserve available Hello, PIN, and enterprise unlock paths."
+      ],
+      "notes": "Hello and alternative unlock availability depend on the persisted session and device configuration.",
+      "baselineFilename": "23-vault-locked.png",
+      "sourceIds": [
+        "auth.login.unlock-password",
+        "auth.login.unlock-pin",
+        "auth.login.unlock-keyconnector",
+        "auth.login.unlock-trusted-sso",
+        "shell.logout-confirm"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "login-device-approval",
+      "title": "Approve this device",
+      "group": "Authentication",
+      "page": "login",
+      "variant": "device-approval",
+      "changes": [
+        "Make the fingerprint phrase the visual focus of device approval.",
+        "Show waiting status, expiration, and cancellation in a stable layout with no sensitive vault data."
+      ],
+      "notes": "Other-device approval, administrator approval, and browser SSO remain distinct service-dependent flows.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "auth.login.device-wait",
+        "auth.login.trusted-approval",
+        "auth.login.sso-pending"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "login-error",
+      "title": "Authentication feedback and recovery",
+      "group": "Authentication",
+      "page": "login",
+      "variant": "error",
+      "changes": [
+        "Place actionable status near the primary control without shifting the identity header.",
+        "Separate retryable authentication failure from local-data cleanup and irreversible reset actions."
+      ],
+      "notes": "The visible proposal is a retryable error. Busy controls remain disabled while a request is pending; local deletion and quarantine recovery keep their existing distinct confirmations.",
+      "baselineFilename": "07-login-error.png",
+      "sourceIds": [
+        "auth.login.status-busy",
+        "auth.login.device-quarantine",
+        "auth.login.deletion-recovery",
+        "dialog.login.clear-quarantine",
+        "dialog.login.clear-local-deletion-data",
+        "dialog.login.reset-local-data"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "vault-overview",
+      "title": "Vault overview and navigation",
+      "group": "Vault",
+      "page": "vault",
+      "variant": "overview",
+      "changes": [
+        "Use a calm NavigationView-like rail, a compact command area, and clear list/detail boundaries.",
+        "Make search persistent, show active filters, and keep sync status readable without competing with Add item.",
+        "Use row selection, focus, and hover as separate states; reserve accent color for the active destination and primary action."
+      ],
+      "notes": "Archive mutations and organization actions remain gated by the capabilities and permissions already present in source. Navigation labels are existing destinations.",
+      "baselineFilename": "08-vault-live.png",
+      "sourceIds": [
+        "shell.main",
+        "page.vault",
+        "control.favicon",
+        "vault.favorites",
+        "vault.folders",
+        "vault.organizations",
+        "vault.collections",
+        "vault.archive",
+        "vault.trash",
+        "vault.grouping",
+        "vault.add-menu",
+        "vault.filter-menu",
+        "vault.sort-menu",
+        "vault.saved-views-menu",
+        "vault.row-menu",
+        "vault.folder-create",
+        "vault.folder-rename",
+        "vault.saved-view-create"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "vault-no-selection",
+      "title": "Vault with no item selected",
+      "group": "Vault states",
+      "page": "vault",
+      "variant": "no-selection",
+      "changes": [
+        "Keep a populated list available while the detail pane gives a quiet selection prompt.",
+        "Avoid showing credentials until the user has chosen an item."
+      ],
+      "notes": "This composition is the initial state after sign-in, unlock, or returning to My vault: a populated vault with no selected item. It is distinct from the selected-login showcase and the empty-account state.",
+      "baselineFilename": "08-vault-live.png",
+      "sourceIds": [
+        "vault.no-selection",
+        "page.vault"
+      ]
+    },
+    {
+      "itemType": "login",
+      "dialog": null,
+      "id": "vault-detail-login",
+      "title": "Login details",
+      "group": "Item details",
+      "page": "vault",
+      "variant": "detail",
+      "changes": [
+        "Use a stable list/detail layout with one primary Edit action and a quieter overflow menu.",
+        "Align field labels, values, reveal controls, and copy controls; retain masking for sensitive values.",
+        "Separate frequently used credentials from notes, attachments, custom fields, and history."
+      ],
+      "notes": "Synthetic data only. The detail composition reviews representative type-specific fields and common item actions; it is not an exhaustive rendering of every source field or disclosure. Secret reveal and clipboard feedback are separate interaction states.",
+      "baselineFilename": "11-login-detail.png",
+      "sourceIds": [
+        "vault.detail.login",
+        "control.field",
+        "control.totp",
+        "control.detail-card",
+        "vault.attachments",
+        "vault.login.passkeys",
+        "vault.login.history"
+      ]
+    },
+    {
+      "itemType": "card",
+      "dialog": null,
+      "id": "vault-detail-card",
+      "title": "Payment card details",
+      "group": "Item details",
+      "page": "vault",
+      "variant": "detail",
+      "changes": [
+        "Use a stable list/detail layout with one primary Edit action and a quieter overflow menu.",
+        "Align field labels, values, reveal controls, and copy controls; retain masking for sensitive values.",
+        "Separate frequently used credentials from notes, attachments, custom fields, and history."
+      ],
+      "notes": "Synthetic data only. The detail composition reviews representative type-specific fields and common item actions; it is not an exhaustive rendering of every source field or disclosure. Secret reveal and clipboard feedback are separate interaction states.",
+      "baselineFilename": "43-card-detail.png",
+      "sourceIds": [
+        "vault.detail.card"
+      ]
+    },
+    {
+      "itemType": "identity",
+      "dialog": null,
+      "id": "vault-detail-identity",
+      "title": "Identity details",
+      "group": "Item details",
+      "page": "vault",
+      "variant": "detail",
+      "changes": [
+        "Use a stable list/detail layout with one primary Edit action and a quieter overflow menu.",
+        "Align field labels, values, reveal controls, and copy controls; retain masking for sensitive values.",
+        "Separate frequently used credentials from notes, attachments, custom fields, and history."
+      ],
+      "notes": "Synthetic data only. The detail composition reviews representative type-specific fields and common item actions; it is not an exhaustive rendering of every source field or disclosure. Secret reveal and clipboard feedback are separate interaction states.",
+      "baselineFilename": "44-identity-detail.png",
+      "sourceIds": [
+        "vault.detail.identity"
+      ]
+    },
+    {
+      "itemType": "note",
+      "dialog": null,
+      "id": "vault-detail-note",
+      "title": "Secure note details",
+      "group": "Item details",
+      "page": "vault",
+      "variant": "detail",
+      "changes": [
+        "Use a stable list/detail layout with one primary Edit action and a quieter overflow menu.",
+        "Align field labels, values, reveal controls, and copy controls; retain masking for sensitive values.",
+        "Separate frequently used credentials from notes, attachments, custom fields, and history."
+      ],
+      "notes": "Synthetic data only. The detail composition reviews representative type-specific fields and common item actions; it is not an exhaustive rendering of every source field or disclosure. Secret reveal and clipboard feedback are separate interaction states.",
+      "baselineFilename": "45-note-detail.png",
+      "sourceIds": [
+        "vault.detail.note"
+      ]
+    },
+    {
+      "itemType": "ssh",
+      "dialog": null,
+      "id": "vault-detail-ssh",
+      "title": "SSH key details",
+      "group": "Item details",
+      "page": "vault",
+      "variant": "detail",
+      "changes": [
+        "Use a stable list/detail layout with one primary Edit action and a quieter overflow menu.",
+        "Align field labels, values, reveal controls, and copy controls; retain masking for sensitive values.",
+        "Separate frequently used credentials from notes, attachments, custom fields, and history."
+      ],
+      "notes": "Synthetic data only. The detail composition reviews representative type-specific fields and common item actions; it is not an exhaustive rendering of every source field or disclosure. Secret reveal and clipboard feedback are separate interaction states.",
+      "baselineFilename": "46-ssh-detail.png",
+      "sourceIds": [
+        "vault.detail.ssh"
+      ]
+    },
+    {
+      "itemType": "bank",
+      "dialog": null,
+      "id": "vault-detail-bank",
+      "title": "Bank account details",
+      "group": "Item details",
+      "page": "vault",
+      "variant": "detail",
+      "changes": [
+        "Use a stable list/detail layout with one primary Edit action and a quieter overflow menu.",
+        "Align field labels, values, reveal controls, and copy controls; retain masking for sensitive values.",
+        "Separate frequently used credentials from notes, attachments, custom fields, and history."
+      ],
+      "notes": "Source guard: bank account, driver's license, and passport are implemented cipher types, but creation and editing require CanWriteNewCipherTypes. Their proposal screens are conditional and do not establish server/account support. The composition shows representative fields, not every field in the source model; implementation must retain the remaining fields and their masking semantics.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "vault.detail.bank"
+      ]
+    },
+    {
+      "itemType": "license",
+      "dialog": null,
+      "id": "vault-detail-license",
+      "title": "Driver's license details",
+      "group": "Item details",
+      "page": "vault",
+      "variant": "detail",
+      "changes": [
+        "Use a stable list/detail layout with one primary Edit action and a quieter overflow menu.",
+        "Align field labels, values, reveal controls, and copy controls; retain masking for sensitive values.",
+        "Separate frequently used credentials from notes, attachments, custom fields, and history."
+      ],
+      "notes": "Source guard: bank account, driver's license, and passport are implemented cipher types, but creation and editing require CanWriteNewCipherTypes. Their proposal screens are conditional and do not establish server/account support. The composition shows representative fields, not every field in the source model; implementation must retain the remaining fields and their masking semantics.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "vault.detail.license"
+      ]
+    },
+    {
+      "itemType": "passport",
+      "dialog": null,
+      "id": "vault-detail-passport",
+      "title": "Passport details",
+      "group": "Item details",
+      "page": "vault",
+      "variant": "detail",
+      "changes": [
+        "Use a stable list/detail layout with one primary Edit action and a quieter overflow menu.",
+        "Align field labels, values, reveal controls, and copy controls; retain masking for sensitive values.",
+        "Separate frequently used credentials from notes, attachments, custom fields, and history."
+      ],
+      "notes": "Source guard: bank account, driver's license, and passport are implemented cipher types, but creation and editing require CanWriteNewCipherTypes. Their proposal screens are conditional and do not establish server/account support. The composition shows representative fields, not every field in the source model; implementation must retain the remaining fields and their masking semantics.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "vault.detail.passport"
+      ]
+    },
+    {
+      "itemType": "login",
+      "dialog": null,
+      "id": "vault-editor-login",
+      "title": "Edit login",
+      "group": "Item editors",
+      "page": "vault",
+      "variant": "editor",
+      "changes": [
+        "Keep the item type fixed when editing and give the save destination its own group.",
+        "Use clear field groups and an anchored Save/Cancel action area; reserve nearby space for inline validation.",
+        "Use progressive disclosure for additional options and retain master-password reprompt."
+      ],
+      "notes": "The proposal illustrates a subset of the existing fields and disclosure hierarchy, not a complete editable field contract. Implementation must retain omitted fields, validation, permissions, and masking. Create and edit share a form, but editing cannot silently change the cipher type.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "vault.editor.login",
+        "vault.editor.options"
+      ]
+    },
+    {
+      "itemType": "card",
+      "dialog": null,
+      "id": "vault-editor-card",
+      "title": "Edit payment card",
+      "group": "Item editors",
+      "page": "vault",
+      "variant": "editor",
+      "changes": [
+        "Keep the item type fixed when editing and give the save destination its own group.",
+        "Use clear field groups and an anchored Save/Cancel action area; reserve nearby space for inline validation.",
+        "Use progressive disclosure for additional options and retain master-password reprompt."
+      ],
+      "notes": "The proposal illustrates a subset of the existing fields and disclosure hierarchy, not a complete editable field contract. Implementation must retain omitted fields, validation, permissions, and masking. Create and edit share a form, but editing cannot silently change the cipher type.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "vault.editor.card"
+      ]
+    },
+    {
+      "itemType": "identity",
+      "dialog": null,
+      "id": "vault-editor-identity",
+      "title": "Edit identity",
+      "group": "Item editors",
+      "page": "vault",
+      "variant": "editor",
+      "changes": [
+        "Keep the item type fixed when editing and give the save destination its own group.",
+        "Use clear field groups and an anchored Save/Cancel action area; reserve nearby space for inline validation.",
+        "Use progressive disclosure for additional options and retain master-password reprompt."
+      ],
+      "notes": "The proposal illustrates a subset of the existing fields and disclosure hierarchy, not a complete editable field contract. Implementation must retain omitted fields, validation, permissions, and masking. Create and edit share a form, but editing cannot silently change the cipher type.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "vault.editor.identity"
+      ]
+    },
+    {
+      "itemType": "note",
+      "dialog": null,
+      "id": "vault-editor-note",
+      "title": "Edit secure note",
+      "group": "Item editors",
+      "page": "vault",
+      "variant": "editor",
+      "changes": [
+        "Keep the item type fixed when editing and give the save destination its own group.",
+        "Use clear field groups and an anchored Save/Cancel action area; reserve nearby space for inline validation.",
+        "Use progressive disclosure for additional options and retain master-password reprompt."
+      ],
+      "notes": "The proposal illustrates a subset of the existing fields and disclosure hierarchy, not a complete editable field contract. Implementation must retain omitted fields, validation, permissions, and masking. Create and edit share a form, but editing cannot silently change the cipher type.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "vault.editor.note"
+      ]
+    },
+    {
+      "itemType": "ssh",
+      "dialog": null,
+      "id": "vault-editor-ssh",
+      "title": "Edit SSH key",
+      "group": "Item editors",
+      "page": "vault",
+      "variant": "editor",
+      "changes": [
+        "Keep the item type fixed when editing and give the save destination its own group.",
+        "Use clear field groups and an anchored Save/Cancel action area; reserve nearby space for inline validation.",
+        "Use progressive disclosure for additional options and retain master-password reprompt."
+      ],
+      "notes": "The proposal illustrates a subset of the existing fields and disclosure hierarchy, not a complete editable field contract. Implementation must retain omitted fields, validation, permissions, and masking. Create and edit share a form, but editing cannot silently change the cipher type.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "vault.editor.ssh"
+      ]
+    },
+    {
+      "itemType": "bank",
+      "dialog": null,
+      "id": "vault-editor-bank",
+      "title": "Edit bank account",
+      "group": "Item editors",
+      "page": "vault",
+      "variant": "editor",
+      "changes": [
+        "Keep the item type fixed when editing and give the save destination its own group.",
+        "Use clear field groups and an anchored Save/Cancel action area; reserve nearby space for inline validation.",
+        "Use progressive disclosure for additional options and retain master-password reprompt."
+      ],
+      "notes": "Source guard: bank account, driver's license, and passport are implemented cipher types, but creation and editing require CanWriteNewCipherTypes. Their proposal screens are conditional and do not establish server/account support. The composition shows representative fields, not every field in the source model; implementation must retain the remaining fields and their masking semantics.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "vault.editor.bank"
+      ]
+    },
+    {
+      "itemType": "license",
+      "dialog": null,
+      "id": "vault-editor-license",
+      "title": "Edit driver's license",
+      "group": "Item editors",
+      "page": "vault",
+      "variant": "editor",
+      "changes": [
+        "Keep the item type fixed when editing and give the save destination its own group.",
+        "Use clear field groups and an anchored Save/Cancel action area; reserve nearby space for inline validation.",
+        "Use progressive disclosure for additional options and retain master-password reprompt."
+      ],
+      "notes": "Source guard: bank account, driver's license, and passport are implemented cipher types, but creation and editing require CanWriteNewCipherTypes. Their proposal screens are conditional and do not establish server/account support. The composition shows representative fields, not every field in the source model; implementation must retain the remaining fields and their masking semantics.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "vault.editor.license"
+      ]
+    },
+    {
+      "itemType": "passport",
+      "dialog": null,
+      "id": "vault-editor-passport",
+      "title": "Edit passport",
+      "group": "Item editors",
+      "page": "vault",
+      "variant": "editor",
+      "changes": [
+        "Keep the item type fixed when editing and give the save destination its own group.",
+        "Use clear field groups and an anchored Save/Cancel action area; reserve nearby space for inline validation.",
+        "Use progressive disclosure for additional options and retain master-password reprompt."
+      ],
+      "notes": "Source guard: bank account, driver's license, and passport are implemented cipher types, but creation and editing require CanWriteNewCipherTypes. Their proposal screens are conditional and do not establish server/account support. The composition shows representative fields, not every field in the source model; implementation must retain the remaining fields and their masking semantics.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "vault.editor.passport"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "vault-batch",
+      "title": "Select and organize items",
+      "group": "Vault states",
+      "page": "vault",
+      "variant": "batch",
+      "changes": [
+        "Replace scattered batch commands with one contextual selection bar and an explicit selected count.",
+        "Explain unavailable actions for mixed ownership or permissions before submission."
+      ],
+      "notes": "Folder moves, ownership transfer, and collection assignment remain separate existing operations; the proposal does not merge their permissions.",
+      "baselineFilename": "49-vault-batch-selection.png",
+      "sourceIds": [
+        "vault.selection",
+        "vault.move-menu",
+        "vault.transfer",
+        "vault.collection-select"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "vault-empty",
+      "title": "Empty vault onboarding",
+      "group": "Vault states",
+      "page": "vault",
+      "variant": "empty",
+      "changes": [
+        "Give a true empty vault one clear Add item action and a secondary route to existing import.",
+        "Keep the empty illustration small and the next step concrete."
+      ],
+      "notes": "A true empty account is distinct from an empty folder or filtered result. This is a proposed empty-account composition, not the captured empty-folder state.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "vault.empty"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "vault-no-results",
+      "title": "No matching items",
+      "group": "Vault states",
+      "page": "vault",
+      "variant": "no-results",
+      "changes": [
+        "Keep the search query and active filters visible when no results match.",
+        "Offer a clear recovery action to remove filters without implying that stored vault items were deleted."
+      ],
+      "notes": "The baseline depicts an empty folder in a populated account; the optimized proposal generalizes the source no-results state without claiming a backend empty account.",
+      "baselineFilename": "50-vault-empty-folder.png",
+      "sourceIds": [
+        "vault.no-results"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "vault-loading",
+      "title": "Loading without losing context",
+      "group": "Vault states",
+      "page": "vault",
+      "variant": "loading",
+      "changes": [
+        "Keep the page title and existing navigation stable while content loads.",
+        "Use calm progress feedback and prevent duplicate commands during a pending operation."
+      ],
+      "notes": "The busy state is included under page.vault in the inventory. This is an additional representative state of that page, not a new product surface.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "page.vault"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "vault-sync-error",
+      "title": "Offline and uncertain operation status",
+      "group": "Vault states",
+      "page": "vault",
+      "variant": "sync-error",
+      "changes": [
+        "Place a persistent status banner above the list with a specific explanation and contextual recovery action.",
+        "Keep cached vault contents usable where the existing service permits, and distinguish offline data from an uncertain save result."
+      ],
+      "notes": "The visible composition is offline cached-data feedback. Ambiguous creation must preserve its draft and resync-first behavior; retrying creation is not presented as safe.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "vault.item-warning",
+        "vault.pending-create",
+        "vault.pending-abandon-confirm",
+        "shell.leave-pending"
+      ]
+    },
+    {
+      "itemType": "login",
+      "dialog": "reprompt",
+      "id": "vault-reprompt",
+      "title": "Verify access to a protected item",
+      "group": "Security dialogs",
+      "page": "vault",
+      "variant": "detail",
+      "changes": [
+        "Identify the protected action in the dialog title and preserve the masked background detail.",
+        "Use one password field, inline feedback, and a clear Verify action."
+      ],
+      "notes": "Master-password reprompt is retained as an access boundary. The schematic uses no real secret.",
+      "baselineFilename": "10-master-password-reprompt.png",
+      "sourceIds": [
+        "vault.reprompt",
+        "dialog.passkey.master-password"
+      ]
+    },
+    {
+      "itemType": "login",
+      "dialog": "permanent-delete",
+      "id": "vault-permanent-delete",
+      "title": "Confirm permanent item deletion",
+      "group": "Security dialogs",
+      "page": "vault",
+      "variant": "detail",
+      "changes": [
+        "Name the exact target and irreversible consequence above the final action.",
+        "Keep Cancel visually safe and use error color only for the destructive confirmation."
+      ],
+      "notes": "Moving an item to trash is reversible and requires different wording from permanent deletion. Folder deletion must preserve its actual source semantics.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "vault.delete-confirm",
+        "vault.trash-confirm",
+        "vault.delete-selected-confirm",
+        "vault.empty-bin-confirm",
+        "vault.folder-delete-confirm",
+        "vault.attachment-delete-confirm"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "send-overview",
+      "title": "Manage secure Sends",
+      "group": "Send",
+      "page": "send",
+      "variant": "overview",
+      "changes": [
+        "Give text and file Sends recognizable type icons and readable expiry/access metadata.",
+        "Keep Copy link as the frequent row action and move edit/delete to a consistent overflow menu."
+      ],
+      "notes": "Sharing, access counts, expiry, and deletion remain subject to the source Send service. This review introduces no link-preview or recipient-tracking feature.",
+      "baselineFilename": "14-send-list.png",
+      "sourceIds": [
+        "page.send",
+        "send.row-menu",
+        "send.delete-confirm"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "edit-text",
+      "id": "send-edit-text",
+      "title": "Create a text Send",
+      "group": "Send",
+      "page": "send",
+      "variant": "overview",
+      "changes": [
+        "Put the name and text content first, followed by grouped lifetime and access restrictions.",
+        "Use a single Save action and explicit labels for deletion date, expiry, and optional access password."
+      ],
+      "notes": "The composition shows content, lifetime, and selected access restrictions. Disabled state, private notes, audience details, and custom date inputs are not all depicted; implementation must retain those existing options. No share operation is performed.",
+      "baselineFilename": "15-send-text-editor.png",
+      "sourceIds": [
+        "send.editor.text"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "edit-file",
+      "id": "send-edit-file",
+      "title": "Create a file Send",
+      "group": "Send",
+      "page": "send",
+      "variant": "overview",
+      "changes": [
+        "Show the selected filename and a clear file-picker action before optional sharing restrictions.",
+        "Use the same lifetime/access structure as text Send to reduce relearning."
+      ],
+      "notes": "The file picker remains Windows-owned and upload limits remain server/service dependent. This is a representative file-send form, not every restriction or date-picker state. Drag-and-drop is not claimed as implemented.",
+      "baselineFilename": "16-send-file-editor.png",
+      "sourceIds": [
+        "send.editor.file"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "send-received",
+      "title": "Open a received Send",
+      "group": "Send",
+      "page": "send",
+      "variant": "received",
+      "changes": [
+        "Keep the received-link flow distinct from the account's outbound Send list.",
+        "Show link and optional access password before Open, then reveal received content or the existing Save file action."
+      ],
+      "notes": "The representative result is a text Send; file-download results and error states are not depicted. External received links require the live service and valid link key. The demo service cannot complete this flow.",
+      "baselineFilename": "17-send-access.png",
+      "sourceIds": [
+        "send.receive"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "generator-password",
+      "title": "Generate a strong password",
+      "group": "Generator",
+      "page": "generator",
+      "variant": "password",
+      "changes": [
+        "Make the generated value the focus and keep Regenerate and Copy adjacent.",
+        "Group length and character controls below the result; place minimum counts and ambiguous-character settings in a quieter advanced group."
+      ],
+      "notes": "The displayed password is synthetic and is not intended for reuse. History remains an existing sensitive-content dialog.",
+      "baselineFilename": "18-generator-password.png",
+      "sourceIds": [
+        "generator.password",
+        "generator.history",
+        "generator.clear-confirm"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "generator-passphrase",
+      "title": "Generate a memorable passphrase",
+      "group": "Generator",
+      "page": "generator",
+      "variant": "passphrase",
+      "changes": [
+        "Keep result placement and actions consistent with password generation.",
+        "Prioritize word count and separator; group capitalization and number options below."
+      ],
+      "notes": "The proposal preserves existing passphrase options and does not introduce a custom word-list service.",
+      "baselineFilename": "19-generator-passphrase.png",
+      "sourceIds": [
+        "generator.passphrase"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "generator-username",
+      "title": "Generate a username",
+      "group": "Generator",
+      "page": "generator",
+      "variant": "username",
+      "changes": [
+        "Make the username method explicit and show only its relevant options.",
+        "Reuse the generated-value, Regenerate, and Copy arrangement from the other generator modes."
+      ],
+      "notes": "Random words, plus-addressing, and catch-all remain the implemented methods; no third-party relay provider integration is added.",
+      "baselineFilename": "20-generator-username.png",
+      "sourceIds": [
+        "generator.username"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "reports-overview",
+      "title": "Understand vault health",
+      "group": "Security reports",
+      "page": "reports",
+      "variant": "overview",
+      "changes": [
+        "Prioritize actionable categories with counts rather than inventing a composite security score.",
+        "Separate local weak/reused/HTTP findings from the explicit external exposed-password check."
+      ],
+      "notes": "The existing report categories and HIBP check remain unchanged. A not-yet-run exposure check must not be presented as a clean result.",
+      "baselineFilename": "22-security-report.png",
+      "sourceIds": [
+        "page.reports"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "reports-results",
+      "title": "Review security findings",
+      "group": "Security reports",
+      "page": "reports",
+      "variant": "results",
+      "changes": [
+        "Expand one finding category into a readable affected-item list with an explicit next action.",
+        "Retain checked, unchecked, and partial/error distinctions for external exposure results."
+      ],
+      "notes": "This is an additional review state included under page.reports. Counts and item names are synthetic; no exposure service was queried for this proposal.",
+      "baselineFilename": "22-security-report.png",
+      "sourceIds": [
+        "page.reports"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "import-export-overview",
+      "title": "Import and export vault data",
+      "group": "Import and export",
+      "page": "import-export",
+      "variant": "overview",
+      "changes": [
+        "Give import and export separate sections with clear purpose and file-format controls.",
+        "Place the plaintext warning directly beside the export action and give the import preview a clear position before submission."
+      ],
+      "notes": "Only the existing JSON/CSV flows are proposed. The initial view shows the preview position before a file is selected; loaded preview counts are not shown. No encrypted-export format, duplicate resolver, or import rollback is claimed.",
+      "baselineFilename": "41-import-export.png",
+      "sourceIds": [
+        "page.import-export"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "export",
+      "id": "export-confirm",
+      "title": "Confirm a plaintext export",
+      "group": "Security dialogs",
+      "page": "import-export",
+      "variant": "overview",
+      "changes": [
+        "Explain that the exported file can expose vault contents before requesting the master password.",
+        "Keep filename selection delegated to the Windows save picker after verification."
+      ],
+      "notes": "This is the existing export-verification boundary. The artifact contains no exported vault and performs no operation.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "import.export-confirm"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "devices-overview",
+      "title": "Review devices and sign-in requests",
+      "group": "Devices",
+      "page": "devices",
+      "variant": "overview",
+      "changes": [
+        "Separate pending sign-in requests from the known-device list.",
+        "Make current/trusted status, last activity, and fingerprint verification readable without relying only on color."
+      ],
+      "notes": "Approve and deny retain their existing source flow. Remote device revocation is not introduced as a new capability.",
+      "baselineFilename": "35-devices-pending-request.png",
+      "sourceIds": [
+        "page.devices"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "approve-device",
+      "id": "device-approve",
+      "title": "Confirm a device sign-in request",
+      "group": "Security dialogs",
+      "page": "devices",
+      "variant": "overview",
+      "changes": [
+        "Show the device identity and matching fingerprint immediately before approval.",
+        "Use an explicit Approve action and a clear explanation of what access is being granted."
+      ],
+      "notes": "The review data describes a synthetic request. Fingerprint matching remains a human verification step.",
+      "baselineFilename": "35-devices-pending-request.png",
+      "sourceIds": [
+        "devices.approve-confirm",
+        "devices.deny-confirm"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "emergency-overview",
+      "title": "Manage emergency access",
+      "group": "Emergency access",
+      "page": "emergency",
+      "variant": "overview",
+      "changes": [
+        "Separate contacts who can request your vault from accounts that trust you.",
+        "Present relationship status, access level, and waiting period together with only status-valid actions."
+      ],
+      "notes": "View and Takeover remain distinct. Source has no invitation-acceptance control on this page, so the proposal does not invent one.",
+      "baselineFilename": "32-emergency-granted.png",
+      "sourceIds": [
+        "page.emergency",
+        "emergency.update",
+        "emergency.reject-confirm",
+        "emergency.remove-confirm",
+        "emergency.recovered",
+        "emergency.takeover"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "invite",
+      "id": "emergency-invite",
+      "title": "Invite an emergency contact",
+      "group": "Emergency access",
+      "page": "emergency",
+      "variant": "overview",
+      "changes": [
+        "Explain View and Takeover beside the access-level selection.",
+        "Keep the waiting period next to its consequence and show the invited email before Send invitation."
+      ],
+      "notes": "An invitation is not sent by generating this review artifact. The existing live server and relationship confirmation requirements remain.",
+      "baselineFilename": "31-emergency-invite.png",
+      "sourceIds": [
+        "emergency.invite"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "settings-security",
+      "title": "Security and vault locking",
+      "group": "Settings",
+      "page": "settings",
+      "variant": "security",
+      "changes": [
+        "Organize locking, device unlock, and account protection as separate setting groups.",
+        "Show policy or availability explanations directly under disabled settings instead of hiding the reason."
+      ],
+      "notes": "The screen reviews the security settings hierarchy. PIN, Hello, timeout, and device trust remain gated by existing policies, platform support, and persisted-session eligibility.",
+      "baselineFilename": "28-settings-security.png",
+      "sourceIds": [
+        "page.settings",
+        "settings.security",
+        "settings.hello",
+        "settings.preferences",
+        "settings.timeout-policy",
+        "settings.pin-policy",
+        "settings.trusted-device",
+        "settings.pin.setup",
+        "settings.trust.error",
+        "settings.hello.failure"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "settings-preferences",
+      "title": "Application and preferences",
+      "group": "Settings",
+      "page": "settings",
+      "variant": "preferences",
+      "changes": [
+        "Use aligned settings rows for tray behavior, theme, website icons, and browser integration.",
+        "Explain unavailable future settings and keep their status separate from usable options."
+      ],
+      "notes": "Clipboard timeout and screenshot protection are grouped under Security in this proposal. Start on login, minimize on copy, acceleration, SSH-agent settings, and language selection remain unavailable in source. Browser integration remains limited to portable builds; the proposal does not make unavailable options functional.",
+      "baselineFilename": "36-settings-integration.png",
+      "sourceIds": [
+        "settings.application",
+        "settings.tray",
+        "settings.browser-integration",
+        "settings.theme",
+        "settings.future-controls",
+        "settings.about"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "settings-account",
+      "title": "Account and encryption settings",
+      "group": "Settings",
+      "page": "settings",
+      "variant": "account",
+      "changes": [
+        "Make the account email and server the leading identity summary.",
+        "Group profile, master password, and encryption settings together; separate account deletion with explicit consequence language."
+      ],
+      "notes": "The existing encryption dialog edits PBKDF2 iterations and does not expose a KDF-type selector. This proposal does not add Argon2 switching or migration controls.",
+      "baselineFilename": "24-settings-account.png",
+      "sourceIds": [
+        "settings.account",
+        "settings.danger",
+        "settings.profile.edit"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "change-password",
+      "id": "settings-change-password",
+      "title": "Change the master password",
+      "group": "Security dialogs",
+      "page": "settings",
+      "variant": "account",
+      "changes": [
+        "Separate current-password verification from the new-password and confirmation pair.",
+        "Show the existing sign-out consequence before the final change action and keep validation inline."
+      ],
+      "notes": "Changing the master password requires a matching persisted session and logs out on success. This review performs no credential change.",
+      "baselineFilename": "26-settings-password.png",
+      "sourceIds": [
+        "settings.password.change"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "kdf",
+      "id": "settings-kdf",
+      "title": "Review encryption work factor",
+      "group": "Security dialogs",
+      "page": "settings",
+      "variant": "account",
+      "changes": [
+        "Explain the existing PBKDF2 iteration setting before the numeric input.",
+        "Keep current-password verification and the Apply action together with inline validation."
+      ],
+      "notes": "Source guard: this dialog only edits PBKDF2 iterations. Do not add a KDF-type selector, Argon2 parameters, benchmark results, or an unsupported migration path.",
+      "baselineFilename": "27-settings-kdf.png",
+      "sourceIds": [
+        "settings.kdf.change"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "two-factor",
+      "id": "settings-two-factor",
+      "title": "Manage two-step protection",
+      "group": "Security dialogs",
+      "page": "settings",
+      "variant": "security",
+      "changes": [
+        "Give each existing provider a readable status and an explicit setup/manage action.",
+        "Keep loading and errors local to provider management and require a successful load before exposing provider mutations."
+      ],
+      "notes": "The proposal is the provider overview, not completed enrollment. TOTP setup retains its secret/OTPAuth URI and code; recovery-code retrieval failure must remain a warning even after activation succeeds.",
+      "baselineFilename": "29-settings-two-factor.png",
+      "sourceIds": [
+        "settings.twofactor.menu",
+        "settings.twofactor.loading",
+        "settings.twofactor.error",
+        "settings.totp.password",
+        "settings.email.password",
+        "settings.email.code",
+        "settings.email.complete",
+        "settings.twofactor.disable-empty",
+        "settings.twofactor.disable",
+        "settings.twofactor.disabled"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "totp-setup",
+      "id": "settings-totp-setup",
+      "title": "Set up an authenticator",
+      "group": "Security dialogs",
+      "page": "settings",
+      "variant": "security",
+      "changes": [
+        "Use a clear setup sequence: add the provided secret to an authenticator, then enter its code.",
+        "Keep the secret and OTPAuth URI selectable and the confirmation action below the code field."
+      ],
+      "notes": "The setup data is synthetic. Source exposes a Base32 secret and OTPAuth URI, so a scannable QR code is not claimed as implemented. Recovery code is shown only after successful activation.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "settings.totp.secret",
+        "settings.totp.complete",
+        "settings.totp.recovery-missing"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "security-keys",
+      "id": "settings-security-keys",
+      "title": "Manage security keys",
+      "group": "Security dialogs",
+      "page": "settings",
+      "variant": "security",
+      "changes": [
+        "Use a compact credential list with clear names and a separate Add security key area.",
+        "Keep registration availability, operation status, and last-key deletion consequences visible at the affected action."
+      ],
+      "notes": "Management verification can use the existing master-password, email-OTP, or device-login access-code path. Registration itself remains Windows-owned.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "settings.webauthn.manage",
+        "settings.webauthn.verify",
+        "settings.webauthn.verify-email",
+        "settings.webauthn.verify-access-code",
+        "settings.webauthn.unsupported",
+        "settings.webauthn.status",
+        "settings.webauthn.delete"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "delete-account",
+      "id": "settings-delete-account",
+      "title": "Review permanent account deletion",
+      "group": "Security dialogs",
+      "page": "settings",
+      "variant": "account",
+      "changes": [
+        "Lead with irreversible consequences and any organization ownership impact.",
+        "Keep the existing staged confirmation: consequences, exact account email, then the applicable final credential."
+      ],
+      "notes": "The visible proposal is the first consequences step. It does not collapse the existing preflight, email, password/OTP, or uncertain-result safeguards into a one-click deletion.",
+      "baselineFilename": "39-delete-account-warning.png",
+      "sourceIds": [
+        "settings.delete.consequences",
+        "settings.delete.owner-warning",
+        "settings.delete.email",
+        "settings.delete.credential-password",
+        "settings.delete.credential-otp",
+        "settings.delete.message"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "system-boundaries",
+      "title": "System and integration boundaries",
+      "group": "Review boundaries",
+      "page": "system",
+      "variant": "boundary",
+      "changes": [
+        "Keep the application request context clear before crossing into Windows or a third-party verification surface.",
+        "Preserve relying-party identity, origin, and explicit credential choice for browser passkey approval."
+      ],
+      "notes": "This is a review boundary diagram, not a redesign of Windows prompts, external Duo/SSO, or browser test harness pages. SimplePage is unreachable. The extension has no product popup, options page, or side panel.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "page.placeholder",
+        "native.file-open",
+        "native.file-save",
+        "browser.test.get",
+        "browser.test.create",
+        "browser.test.abort",
+        "browser.test.iframe-top",
+        "browser.test.iframe-child",
+        "shell.tray-menu",
+        "dialog.passkey.use",
+        "dialog.passkey.create",
+        "native.user-verification",
+        "native.login-hello",
+        "native.login-webauthn",
+        "dialog.duo.webview",
+        "native.settings.webauthn-create",
+        "native.settings.hello-setup",
+        "control.passkey-approval"
+      ]
+    },
+    {
+      "itemType": "login",
+      "dialog": null,
+      "id": "vault-detail-github",
+      "title": "GitHub details",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "detail",
+      "baselineFilename": null,
+      "changes": [
+        "Keep item identity, permissions and navigation state consistent throughout the proposal."
+      ],
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server.",
+      "itemId": "github",
+      "sourceIds": [
+        "page.vault"
+      ]
+    },
+    {
+      "itemType": "login",
+      "dialog": null,
+      "id": "vault-detail-google",
+      "title": "Google details",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "detail",
+      "baselineFilename": null,
+      "changes": [
+        "Keep item identity, permissions and navigation state consistent throughout the proposal."
+      ],
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server.",
+      "itemId": "google",
+      "sourceIds": [
+        "page.vault"
+      ]
+    },
+    {
+      "itemType": "login",
+      "dialog": null,
+      "id": "vault-detail-amazon",
+      "title": "Amazon details",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "detail",
+      "baselineFilename": null,
+      "changes": [
+        "Keep item identity, permissions and navigation state consistent throughout the proposal."
+      ],
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server.",
+      "itemId": "amazon",
+      "sourceIds": [
+        "page.vault"
+      ]
+    },
+    {
+      "itemType": "login",
+      "dialog": null,
+      "id": "vault-detail-shared",
+      "title": "Shared console details",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "detail",
+      "baselineFilename": null,
+      "changes": [
+        "Keep item identity, permissions and navigation state consistent throughout the proposal."
+      ],
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server.",
+      "itemId": "shared",
+      "sourceIds": [
+        "page.vault"
+      ]
+    },
+    {
+      "itemType": "login",
+      "dialog": null,
+      "id": "vault-detail-reddit",
+      "title": "Reddit details",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "detail",
+      "baselineFilename": null,
+      "changes": [
+        "Keep item identity, permissions and navigation state consistent throughout the proposal."
+      ],
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server.",
+      "itemId": "reddit",
+      "sourceIds": [
+        "page.vault"
+      ]
+    },
+    {
+      "itemType": "login",
+      "dialog": null,
+      "id": "vault-detail-router",
+      "title": "Router details",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "detail",
+      "baselineFilename": null,
+      "changes": [
+        "Keep item identity, permissions and navigation state consistent throughout the proposal."
+      ],
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server.",
+      "itemId": "router",
+      "sourceIds": [
+        "page.vault"
+      ]
+    },
+    {
+      "itemType": "login",
+      "dialog": null,
+      "id": "vault-new-login",
+      "title": "Create a new vault item",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "new",
+      "baselineFilename": null,
+      "changes": [
+        "Start with a blank draft; item type and writable destination are chosen before creation.",
+        "Require a name and the type-specific required fields before enabling Create item."
+      ],
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server.",
+      "sourceIds": [
+        "page.vault"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "vault-favorites",
+      "title": "Favorite items",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "favorites",
+      "baselineFilename": null,
+      "changes": [
+        "Keep item identity, permissions and navigation state consistent throughout the proposal."
+      ],
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server.",
+      "sourceIds": [
+        "page.vault",
+        "vault.favorites"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "vault-folder-work",
+      "title": "Work folder",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "folder",
+      "baselineFilename": null,
+      "changes": [
+        "Keep item identity, permissions and navigation state consistent throughout the proposal."
+      ],
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server.",
+      "folder": "Work",
+      "sourceIds": [
+        "page.vault",
+        "vault.folders"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "vault-folder-personal",
+      "title": "Personal folder",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "folder",
+      "baselineFilename": null,
+      "changes": [
+        "Keep item identity, permissions and navigation state consistent throughout the proposal."
+      ],
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server.",
+      "folder": "Personal",
+      "sourceIds": [
+        "page.vault"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "vault-folder-finance",
+      "title": "Finance folder",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "folder",
+      "baselineFilename": null,
+      "changes": [
+        "Keep item identity, permissions and navigation state consistent throughout the proposal."
+      ],
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server.",
+      "folder": "Finance",
+      "sourceIds": [
+        "page.vault"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "vault-organization",
+      "title": "Organization collection",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "organization",
+      "baselineFilename": null,
+      "changes": [
+        "Keep item identity, permissions and navigation state consistent throughout the proposal."
+      ],
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server.",
+      "sourceIds": [
+        "page.vault",
+        "vault.organizations",
+        "vault.collections"
+      ]
+    },
+    {
+      "itemType": "login",
+      "dialog": null,
+      "id": "vault-archive",
+      "title": "Archived item",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "archive",
+      "baselineFilename": null,
+      "changes": [
+        "Keep item identity, permissions and navigation state consistent throughout the proposal."
+      ],
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server.",
+      "itemId": "archived-email",
+      "sourceIds": [
+        "page.vault",
+        "vault.archive"
+      ]
+    },
+    {
+      "itemType": "login",
+      "dialog": null,
+      "id": "vault-trash",
+      "title": "Deleted item and restore",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "trash",
+      "baselineFilename": null,
+      "changes": [
+        "Keep item identity, permissions and navigation state consistent throughout the proposal."
+      ],
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server.",
+      "itemId": "trash-vpn",
+      "sourceIds": [
+        "page.vault",
+        "vault.trash"
+      ]
+    },
+    {
+      "itemType": "login",
+      "dialog": null,
+      "id": "vault-pending-save",
+      "title": "An unconfirmed creation keeps its draft",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "pending-save",
+      "baselineFilename": null,
+      "changes": [
+        "Retain the draft when a create result is unknown.",
+        "Check synchronization before attempting another creation; do not enable duplicate saves."
+      ],
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server.",
+      "sourceIds": [
+        "page.vault",
+        "vault.pending-create"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "new-folder",
+      "id": "vault-new-folder",
+      "title": "Create a folder",
+      "page": "vault",
+      "group": "Vault review additions",
+      "variant": "no-selection",
+      "baselineFilename": null,
+      "changes": [
+        "Name the folder before creation and keep the action disabled until a name is entered."
+      ],
+      "notes": "Creates a folder in the local proposal view only. It does not make a server request.",
+      "sourceIds": [
+        "vault.folder-create",
+        "page.vault"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "register-email-verification",
+      "title": "Continue registration by email",
+      "page": "register",
+      "variant": "verification",
+      "group": "Authentication",
+      "changes": [
+        "Keep account and server identity visible.",
+        "Show the distinct source state with an explicit consequence and next action."
+      ],
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "auth.register.email-verification"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "register-outcome-uncertain",
+      "title": "Registration result unknown",
+      "page": "register",
+      "variant": "uncertain",
+      "group": "Authentication",
+      "changes": [
+        "Keep account and server identity visible.",
+        "Show the distinct source state with an explicit consequence and next action."
+      ],
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "auth.register.uncertain"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "login-methods",
+      "title": "Choose a verification method",
+      "page": "login",
+      "variant": "methods",
+      "group": "Authentication",
+      "changes": [
+        "Keep account and server identity visible.",
+        "Show the distinct source state with an explicit consequence and next action."
+      ],
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation.",
+      "baselineFilename": null,
+      "sourceIds": []
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "login-unlock-pin",
+      "title": "Unlock with a device PIN",
+      "page": "login",
+      "variant": "unlock-pin",
+      "group": "Authentication",
+      "changes": [
+        "Keep account and server identity visible.",
+        "Show the distinct source state with an explicit consequence and next action."
+      ],
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "auth.login.unlock-pin"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "settings-managed-policy",
+      "title": "Organization-managed security settings",
+      "page": "settings",
+      "variant": "policy",
+      "group": "Settings",
+      "changes": [
+        "Keep account and server identity visible.",
+        "Show the distinct source state with an explicit consequence and next action."
+      ],
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "settings.timeout-policy",
+        "settings.pin-policy",
+        "settings.trusted-device"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "profile",
+      "id": "settings-profile",
+      "title": "Edit the account display name",
+      "page": "settings",
+      "variant": "account",
+      "group": "Security dialogs",
+      "changes": [
+        "Keep account and server identity visible.",
+        "Show the distinct source state with an explicit consequence and next action."
+      ],
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "settings.profile.edit"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "pin-setup",
+      "id": "settings-pin-setup",
+      "title": "Configure local PIN unlock",
+      "page": "settings",
+      "variant": "security",
+      "group": "Security dialogs",
+      "changes": [
+        "Keep account and server identity visible.",
+        "Show the distinct source state with an explicit consequence and next action."
+      ],
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "settings.pin.setup"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "disable-twofactor",
+      "id": "settings-disable-twofactor",
+      "title": "Disable a two-step method",
+      "page": "settings",
+      "variant": "security",
+      "group": "Security dialogs",
+      "changes": [
+        "Keep account and server identity visible.",
+        "Show the distinct source state with an explicit consequence and next action."
+      ],
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "settings.twofactor.disable"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "totp-complete",
+      "id": "settings-totp-complete",
+      "title": "Authenticator enabled and recovery code",
+      "page": "settings",
+      "variant": "security",
+      "group": "Security dialogs",
+      "changes": [
+        "Keep account and server identity visible.",
+        "Show the distinct source state with an explicit consequence and next action."
+      ],
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "settings.totp.complete"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "remove-security-key",
+      "id": "settings-remove-security-key",
+      "title": "Confirm security-key removal",
+      "page": "settings",
+      "variant": "security",
+      "group": "Security dialogs",
+      "changes": [
+        "Keep account and server identity visible.",
+        "Show the distinct source state with an explicit consequence and next action."
+      ],
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "settings.webauthn.delete"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "delete-email",
+      "id": "settings-delete-email",
+      "title": "Confirm email before account deletion",
+      "page": "settings",
+      "variant": "account",
+      "group": "Security dialogs",
+      "changes": [
+        "Keep account and server identity visible.",
+        "Show the distinct source state with an explicit consequence and next action."
+      ],
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "settings.delete.email"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "delete-credential",
+      "id": "settings-delete-credential",
+      "title": "Final account deletion with password",
+      "page": "settings",
+      "variant": "account",
+      "group": "Security dialogs",
+      "changes": [
+        "Keep account and server identity visible.",
+        "Show the distinct source state with an explicit consequence and next action."
+      ],
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "settings.delete.credential-password"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "existing-text",
+      "id": "send-existing-text",
+      "title": "Edit an existing text Send",
+      "group": "Send",
+      "page": "send",
+      "variant": "overview",
+      "changes": [
+        "Expose the distinct state and its available actions.",
+        "Keep account identity, limits, and consequences explicit."
+      ],
+      "notes": "Existing content uses Save changes. The type is fixed and the current access settings are preserved.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "send.editor.text"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "existing-file",
+      "id": "send-existing-file",
+      "title": "Edit an existing file Send",
+      "group": "Send",
+      "page": "send",
+      "variant": "overview",
+      "changes": [
+        "Expose the distinct state and its available actions.",
+        "Keep account identity, limits, and consequences explicit."
+      ],
+      "notes": "Existing files retain their identity. Replacing a file is a distinct operation with its existing service safeguards.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "send.editor.file"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "delete-send",
+      "id": "send-delete-confirm",
+      "title": "Confirm permanent Send deletion",
+      "group": "Send",
+      "page": "send",
+      "variant": "overview",
+      "changes": [
+        "Expose the distinct state and its available actions.",
+        "Keep account identity, limits, and consequences explicit."
+      ],
+      "notes": "Deleting a Send permanently invalidates its link. No deletion is executed in the review.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "send.delete-confirm"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "send-received-empty",
+      "title": "Enter a received Send link",
+      "group": "Send",
+      "page": "send",
+      "variant": "received-empty",
+      "changes": [
+        "Expose the distinct state and its available actions.",
+        "Keep account identity, limits, and consequences explicit."
+      ],
+      "notes": "The initial received-Send state contains no decrypted content. A valid share URL includes both access ID and key.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "send.receive"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "send-received-file",
+      "title": "Review a received file Send",
+      "group": "Send",
+      "page": "send",
+      "variant": "received-file",
+      "changes": [
+        "Expose the distinct state and its available actions.",
+        "Keep account identity, limits, and consequences explicit."
+      ],
+      "notes": "The file result offers the existing Windows Save file flow. It does not render arbitrary file content or claim a download occurred.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "send.receive"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "generator-history",
+      "id": "generator-history",
+      "title": "Review copied values in this session",
+      "group": "Generator",
+      "page": "generator",
+      "variant": "password",
+      "changes": [
+        "Expose the distinct state and its available actions.",
+        "Keep account identity, limits, and consequences explicit."
+      ],
+      "notes": "Only explicitly copied values enter the in-memory history, capped at 20. Locking or signing out clears it.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "generator.history",
+        "generator.clear-confirm"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "reports-weak",
+      "title": "Review weak passwords",
+      "group": "Security reports",
+      "page": "reports",
+      "variant": "weak",
+      "changes": [
+        "Expose the distinct state and its available actions.",
+        "Keep account identity, limits, and consequences explicit."
+      ],
+      "notes": "Weak-password results are separate from reused groups. Item actions preserve the selected item identity.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "page.reports"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "reports-unsafe",
+      "title": "Review unencrypted websites",
+      "group": "Security reports",
+      "page": "reports",
+      "variant": "unsafe",
+      "changes": [
+        "Expose the distinct state and its available actions.",
+        "Keep account identity, limits, and consequences explicit."
+      ],
+      "notes": "HTTP findings identify the affected website. HTTPS support must be verified before changing the saved URL.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "page.reports"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "reports-exposure-failed",
+      "title": "Retry an incomplete exposure check",
+      "group": "Security reports",
+      "page": "reports",
+      "variant": "exposure-failed",
+      "changes": [
+        "Expose the distinct state and its available actions.",
+        "Keep account identity, limits, and consequences explicit."
+      ],
+      "notes": "Failure means the exposure result is unknown. Local findings remain visible and no zero-result claim is made.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "page.reports"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": null,
+      "id": "import-preview",
+      "title": "Review parsed import data",
+      "group": "Import and export",
+      "page": "import-export",
+      "variant": "preview",
+      "changes": [
+        "Expose the distinct state and its available actions.",
+        "Keep account identity, limits, and consequences explicit."
+      ],
+      "notes": "The parsed preview enables import only for the current file and format. Import adds items and does not resolve duplicates.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "page.import-export"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "recovered",
+      "id": "emergency-recovered",
+      "title": "Review a recovered vault",
+      "group": "Emergency access",
+      "page": "emergency",
+      "variant": "overview",
+      "changes": [
+        "Expose the distinct state and its available actions.",
+        "Keep account identity, limits, and consequences explicit."
+      ],
+      "notes": "Approved View access opens a read-only vault for the named grantor. It does not grant account takeover.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "emergency.recovered"
+      ]
+    },
+    {
+      "itemType": null,
+      "dialog": "takeover",
+      "id": "emergency-takeover",
+      "title": "Confirm an emergency account takeover",
+      "group": "Emergency access",
+      "page": "emergency",
+      "variant": "overview",
+      "changes": [
+        "Expose the distinct state and its available actions.",
+        "Keep account identity, limits, and consequences explicit."
+      ],
+      "notes": "Approved Takeover access can reset the named grantor master password. The illustration does not submit the reset.",
+      "baselineFilename": null,
+      "sourceIds": [
+        "emergency.takeover"
+      ]
+    }
+  ],
+  "coverage": [
+    {
+      "inventoryId": "page.login",
+      "scenarioId": "login-account",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Saved accounts and self-hosted server entry remain supported. Debug demo access is not a production sign-in option."
+    },
+    {
+      "inventoryId": "auth.login.account",
+      "scenarioId": "login-account",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Saved accounts and self-hosted server entry remain supported. Debug demo access is not a production sign-in option."
+    },
+    {
+      "inventoryId": "auth.register.success-navigation",
+      "scenarioId": "login-account",
+      "scope": "family",
+      "notes": "Successful registration returns to this existing login form with the account and server prefilled; no separate success page is introduced."
+    },
+    {
+      "inventoryId": "auth.login.password",
+      "scenarioId": "login-password",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The form is a sign-in proposal; no password or master key is sent to the review artifact."
+    },
+    {
+      "inventoryId": "auth.login.password-change-required",
+      "scenarioId": "login-password",
+      "scope": "family",
+      "notes": "The related source flow has distinct policy or initialization content. Only its account-identity, form, and primary-action pattern is mapped here; that branch is not visibly shown."
+    },
+    {
+      "inventoryId": "auth.login.jit-encryption",
+      "scenarioId": "login-password",
+      "scope": "family",
+      "notes": "The related source flow has distinct policy or initialization content. Only its account-identity, form, and primary-action pattern is mapped here; that branch is not visibly shown."
+    },
+    {
+      "inventoryId": "page.register",
+      "scenarioId": "register-account",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Registration completion and email verification continue to follow the existing server responses and Web Vault continuation."
+    },
+    {
+      "inventoryId": "auth.register.form",
+      "scenarioId": "register-account",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Registration completion and email verification continue to follow the existing server responses and Web Vault continuation."
+    },
+    {
+      "inventoryId": "auth.register.email-verification",
+      "scenarioId": "register-email-verification",
+      "scope": "direct",
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation."
+    },
+    {
+      "inventoryId": "auth.register.uncertain",
+      "scenarioId": "register-outcome-uncertain",
+      "scope": "direct",
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation."
+    },
+    {
+      "inventoryId": "auth.login.2fa-code",
+      "scenarioId": "login-two-step",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The representative screen depicts a code-based challenge. Security keys and Duo use their existing method-specific action without a code field."
+    },
+    {
+      "inventoryId": "auth.login.verify-device",
+      "scenarioId": "login-two-step",
+      "scope": "family",
+      "notes": "This is a related verification family, not a capture of this method. Preserve method-specific controls: resend for email, native security-key action for WebAuthn, and external Duo continuation."
+    },
+    {
+      "inventoryId": "auth.login.2fa-webauthn",
+      "scenarioId": "login-two-step",
+      "scope": "family",
+      "notes": "This is a related verification family, not a capture of this method. Preserve method-specific controls: resend for email, native security-key action for WebAuthn, and external Duo continuation."
+    },
+    {
+      "inventoryId": "auth.login.2fa-duo",
+      "scenarioId": "login-two-step",
+      "scope": "family",
+      "notes": "This is a related verification family, not a capture of this method. Preserve method-specific controls: resend for email, native security-key action for WebAuthn, and external Duo continuation."
+    },
+    {
+      "inventoryId": "auth.login.2fa-recovery",
+      "scenarioId": "login-recovery",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Recovery is a separate existing authentication branch with higher consequence than a normal one-time code."
+    },
+    {
+      "inventoryId": "auth.login.unlock-password",
+      "scenarioId": "login-locked",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Hello and alternative unlock availability depend on the persisted session and device configuration."
+    },
+    {
+      "inventoryId": "auth.login.unlock-pin",
+      "scenarioId": "login-unlock-pin",
+      "scope": "direct",
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation."
+    },
+    {
+      "inventoryId": "auth.login.unlock-keyconnector",
+      "scenarioId": "login-locked",
+      "scope": "family",
+      "notes": "The locked account shell is shared, but PIN, Key Connector, and trusted SSO have distinct controls. Logout uses a separate confirmation; none of these alternate states is claimed as visibly shown."
+    },
+    {
+      "inventoryId": "auth.login.unlock-trusted-sso",
+      "scenarioId": "login-locked",
+      "scope": "family",
+      "notes": "The locked account shell is shared, but PIN, Key Connector, and trusted SSO have distinct controls. Logout uses a separate confirmation; none of these alternate states is claimed as visibly shown."
+    },
+    {
+      "inventoryId": "shell.logout-confirm",
+      "scenarioId": "login-locked",
+      "scope": "family",
+      "notes": "The locked account shell is shared, but PIN, Key Connector, and trusted SSO have distinct controls. Logout uses a separate confirmation; none of these alternate states is claimed as visibly shown."
+    },
+    {
+      "inventoryId": "auth.login.device-wait",
+      "scenarioId": "login-device-approval",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Other-device approval, administrator approval, and browser SSO remain distinct service-dependent flows."
+    },
+    {
+      "inventoryId": "auth.login.trusted-approval",
+      "scenarioId": "login-device-approval",
+      "scope": "family",
+      "notes": "Only the waiting-state hierarchy and cancellation pattern are shared. Enterprise trust controls and browser SSO content are not shown in the device-request composition."
+    },
+    {
+      "inventoryId": "auth.login.sso-pending",
+      "scenarioId": "login-device-approval",
+      "scope": "family",
+      "notes": "Only the waiting-state hierarchy and cancellation pattern are shared. Enterprise trust controls and browser SSO content are not shown in the device-request composition."
+    },
+    {
+      "inventoryId": "auth.login.status-busy",
+      "scenarioId": "login-error",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The visible proposal is a retryable error. Busy controls remain disabled while a request is pending; local deletion and quarantine recovery keep their existing distinct confirmations."
+    },
+    {
+      "inventoryId": "auth.login.device-quarantine",
+      "scenarioId": "login-error",
+      "scope": "family",
+      "notes": "This mapping reviews the status hierarchy only. Quarantine, deletion recovery, and local-reset confirmations require their own consequence text and are not depicted as a normal login error."
+    },
+    {
+      "inventoryId": "auth.login.deletion-recovery",
+      "scenarioId": "login-error",
+      "scope": "family",
+      "notes": "This mapping reviews the status hierarchy only. Quarantine, deletion recovery, and local-reset confirmations require their own consequence text and are not depicted as a normal login error."
+    },
+    {
+      "inventoryId": "dialog.login.clear-quarantine",
+      "scenarioId": "login-error",
+      "scope": "family",
+      "notes": "This mapping reviews the status hierarchy only. Quarantine, deletion recovery, and local-reset confirmations require their own consequence text and are not depicted as a normal login error."
+    },
+    {
+      "inventoryId": "dialog.login.clear-local-deletion-data",
+      "scenarioId": "login-error",
+      "scope": "family",
+      "notes": "This mapping reviews the status hierarchy only. Quarantine, deletion recovery, and local-reset confirmations require their own consequence text and are not depicted as a normal login error."
+    },
+    {
+      "inventoryId": "dialog.login.reset-local-data",
+      "scenarioId": "login-error",
+      "scope": "family",
+      "notes": "This mapping reviews the status hierarchy only. Quarantine, deletion recovery, and local-reset confirmations require their own consequence text and are not depicted as a normal login error."
+    },
+    {
+      "inventoryId": "shell.main",
+      "scenarioId": "vault-overview",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Archive mutations and organization actions remain gated by the capabilities and permissions already present in source. Navigation labels are existing destinations."
+    },
+    {
+      "inventoryId": "page.vault",
+      "scenarioId": "vault-overview",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Archive mutations and organization actions remain gated by the capabilities and permissions already present in source. Navigation labels are existing destinations."
+    },
+    {
+      "inventoryId": "control.favicon",
+      "scenarioId": "vault-overview",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Archive mutations and organization actions remain gated by the capabilities and permissions already present in source. Navigation labels are existing destinations."
+    },
+    {
+      "inventoryId": "vault.favorites",
+      "scenarioId": "vault-favorites",
+      "scope": "direct",
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server."
+    },
+    {
+      "inventoryId": "vault.folders",
+      "scenarioId": "vault-folder-work",
+      "scope": "direct",
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server."
+    },
+    {
+      "inventoryId": "vault.organizations",
+      "scenarioId": "vault-organization",
+      "scope": "direct",
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server."
+    },
+    {
+      "inventoryId": "vault.collections",
+      "scenarioId": "vault-organization",
+      "scope": "direct",
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server."
+    },
+    {
+      "inventoryId": "vault.archive",
+      "scenarioId": "vault-archive",
+      "scope": "direct",
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server."
+    },
+    {
+      "inventoryId": "vault.trash",
+      "scenarioId": "vault-trash",
+      "scope": "direct",
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server."
+    },
+    {
+      "inventoryId": "vault.grouping",
+      "scenarioId": "vault-overview",
+      "scope": "family",
+      "notes": "This source surface shares vault navigation or refinement patterns. Its selected destination, open flyout, naming dialog, or permission-specific state is not individually depicted here."
+    },
+    {
+      "inventoryId": "vault.add-menu",
+      "scenarioId": "vault-overview",
+      "scope": "family",
+      "notes": "This source surface shares vault navigation or refinement patterns. Its selected destination, open flyout, naming dialog, or permission-specific state is not individually depicted here."
+    },
+    {
+      "inventoryId": "vault.filter-menu",
+      "scenarioId": "vault-overview",
+      "scope": "family",
+      "notes": "This source surface shares vault navigation or refinement patterns. Its selected destination, open flyout, naming dialog, or permission-specific state is not individually depicted here."
+    },
+    {
+      "inventoryId": "vault.sort-menu",
+      "scenarioId": "vault-overview",
+      "scope": "family",
+      "notes": "This source surface shares vault navigation or refinement patterns. Its selected destination, open flyout, naming dialog, or permission-specific state is not individually depicted here."
+    },
+    {
+      "inventoryId": "vault.saved-views-menu",
+      "scenarioId": "vault-overview",
+      "scope": "family",
+      "notes": "This source surface shares vault navigation or refinement patterns. Its selected destination, open flyout, naming dialog, or permission-specific state is not individually depicted here."
+    },
+    {
+      "inventoryId": "vault.row-menu",
+      "scenarioId": "vault-overview",
+      "scope": "family",
+      "notes": "This source surface shares vault navigation or refinement patterns. Its selected destination, open flyout, naming dialog, or permission-specific state is not individually depicted here."
+    },
+    {
+      "inventoryId": "vault.folder-create",
+      "scenarioId": "vault-new-folder",
+      "scope": "direct",
+      "notes": "Creates a folder in the local proposal view only. It does not make a server request."
+    },
+    {
+      "inventoryId": "vault.folder-rename",
+      "scenarioId": "vault-overview",
+      "scope": "family",
+      "notes": "This source surface shares vault navigation or refinement patterns. Its selected destination, open flyout, naming dialog, or permission-specific state is not individually depicted here."
+    },
+    {
+      "inventoryId": "vault.saved-view-create",
+      "scenarioId": "vault-overview",
+      "scope": "family",
+      "notes": "This source surface shares vault navigation or refinement patterns. Its selected destination, open flyout, naming dialog, or permission-specific state is not individually depicted here."
+    },
+    {
+      "inventoryId": "vault.no-selection",
+      "scenarioId": "vault-no-selection",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. This composition is the initial state after sign-in, unlock, or returning to My vault: a populated vault with no selected item. It is distinct from the selected-login showcase and the empty-account state."
+    },
+    {
+      "inventoryId": "vault.detail.login",
+      "scenarioId": "vault-detail-login",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Synthetic data only. The detail composition reviews representative type-specific fields and common item actions; it is not an exhaustive rendering of every source field or disclosure. Secret reveal and clipboard feedback are separate interaction states."
+    },
+    {
+      "inventoryId": "control.field",
+      "scenarioId": "vault-detail-login",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Synthetic data only. The detail composition reviews representative type-specific fields and common item actions; it is not an exhaustive rendering of every source field or disclosure. Secret reveal and clipboard feedback are separate interaction states."
+    },
+    {
+      "inventoryId": "control.totp",
+      "scenarioId": "vault-detail-login",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Synthetic data only. The detail composition reviews representative type-specific fields and common item actions; it is not an exhaustive rendering of every source field or disclosure. Secret reveal and clipboard feedback are separate interaction states."
+    },
+    {
+      "inventoryId": "control.detail-card",
+      "scenarioId": "vault-detail-login",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Synthetic data only. The detail composition reviews representative type-specific fields and common item actions; it is not an exhaustive rendering of every source field or disclosure. Secret reveal and clipboard feedback are separate interaction states."
+    },
+    {
+      "inventoryId": "vault.attachments",
+      "scenarioId": "vault-detail-login",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Synthetic data only. The detail composition reviews representative type-specific fields and common item actions; it is not an exhaustive rendering of every source field or disclosure. Secret reveal and clipboard feedback are separate interaction states."
+    },
+    {
+      "inventoryId": "vault.login.passkeys",
+      "scenarioId": "vault-detail-login",
+      "scope": "family",
+      "notes": "The related passkey or password-history subsection belongs to this detail family. Its expanded content is not claimed as individually visible."
+    },
+    {
+      "inventoryId": "vault.login.history",
+      "scenarioId": "vault-detail-login",
+      "scope": "family",
+      "notes": "The related passkey or password-history subsection belongs to this detail family. Its expanded content is not claimed as individually visible."
+    },
+    {
+      "inventoryId": "vault.detail.card",
+      "scenarioId": "vault-detail-card",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Synthetic data only. The detail composition reviews representative type-specific fields and common item actions; it is not an exhaustive rendering of every source field or disclosure. Secret reveal and clipboard feedback are separate interaction states."
+    },
+    {
+      "inventoryId": "vault.detail.identity",
+      "scenarioId": "vault-detail-identity",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Synthetic data only. The detail composition reviews representative type-specific fields and common item actions; it is not an exhaustive rendering of every source field or disclosure. Secret reveal and clipboard feedback are separate interaction states."
+    },
+    {
+      "inventoryId": "vault.detail.note",
+      "scenarioId": "vault-detail-note",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Synthetic data only. The detail composition reviews representative type-specific fields and common item actions; it is not an exhaustive rendering of every source field or disclosure. Secret reveal and clipboard feedback are separate interaction states."
+    },
+    {
+      "inventoryId": "vault.detail.ssh",
+      "scenarioId": "vault-detail-ssh",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Synthetic data only. The detail composition reviews representative type-specific fields and common item actions; it is not an exhaustive rendering of every source field or disclosure. Secret reveal and clipboard feedback are separate interaction states."
+    },
+    {
+      "inventoryId": "vault.detail.bank",
+      "scenarioId": "vault-detail-bank",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Source guard: bank account, driver's license, and passport are implemented cipher types, but creation and editing require CanWriteNewCipherTypes. Their proposal screens are conditional and do not establish server/account support. The composition shows representative fields, not every field in the source model; implementation must retain the remaining fields and their masking semantics."
+    },
+    {
+      "inventoryId": "vault.detail.license",
+      "scenarioId": "vault-detail-license",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Source guard: bank account, driver's license, and passport are implemented cipher types, but creation and editing require CanWriteNewCipherTypes. Their proposal screens are conditional and do not establish server/account support. The composition shows representative fields, not every field in the source model; implementation must retain the remaining fields and their masking semantics."
+    },
+    {
+      "inventoryId": "vault.detail.passport",
+      "scenarioId": "vault-detail-passport",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Source guard: bank account, driver's license, and passport are implemented cipher types, but creation and editing require CanWriteNewCipherTypes. Their proposal screens are conditional and do not establish server/account support. The composition shows representative fields, not every field in the source model; implementation must retain the remaining fields and their masking semantics."
+    },
+    {
+      "inventoryId": "vault.editor.login",
+      "scenarioId": "vault-editor-login",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The proposal illustrates a subset of the existing fields and disclosure hierarchy, not a complete editable field contract. Implementation must retain omitted fields, validation, permissions, and masking. Create and edit share a form, but editing cannot silently change the cipher type."
+    },
+    {
+      "inventoryId": "vault.editor.options",
+      "scenarioId": "vault-editor-login",
+      "scope": "family",
+      "notes": "The editor shows the placement of destination and additional options. It does not render the complete custom-field editor, every destination option, or all validation states."
+    },
+    {
+      "inventoryId": "vault.editor.card",
+      "scenarioId": "vault-editor-card",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The proposal illustrates a subset of the existing fields and disclosure hierarchy, not a complete editable field contract. Implementation must retain omitted fields, validation, permissions, and masking. Create and edit share a form, but editing cannot silently change the cipher type."
+    },
+    {
+      "inventoryId": "vault.editor.identity",
+      "scenarioId": "vault-editor-identity",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The proposal illustrates a subset of the existing fields and disclosure hierarchy, not a complete editable field contract. Implementation must retain omitted fields, validation, permissions, and masking. Create and edit share a form, but editing cannot silently change the cipher type."
+    },
+    {
+      "inventoryId": "vault.editor.note",
+      "scenarioId": "vault-editor-note",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The proposal illustrates a subset of the existing fields and disclosure hierarchy, not a complete editable field contract. Implementation must retain omitted fields, validation, permissions, and masking. Create and edit share a form, but editing cannot silently change the cipher type."
+    },
+    {
+      "inventoryId": "vault.editor.ssh",
+      "scenarioId": "vault-editor-ssh",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The proposal illustrates a subset of the existing fields and disclosure hierarchy, not a complete editable field contract. Implementation must retain omitted fields, validation, permissions, and masking. Create and edit share a form, but editing cannot silently change the cipher type."
+    },
+    {
+      "inventoryId": "vault.editor.bank",
+      "scenarioId": "vault-editor-bank",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Source guard: bank account, driver's license, and passport are implemented cipher types, but creation and editing require CanWriteNewCipherTypes. Their proposal screens are conditional and do not establish server/account support. The composition shows representative fields, not every field in the source model; implementation must retain the remaining fields and their masking semantics."
+    },
+    {
+      "inventoryId": "vault.editor.license",
+      "scenarioId": "vault-editor-license",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Source guard: bank account, driver's license, and passport are implemented cipher types, but creation and editing require CanWriteNewCipherTypes. Their proposal screens are conditional and do not establish server/account support. The composition shows representative fields, not every field in the source model; implementation must retain the remaining fields and their masking semantics."
+    },
+    {
+      "inventoryId": "vault.editor.passport",
+      "scenarioId": "vault-editor-passport",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Source guard: bank account, driver's license, and passport are implemented cipher types, but creation and editing require CanWriteNewCipherTypes. Their proposal screens are conditional and do not establish server/account support. The composition shows representative fields, not every field in the source model; implementation must retain the remaining fields and their masking semantics."
+    },
+    {
+      "inventoryId": "vault.selection",
+      "scenarioId": "vault-batch",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Folder moves, ownership transfer, and collection assignment remain separate existing operations; the proposal does not merge their permissions."
+    },
+    {
+      "inventoryId": "vault.move-menu",
+      "scenarioId": "vault-batch",
+      "scope": "family",
+      "notes": "The source operation is represented by the contextual selection model. Its open destination picker or transfer confirmation is not individually shown."
+    },
+    {
+      "inventoryId": "vault.transfer",
+      "scenarioId": "vault-batch",
+      "scope": "family",
+      "notes": "The source operation is represented by the contextual selection model. Its open destination picker or transfer confirmation is not individually shown."
+    },
+    {
+      "inventoryId": "vault.collection-select",
+      "scenarioId": "vault-batch",
+      "scope": "family",
+      "notes": "The source operation is represented by the contextual selection model. Its open destination picker or transfer confirmation is not individually shown."
+    },
+    {
+      "inventoryId": "vault.empty",
+      "scenarioId": "vault-empty",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. A true empty account is distinct from an empty folder or filtered result. This is a proposed empty-account composition, not the captured empty-folder state."
+    },
+    {
+      "inventoryId": "vault.no-results",
+      "scenarioId": "vault-no-results",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The baseline depicts an empty folder in a populated account; the optimized proposal generalizes the source no-results state without claiming a backend empty account."
+    },
+    {
+      "inventoryId": "vault.item-warning",
+      "scenarioId": "vault-sync-error",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The visible composition is offline cached-data feedback. Ambiguous creation must preserve its draft and resync-first behavior; retrying creation is not presented as safe."
+    },
+    {
+      "inventoryId": "vault.pending-create",
+      "scenarioId": "vault-pending-save",
+      "scope": "direct",
+      "notes": "Synthetic review composition. Interactions update the current preview only and never write to a vault server."
+    },
+    {
+      "inventoryId": "vault.pending-abandon-confirm",
+      "scenarioId": "vault-sync-error",
+      "scope": "family",
+      "notes": "The pending-commit family requires distinct retained-draft and duplicate-risk wording. This offline composition reviews hierarchy only; pending-create and abandon/leave confirmations are not individually visible."
+    },
+    {
+      "inventoryId": "shell.leave-pending",
+      "scenarioId": "vault-sync-error",
+      "scope": "family",
+      "notes": "The pending-commit family requires distinct retained-draft and duplicate-risk wording. This offline composition reviews hierarchy only; pending-create and abandon/leave confirmations are not individually visible."
+    },
+    {
+      "inventoryId": "vault.reprompt",
+      "scenarioId": "vault-reprompt",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Master-password reprompt is retained as an access boundary. The schematic uses no real secret."
+    },
+    {
+      "inventoryId": "dialog.passkey.master-password",
+      "scenarioId": "vault-reprompt",
+      "scope": "family",
+      "notes": "Passkey reprompt shares the verification pattern, but its credential operation and source dialog remain distinct."
+    },
+    {
+      "inventoryId": "vault.delete-confirm",
+      "scenarioId": "vault-permanent-delete",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Moving an item to trash is reversible and requires different wording from permanent deletion. Folder deletion must preserve its actual source semantics."
+    },
+    {
+      "inventoryId": "vault.trash-confirm",
+      "scenarioId": "vault-permanent-delete",
+      "scope": "family",
+      "notes": "This is the confirmation hierarchy for a related destructive action, not the literal dialog. Preserve the correct target, count, reversibility, and consequences for each operation."
+    },
+    {
+      "inventoryId": "vault.delete-selected-confirm",
+      "scenarioId": "vault-permanent-delete",
+      "scope": "family",
+      "notes": "This is the confirmation hierarchy for a related destructive action, not the literal dialog. Preserve the correct target, count, reversibility, and consequences for each operation."
+    },
+    {
+      "inventoryId": "vault.empty-bin-confirm",
+      "scenarioId": "vault-permanent-delete",
+      "scope": "family",
+      "notes": "This is the confirmation hierarchy for a related destructive action, not the literal dialog. Preserve the correct target, count, reversibility, and consequences for each operation."
+    },
+    {
+      "inventoryId": "vault.folder-delete-confirm",
+      "scenarioId": "vault-permanent-delete",
+      "scope": "family",
+      "notes": "This is the confirmation hierarchy for a related destructive action, not the literal dialog. Preserve the correct target, count, reversibility, and consequences for each operation."
+    },
+    {
+      "inventoryId": "vault.attachment-delete-confirm",
+      "scenarioId": "vault-permanent-delete",
+      "scope": "family",
+      "notes": "This is the confirmation hierarchy for a related destructive action, not the literal dialog. Preserve the correct target, count, reversibility, and consequences for each operation."
+    },
+    {
+      "inventoryId": "page.send",
+      "scenarioId": "send-overview",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Sharing, access counts, expiry, and deletion remain subject to the source Send service. This review introduces no link-preview or recipient-tracking feature."
+    },
+    {
+      "inventoryId": "send.row-menu",
+      "scenarioId": "send-overview",
+      "scope": "family",
+      "notes": "The list shows where row actions belong; the open menu and irreversible Send-deletion dialog are related patterns, not individually rendered states."
+    },
+    {
+      "inventoryId": "send.delete-confirm",
+      "scenarioId": "send-delete-confirm",
+      "scope": "direct",
+      "notes": "Deleting a Send permanently invalidates its link. No deletion is executed in the review."
+    },
+    {
+      "inventoryId": "send.editor.text",
+      "scenarioId": "send-edit-text",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The composition shows content, lifetime, and selected access restrictions. Disabled state, private notes, audience details, and custom date inputs are not all depicted; implementation must retain those existing options. No share operation is performed."
+    },
+    {
+      "inventoryId": "send.editor.file",
+      "scenarioId": "send-edit-file",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The file picker remains Windows-owned and upload limits remain server/service dependent. This is a representative file-send form, not every restriction or date-picker state. Drag-and-drop is not claimed as implemented."
+    },
+    {
+      "inventoryId": "send.receive",
+      "scenarioId": "send-received",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The representative result is a text Send; file-download results and error states are not depicted. External received links require the live service and valid link key. The demo service cannot complete this flow."
+    },
+    {
+      "inventoryId": "generator.password",
+      "scenarioId": "generator-password",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The displayed password is synthetic and is not intended for reuse. History remains an existing sensitive-content dialog."
+    },
+    {
+      "inventoryId": "generator.history",
+      "scenarioId": "generator-password",
+      "scope": "family",
+      "notes": "History uses the same readable generated-value rows and copy pattern; its open dialog and clear-history confirmation are not shown."
+    },
+    {
+      "inventoryId": "generator.clear-confirm",
+      "scenarioId": "generator-password",
+      "scope": "family",
+      "notes": "History uses the same readable generated-value rows and copy pattern; its open dialog and clear-history confirmation are not shown."
+    },
+    {
+      "inventoryId": "generator.passphrase",
+      "scenarioId": "generator-passphrase",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The proposal preserves existing passphrase options and does not introduce a custom word-list service."
+    },
+    {
+      "inventoryId": "generator.username",
+      "scenarioId": "generator-username",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Random words, plus-addressing, and catch-all remain the implemented methods; no third-party relay provider integration is added."
+    },
+    {
+      "inventoryId": "page.reports",
+      "scenarioId": "reports-overview",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The existing report categories and HIBP check remain unchanged. A not-yet-run exposure check must not be presented as a clean result."
+    },
+    {
+      "inventoryId": "page.import-export",
+      "scenarioId": "import-export-overview",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Only the existing JSON/CSV flows are proposed. The initial view shows the preview position before a file is selected; loaded preview counts are not shown. No encrypted-export format, duplicate resolver, or import rollback is claimed."
+    },
+    {
+      "inventoryId": "import.export-confirm",
+      "scenarioId": "export-confirm",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. This is the existing export-verification boundary. The artifact contains no exported vault and performs no operation."
+    },
+    {
+      "inventoryId": "page.devices",
+      "scenarioId": "devices-overview",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Approve and deny retain their existing source flow. Remote device revocation is not introduced as a new capability."
+    },
+    {
+      "inventoryId": "devices.approve-confirm",
+      "scenarioId": "device-approve",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The review data describes a synthetic request. Fingerprint matching remains a human verification step."
+    },
+    {
+      "inventoryId": "devices.deny-confirm",
+      "scenarioId": "device-approve",
+      "scope": "family",
+      "notes": "Deny uses the same identity context but a distinct consequence and final action; the denial confirmation is not shown."
+    },
+    {
+      "inventoryId": "page.emergency",
+      "scenarioId": "emergency-overview",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. View and Takeover remain distinct. Source has no invitation-acceptance control on this page, so the proposal does not invent one."
+    },
+    {
+      "inventoryId": "emergency.update",
+      "scenarioId": "emergency-overview",
+      "scope": "family",
+      "notes": "This related emergency-access flow is linked to the relationship model. Edit, reject/remove confirmation, recovered read-only vault, and takeover password reset have distinct compositions not individually shown here."
+    },
+    {
+      "inventoryId": "emergency.reject-confirm",
+      "scenarioId": "emergency-overview",
+      "scope": "family",
+      "notes": "This related emergency-access flow is linked to the relationship model. Edit, reject/remove confirmation, recovered read-only vault, and takeover password reset have distinct compositions not individually shown here."
+    },
+    {
+      "inventoryId": "emergency.remove-confirm",
+      "scenarioId": "emergency-overview",
+      "scope": "family",
+      "notes": "This related emergency-access flow is linked to the relationship model. Edit, reject/remove confirmation, recovered read-only vault, and takeover password reset have distinct compositions not individually shown here."
+    },
+    {
+      "inventoryId": "emergency.recovered",
+      "scenarioId": "emergency-overview",
+      "scope": "family",
+      "notes": "This related emergency-access flow is linked to the relationship model. Edit, reject/remove confirmation, recovered read-only vault, and takeover password reset have distinct compositions not individually shown here."
+    },
+    {
+      "inventoryId": "emergency.takeover",
+      "scenarioId": "emergency-overview",
+      "scope": "family",
+      "notes": "This related emergency-access flow is linked to the relationship model. Edit, reject/remove confirmation, recovered read-only vault, and takeover password reset have distinct compositions not individually shown here."
+    },
+    {
+      "inventoryId": "emergency.invite",
+      "scenarioId": "emergency-invite",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. An invitation is not sent by generating this review artifact. The existing live server and relationship confirmation requirements remain."
+    },
+    {
+      "inventoryId": "page.settings",
+      "scenarioId": "settings-security",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The screen reviews the security settings hierarchy. PIN, Hello, timeout, and device trust remain gated by existing policies, platform support, and persisted-session eligibility."
+    },
+    {
+      "inventoryId": "settings.security",
+      "scenarioId": "settings-security",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The screen reviews the security settings hierarchy. PIN, Hello, timeout, and device trust remain gated by existing policies, platform support, and persisted-session eligibility."
+    },
+    {
+      "inventoryId": "settings.hello",
+      "scenarioId": "settings-security",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The screen reviews the security settings hierarchy. PIN, Hello, timeout, and device trust remain gated by existing policies, platform support, and persisted-session eligibility."
+    },
+    {
+      "inventoryId": "settings.preferences",
+      "scenarioId": "settings-security",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The screen reviews the security settings hierarchy. PIN, Hello, timeout, and device trust remain gated by existing policies, platform support, and persisted-session eligibility."
+    },
+    {
+      "inventoryId": "settings.timeout-policy",
+      "scenarioId": "settings-managed-policy",
+      "scope": "direct",
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation."
+    },
+    {
+      "inventoryId": "settings.pin-policy",
+      "scenarioId": "settings-managed-policy",
+      "scope": "direct",
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation."
+    },
+    {
+      "inventoryId": "settings.trusted-device",
+      "scenarioId": "settings-managed-policy",
+      "scope": "direct",
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation."
+    },
+    {
+      "inventoryId": "settings.pin.setup",
+      "scenarioId": "settings-pin-setup",
+      "scope": "direct",
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation."
+    },
+    {
+      "inventoryId": "settings.trust.error",
+      "scenarioId": "settings-security",
+      "scope": "family",
+      "notes": "Policy-constrained options, device-trust eligibility, setup, and failure dialogs reuse the setting context. Their distinct disabled controls, inputs, or outcomes are not individually shown."
+    },
+    {
+      "inventoryId": "settings.hello.failure",
+      "scenarioId": "settings-security",
+      "scope": "family",
+      "notes": "Policy-constrained options, device-trust eligibility, setup, and failure dialogs reuse the setting context. Their distinct disabled controls, inputs, or outcomes are not individually shown."
+    },
+    {
+      "inventoryId": "settings.application",
+      "scenarioId": "settings-preferences",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Clipboard timeout and screenshot protection are grouped under Security in this proposal. Start on login, minimize on copy, acceleration, SSH-agent settings, and language selection remain unavailable in source. Browser integration remains limited to portable builds; the proposal does not make unavailable options functional."
+    },
+    {
+      "inventoryId": "settings.tray",
+      "scenarioId": "settings-preferences",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Clipboard timeout and screenshot protection are grouped under Security in this proposal. Start on login, minimize on copy, acceleration, SSH-agent settings, and language selection remain unavailable in source. Browser integration remains limited to portable builds; the proposal does not make unavailable options functional."
+    },
+    {
+      "inventoryId": "settings.browser-integration",
+      "scenarioId": "settings-preferences",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Clipboard timeout and screenshot protection are grouped under Security in this proposal. Start on login, minimize on copy, acceleration, SSH-agent settings, and language selection remain unavailable in source. Browser integration remains limited to portable builds; the proposal does not make unavailable options functional."
+    },
+    {
+      "inventoryId": "settings.theme",
+      "scenarioId": "settings-preferences",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Clipboard timeout and screenshot protection are grouped under Security in this proposal. Start on login, minimize on copy, acceleration, SSH-agent settings, and language selection remain unavailable in source. Browser integration remains limited to portable builds; the proposal does not make unavailable options functional."
+    },
+    {
+      "inventoryId": "settings.future-controls",
+      "scenarioId": "settings-preferences",
+      "scope": "family",
+      "notes": "Future controls and the expanded diagnostics/about section belong to this settings structure but are not all expanded in the composition."
+    },
+    {
+      "inventoryId": "settings.about",
+      "scenarioId": "settings-preferences",
+      "scope": "family",
+      "notes": "Future controls and the expanded diagnostics/about section belong to this settings structure but are not all expanded in the composition."
+    },
+    {
+      "inventoryId": "settings.account",
+      "scenarioId": "settings-account",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The existing encryption dialog edits PBKDF2 iterations and does not expose a KDF-type selector. This proposal does not add Argon2 switching or migration controls."
+    },
+    {
+      "inventoryId": "settings.danger",
+      "scenarioId": "settings-account",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The existing encryption dialog edits PBKDF2 iterations and does not expose a KDF-type selector. This proposal does not add Argon2 switching or migration controls."
+    },
+    {
+      "inventoryId": "settings.profile.edit",
+      "scenarioId": "settings-profile",
+      "scope": "direct",
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation."
+    },
+    {
+      "inventoryId": "settings.password.change",
+      "scenarioId": "settings-change-password",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Changing the master password requires a matching persisted session and logs out on success. This review performs no credential change."
+    },
+    {
+      "inventoryId": "settings.kdf.change",
+      "scenarioId": "settings-kdf",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Source guard: this dialog only edits PBKDF2 iterations. Do not add a KDF-type selector, Argon2 parameters, benchmark results, or an unsupported migration path."
+    },
+    {
+      "inventoryId": "settings.twofactor.menu",
+      "scenarioId": "settings-two-factor",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The proposal is the provider overview, not completed enrollment. TOTP setup retains its secret/OTPAuth URI and code; recovery-code retrieval failure must remain a warning even after activation succeeds."
+    },
+    {
+      "inventoryId": "settings.twofactor.loading",
+      "scenarioId": "settings-two-factor",
+      "scope": "family",
+      "notes": "This provider flow shares the reviewed provider-management hierarchy but has distinct step-specific inputs, recovery-code handling, or disable consequences. It is not individually depicted and not claimed as executed."
+    },
+    {
+      "inventoryId": "settings.twofactor.error",
+      "scenarioId": "settings-two-factor",
+      "scope": "family",
+      "notes": "This provider flow shares the reviewed provider-management hierarchy but has distinct step-specific inputs, recovery-code handling, or disable consequences. It is not individually depicted and not claimed as executed."
+    },
+    {
+      "inventoryId": "settings.totp.password",
+      "scenarioId": "settings-two-factor",
+      "scope": "family",
+      "notes": "This provider flow shares the reviewed provider-management hierarchy but has distinct step-specific inputs, recovery-code handling, or disable consequences. It is not individually depicted and not claimed as executed."
+    },
+    {
+      "inventoryId": "settings.email.password",
+      "scenarioId": "settings-two-factor",
+      "scope": "family",
+      "notes": "This provider flow shares the reviewed provider-management hierarchy but has distinct step-specific inputs, recovery-code handling, or disable consequences. It is not individually depicted and not claimed as executed."
+    },
+    {
+      "inventoryId": "settings.email.code",
+      "scenarioId": "settings-two-factor",
+      "scope": "family",
+      "notes": "This provider flow shares the reviewed provider-management hierarchy but has distinct step-specific inputs, recovery-code handling, or disable consequences. It is not individually depicted and not claimed as executed."
+    },
+    {
+      "inventoryId": "settings.email.complete",
+      "scenarioId": "settings-two-factor",
+      "scope": "family",
+      "notes": "This provider flow shares the reviewed provider-management hierarchy but has distinct step-specific inputs, recovery-code handling, or disable consequences. It is not individually depicted and not claimed as executed."
+    },
+    {
+      "inventoryId": "settings.twofactor.disable-empty",
+      "scenarioId": "settings-two-factor",
+      "scope": "family",
+      "notes": "This provider flow shares the reviewed provider-management hierarchy but has distinct step-specific inputs, recovery-code handling, or disable consequences. It is not individually depicted and not claimed as executed."
+    },
+    {
+      "inventoryId": "settings.twofactor.disable",
+      "scenarioId": "settings-disable-twofactor",
+      "scope": "direct",
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation."
+    },
+    {
+      "inventoryId": "settings.twofactor.disabled",
+      "scenarioId": "settings-two-factor",
+      "scope": "family",
+      "notes": "This provider flow shares the reviewed provider-management hierarchy but has distinct step-specific inputs, recovery-code handling, or disable consequences. It is not individually depicted and not claimed as executed."
+    },
+    {
+      "inventoryId": "settings.totp.secret",
+      "scenarioId": "settings-totp-setup",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The setup data is synthetic. Source exposes a Base32 secret and OTPAuth URI, so a scannable QR code is not claimed as implemented. Recovery code is shown only after successful activation."
+    },
+    {
+      "inventoryId": "settings.totp.complete",
+      "scenarioId": "settings-totp-complete",
+      "scope": "direct",
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation."
+    },
+    {
+      "inventoryId": "settings.totp.recovery-missing",
+      "scenarioId": "settings-totp-setup",
+      "scope": "family",
+      "notes": "Completion and missing-recovery-code states occur after setup. Preserve recovery-code display or Fetch Recovery Code with a warning; neither completion state is shown by this setup step."
+    },
+    {
+      "inventoryId": "settings.webauthn.manage",
+      "scenarioId": "settings-security-keys",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. Management verification can use the existing master-password, email-OTP, or device-login access-code path. Registration itself remains Windows-owned."
+    },
+    {
+      "inventoryId": "settings.webauthn.verify",
+      "scenarioId": "settings-security-keys",
+      "scope": "family",
+      "notes": "This related verification, availability, feedback, or deletion branch is reviewed through the security-key management family. The specific branch is not individually visible."
+    },
+    {
+      "inventoryId": "settings.webauthn.verify-email",
+      "scenarioId": "settings-security-keys",
+      "scope": "family",
+      "notes": "This related verification, availability, feedback, or deletion branch is reviewed through the security-key management family. The specific branch is not individually visible."
+    },
+    {
+      "inventoryId": "settings.webauthn.verify-access-code",
+      "scenarioId": "settings-security-keys",
+      "scope": "family",
+      "notes": "This related verification, availability, feedback, or deletion branch is reviewed through the security-key management family. The specific branch is not individually visible."
+    },
+    {
+      "inventoryId": "settings.webauthn.unsupported",
+      "scenarioId": "settings-security-keys",
+      "scope": "family",
+      "notes": "This related verification, availability, feedback, or deletion branch is reviewed through the security-key management family. The specific branch is not individually visible."
+    },
+    {
+      "inventoryId": "settings.webauthn.status",
+      "scenarioId": "settings-security-keys",
+      "scope": "family",
+      "notes": "This related verification, availability, feedback, or deletion branch is reviewed through the security-key management family. The specific branch is not individually visible."
+    },
+    {
+      "inventoryId": "settings.webauthn.delete",
+      "scenarioId": "settings-remove-security-key",
+      "scope": "direct",
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation."
+    },
+    {
+      "inventoryId": "settings.delete.consequences",
+      "scenarioId": "settings-delete-account",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The visible proposal is the first consequences step. It does not collapse the existing preflight, email, password/OTP, or uncertain-result safeguards into a one-click deletion."
+    },
+    {
+      "inventoryId": "settings.delete.owner-warning",
+      "scenarioId": "settings-delete-account",
+      "scope": "direct",
+      "notes": "Representative proposal composition only; arbitrary source-state variants are not all shown. The visible proposal is the first consequences step. It does not collapse the existing preflight, email, password/OTP, or uncertain-result safeguards into a one-click deletion."
+    },
+    {
+      "inventoryId": "settings.delete.email",
+      "scenarioId": "settings-delete-email",
+      "scope": "direct",
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation."
+    },
+    {
+      "inventoryId": "settings.delete.credential-password",
+      "scenarioId": "settings-delete-credential",
+      "scope": "direct",
+      "notes": "Design proposal only. Sensitive actions require real service results; the preview never authenticates, mutates an account, or fabricates a completed operation."
+    },
+    {
+      "inventoryId": "settings.delete.credential-otp",
+      "scenarioId": "settings-delete-account",
+      "scope": "family",
+      "notes": "The later confirmation and outcome branches remain separate stages. This first-step composition does not visually represent email entry, final credentials, or an operation result."
+    },
+    {
+      "inventoryId": "settings.delete.message",
+      "scenarioId": "settings-delete-account",
+      "scope": "family",
+      "notes": "The later confirmation and outcome branches remain separate stages. This first-step composition does not visually represent email entry, final credentials, or an operation result."
+    },
+    {
+      "inventoryId": "page.placeholder",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "native.file-open",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "native.file-save",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "browser.test.get",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "browser.test.create",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "browser.test.abort",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "browser.test.iframe-top",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "browser.test.iframe-child",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "shell.tray-menu",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "dialog.passkey.use",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "dialog.passkey.create",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "native.user-verification",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "native.login-hello",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "native.login-webauthn",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "dialog.duo.webview",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "native.settings.webauthn-create",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "native.settings.hello-setup",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    },
+    {
+      "inventoryId": "control.passkey-approval",
+      "scenarioId": "system-boundaries",
+      "scope": "boundary",
+      "notes": "Logical boundary coverage only. This source surface is system-owned, integration-specific, developer-only, or unreachable; its literal visual state is not represented and no runtime capture is claimed."
+    }
+  ]
+}

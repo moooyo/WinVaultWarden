@@ -4,7 +4,6 @@ using Xunit;
 namespace App.Tests;
 
 /// <summary>
-/// Task 8:安全报告页改版为原生 WinUI Settings 风格(SettingsExpander + InfoBadge + Hero 卡片)。
 /// </summary>
 public class SecurityReportPageXamlTests
 {
@@ -46,11 +45,12 @@ public class SecurityReportPageXamlTests
     }
 
     [Fact]
-    public void Page_HasAtLeastFourSettingsExpanders()
+    public void Page_UsesNativeExpandersForEveryReportCategory()
     {
         var doc = LoadXaml();
-        var count = doc.Descendants().Count(e => e.Name.LocalName == "SettingsExpander");
-        Assert.True(count >= 4, $"Expected >= 4 SettingsExpander elements, found {count}.");
+        var count = doc.Descendants().Count(e => e.Name.LocalName == "Expander");
+        Assert.Equal(4, count);
+        Assert.DoesNotContain(doc.Descendants(), e => e.Name.LocalName == "SettingsExpander");
     }
 
     [Fact]
@@ -143,9 +143,15 @@ public class SecurityReportPageXamlTests
     }
 
     [Fact]
-    public void UsesSettingsControlsNamespace()
+    public void EveryFindingOpensTheActualItem_WithoutDisplayingPasswords()
     {
         var xaml = XamlText();
-        Assert.Contains("xmlns:tk=\"using:CommunityToolkit.WinUI.Controls\"", xaml);
+        var doc = LoadXaml();
+        var actions = doc.Descendants().Where(e => e.Name.LocalName == "Button"
+            && (string?)e.Attribute("Click") == "OnOpenItemClick").ToArray();
+        Assert.Equal(4, actions.Length);
+        Assert.All(actions, button => Assert.Contains("CipherId", (string?)button.Attribute("Tag")));
+        Assert.DoesNotContain("{x:Bind Score}", xaml);
+        Assert.DoesNotContain("{x:Bind BreachCount}", xaml);
     }
 }

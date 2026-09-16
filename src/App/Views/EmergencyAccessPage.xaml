@@ -26,31 +26,50 @@
         </DataTemplate>
     </Page.Resources>
 
-    <ScrollViewer Padding="{StaticResource PageContentPadding}">
-        <StackPanel Spacing="16" MaxWidth="720" HorizontalAlignment="Left">
+    <ScrollViewer Padding="{StaticResource PageContentPadding}" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" MaxWidth="1000" HorizontalAlignment="Stretch">
 
-            <TextBlock Text="紧急访问" Style="{ThemeResource TitleTextBlockStyle}" />
+                        <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <HyperlinkButton Content="设置" Click="OnBackToSettingsClick" Padding="0,4"
+                                     AutomationProperties.Name="返回设置" />
+                    <FontIcon Glyph="&#xE76C;" FontSize="10" AutomationProperties.AccessibilityView="Raw" />
+                    <TextBlock Text="紧急访问" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <TextBlock Text="紧急访问" Style="{ThemeResource TitleTextBlockStyle}" />
+                <TextBlock Text="选择可信任的联系人，在紧急情况下按约定权限访问您的个人密码库。"
+                           TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+            <Border Style="{StaticResource CardBorderStyle}" Padding="{StaticResource CardContentPadding}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="授权范围" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                    <TextBlock Text="查看：获得访问授权后，可读取个人密码库。" TextWrapping="Wrap" />
+                    <TextBlock Text="接管：可重置主密码并控制账户；还会停用该账户的两步登录，并移除该账户在非所有者组织中的成员资格。" TextWrapping="Wrap" />
+                    <TextBlock Text="联系人发起请求后，需等待设置的天数；您可以在等待期间批准或拒绝。邀请被接受并由您确认后，授权才生效。"
+                               Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                </StackPanel>
+            </Border>
 
-            <!-- 操作错误提示（Remove/Reject/Invite/Update 等失败原因） -->
+
             <InfoBar x:Name="EmergencyErrorBar"
-                     IsClosable="True"
+                     IsClosable="False"
                      Severity="Error"
                      IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
-                     Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" />
+                     Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" AutomationProperties.LiveSetting="Assertive" />
 
-            <!-- 忙碌指示 -->
+
             <ProgressRing x:Name="EmergencyBusyRing"
                           Width="24" Height="24"
                           HorizontalAlignment="Left"
-                          IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
+                          IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" AutomationProperties.Name="正在处理紧急访问" Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
-            <Button AutomationProperties.AutomationId="EmergencyInviteButton"
+            <StackPanel Orientation="Horizontal" Spacing="8"><Button AutomationProperties.AutomationId="EmergencyInviteButton"
                     Content="邀请紧急联系人"
                     Style="{ThemeResource AccentButtonStyle}"
                     IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}"
-                    Click="OnInviteClick" />
+                    Click="OnInviteClick" /><Button Content="刷新" Click="OnRetryClick" IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}" AutomationProperties.Name="刷新紧急访问" /></StackPanel>
 
-            <!-- ══════ 页面四态：Loading / Error / Empty / Content ══════════════ -->
+
 
             <StackPanel x:Name="EmergencyLoadingPanel"
                         HorizontalAlignment="Left"
@@ -62,7 +81,7 @@
             <StackPanel x:Name="EmergencyLoadErrorPanel"
                         Spacing="8"
                         Visibility="{x:Bind ViewModel.ShowError, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="加载紧急访问信息失败，请稍后重试。"
+                <TextBlock Text="无法显示紧急访问信息。请检查连接后点击刷新。"
                            Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
             </StackPanel>
 
@@ -80,12 +99,12 @@
                         Spacing="16"
                         Visibility="{x:Bind ViewModel.ShowContent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
 
-                <!-- ══════ 授予方视角：我的紧急联系人 ══════════════════════════ -->
+
                 <StackPanel Spacing="8">
-                    <TextBlock Text="我的紧急联系人（授予方）"
+                    <TextBlock Text="我的紧急联系人"
                                Style="{StaticResource SectionHeaderTextBlockStyle}" />
 
-                    <!-- 本节空状态（另一节仍可能有内容，PageState 仍为 Content） -->
+
                     <TextBlock x:Name="ContactsEmptyText"
                                Text="尚未设置任何紧急联系人。"
                                Style="{StaticResource CaptionSecondaryTextBlockStyle}"
@@ -115,23 +134,25 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
-                                        <!-- 联系人信息 -->
-                                        <StackPanel Spacing="2">
-                                            <TextBlock Text="{x:Bind Email}" FontWeight="SemiBold" />
+
+                                        <StackPanel Spacing="6">
+                                            <TextBlock Text="{x:Bind Email}" FontWeight="SemiBold" TextWrapping="Wrap" />
                                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                                <TextBlock Text="{x:Bind Status}"
+                                                <TextBlock Text="{x:Bind local:EmergencyAccessPage.FormatStatus(Status)}"
                                                            Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
                                                 <TextBlock Text="|"
                                                            Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                                                <TextBlock Text="{x:Bind Type}"
+                                                <TextBlock Text="{x:Bind local:EmergencyAccessPage.FormatAccessType(Type)}"
                                                            Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
                                             </StackPanel>
+                                            <TextBlock Text="{x:Bind local:EmergencyAccessPage.FormatWaitTime(WaitTimeDays)}" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                                            <TextBlock Text="{x:Bind local:EmergencyAccessPage.FormatStatusHelp(Status, Type)}" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
                                         </StackPanel>
-                                        <!-- 操作按钮：只显示当前状态允许的命令 -->
+
                                         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
                                             <Button AutomationProperties.AutomationId="EmergencyConfirmButton"
-                                                    Content="确认"
+                                                    Content="确认联系人"
                                                     Tag="{x:Bind}"
                                                     Click="OnConfirmClick"
                                                     Visibility="{x:Bind local:EmergencyAccessPage.ShowConfirm(Status), Mode=OneTime}" />
@@ -141,7 +162,7 @@
                                                     Click="OnReinviteClick"
                                                     Visibility="{x:Bind local:EmergencyAccessPage.ShowReinvite(Status), Mode=OneTime}" />
                                             <Button AutomationProperties.AutomationId="EmergencyApproveButton"
-                                                    Content="批准"
+                                                    Content="立即批准访问"
                                                     Tag="{x:Bind}"
                                                     Click="OnApproveClick"
                                                     Style="{ThemeResource AccentButtonStyle}"
@@ -157,7 +178,7 @@
                                                     Click="OnRemoveContactClick"
                                                     Visibility="{x:Bind local:EmergencyAccessPage.ShowRemove(Status), Mode=OneTime}" />
                                             <Button AutomationProperties.AutomationId="EmergencyUpdateButton"
-                                                    Content="修改"
+                                                    Content="修改权限"
                                                     Tag="{x:Bind}"
                                                     Click="OnUpdateClick"
                                                     Visibility="{x:Bind local:EmergencyAccessPage.ShowUpdate(Status), Mode=OneTime}" />
@@ -169,9 +190,9 @@
                     </ListView>
                 </StackPanel>
 
-                <!-- ══════ 受托方视角：信任我的账户 ═══════════════════════════════ -->
+
                 <StackPanel Spacing="8">
-                    <TextBlock Text="信任我的账户（受托方）"
+                    <TextBlock Text="信任我的账户"
                                Style="{StaticResource SectionHeaderTextBlockStyle}" />
 
                     <TextBlock x:Name="GrantedEmptyText"
@@ -203,20 +224,22 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
-                                        <!-- 授予方信息 -->
-                                        <StackPanel Spacing="2">
-                                            <TextBlock Text="{x:Bind Email}" FontWeight="SemiBold" />
+
+                                        <StackPanel Spacing="6">
+                                            <TextBlock Text="{x:Bind Email}" FontWeight="SemiBold" TextWrapping="Wrap" />
                                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                                <TextBlock Text="{x:Bind Status}"
+                                                <TextBlock Text="{x:Bind local:EmergencyAccessPage.FormatStatus(Status)}"
                                                            Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
                                                 <TextBlock Text="|"
                                                            Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                                                <TextBlock Text="{x:Bind Type}"
+                                                <TextBlock Text="{x:Bind local:EmergencyAccessPage.FormatAccessType(Type)}"
                                                            Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
                                             </StackPanel>
+                                            <TextBlock Text="{x:Bind local:EmergencyAccessPage.FormatWaitTime(WaitTimeDays)}" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                                            <TextBlock Text="{x:Bind local:EmergencyAccessPage.FormatStatusHelp(Status, Type)}" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
                                         </StackPanel>
-                                        <!-- 操作按钮：只显示当前状态允许的命令 -->
+
                                         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
                                             <Button AutomationProperties.AutomationId="EmergencyInitiateButton"
                                                     Content="发起紧急访问"
@@ -224,7 +247,7 @@
                                                     Click="OnInitiateClick"
                                                     Visibility="{x:Bind local:EmergencyAccessPage.ShowInitiate(Status), Mode=OneTime}" />
                                             <Button AutomationProperties.AutomationId="EmergencyViewButton"
-                                                    Content="查看密码库"
+                                                    Content="读取密码库"
                                                     Tag="{x:Bind}"
                                                     Click="OnViewClick"
                                                     Visibility="{x:Bind local:EmergencyAccessPage.ShowView(Status, Type), Mode=OneTime}" />
@@ -241,7 +264,7 @@
                     </ListView>
                 </StackPanel>
 
-                <!-- ══════ 已恢复的密码库（View 命令本次结果，只读）══════════════ -->
+
                 <StackPanel Spacing="8"
                             Visibility="{x:Bind ViewModel.HasRecoveredItems, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <TextBlock Text="已恢复的密码库条目（只读）"

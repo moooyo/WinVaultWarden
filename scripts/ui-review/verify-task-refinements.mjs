@@ -1,0 +1,58 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {createRequire} from 'node:module';
+import {fileURLToPath,pathToFileURL} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+const out=path.join(root,'docs/ui-review/fluent-redesign');
+const require=createRequire(import.meta.url);
+const runtime=process.env.UI_REVIEW_NODE_MODULES||path.join(process.env.USERPROFILE,'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules');
+const {chromium}=require(path.join(runtime,'playwright'));
+const browser=await chromium.launch({channel:'msedge',headless:true});
+const page=await browser.newPage({viewport:{width:1280,height:900}});
+const checks=[],errors=[];
+page.on('pageerror',error=>errors.push(error.message));
+const check=(name,pass,details)=>checks.push({name,pass:!!pass,...(details?{details}:{})});
+const open=async id=>{await page.goto(pathToFileURL(path.join(out,'frames',id+'.html')).href);await page.locator('body[data-scene-id]').waitFor();};
+const positions=[];
+for(const id of ['vault-no-selection','send-overview','generator-password','settings-security']){
+  await open(id);
+  check(id+' uses contextual vault navigation',await page.locator('.nav-vault-context').count()===(id.startsWith('vault-')?1:0));
+  positions.push(await page.locator('[aria-label="Main navigation"] [data-page="vault"]').boundingBox());
+}
+check('Primary navigation positions remain stable',positions.every(x=>x&&Math.abs(x.y-positions[0].y)<1));
+await open('vault-detail-login');
+const password=page.locator('[data-v-field="password"] [data-v-bind="password"]');
+const copy=page.getByRole('button',{name:'Copy password',exact:true});
+check('Password copy is a visible labelled action',await copy.isVisible());
+const masked=await password.textContent();
+await copy.click();
+check('Ordinary copy keeps the password masked',await password.textContent()===masked);
+await open('vault-reprompt');
+await page.locator('[data-close-modal]').click();
+const protectedPassword=page.locator('[data-v-field="password"] [data-v-bind="password"]');
+const protectedMask=await protectedPassword.textContent();
+await page.getByRole('button',{name:'Copy password',exact:true}).click();
+await page.locator('.v-local-dialog').waitFor();
+check('Protected copying has its own verification explanation',(await page.locator('.v-local-dialog').innerText()).includes('Copying does not reveal'));
+await page.locator('.v-local-dialog input').fill('synthetic-preview-only');
+await page.locator('[data-v-dialog-accept]').click();
+check('Protected copy does not unmask the value',await protectedPassword.textContent()===protectedMask);
+await open('vault-editor-login');
+const matching=page.locator('.v-match-details').first();
+check('Website matching is initially collapsed',await matching.getAttribute('open')===null);
+check('Existing matching rule stays visible',(await matching.locator('summary').innerText()).includes('Default'));
+await matching.locator('summary').click();
+await matching.locator('select').selectOption('3');
+await matching.locator('summary').click();
+check('Nondefault matching rule remains visible while collapsed',(await matching.locator('summary').innerText()).includes('Exact'));
+await page.setViewportSize({width:960,height:720});
+for(const id of ['vault-detail-login','send-overview','vault-editor-login']){
+  await open(id);
+  const lock=await page.getByRole('button',{name:'Lock vault',exact:true}).boundingBox();
+  check(id+' retains Lock at the smaller viewport',lock&&lock.y>=0&&lock.y+lock.height<=720);
+}
+await browser.close();
+const report={generatedAt:new Date().toISOString(),scope:'Focused proposal task-flow refinements; no account operations or real clipboard writes',checks,errors,pass:checks.every(x=>x.pass)&&!errors.length};
+await fs.writeFile(path.join(out,'task-flow-refinement-validation.json'),JSON.stringify(report,null,2));
+console.log(JSON.stringify({checks:checks.length,failed:checks.filter(x=>!x.pass),errors,pass:report.pass},null,2));
+if(!report.pass)process.exitCode=1;

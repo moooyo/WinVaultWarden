@@ -34,11 +34,12 @@ public sealed class ClipboardService : IClipboardService
 
         lock (_gate)
         {
-            Clipboard.SetContentWithOptions(package, new ClipboardContentOptions
+            if (!Clipboard.SetContentWithOptions(package, new ClipboardContentOptions
             {
                 IsAllowedInHistory = false,
                 IsRoamable = false,
-            });
+            }))
+                throw new InvalidOperationException("The protected clipboard write was not accepted.");
 
             StopTimerNoLock();
             _latestWrite = write;

@@ -1,0 +1,1251 @@
+[
+  {
+    "sceneId": "vault-overview",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P1",
+        "issue": "All login rows route only by cipher type, so clicking GitHub, Google, Amazon, Reddit, Router, or Shared console opens Contoso Cloud credentials (redesign-frame.mjs:138).",
+        "fix": "Route selection by unique item identity and retain the selected item name, username, owner, folder, and list highlight in its detail view.",
+        "status": "resolved-in-proposal",
+        "resolution": "Every login has a unique item ID and a matching detail scene. Editing occurs from the current item template."
+      },
+      {
+        "severity": "P1",
+        "issue": "The Add item command routes to a populated Edit login form; there is no genuine creation composition (redesign-frame.mjs vaultList and editor).",
+        "fix": "Provide an Add menu and a distinct blank New item scene with a writable destination, required fields, and Create action.",
+        "status": "resolved-in-proposal",
+        "resolution": "Add opens a genuinely blank New item form with a required name, type choice and destination controls."
+      },
+      {
+        "severity": "P2",
+        "issue": "The overview claims coverage of favorites, saved views, sort/filter, folders and organizations, while those controls only produce a generic preview toast and favorites have no discoverable destination.",
+        "fix": "Make the representative navigation/filter menus operable in the proposal and add explicit empty-folder, organization and saved-view states; label any remaining static affordances in review metadata.",
+        "status": "resolved-for-visible-scope",
+        "resolution": "Favorites, all three folders, organization, archive, trash, sort and filters now have meaningful paths. Saved views remain outside the visible proposal scope."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Every login has a unique item ID and a matching detail scene. Editing occurs from the current item template. Add opens a genuinely blank New item form with a required name, type choice and destination controls. Favorites, all three folders, organization, archive, trash, sort and filters now have meaningful paths. Saved views remain outside the visible proposal scope.",
+    "initialVerdict": "The three-pane hierarchy is visually calm in both themes, but item identity and create/navigation behavior need correction before sign-off.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [
+        "Saved-view creation and management are not individually rendered in the revised gallery."
+      ],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-overview-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-no-selection",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P1",
+        "issue": "All login rows route only by cipher type, so clicking GitHub, Google, Amazon, Reddit, Router, or Shared console opens Contoso Cloud credentials (redesign-frame.mjs:138).",
+        "fix": "Route selection by unique item identity and retain the selected item name, username, owner, folder, and list highlight in its detail view.",
+        "status": "resolved-in-proposal",
+        "resolution": "Each visible item routes to its own record; returning to My vault clears detail selection."
+      },
+      {
+        "severity": "P2",
+        "issue": "Folder counts are hardcoded as Work 4, Personal 6, Finance 1 although the synthetic list has only three Work items and one organization item.",
+        "fix": "Derive counts and ownership labels from one scene data set; keep zero selection and no credential content on first entry.",
+        "status": "resolved-in-proposal",
+        "resolution": "All 14 active records share one fixture set. Counts are Work 3, Personal 8, Finance 2 and one organization item."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Each visible item routes to its own record; returning to My vault clears detail selection. All 14 active records share one fixture set. Counts are Work 3, Personal 8, Finance 2 and one organization item.",
+    "initialVerdict": "The populated-list/no-selection composition is correct and spacious; preserve it after correcting shared navigation data.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-no-selection-light.png",
+      "darkThemeVisualReview": "Final dark PNG visually reviewed as a representative theme sample."
+    }
+  },
+  {
+    "sceneId": "vault-detail-login",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "The item is marked Created 15 Sep 2026 while its password was updated 12 days ago and its history contains 3 Sep 2026.",
+        "fix": "Use one coherent fixture timeline with creation before all revision/history dates.",
+        "status": "resolved-in-proposal",
+        "resolution": "Creation is 15 Aug 2026, before the 3 Sep password update and 13 Sep item edit."
+      },
+      {
+        "severity": "P2",
+        "issue": "The catalog maps vault.login.passkeys to this scene, but no Passkey section exists although VaultPage.xaml:32 and LoginDetail expose passkey metadata.",
+        "fix": "Add a collapsed Passkeys section with relying-party identity, account, and created date; give password history its existing masked reveal/copy interaction.",
+        "status": "resolved-in-proposal",
+        "resolution": "A collapsed passkey section shows relying-party and account information. Password history uses protected field controls."
+      },
+      {
+        "severity": "P2",
+        "issue": "The list marks Contoso Cloud as a favorite while the detail toolbar has an unselected Favorite item button.",
+        "fix": "Bind the toolbar favorite state to the selected item and provide an explicit pressed state and Remove from favorites label.",
+        "status": "resolved-in-proposal",
+        "resolution": "The detail favorite state now matches the selected record and uses an explicit pressed state."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Creation is 15 Aug 2026, before the 3 Sep password update and 13 Sep item edit. A collapsed passkey section shows relying-party and account information. Password history uses protected field controls. The detail favorite state now matches the selected record and uses an explicit pressed state.",
+    "initialVerdict": "Credential grouping, masking, TOTP hierarchy and per-field actions are strong; metadata and advanced credential coverage are incomplete.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-detail-login-light.png",
+      "darkThemeVisualReview": "Final dark PNG visually reviewed as a representative theme sample."
+    }
+  },
+  {
+    "sceneId": "vault-detail-card",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "Opening Edit changes the demonstrated folder from Finance in this detail to Work in the shared editor.",
+        "fix": "Use the same card record and Finance folder in list, detail and editor.",
+        "status": "resolved-in-proposal",
+        "resolution": "Finance is retained across the list, detail and editor."
+      },
+      {
+        "severity": "P3",
+        "issue": "The decorative payment-card preview repeats cardholder, expiry and number data, taking almost 180 pixels before the copyable fields.",
+        "fix": "Keep a smaller card summary, or place copyable card fields within the preview so the primary task remains above the fold.",
+        "status": "resolved-in-proposal",
+        "resolution": "The large duplicate card illustration has been replaced by a compact brand/last-four summary."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Finance is retained across the list, detail and editor. The large duplicate card illustration has been replaced by a compact brand/last-four summary.",
+    "initialVerdict": "Card number and CVV remain masked and the summary is recognizable; reduce repetition and preserve folder continuity.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-detail-card-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-detail-identity",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "The list fixture places Alex Review in Personal, but the detail breadcrumb states Work.",
+        "fix": "Read the folder from the selected fixture rather than the type fallback.",
+        "status": "resolved-in-proposal",
+        "resolution": "The breadcrumb now uses the Personal folder from the record."
+      },
+      {
+        "severity": "P2",
+        "issue": "The detail contains Alex Morgan Review, username and a masked identification number, but Edit omits Morgan and the identification/username fields.",
+        "fix": "Show the same identity record in both views and retain those fields in a clearly labeled More identity fields disclosure.",
+        "status": "resolved-in-proposal",
+        "resolution": "All identity and address fields are retained in the editor, including middle name and protected identification values."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. The breadcrumb now uses the Personal folder from the record. All identity and address fields are retained in the editor, including middle name and protected identification values.",
+    "initialVerdict": "Identity/contact grouping and protected identification number are clear; folder and editor continuity need revision.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-detail-identity-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-detail-note",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "Recovery plan is a Personal item in the fixture, but its breadcrumb states Work; its edited date also precedes the displayed creation date.",
+        "fix": "Use the selected note folder and a coherent created/edited timeline.",
+        "status": "resolved-in-proposal",
+        "resolution": "Personal placement and an internally consistent August/September timeline are retained."
+      },
+      {
+        "severity": "P2",
+        "issue": "The detail has three recovery steps and additional paragraphs while the editor only carries two steps.",
+        "fix": "Use one note-content fixture for read and edit views so entering and saving the editor never appears to lose text.",
+        "status": "resolved-in-proposal",
+        "resolution": "The detail and editor share one complete note text fixture."
+      },
+      {
+        "severity": "P3",
+        "issue": "The note content has no visible copy action despite copy being a frequent note task.",
+        "fix": "Add a quiet Copy note action that uses the same protected clipboard feedback as other vault fields.",
+        "status": "resolved-in-proposal",
+        "resolution": "A Copy note action provides the protected clipboard preview feedback."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Personal placement and an internally consistent August/September timeline are retained. The detail and editor share one complete note text fixture. A Copy note action provides the protected clipboard preview feedback.",
+    "initialVerdict": "The reading layout and attachment grouping are elegant, but the edit representation does not preserve the shown content.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-detail-note-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-detail-ssh",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "Reveal key and Copy private key are static buttons and never show the proposed secret interaction; the fingerprint/public key use the proportional value style.",
+        "fix": "Add a synthetic masked/revealed private-key state and consistent copy preview feedback; use a monospaced, wrapping value treatment for key material and fingerprints.",
+        "status": "resolved-in-proposal",
+        "resolution": "Key material uses wrapping monospace text; private-key reveal and copy are handled by the proposal interaction layer."
+      },
+      {
+        "severity": "P2",
+        "issue": "The linked SSH editor shows an empty private-key field despite viewing an existing stored key.",
+        "fix": "Preserve an existing masked private-key value when editing and distinguish replacement from first-time entry.",
+        "status": "resolved-in-proposal",
+        "resolution": "The stored synthetic private key is retained in a masked multiline editor."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Key material uses wrapping monospace text; private-key reveal and copy are handled by the proposal interaction layer. The stored synthetic private key is retained in a masked multiline editor.",
+    "initialVerdict": "Separate private-key treatment is appropriate and readable in both themes; key inspection and edit continuity need refinement.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-detail-ssh-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-detail-bank",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "This scene prepends an extra bank record but still shows 11 items, and the fixture folder is Personal while the breadcrumb says Finance.",
+        "fix": "Include all type fixtures in a coherent data set and derive count and folder metadata.",
+        "status": "resolved-in-proposal",
+        "resolution": "The bank record belongs to the canonical active set; its count and Finance folder are shared."
+      },
+      {
+        "severity": "P2",
+        "issue": "The visible Server support required banner conflicts with an enabled Edit action and does not say whether this connected account can actually edit the item.",
+        "fix": "Show the supported editable state without the banner, or show a clearly read-only unsupported state with Edit disabled and a concise reason.",
+        "status": "resolved-in-proposal",
+        "resolution": "The review fixture explicitly assumes supported new cipher types, while implementation capability requirements remain in the documentation."
+      },
+      {
+        "severity": "P2",
+        "issue": "Branch number, PIN, SWIFT/BIC and bank contact phone from BankAccountDetail are not available in any disclosure.",
+        "fix": "Add an Additional bank details disclosure that retains source masking for branch number, PIN and SWIFT/BIC.",
+        "status": "resolved-in-proposal",
+        "resolution": "Branch number, PIN, SWIFT/BIC and contact phone are retained in Additional bank details with masking."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. The bank record belongs to the canonical active set; its count and Finance folder are shared. The review fixture explicitly assumes supported new cipher types, while implementation capability requirements remain in the documentation. Branch number, PIN, SWIFT/BIC and contact phone are retained in Additional bank details with masking.",
+    "initialVerdict": "Sensitive bank fields are masked correctly, but capability clarity, metadata and extended fields require revision.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-detail-bank-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-detail-license",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "The extra license record yields 12 rows but the count says 11, and Personal in the fixture becomes Work in the breadcrumb.",
+        "fix": "Derive the scene metadata from one license record and list.",
+        "status": "resolved-in-proposal",
+        "resolution": "The canonical license record keeps its Personal folder and the shared active count."
+      },
+      {
+        "severity": "P2",
+        "issue": "The support banner does not establish whether editing is available, while Edit is enabled.",
+        "fix": "Provide separate supported and read-only states instead of an unconditional technical banner.",
+        "status": "resolved-in-proposal",
+        "resolution": "The editable review example no longer has an ambiguous unconditional support banner; capability assumptions are documented outside the product flow."
+      },
+      {
+        "severity": "P2",
+        "issue": "Date of birth, issuing authority and license class exist in DriversLicenseDetail but have no visible or expandable presentation.",
+        "fix": "Add More license details, preserving the source-masked date of birth and explicit issuing-country/region labels.",
+        "status": "resolved-in-proposal",
+        "resolution": "More license details includes date of birth, issuing authority and class with source masking."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. The canonical license record keeps its Personal folder and the shared active count. The editable review example no longer has an ambiguous unconditional support banner; capability assumptions are documented outside the product flow. More license details includes date of birth, issuing authority and class with source masking.",
+    "initialVerdict": "Number/date masking follows source; the compact layout needs complete secondary fields and accurate context.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-detail-license-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-detail-passport",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "The extra passport record yields 12 rows but the count says 11, and its Personal folder becomes Work in the breadcrumb.",
+        "fix": "Read count and folder from the same fixture set.",
+        "status": "resolved-in-proposal",
+        "resolution": "The passport record is counted once and consistently belongs to Personal."
+      },
+      {
+        "severity": "P2",
+        "issue": "The support banner plus enabled Edit action leaves the actual connected-account capability ambiguous.",
+        "fix": "Render either an editable supported state or an explained read-only state.",
+        "status": "resolved-in-proposal",
+        "resolution": "The proposal uses a documented supported capability fixture without a contradictory enabled-action warning."
+      },
+      {
+        "severity": "P2",
+        "issue": "Birth date, sex, birthplace, passport type, national identification number and issuing authority exist in PassportDetail but have no disclosure.",
+        "fix": "Add More passport details with the source masking semantics and unambiguous issuing-country labeling.",
+        "status": "resolved-in-proposal",
+        "resolution": "More passport details retains birth information, type, national ID and issuing authority with source masks."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. The passport record is counted once and consistently belongs to Personal. The proposal uses a documented supported capability fixture without a contradictory enabled-action warning. More passport details retains birth information, type, national ID and issuing authority with source masks.",
+    "initialVerdict": "Visible secret fields are correctly protected, but complete travel-document information and state clarity are still missing.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-detail-passport-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-editor-login",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P1",
+        "issue": "The Edit form offers a mutable Owner selector even though VaultViewModel.cs:881 calls ConfigureEditorDestinations(canChoose: false) for edits.",
+        "fix": "Show the current owner as read-only when editing. Keep ownership transfer as its own permission-aware operation; new items may choose a writable destination and required collections.",
+        "status": "resolved-in-proposal",
+        "resolution": "Owner is read-only in Edit; destination choice and required collections are available only in New."
+      },
+      {
+        "severity": "P2",
+        "issue": "The Additional options summary advertises Custom fields, but the disclosure only contains an empty Notes field and a reprompt toggle; VaultPage.xaml:1108 supports typed custom fields.",
+        "fix": "Include a real typed custom-field disclosure and favorite control, preserve existing values, and keep notes multiline.",
+        "status": "resolved-in-proposal",
+        "resolution": "Favorite, multiline notes, typed custom fields and reprompt remain available in explicit disclosures."
+      },
+      {
+        "severity": "P2",
+        "issue": "The detail shows two websites but the editor exposes only one Website field; CipherLogin and LoginEditorDraft hold multiple Uris and match modes.",
+        "fix": "Use a Websites group with Add website and a per-URI matching disclosure while preserving the existing URLs.",
+        "status": "resolved-in-proposal",
+        "resolution": "The website editor retains multiple URIs and per-URI matching controls."
+      },
+      {
+        "severity": "P2",
+        "issue": "The password-adjacent Generate action navigates away to the standalone Generator despite the Unsaved changes badge.",
+        "fix": "Use an in-editor generator flyout with explicit Use password and Cancel actions, preserving the rest of the draft.",
+        "status": "resolved-in-proposal",
+        "resolution": "Password generation occurs in an in-editor panel with Use password and Cancel, preserving the draft."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Owner is read-only in Edit; destination choice and required collections are available only in New. Favorite, multiline notes, typed custom fields and reprompt remain available in explicit disclosures. The website editor retains multiple URIs and per-URI matching controls. Password generation occurs in an in-editor panel with Use password and Cancel, preserving the draft.",
+    "initialVerdict": "Fixed type and anchored Save/Cancel are sound; destination and field continuity are not ready for implementation.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-editor-login-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-editor-card",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P1",
+        "issue": "The Edit form offers a mutable Owner selector even though VaultViewModel.cs:881 calls ConfigureEditorDestinations(canChoose: false) for edits.",
+        "fix": "Show the current owner as read-only when editing. Keep ownership transfer as its own permission-aware operation; new items may choose a writable destination and required collections.",
+        "status": "resolved-in-proposal",
+        "resolution": "Owner is read-only in Edit; transfer remains a separate reviewed action."
+      },
+      {
+        "severity": "P2",
+        "issue": "The Additional options summary advertises Custom fields, but the disclosure only contains an empty Notes field and a reprompt toggle; VaultPage.xaml:1108 supports typed custom fields.",
+        "fix": "Include a real typed custom-field disclosure and favorite control, preserve existing values, and keep notes multiline.",
+        "status": "resolved-in-proposal",
+        "resolution": "Common options and typed custom fields preserve their values in the local preview."
+      },
+      {
+        "severity": "P2",
+        "issue": "The card detail belongs to Finance, but the editor heading and folder control default to Work.",
+        "fix": "Carry the existing card folder into the editor.",
+        "status": "resolved-in-proposal",
+        "resolution": "The card remains in Finance in the heading and folder control."
+      },
+      {
+        "severity": "P3",
+        "issue": "Password-type inputs have no reveal affordance, making it difficult to review the card number or CVV before saving.",
+        "fix": "Use the native password-field reveal pattern while retaining default masking and clipboard protection.",
+        "status": "resolved-in-proposal",
+        "resolution": "All masked card inputs have an accessible reveal affordance."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Owner is read-only in Edit; transfer remains a separate reviewed action. Common options and typed custom fields preserve their values in the local preview. The card remains in Finance in the heading and folder control. All masked card inputs have an accessible reveal affordance.",
+    "initialVerdict": "The compact expiry/CVV row works well; ownership, folder and advanced-value preservation need fixes.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-editor-card-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-editor-identity",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P1",
+        "issue": "The Edit form offers a mutable Owner selector even though VaultViewModel.cs:881 calls ConfigureEditorDestinations(canChoose: false) for edits.",
+        "fix": "Show the current owner as read-only when editing. Keep ownership transfer as its own permission-aware operation; new items may choose a writable destination and required collections.",
+        "status": "resolved-in-proposal",
+        "resolution": "Owner is read-only while editing."
+      },
+      {
+        "severity": "P2",
+        "issue": "The Additional options summary advertises Custom fields, but the disclosure only contains an empty Notes field and a reprompt toggle; VaultPage.xaml:1108 supports typed custom fields.",
+        "fix": "Include a real typed custom-field disclosure and favorite control, preserve existing values, and keep notes multiline.",
+        "status": "resolved-in-proposal",
+        "resolution": "Favorite, notes, reprompt and actual custom fields are retained without fabricated empty fields."
+      },
+      {
+        "severity": "P2",
+        "issue": "The form drops the detail record middle name, username and identification number; the existing XAML has More identity fields and the model retains additional address fields.",
+        "fix": "Keep primary name/contact fields concise and add a complete secondary identity/address disclosure with source-appropriate masks.",
+        "status": "resolved-in-proposal",
+        "resolution": "The secondary identity disclosure retains the complete model fields and source-appropriate masks."
+      },
+      {
+        "severity": "P2",
+        "issue": "The editor shows Work for a Personal identity record.",
+        "fix": "Preserve the item folder and its breadcrumb.",
+        "status": "resolved-in-proposal",
+        "resolution": "Personal placement is retained."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Owner is read-only while editing. Favorite, notes, reprompt and actual custom fields are retained without fabricated empty fields. The secondary identity disclosure retains the complete model fields and source-appropriate masks. Personal placement is retained.",
+    "initialVerdict": "Basic contact fields are legible, but the current abbreviated form suggests lossy editing.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-editor-identity-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-editor-note",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P1",
+        "issue": "The Edit form offers a mutable Owner selector even though VaultViewModel.cs:881 calls ConfigureEditorDestinations(canChoose: false) for edits.",
+        "fix": "Show the current owner as read-only when editing. Keep ownership transfer as its own permission-aware operation; new items may choose a writable destination and required collections.",
+        "status": "resolved-in-proposal",
+        "resolution": "Owner is read-only while editing."
+      },
+      {
+        "severity": "P2",
+        "issue": "The Additional options summary advertises Custom fields, but the disclosure only contains an empty Notes field and a reprompt toggle; VaultPage.xaml:1108 supports typed custom fields.",
+        "fix": "Include a real typed custom-field disclosure and favorite control, preserve existing values, and keep notes multiline.",
+        "status": "resolved-in-proposal",
+        "resolution": "Favorite, reprompt and custom-field controls remain available; the duplicate Notes control is hidden for secure notes."
+      },
+      {
+        "severity": "P1",
+        "issue": "The Content editor and Additional options both expose independent note text, but the secure-note model stores its content in Cipher.Notes rather than a separate body property.",
+        "fix": "Use one multiline note-content editor and remove the duplicate Notes field for secure-note items.",
+        "status": "resolved-in-proposal",
+        "resolution": "The note uses one authoritative multiline body."
+      },
+      {
+        "severity": "P2",
+        "issue": "The edit sample loses the third step and paragraphs from the detail view and changes Personal to Work.",
+        "fix": "Use one content and folder fixture shared by the detail and editor.",
+        "status": "resolved-in-proposal",
+        "resolution": "The complete note content and Personal placement are shared between the two views."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Owner is read-only while editing. Favorite, reprompt and custom-field controls remain available; the duplicate Notes control is hidden for secure notes. The note uses one authoritative multiline body. The complete note content and Personal placement are shared between the two views.",
+    "initialVerdict": "The roomy writing surface is appropriate; one authoritative note body is required.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-editor-note-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-editor-ssh",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P1",
+        "issue": "The Edit form offers a mutable Owner selector even though VaultViewModel.cs:881 calls ConfigureEditorDestinations(canChoose: false) for edits.",
+        "fix": "Show the current owner as read-only when editing. Keep ownership transfer as its own permission-aware operation; new items may choose a writable destination and required collections.",
+        "status": "resolved-in-proposal",
+        "resolution": "Owner is read-only while editing."
+      },
+      {
+        "severity": "P2",
+        "issue": "The Additional options summary advertises Custom fields, but the disclosure only contains an empty Notes field and a reprompt toggle; VaultPage.xaml:1108 supports typed custom fields.",
+        "fix": "Include a real typed custom-field disclosure and favorite control, preserve existing values, and keep notes multiline.",
+        "status": "resolved-in-proposal",
+        "resolution": "Common options are complete and private values remain protected."
+      },
+      {
+        "severity": "P1",
+        "issue": "An existing SSH key opens with a blank private-key field and a ready Save changes button; CipherEditorDraft.Validate requires a private key, public key and fingerprint.",
+        "fix": "Preserve the masked stored key on edit, mark required fields, and show a clear invalid/validation state if key material is intentionally removed.",
+        "status": "resolved-in-proposal",
+        "resolution": "The existing synthetic private/public keys and fingerprint are retained and all required fields participate in save enablement."
+      },
+      {
+        "severity": "P2",
+        "issue": "The single-line key fields and lowercased ssh heading weaken key inspection clarity.",
+        "fix": "Retain SSH capitalization and provide a masked multiline key editor with readable monospace public key and fingerprint fields.",
+        "status": "resolved-in-proposal",
+        "resolution": "SSH capitalization is preserved and key material uses multiline monospace editors."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Owner is read-only while editing. Common options are complete and private values remain protected. The existing synthetic private/public keys and fingerprint are retained and all required fields participate in save enablement. SSH capitalization is preserved and key material uses multiline monospace editors.",
+    "initialVerdict": "Private key receives top priority, but the depicted edit state is invalid and must be corrected.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-editor-ssh-light.png",
+      "darkThemeVisualReview": "Final dark PNG visually reviewed as a representative theme sample."
+    }
+  },
+  {
+    "sceneId": "vault-editor-bank",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P1",
+        "issue": "The Edit form offers a mutable Owner selector even though VaultViewModel.cs:881 calls ConfigureEditorDestinations(canChoose: false) for edits.",
+        "fix": "Show the current owner as read-only when editing. Keep ownership transfer as its own permission-aware operation; new items may choose a writable destination and required collections.",
+        "status": "resolved-in-proposal",
+        "resolution": "Owner is read-only while editing."
+      },
+      {
+        "severity": "P2",
+        "issue": "The Additional options summary advertises Custom fields, but the disclosure only contains an empty Notes field and a reprompt toggle; VaultPage.xaml:1108 supports typed custom fields.",
+        "fix": "Include a real typed custom-field disclosure and favorite control, preserve existing values, and keep notes multiline.",
+        "status": "resolved-in-proposal",
+        "resolution": "Additional options include actual custom fields, notes, favorite and reprompt."
+      },
+      {
+        "severity": "P2",
+        "issue": "IBAN appears in detail but is absent in Edit; BranchNumber, Pin, SwiftCode and BankContactPhone are also omitted from the model-backed form.",
+        "fix": "Add an Additional bank fields disclosure retaining all values and masks.",
+        "status": "resolved-in-proposal",
+        "resolution": "IBAN and all secondary bank fields remain editable with source masks."
+      },
+      {
+        "severity": "P2",
+        "issue": "The form shows a capability warning but enables Save without establishing support; its Work folder also differs from Finance in detail.",
+        "fix": "Use an explicit supported state for the editable example, a separate blocked state for unsupported accounts, and consistent Finance placement.",
+        "status": "resolved-in-proposal",
+        "resolution": "The supported review capability is explicit in metadata; Finance placement is consistent."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Owner is read-only while editing. Additional options include actual custom fields, notes, favorite and reprompt. IBAN and all secondary bank fields remain editable with source masks. The supported review capability is explicit in metadata; Finance placement is consistent.",
+    "initialVerdict": "Common bank fields are easy to scan, but this is not a complete or clearly permitted editing state.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-editor-bank-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-editor-license",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P1",
+        "issue": "The Edit form offers a mutable Owner selector even though VaultViewModel.cs:881 calls ConfigureEditorDestinations(canChoose: false) for edits.",
+        "fix": "Show the current owner as read-only when editing. Keep ownership transfer as its own permission-aware operation; new items may choose a writable destination and required collections.",
+        "status": "resolved-in-proposal",
+        "resolution": "Owner is read-only while editing."
+      },
+      {
+        "severity": "P2",
+        "issue": "The Additional options summary advertises Custom fields, but the disclosure only contains an empty Notes field and a reprompt toggle; VaultPage.xaml:1108 supports typed custom fields.",
+        "fix": "Include a real typed custom-field disclosure and favorite control, preserve existing values, and keep notes multiline.",
+        "status": "resolved-in-proposal",
+        "resolution": "All common options retain their source meaning."
+      },
+      {
+        "severity": "P1",
+        "issue": "One Full name input replaces separate FirstName, MiddleName and LastName fields in DriversLicenseEditorDraft, with no lossless mapping.",
+        "fix": "Keep the source name parts as separate inputs; use a combined name only for the read view.",
+        "status": "resolved-in-proposal",
+        "resolution": "First, middle and last names are separate inputs, preserving lossless source mapping."
+      },
+      {
+        "severity": "P2",
+        "issue": "The form omits birth date, issuing country/authority and license class, and every field below the summary falls under generic options.",
+        "fix": "Add structured Personal information and Issuing information disclosures with preserved masks and explicit date-format hints.",
+        "status": "resolved-in-proposal",
+        "resolution": "Personal/issuing disclosures contain all remaining fields and masked dates include YYYY-MM-DD hints."
+      },
+      {
+        "severity": "P2",
+        "issue": "The warning-plus-enabled-Save state and Work folder disagree with conditional capability and Personal placement.",
+        "fix": "Separate editable/read-only capability states and preserve item context.",
+        "status": "resolved-in-proposal",
+        "resolution": "Personal placement and the documented capability fixture replace the contradictory old state."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Owner is read-only while editing. All common options retain their source meaning. First, middle and last names are separate inputs, preserving lossless source mapping. Personal/issuing disclosures contain all remaining fields and masked dates include YYYY-MM-DD hints. Personal placement and the documented capability fixture replace the contradictory old state.",
+    "initialVerdict": "Spacing is calm, but the name contract and missing fields make the form semantically incomplete.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-editor-license-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-editor-passport",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P1",
+        "issue": "The Edit form offers a mutable Owner selector even though VaultViewModel.cs:881 calls ConfigureEditorDestinations(canChoose: false) for edits.",
+        "fix": "Show the current owner as read-only when editing. Keep ownership transfer as its own permission-aware operation; new items may choose a writable destination and required collections.",
+        "status": "resolved-in-proposal",
+        "resolution": "Owner is read-only while editing."
+      },
+      {
+        "severity": "P2",
+        "issue": "The Additional options summary advertises Custom fields, but the disclosure only contains an empty Notes field and a reprompt toggle; VaultPage.xaml:1108 supports typed custom fields.",
+        "fix": "Include a real typed custom-field disclosure and favorite control, preserve existing values, and keep notes multiline.",
+        "status": "resolved-in-proposal",
+        "resolution": "Common options and existing custom fields are retained."
+      },
+      {
+        "severity": "P1",
+        "issue": "One Full name input replaces separate Surname and GivenName in PassportEditorDraft, with no safe reversible mapping.",
+        "fix": "Use Surname and Given names inputs matching the stored data.",
+        "status": "resolved-in-proposal",
+        "resolution": "Surname and Given names match the stored fields."
+      },
+      {
+        "severity": "P2",
+        "issue": "The editor omits nationality, birth information, passport type, national identification number and issuing authority present in the model.",
+        "fix": "Add personal/issuing detail disclosures with source-specific masking and clear date-format hints.",
+        "status": "resolved-in-proposal",
+        "resolution": "Personal and issuing disclosures retain every remaining passport model field and masking requirement."
+      },
+      {
+        "severity": "P2",
+        "issue": "Work placement and capability-warning-plus-enabled-Save do not match the Personal fixture or an actual permitted state.",
+        "fix": "Keep the item context stable and represent supported and blocked editing distinctly.",
+        "status": "resolved-in-proposal",
+        "resolution": "Personal placement is consistent; support is a design fixture assumption, not a backend assertion."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Owner is read-only while editing. Common options and existing custom fields are retained. Surname and Given names match the stored fields. Personal and issuing disclosures retain every remaining passport model field and masking requirement. Personal placement is consistent; support is a design fixture assumption, not a backend assertion.",
+    "initialVerdict": "The visual rhythm is good; field mapping, capability and preservation must be made explicit.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-editor-passport-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-batch",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "The selected set includes Google in Personal but is named Work logins and Personal vault / Work; all selected rows are already favorites while Add to favorites is offered.",
+        "fix": "Use a neutral 3 items selected heading, summarize mixed folders, and derive Add/Remove favorites from the selection.",
+        "status": "resolved-in-proposal",
+        "resolution": "The neutral selection heading reports actual owners and folders; the favorites action derives from the selection."
+      },
+      {
+        "severity": "P1",
+        "issue": "The Done button routes back to the same batch scene, and clicking a checkbox-shaped list row navigates to item detail instead of toggling selection.",
+        "fix": "Implement real selection controls and counts; Done must exit selection mode without changing which item is chosen.",
+        "status": "resolved-in-proposal",
+        "resolution": "Checkboxes change the selected set and count; Done returns to the no-selection vault."
+      },
+      {
+        "severity": "P2",
+        "issue": "Archive and ownership transfer appear enabled without a concrete compatible-permission state; source has separate collection add/remove commands.",
+        "fix": "Keep each operation distinct, present actual allowed actions, and explain disabled actions beside them.",
+        "status": "resolved-in-proposal",
+        "resolution": "Read-only organization selections disable incompatible mutations. Separate operations show their own targets and consequences."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. The neutral selection heading reports actual owners and folders; the favorites action derives from the selection. Checkboxes change the selected set and count; Done returns to the no-selection vault. Read-only organization selections disable incompatible mutations. Separate operations show their own targets and consequences.",
+    "initialVerdict": "The contextual action area is more coherent than scattered commands, but its identity, state and interaction are currently misleading.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-batch-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-empty",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P1",
+        "issue": "The true-empty scene still shows populated folder counts, a report badge, an organization, Archive 1 and Trash 1.",
+        "fix": "Render zero/absent counts and empty navigation appropriate to a new account; distinguish an empty filtered view from a true empty account.",
+        "status": "resolved-in-proposal",
+        "resolution": "An empty-account state has zero counts and the root shell hides sample folders and organization data."
+      },
+      {
+        "severity": "P1",
+        "issue": "Add a login opens populated Edit login rather than a new draft.",
+        "fix": "Connect the primary action to a blank New login state and provide a nearby secondary Import action.",
+        "status": "resolved-in-proposal",
+        "resolution": "The primary action opens the blank New item form; Import is adjacent."
+      },
+      {
+        "severity": "P3",
+        "issue": "Two large independent empty messages occupy both the list and detail panes, and Select remains enabled with zero items.",
+        "fix": "Use one primary onboarding message, keep the list quiet, and disable selection until rows exist.",
+        "status": "resolved-in-proposal",
+        "resolution": "One primary onboarding message remains, the list is quiet and batch selection is disabled."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. An empty-account state has zero counts and the root shell hides sample folders and organization data. The primary action opens the blank New item form; Import is adjacent. One primary onboarding message remains, the list is quiet and batch selection is disabled.",
+    "initialVerdict": "The onboarding action is visible, but the scene contradicts its true-empty purpose and needs a clean state.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-empty-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-no-results",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "The detail pane tells the user to select an item when the list contains no results, and the Clear search button only triggers a generic toast.",
+        "fix": "Use a specific no-results explanation and make Clear search restore the populated no-selection scene.",
+        "status": "resolved-in-proposal",
+        "resolution": "Search and filter reset are operable and the empty wording does not ask the user to select an absent row."
+      },
+      {
+        "severity": "P2",
+        "issue": "The scene advertises active filter recovery, but no active-filter chips or reset path are shown and Select remains available with zero results.",
+        "fix": "Show the query/filter scope and a clear reset action; disable batch selection when there are no matching rows.",
+        "status": "resolved-in-proposal",
+        "resolution": "The query, type and favorites filter define the result set, counts update and zero-result selection is disabled."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Search and filter reset are operable and the empty wording does not ask the user to select an absent row. The query, type and favorites filter define the result set, counts update and zero-result selection is disabled.",
+    "initialVerdict": "Keeping the query visible is correct; reduce duplicate empty imagery and make recovery actionable.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked. The follow-up reset-button spacing refinement was also rechecked in both themes.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-no-results-light.png",
+      "darkThemeVisualReview": "Final dark PNG visually reviewed as a representative theme sample."
+    }
+  },
+  {
+    "sceneId": "vault-loading",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "The first-load skeleton state asserts 11 items and populated navigation counts before data has loaded.",
+        "fix": "Show Loading or neutral skeleton counts until the current vault data is available.",
+        "status": "resolved-in-proposal",
+        "resolution": "Counts remain unknown until first loading completes."
+      },
+      {
+        "severity": "P2",
+        "issue": "Add and Select remain active during the represented pending state despite the catalog promising duplicate-command prevention and source CanStartVaultOperation guards.",
+        "fix": "Disable mutations and selection while the first load is pending, with a clear progress status; preserve already loaded rows for background sync instead of replacing them.",
+        "status": "resolved-in-proposal",
+        "resolution": "Loading blocks Add and Select; the separate offline and pending-save scenes retain their relevant context."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. Counts remain unknown until first loading completes. Loading blocks Add and Select; the separate offline and pending-save scenes retain their relevant context.",
+    "initialVerdict": "The skeleton rhythm is restrained; distinguish initial loading from background sync and preserve guarded commands.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked. The disabled New folder action was rechecked after the final shell refinement.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-loading-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-sync-error",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P1",
+        "issue": "The list says Sync unavailable while the detail simultaneously shows a green Synced status.",
+        "fix": "Replace the detail success claim with Offline or Last synced at a known time, using one shared sync state.",
+        "status": "resolved-in-proposal",
+        "resolution": "The detail status now says Offline with the last sync time, matching the warning."
+      },
+      {
+        "severity": "P2",
+        "issue": "The error says Retry when connected but provides no Retry action or last-success timestamp.",
+        "fix": "Provide a Retry sync action and clear cached-data timestamp, while retaining access to permitted local fields.",
+        "status": "resolved-in-proposal",
+        "resolution": "Retry sync has a pending state and preserves the saved data when the synthetic offline retry remains unavailable."
+      },
+      {
+        "severity": "P2",
+        "issue": "The catalog maps uncertain creation to this scene, but no retained-draft or duplicate-risk state is visible.",
+        "fix": "Add a separate pending-create scene with Check sync status and preserved draft; do not imply a blind retry of creation is safe.",
+        "status": "resolved-in-proposal",
+        "resolution": "A separate pending-save scene retains the draft and offers Check sync status without a duplicate Create command."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. The detail status now says Offline with the last sync time, matching the warning. Retry sync has a pending state and preserves the saved data when the synthetic offline retry remains unavailable. A separate pending-save scene retains the draft and offers Check sync status without a duplicate Create command.",
+    "initialVerdict": "The warning placement preserves cached usability, but the contradictory success status and missing recovery path are blocking review issues.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-sync-error-light.png",
+      "darkThemeVisualReview": "Final dark PNG visually reviewed as a representative theme sample."
+    }
+  },
+  {
+    "sceneId": "vault-reprompt",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "The dialog opens with keyboard focus on Cancel even though the main task is entering the master password, and Verify and reveal appears ready while the field is empty.",
+        "fix": "Focus the password field on entry and represent required-input/error feedback; retain Escape/Cancel as a safe exit.",
+        "status": "resolved-in-proposal",
+        "resolution": "The password field receives focus and verification stays disabled until it contains input."
+      },
+      {
+        "severity": "P2",
+        "issue": "After canceling the preview dialog, generic reveal buttons can expose synthetic data without retaining the protected-item gate, so the prototype does not express the advertised boundary.",
+        "fix": "Preserve a protected-item state until the illustrative verification flow succeeds, and label the synthetic verification behavior as preview-only.",
+        "status": "resolved-in-proposal",
+        "resolution": "Cancel and Escape retain the protected state; reveal, copy and Edit require the preview verification gate."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. The password field receives focus and verification stays disabled until it contains input. Cancel and Escape retain the protected state; reveal, copy and Edit require the preview verification gate.",
+    "initialVerdict": "Target identity, masked background and dialog hierarchy are clear; keyboard entry and protected-state continuity need correction.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-reprompt-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-permanent-delete",
+    "reviewed": true,
+    "findings": [
+      {
+        "severity": "P1",
+        "issue": "The permanent-delete confirmation sits over a normal My vault item with Edit rather than a Trash item; VaultPage.xaml:1347 limits the actual permanent-delete action to IsSelectedItemDeleted.",
+        "fix": "Add a Trash scene with the correct selected deleted item, Restore action and delete context, then open this dialog from that state.",
+        "status": "resolved-in-proposal",
+        "resolution": "The dialog opens over the selected Old VPN item in Trash and returns to that state on cancellation."
+      },
+      {
+        "severity": "P2",
+        "issue": "The dialog names Contoso Cloud only inside a warning paragraph instead of a dedicated target summary; other destructive families are not equivalent in scope or reversibility.",
+        "fix": "Show the item name, type and owner in a concise target card and keep separate review variants for move-to-trash, permanent delete, empty trash and attachment/folder deletion.",
+        "status": "resolved-in-proposal",
+        "resolution": "The exact item and ownership appear in a target card. Separate preview dialogs distinguish reversible trash moves, attachment deletion and batch actions."
+      }
+    ],
+    "verdict": "Revised proposal reviewed. The dialog opens over the selected Old VPN item in Trash and returns to that state on cancellation. The exact item and ownership appear in a target card. Separate preview dialogs distinguish reversible trash moves, attachment deletion and batch actions.",
+    "initialVerdict": "Destructive color, explicit permanence and safe Cancel focus are appropriate; the surrounding state is incorrect.",
+    "postReview": {
+      "status": "revised",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened every vault composition in an isolated local browser; no script errors or document-width overflow. Focused new/edit/selection/permission/folder interactions passed.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [
+        "Folder deletion and empty-trash variants remain related patterns rather than separately visible compositions."
+      ],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-permanent-delete-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-detail-github",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "GitHub retains alex.review, github.com and its Work folder. Its Edit form keeps the same identity, including after saving and reopening.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-detail-github-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-detail-google",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "Google retains alex@example.com and accounts.google.com, with Personal placement and the correct favorite state.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-detail-google-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-detail-amazon",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "Amazon retains its own name, username and website; it is the correct target for the reused-password report.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-detail-amazon-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-detail-shared",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "Shared console names Contoso Review / Engineering, hides the password without reveal/copy controls, disables Edit and shows no fabricated custom fields.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-detail-shared-light.png",
+      "darkThemeVisualReview": "Final dark PNG visually reviewed as a representative theme sample."
+    }
+  },
+  {
+    "sceneId": "vault-detail-reddit",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "Reddit retains alex-review and reddit.com as a distinct report target.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-detail-reddit-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-detail-router",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "Router retains admin and its documentation-range HTTP address so the unsafe-website report has a concrete target.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-detail-router-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-new-login",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "The initial form is blank; a required name controls Create item. Type-specific blank forms preserve the model contracts, including required SSH key material and organization collection choice.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-new-login-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-favorites",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "The list contains exactly the three favorite fixtures, with no selected item or exposed credential detail.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-favorites-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-folder-work",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "Work contains its three personal records and keeps the folder selection explicit.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-folder-work-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-folder-personal",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "Personal contains its eight records and is independently navigable.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-folder-personal-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-folder-finance",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "Finance contains its payment card and bank account, with an accurate two-item count.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-folder-finance-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-organization",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "Engineering is scoped to Contoso Review and contains one shared, read-only item. Selecting it preserves the organization identity and permissions.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-organization-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-archive",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "The archived Legacy email record has explicit archive context and an Unarchive action, distinct from deletion.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-archive-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-trash",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "Old VPN is shown as one deleted item with Restore and Delete permanently, and uses singular count wording.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-trash-light.png",
+      "darkThemeVisualReview": "Dark rendering is covered by the shared final artifact validation; this scene was not individually re-inspected in dark mode."
+    }
+  },
+  {
+    "sceneId": "vault-pending-save",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "The unconfirmed draft is retained, editing and duplicate creation are disabled, and Check sync status is the available recovery action.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-pending-save-light.png",
+      "darkThemeVisualReview": "Final dark PNG visually reviewed as a representative theme sample."
+    }
+  },
+  {
+    "sceneId": "vault-new-folder",
+    "reviewed": true,
+    "findings": [],
+    "verdict": "Create folder is disabled for an empty name. Confirmation creates an empty folder only in the local preview and explicitly reports that no server request was made.",
+    "postReview": {
+      "status": "new-composition-reviewed",
+      "implementedIn": "scripts/ui-review/redesign-vault.mjs",
+      "applicationCodeChanged": false,
+      "verification": "Opened in the isolated browser with the final module; no script errors or document-width overflow.",
+      "finalGalleryVisualReview": "Final light PNG visually reviewed at 1280 × 900 after the 98-scene render. Identity, hierarchy, visible controls, masks and state wording were checked.",
+      "remainingScope": [],
+      "lightImage": "docs/ui-review/fluent-redesign/renders/vault-new-folder-light.png",
+      "darkThemeVisualReview": "Final dark PNG visually reviewed as a representative theme sample."
+    }
+  }
+]

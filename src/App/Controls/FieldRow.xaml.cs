@@ -4,6 +4,8 @@ using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
 using Microsoft.Extensions.DependencyInjection;
+using App.Services;
+using System.Runtime.InteropServices;
 
 namespace App.Controls;
 
@@ -14,7 +16,41 @@ public sealed partial class FieldRow : UserControl
 
     private bool _revealed;
 
-    public FieldRow() => InitializeComponent();
+    private readonly DispatcherTimer _feedbackTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+
+    public FieldRow()
+    {
+        InitializeComponent();
+        DataContextChanged += (_, _) => { SetRevealed(false); ClearFeedback(); Render(); };
+        Unloaded += (_, _) => { SetRevealed(false); ClearFeedback(); Render(); };
+        _feedbackTimer.Tick += (_, _) => ClearFeedback();
+    }
+
+    public string CopyButtonText
+    {
+        get => (string)GetValue(CopyButtonTextProperty);
+        set => SetValue(CopyButtonTextProperty, value);
+    }
+    public static readonly DependencyProperty CopyButtonTextProperty =
+        DependencyProperty.Register(nameof(CopyButtonText), typeof(string), typeof(FieldRow),
+            new PropertyMetadata(string.Empty, (d, _) => ((FieldRow)d).UpdateCopyPresentation()));
+
+    public string EmptyValueText
+    {
+        get => (string)GetValue(EmptyValueTextProperty);
+        set => SetValue(EmptyValueTextProperty, value);
+    }
+    public static readonly DependencyProperty EmptyValueTextProperty =
+        DependencyProperty.Register(nameof(EmptyValueText), typeof(string), typeof(FieldRow),
+            new PropertyMetadata("未设置", (d, _) => ((FieldRow)d).Render()));
+
+    private void UpdateCopyPresentation()
+    {
+        var labelled = !string.IsNullOrWhiteSpace(CopyButtonText);
+        CopyLabel.Text = CopyButtonText ?? string.Empty;
+        CopyLabel.Visibility = labelled ? Visibility.Visible : Visibility.Collapsed;
+        CopyButton.Style = (Style)Resources[labelled ? "FieldRowTextCopyButtonStyle" : "FieldRowIconCopyButtonStyle"];
+    }
 
     public string Label
     {
@@ -80,6 +116,7 @@ public sealed partial class FieldRow : UserControl
     // 新条目的密码/卡号/私钥会未经点击直接以明文渲染(S3:跨条目机密泄露)。
     private void OnValueChanged()
     {
+        ClearFeedback();
         if (IsSecret && _revealed)
             SetRevealed(false);
         Render();
@@ -107,8 +144,27 @@ public sealed partial class FieldRow : UserControl
 
     private void Render()
     {
-        ValueText.Text = IsSecret && !_revealed ? new string('•', 8) : Value;
+        var empty = string.IsNullOrEmpty(Value);
+        ValueText.Text = empty ? EmptyValueText : IsSecret && !_revealed ? new string('•', 8) : Value;
+        CopyButton.IsEnabled = !empty;
+        RevealButton.IsEnabled = !empty;
+        OpenButton.IsEnabled = !empty;
         UpdateRowVisibility();
+    }
+
+    private void ClearFeedback()
+    {
+        _feedbackTimer.Stop();
+        CopyFeedback.Text = string.Empty;
+        CopyFeedback.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowFeedback(string text)
+    {
+        CopyFeedback.Text = text;
+        CopyFeedback.Visibility = Visibility.Visible;
+        _feedbackTimer.Stop();
+        _feedbackTimer.Start();
     }
 
     // HideWhenEmpty=true 且 Value 为空 → 整个 FieldRow 折叠。
@@ -123,6 +179,7 @@ public sealed partial class FieldRow : UserControl
     // FieldRow 只负责遮蔽/揭示与复制已授权的 Value。
     private void OnReveal(object sender, RoutedEventArgs e)
     {
+        if (string.IsNullOrEmpty(Value)) return;
         // 条目级门禁已在详情层完成(未授权时 Value 本身即脱敏),FieldRow 只负责遮蔽/揭示已授权的 Value。
         SetRevealed(!_revealed);
         Render();
@@ -131,26 +188,36 @@ public sealed partial class FieldRow : UserControl
     private void OnCopy(object sender, RoutedEventArgs e)
     {
         var value = Value ?? string.Empty;
+        if (value.Length == 0) return;
         var clipboard = global::App.App.Services?.GetService<global::App.Services.IClipboardService>();
-        if (clipboard is null)
+        var lifecycle = global::App.App.Services?.GetService<IAppLifecycleCoordinator>();
+        try
         {
-            SetProtectedClipboardText(value);
-            return;
+            bool Write()
+            {
+                if (clipboard is null) SetProtectedClipboardText(value);
+                else clipboard.SetText(value);
+                return true;
+            }
+            if (lifecycle is not null ? lifecycle.TryRunSensitive(Write) : Write())
+                ShowFeedback($"已复制{Label}");
         }
-
-        // Reveal state affects presentation only. Every vault field uses the protected clipboard policy.
-        clipboard.SetText(value);
+        catch (Exception exception) when (exception is ExternalException or InvalidOperationException)
+        {
+            ShowFeedback("复制失败，请重试。");
+        }
     }
 
     private static void SetProtectedClipboardText(string value)
     {
         var package = new DataPackage();
         package.SetText(value);
-        Clipboard.SetContentWithOptions(package, new ClipboardContentOptions
+        if (!Clipboard.SetContentWithOptions(package, new ClipboardContentOptions
         {
             IsAllowedInHistory = false,
             IsRoamable = false,
-        });
+        }))
+            throw new InvalidOperationException("The protected clipboard write was not accepted.");
     }
 
     private async void OnOpen(object sender, RoutedEventArgs e)

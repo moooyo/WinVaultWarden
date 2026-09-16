@@ -9,6 +9,50 @@ namespace App.Tests;
 public class ImportExportViewModelTests
 {
     [Fact]
+    public void SelectedFile_IsIdentifiedAndFormatChangeRequiresNewPreview()
+    {
+        var vm = Build(new StubImport(2, 1));
+        using var operation = vm.BeginOperation(ImportExportOperationKind.ChooseImportFile).Value!;
+        vm.ApplySelectedImportFile(operation, "review.json", "payload");
+
+        Assert.Equal("review.json", vm.SelectedImportFileName);
+        Assert.True(vm.CanImport);
+        vm.SelectedImportFormat = ImportFormat.Csv;
+        Assert.False(vm.CanImport);
+        Assert.True(vm.CanPreviewAgain);
+        Assert.Equal("review.json", vm.SelectedImportFileName);
+    }
+
+    [Fact]
+    public async Task EmptyPreview_CannotImportOrCallService()
+    {
+        var import = new StubImport(0, 0);
+        var vm = Build(import);
+        vm.ImportContent = "empty vault";
+        vm.PreviewCurrentImport();
+
+        Assert.True(vm.HasValidPreview);
+        Assert.False(vm.CanImport);
+        var result = await vm.DoImportAsync();
+        Assert.False(result.IsSuccess);
+        Assert.Equal(0, import.ImportCalls);
+    }
+
+    [Fact]
+    public void ClearSensitive_RemovesSelectedFileAndPreview()
+    {
+        var vm = Build(new StubImport(1, 0));
+        using var operation = vm.BeginOperation(ImportExportOperationKind.ChooseImportFile).Value!;
+        vm.ApplySelectedImportFile(operation, "private-vault.json", "payload");
+
+        vm.ClearSensitive();
+
+        Assert.Null(vm.SelectedImportFileName);
+        Assert.False(vm.CanPreviewAgain);
+        Assert.False(vm.CanImport);
+    }
+
+    [Fact]
     public void PreviewImport_SuccessPublishesCountsAndTerminalState()
     {
         var import = new StubImport(2, 1);

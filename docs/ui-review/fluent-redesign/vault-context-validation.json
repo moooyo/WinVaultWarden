@@ -1,0 +1,328 @@
+{
+  "generatedAt": "2026-09-16T03:56:20.945Z",
+  "scope": "memory-only-review-gallery-navigation",
+  "proposalOnly": true,
+  "applicationRuntimeTested": false,
+  "backendTested": false,
+  "methodology": [
+    "Exercise actual generated gallery controls and framed proposals in headless Microsoft Edge.",
+    "Check list scope, search, filters, sorting, scroll, focus, selection, theme reload, and manual review navigation.",
+    "Use the shell navigation function only to simulate returning after authentication; no authentication result is asserted.",
+    "Instrument web storage writes and outgoing context messages; inspect cookies without saving browser state."
+  ],
+  "flows": [
+    {
+      "name": "Search, filters, detail, and back preserve keyboard context",
+      "pass": true,
+      "checks": [
+        {
+          "name": "The clicked record remains the selected detail",
+          "pass": true
+        },
+        {
+          "name": "Search and every list filter survive opening details",
+          "pass": true
+        },
+        {
+          "name": "Back restores results without automatically selecting an item",
+          "pass": true
+        },
+        {
+          "name": "Back returns keyboard focus to the opened row",
+          "pass": true
+        },
+        {
+          "name": "No browser script errors in this flow",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "Scroll position survives opening and closing details",
+      "pass": true,
+      "checks": [
+        {
+          "name": "The fixture actually has a scrolled list",
+          "pass": true,
+          "detail": {
+            "scrollTop": 369
+          }
+        },
+        {
+          "name": "Opening details retains list scroll",
+          "pass": true
+        },
+        {
+          "name": "Back retains list scroll and row focus",
+          "pass": true
+        },
+        {
+          "name": "No browser script errors in this flow",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "Work folder retains its allowed rows and return destination",
+      "pass": true,
+      "checks": [
+        {
+          "name": "Details retain the Work scope and exact allowed rows",
+          "pass": true
+        },
+        {
+          "name": "The navigation highlights the originating Work folder",
+          "pass": true
+        },
+        {
+          "name": "Clearing search cannot reveal records outside the folder",
+          "pass": true
+        },
+        {
+          "name": "Back returns to an unselected Work folder",
+          "pass": true
+        },
+        {
+          "name": "No browser script errors in this flow",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "Favorites and organization details preserve scope navigation",
+      "pass": true,
+      "checks": [
+        {
+          "name": "Favorite details retain the favorite rows and active navigation",
+          "pass": true
+        },
+        {
+          "name": "Favorite results return without a selected item",
+          "pass": true
+        },
+        {
+          "name": "Organization details keep the shared row and organization navigation",
+          "pass": true
+        },
+        {
+          "name": "The visible scope label names the organization",
+          "pass": true
+        },
+        {
+          "name": "Organization results return without a selected item",
+          "pass": true
+        },
+        {
+          "name": "No browser script errors in this flow",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "Leaving Send and returning to My vault restores the all-items scope",
+      "pass": true,
+      "checks": [
+        {
+          "name": "The all-items query and type survive a different feature page",
+          "pass": true
+        },
+        {
+          "name": "Returning to My vault keeps the results pane unselected",
+          "pass": true
+        },
+        {
+          "name": "No browser script errors in this flow",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "Work folder workspace resumes after visiting Send",
+      "pass": true,
+      "checks": [
+        {
+          "name": "My vault resumes the previous Work workspace and query",
+          "pass": true
+        },
+        {
+          "name": "The originating scope route and allowed rows remain intact",
+          "pass": true
+        },
+        {
+          "name": "The list retains its previous scroll position without selecting an item",
+          "pass": true
+        },
+        {
+          "name": "The Work folder remains highlighted after resuming the workspace",
+          "pass": true
+        },
+        {
+          "name": "No browser script errors in this flow",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "Different scopes keep independent filters",
+      "pass": true,
+      "checks": [
+        {
+          "name": "Entering a new folder starts without the all-items query",
+          "pass": true
+        },
+        {
+          "name": "Returning to all items restores its own query",
+          "pass": true
+        },
+        {
+          "name": "Returning to Work restores its independent query",
+          "pass": true
+        },
+        {
+          "name": "No browser script errors in this flow",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "A theme change captures the latest typed query and no-selection state",
+      "pass": true,
+      "checks": [
+        {
+          "name": "Dark theme preserves the latest query and unselected results",
+          "pass": true
+        },
+        {
+          "name": "Returning to light theme preserves the same view context",
+          "pass": true
+        },
+        {
+          "name": "No browser script errors in this flow",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "Archive supports same-scenario back, theme change, and reopening",
+      "pass": true,
+      "checks": [
+        {
+          "name": "Back removes the preselected archive detail without changing scope",
+          "pass": true
+        },
+        {
+          "name": "Theme reload does not reselect the archived item",
+          "pass": true
+        },
+        {
+          "name": "The same archive row opens again with its search intact",
+          "pass": true
+        },
+        {
+          "name": "No browser script errors in this flow",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "Trash supports same-scenario back and reopening",
+      "pass": true,
+      "checks": [
+        {
+          "name": "Trash results return without selecting an item",
+          "pass": true
+        },
+        {
+          "name": "The deleted item reopens with its query intact",
+          "pass": true
+        },
+        {
+          "name": "No browser script errors in this flow",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "Manual gallery navigation resets to the representative fixture",
+      "pass": true,
+      "checks": [
+        {
+          "name": "Re-selecting the current gallery scenario clears interactive context",
+          "pass": true
+        },
+        {
+          "name": "A manually selected detail uses its full fresh fixture",
+          "pass": true
+        },
+        {
+          "name": "No browser script errors in this flow",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "Lock and authentication boundaries clear view memory",
+      "pass": true,
+      "checks": [
+        {
+          "name": "Lock removes the vault and its context capture function",
+          "pass": true
+        },
+        {
+          "name": "A synthetic post-authentication return starts with no prior query",
+          "pass": true
+        },
+        {
+          "name": "The sign-in boundary also clears prior list memory",
+          "pass": true
+        },
+        {
+          "name": "No browser script errors in this flow",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "Context messages contain only view state and never use persistent storage",
+      "pass": true,
+      "checks": [
+        {
+          "name": "Context messages were observed",
+          "pass": true,
+          "detail": {
+            "messages": 142
+          }
+        },
+        {
+          "name": "Every transmitted context field is a view-state field",
+          "pass": true
+        },
+        {
+          "name": "No context contains the synthetic password entered during the lock flow",
+          "pass": true
+        },
+        {
+          "name": "No web storage writes were made",
+          "pass": true
+        },
+        {
+          "name": "No cookies were created",
+          "pass": true
+        },
+        {
+          "name": "No external requests were made",
+          "pass": true
+        },
+        {
+          "name": "No browser script errors in this flow",
+          "pass": true
+        }
+      ]
+    }
+  ],
+  "browserErrors": [],
+  "externalRequests": [],
+  "pass": true,
+  "checkCount": 56,
+  "failureCount": 0
+}

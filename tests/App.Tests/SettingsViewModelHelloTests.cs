@@ -78,10 +78,12 @@ public class SettingsViewModelHelloTests : AppPreferencesTestBase
             unlock);
 
         Assert.True(vm.CanToggleWindowsHello);
+        Assert.Contains("仍可关闭", vm.WindowsHelloDescription, StringComparison.Ordinal);
 
         vm.DisableWindowsHello();
 
         Assert.False(vm.CanToggleWindowsHello);
+        Assert.Contains("Windows 设置", vm.WindowsHelloDescription, StringComparison.Ordinal);
     }
 
     [Fact]

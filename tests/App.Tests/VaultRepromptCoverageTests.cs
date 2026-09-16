@@ -9,6 +9,78 @@ namespace App.Tests;
 // 脱敏投影不含任何秘密;PasskeyApprovalDialogService 在收集 evidence 前先过条目 gate(源码守卫)。
 public sealed class VaultRepromptCoverageTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ClipboardFailureIsReportedWithoutRevealingTheProtectedDetail(bool passwordOnly, bool externalFailure)
+    {
+        var clipboard = new FailingClipboard(externalFailure);
+        var service = new RecordingVaultUiService(reprompt: true);
+        var vm = new VaultViewModel(service, clipboard, reprompt: new GrantingItemGate());
+        vm.SelectedItem = vm.Items.Single();
+        var originalDetail = vm.Detail;
+
+        var result = passwordOnly
+            ? await vm.CopyPasswordAsync("cipher-a", _ => Task.FromResult<string?>("master"))
+            : await vm.CopyPrimaryAsync("cipher-a", _ => Task.FromResult<string?>("master"));
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.True(vm.HasOperationError);
+        Assert.Equal(vm.OperationError, result.Error);
+        Assert.DoesNotContain(FailingClipboard.UnsafeMessage, vm.OperationError);
+        Assert.Same(originalDetail, vm.Detail);
+        Assert.Null(Assert.IsType<LoginDetail>(vm.Detail).Password);
+        Assert.False(vm.Detail!.SensitiveUnlocked);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FieldCopyReportsRecoverableClipboardFailure(bool externalFailure)
+    {
+        var vm = new VaultViewModel(new RecordingVaultUiService(reprompt: false), new FailingClipboard(externalFailure));
+
+        vm.CopyCommand.Execute("private-field-content");
+
+        Assert.True(vm.HasOperationError);
+        Assert.DoesNotContain("private-field-content", vm.OperationError);
+        Assert.DoesNotContain(FailingClipboard.UnsafeMessage, vm.OperationError);
+    }
+
+    [Fact]
+    public async Task CopyProtectedPasswordDoesNotRevealOrReprojectTheDetail()
+    {
+        var clipboard = new RecordingClipboard();
+        var service = new RecordingVaultUiService(reprompt: true);
+        var vm = new VaultViewModel(service, clipboard, reprompt: new GrantingItemGate());
+        vm.SelectedItem = vm.Items.Single();
+        var originalDetail = vm.Detail;
+
+        var result = await vm.CopyPasswordAsync("cipher-a", _ => Task.FromResult<string?>("master"));
+
+        Assert.True(result.IsSuccess);
+        Assert.NotEmpty(clipboard.Text!);
+        Assert.Same(originalDetail, vm.Detail);
+        Assert.Null(Assert.IsType<LoginDetail>(vm.Detail).Password);
+        Assert.False(vm.Detail!.SensitiveUnlocked);
+    }
+
+    [Fact]
+    public async Task DeniedPasswordCopyDoesNotReadOrCopyASensitiveValue()
+    {
+        var clipboard = new RecordingClipboard();
+        var service = new RecordingVaultUiService(reprompt: true);
+        var vm = new VaultViewModel(service, clipboard, reprompt: new DenyingItemGate());
+
+        var result = await vm.CopyPasswordAsync("cipher-a", _ => Task.FromResult<string?>("wrong"));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(0, service.SensitiveDetailReads);
+        Assert.Null(clipboard.Text);
+    }
+
     [Fact]
     public async Task DeniedEdit_DoesNotReadDraft()
     {
@@ -239,6 +311,20 @@ public sealed class VaultRepromptCoverageTests
         public void SetText(string text) => Text = text;
         public void SetSecretText(string text, int? autoClearSeconds = null) =>
             Text = text;
+    }
+
+    private sealed class FailingClipboard(bool externalFailure) : IClipboardService
+    {
+        public const string UnsafeMessage = "private-value-from-provider";
+
+        public void SetText(string text)
+        {
+            if (externalFailure)
+                throw new System.Runtime.InteropServices.ExternalException(UnsafeMessage);
+            throw new InvalidOperationException(UnsafeMessage);
+        }
+
+        public void SetSecretText(string text, int? autoClearSeconds = null) => SetText(text);
     }
 
     private sealed class RecordingAttachments : IAttachmentUiService

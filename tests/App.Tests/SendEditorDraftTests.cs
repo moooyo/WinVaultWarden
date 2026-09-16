@@ -5,6 +5,18 @@ namespace App.Tests;
 
 public class SendEditorDraftTests
 {
+    [Fact]
+    public void CustomDeletionCalendarChange_PreservesTimeAndFractionalSeconds()
+    {
+        var zone = TimeZoneInfo.CreateCustomTimeZone("Review time", TimeSpan.FromHours(8), "Review time", "Review time");
+        var draft = SendEditorDraft.CreateDefault(SendType.Text);
+        draft.DeletionDate = DateTimeOffset.Parse("2026-09-23T14:20:31.1234567+08:00");
+
+        draft.SelectCustomDeletionDate(DateTimeOffset.Parse("2026-09-25T00:00:00+08:00"), zone);
+
+        Assert.Equal(DateTimeOffset.Parse("2026-09-25T14:20:31.1234567+08:00"), draft.DeletionDate);
+    }
+
     [Theory]
     [InlineData("1 天", 1)]
     [InlineData("7 天", 7)]

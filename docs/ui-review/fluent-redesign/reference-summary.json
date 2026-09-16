@@ -1,0 +1,125 @@
+{
+  "reviewDate": "2026-09-15",
+  "retrievalMethod": "HTTPS GET using PowerShell Invoke-WebRequest",
+  "scope": "Primary Microsoft sources for a visual and interaction proposal, not a runtime conformance certification.",
+  "sources": [
+    {
+      "id": "fluent-principles",
+      "title": "Design principles - Fluent 2 Design System",
+      "url": "https://fluent2.microsoft.design/design-principles",
+      "httpStatus": 200,
+      "supportedClaims": [
+        "Fluent prioritizes familiarity with each platform, an experience that supports focus, and inclusive design.",
+        "Reduced visual noise supports calm and confident use.",
+        "Native patterns and components should carry most of the experience."
+      ],
+      "appliedTo": ["D01", "D02", "D03", "D06", "D08"],
+      "interpretation": "The security context strip and the exact navigation grouping are product-specific design decisions."
+    },
+    {
+      "id": "fluent-color",
+      "title": "Color - Fluent 2 Design System",
+      "url": "https://fluent2.microsoft.design/color",
+      "httpStatus": 200,
+      "supportedClaims": [
+        "Neutral surfaces establish visual hierarchy.",
+        "Brand colors should be applied sparingly because large or repeated areas can weaken hierarchy.",
+        "Semantic colors communicate status and should not be used as decoration.",
+        "Meaning should not depend on color alone.",
+        "Semantic design tokens make color usage consistent.",
+        "Windows interaction-state color behavior differs from the web pattern."
+      ],
+      "appliedTo": ["D01", "D02", "D03", "D07", "D08", "D10"],
+      "interpretation": "The exact light/dark hexadecimal values in the rationale are proposed project tokens, not copied platform resource values."
+    },
+    {
+      "id": "fluent-typography",
+      "title": "Typography - Fluent 2 Design System",
+      "url": "https://fluent2.microsoft.design/typography",
+      "httpStatus": 200,
+      "supportedClaims": [
+        "Fluent's Windows type ramp uses Segoe UI Variable.",
+        "The documented Windows ramp includes caption 12/16, body 14/20, subtitle 20/28, and title 28/36.",
+        "Clear type hierarchy helps users scan and navigate content.",
+        "Standard text should have at least 4.5:1 contrast; qualifying large text should have at least 3:1.",
+        "Sentence case and consistent text alignment improve readability."
+      ],
+      "appliedTo": ["D03", "D06", "D07", "D08"],
+      "interpretation": "Monospace utility text is a product choice for identifiers and generated strings. Contrast still requires artifact and implementation verification."
+    },
+    {
+      "id": "windows-mica",
+      "title": "Mica material - Windows apps",
+      "url": "https://learn.microsoft.com/en-us/windows/apps/design/style/mica",
+      "httpStatus": 200,
+      "supportedClaims": [
+        "Mica is an opaque, theme-aware application foundation material.",
+        "Microsoft recommends placing it behind other content, with visibility in the title bar.",
+        "Content can follow standard contiguous or segmented card layering patterns.",
+        "Mica has solid-color fallbacks for inactive windows, transparency preferences, and other system conditions.",
+        "High-contrast preferences replace Mica with the user's chosen background."
+      ],
+      "appliedTo": ["D02"],
+      "interpretation": "A static diagram only approximates material appearance and does not reproduce the user's wallpaper-dependent backdrop."
+    },
+    {
+      "id": "windows-dialogs",
+      "title": "Dialog controls - Windows apps",
+      "url": "https://learn.microsoft.com/en-us/windows/apps/design/controls/dialogs-and-flyouts/dialogs",
+      "httpStatus": 200,
+      "articleUpdated": "2026-07-15",
+      "supportedClaims": [
+        "Dialogs are modal and should communicate a clear objective or material confirmation.",
+        "A safe dismissal action is required; ContentDialog provides this through CloseButton.",
+        "Execution actions appear to the left and the safe action appears to the right.",
+        "Use concise action-specific button labels.",
+        "Field-specific validation should appear inline instead of in a dialog.",
+        "Only one ContentDialog can be open in a window at a time.",
+        "A default dialog button can respond automatically to Enter."
+      ],
+      "appliedTo": ["D04", "D06", "D09", "D10"],
+      "interpretation": "Avoiding a destructive default and calibrating confirmation severity are product safety decisions based on the documented control behavior."
+    },
+    {
+      "id": "windows-keyboard",
+      "title": "Keyboard interactions - Windows apps",
+      "url": "https://learn.microsoft.com/en-us/windows/apps/design/input/keyboard-interactions",
+      "httpStatus": 200,
+      "articleUpdated": "2026-03-05",
+      "supportedClaims": [
+        "Windows apps should support complete and predictable keyboard interaction.",
+        "Actionable controls need logical tab stops and appropriate initial focus.",
+        "Visible focus indicates where an action can be performed.",
+        "Arrow-key navigation supports familiar list and grouped-control patterns.",
+        "Native WinUI controls supply keyboard behavior that custom controls must preserve.",
+        "Accelerators and access keys can improve efficiency."
+      ],
+      "appliedTo": ["D03", "D04", "D05", "D06", "D08", "D10"],
+      "interpretation": "Specific accelerator assignments in the rationale are proposed and require conflict and behavior review."
+    },
+    {
+      "id": "windows-accessibility",
+      "title": "Accessibility overview - Windows apps",
+      "url": "https://learn.microsoft.com/en-us/windows/apps/design/accessibility/accessibility-overview",
+      "httpStatus": 200,
+      "articleUpdated": "2026-08-21",
+      "supportedClaims": [
+        "Accessible Windows apps support keyboard and assistive technology use as well as user customization.",
+        "XAML controls provide built-in accessibility behavior through UI Automation.",
+        "Controls require useful accessible names and appropriate roles.",
+        "Text size, contrast, display scaling, and high-contrast themes are core accessibility concerns.",
+        "Hard-coded styling must not defeat theme and high-contrast resource behavior.",
+        "Accessibility requires ongoing implementation verification, including assistive-technology checks."
+      ],
+      "appliedTo": ["D02", "D03", "D04", "D05", "D06", "D07", "D08", "D09", "D10"],
+      "interpretation": "Secret-free accessible names and restrained TOTP announcements are password-manager design requirements derived from the product's sensitive content."
+    }
+  ],
+  "baselineEvidence": {
+    "sourceInventory": "../page-inventory.md",
+    "nativeAtlas": "../index.html",
+    "runtimeFindings": "../runtime-findings.md",
+    "runtimeIssuesFixedByThisDocument": false
+  },
+  "sourceCaveat": "Microsoft Learn responses contained generic sign-in text in page chrome, but the referenced article bodies were publicly retrievable. All claims above paraphrase those article bodies."
+}

@@ -16,8 +16,8 @@ public class TotpFieldXamlTests
         var secondsText = RequireByName(document, "SecondsText");
         var copyButton = RequireByName(document, "CopyButton");
 
-        Assert.Equal("1", codeText.Attribute("Grid.Column")?.Value);
-        Assert.Equal("2", ring.Parent?.Attribute("Grid.Column")?.Value);
+        Assert.Null(codeText.Parent?.Attribute("Grid.Column"));
+        Assert.Equal("1", ring.Parent?.Attribute("Grid.Column")?.Value);
         Assert.Same(ring.Parent, secondsText.Parent);
         Assert.Same(secondsText.Parent, copyButton.Parent);
 

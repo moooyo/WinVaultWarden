@@ -1,0 +1,393 @@
+{
+  "01-login": {
+    "covers": [
+      "page.login",
+      "auth.login.account"
+    ],
+    "coverageNote": "Initial account-selection form. Other login stages and saved-account variants are not shown."
+  },
+  "02-register": {
+    "covers": [
+      "page.register",
+      "auth.register.form"
+    ],
+    "coverageNote": "Complete initial registration form at a maximized viewport. No registration was submitted."
+  },
+  "03-vault-overview-demo": {
+    "covers": [
+      "shell.main",
+      "page.vault",
+      "vault.no-selection"
+    ],
+    "coverageNote": "Built-in demo vault list and no-selection pane. This is not evidence of a backend operation."
+  },
+  "04-logout-confirmation": {
+    "covers": [
+      "shell.logout-confirm"
+    ],
+    "coverageNote": "Logout confirmation in a demo session."
+  },
+  "05-login-self-hosted": {
+    "covers": [
+      "page.login",
+      "auth.login.account"
+    ],
+    "coverageNote": "Self-hosted server and email entry. Captures this initial form variant only."
+  },
+  "06-login-password": {
+    "covers": [
+      "page.login",
+      "auth.login.password"
+    ],
+    "coverageNote": "Master-password entry stage for the isolated review server."
+  },
+  "07-login-error": {
+    "covers": [
+      "page.login",
+      "auth.login.password",
+      "auth.login.status-busy"
+    ],
+    "coverageNote": "Credential-oriented authentication error after a backend-confirmed HTTP 429 response. This is an error variant, not a busy state or proof of an incorrect password."
+  },
+  "08-vault-live": {
+    "covers": [
+      "shell.main",
+      "page.vault",
+      "vault.no-selection",
+      "control.favicon"
+    ],
+    "coverageNote": "Live fixture overview with synchronized synthetic data and no selected detail. Closed menus and sidebar destinations do not count as captured surfaces."
+  },
+  "09-login-detail-protected": {
+    "covers": [
+      "vault.detail.login",
+      "vault.attachments",
+      "control.field",
+      "control.totp",
+      "control.detail-card"
+    ],
+    "coverageNote": "Reprompt-protected login before verification. One attachment and non-secret fields are visible. TOTP shows its placeholder; no password row is visible."
+  },
+  "10-master-password-reprompt": {
+    "covers": [
+      "vault.reprompt"
+    ],
+    "coverageNote": "Master-password reprompt from item detail. The dialog is created at src/App/Views/VaultPage.xaml.cs:265; manifest source UserVerificationService.cs is not the presentation source."
+  },
+  "11-login-detail": {
+    "covers": [
+      "vault.detail.login",
+      "vault.attachments",
+      "control.field",
+      "control.totp",
+      "control.detail-card"
+    ],
+    "coverageNote": "After reprompt, notes and a masked custom recovery field are visible. Password row remains absent and TOTP remains a placeholder. Password-history entry is collapsed and does not show its records.",
+    "relatedInventoryIds": [
+      "vault.login.history"
+    ]
+  },
+  "12-login-detail-actions": {
+    "covers": [
+      "vault.detail.login",
+      "vault.attachments",
+      "control.field"
+    ],
+    "coverageNote": "Scrolled login details with attachments, custom fields, history metadata and actions. The password-history expander is still collapsed.",
+    "relatedInventoryIds": [
+      "vault.login.history"
+    ]
+  },
+  "13-editor-blank": {
+    "covers": [
+      "page.vault"
+    ],
+    "coverageNote": "Observed failure after Edit: the right pane is blank. This capture does not show or verify the login editor.",
+    "relatedInventoryIds": [
+      "vault.editor.login"
+    ]
+  },
+  "14-send-list": {
+    "covers": [
+      "shell.main",
+      "page.send"
+    ],
+    "coverageNote": "Live text/file Send list. The received-link expander is closed; received-Send form and row menus are not captured."
+  },
+  "15-send-text-editor": {
+    "covers": [
+      "send.editor.text"
+    ],
+    "coverageNote": "Text Send editor upper viewport only. Lower restrictions and private notes are below the fold; no save is verified."
+  },
+  "16-send-file-editor": {
+    "covers": [
+      "send.editor.file"
+    ],
+    "coverageNote": "File Send editor upper viewport only. Lower restrictions and private notes are below the fold; no file picker, upload or save is verified."
+  },
+  "17-send-access": {
+    "covers": [
+      "page.send",
+      "send.receive"
+    ],
+    "coverageNote": "Initial expanded received-link input form. No received text, file result, error, or download is shown."
+  },
+  "18-generator-password": {
+    "covers": [
+      "generator.password"
+    ],
+    "coverageNote": "Password-generator tab with sample output. Right-side settings are visibly clipped; this is partial option coverage."
+  },
+  "19-generator-passphrase": {
+    "covers": [
+      "generator.passphrase"
+    ],
+    "coverageNote": "Passphrase-generator tab. Output and right-hand option controls are clipped; this is partial option coverage."
+  },
+  "20-generator-username": {
+    "covers": [
+      "generator.username"
+    ],
+    "coverageNote": "Random-word username tab. Right-side option controls are not visible in the captured dialog viewport. Plus-addressed and catch-all email modes are not shown."
+  },
+  "21-generator-history": {
+    "covers": [
+      "generator.history"
+    ],
+    "coverageNote": "History dialog with no rendered rows. The screenshot alone does not establish whether the underlying history collection is empty. Clear-history confirmation is not shown."
+  },
+  "22-security-report": {
+    "covers": [
+      "page.reports"
+    ],
+    "coverageNote": "Health summary shows one reused-password finding, three weak-password findings, and one insecure-website finding. Those result expanders are collapsed. Exposed-password section is expanded in the not-checked state; no exposure result is shown."
+  },
+  "23-vault-locked": {
+    "covers": [
+      "page.login",
+      "auth.login.unlock-password",
+      "auth.login.status-busy"
+    ],
+    "coverageNote": "Locked-account password entry with account/server identity, an informational unlock message, Switch Account, and Unlock. PIN and Windows Hello alternatives are not visible."
+  },
+  "24-settings-account": {
+    "covers": [
+      "page.settings",
+      "settings.account",
+      "settings.security",
+      "settings.hello"
+    ],
+    "coverageNote": "Account identity and profile, password, and encryption entry points. Upper Security shows a 15-minute timeout, Lock action, PIN off, and Windows Hello unavailable. Remaining settings are below the viewport."
+  },
+  "25-settings-profile": {
+    "covers": [
+      "settings.profile.edit"
+    ],
+    "coverageNote": "Initial Edit Profile dialog with an empty display-name field, Save, and Cancel. No validation message or save result is shown."
+  },
+  "26-settings-password": {
+    "covers": [
+      "settings.password.change"
+    ],
+    "coverageNote": "Initial change-password dialog with empty current, new, and confirmation password fields and optional hint. No validation message or password-change result is shown."
+  },
+  "27-settings-kdf": {
+    "covers": [
+      "settings.kdf.change"
+    ],
+    "coverageNote": "Initial encryption-settings dialog with an empty current-password field and PBKDF2 iterations set to 600000. No KDF-type selector or update result is shown."
+  },
+  "28-settings-security": {
+    "covers": [
+      "page.settings",
+      "settings.security",
+      "settings.hello",
+      "settings.preferences",
+      "settings.future-controls"
+    ],
+    "coverageNote": "Lower Security and Preferences show PIN off, Windows Hello unavailable, two-factor and Emergency Access entry points, a 30-second clipboard timeout, and disabled minimize-after-copy. Tray-icon toggle is at the bottom; child controls are outside this viewport."
+  },
+  "29-settings-two-factor": {
+    "covers": [
+      "settings.twofactor.menu"
+    ],
+    "coverageNote": "Two-factor management with no configured providers and actions for TOTP, email codes, security keys or Windows Hello, and disabling verification. No provider setup, verification, or disable dialog is open."
+  },
+  "30-emergency-access": {
+    "covers": [
+      "page.emergency"
+    ],
+    "coverageNote": "Grantor contact cards show Confirmed View, Invited Takeover, and Accepted View states with corresponding actions. RecoveryApproved View grantee card begins at the bottom, with its action clipped."
+  },
+  "31-emergency-invite": {
+    "covers": [
+      "emergency.invite"
+    ],
+    "coverageNote": "Initial invitation dialog with empty email, View selected, a seven-day wait, Invite, and Cancel. Type dropdown is closed; no validation or invitation result is shown."
+  },
+  "32-emergency-granted": {
+    "covers": [
+      "page.emergency"
+    ],
+    "coverageNote": "Scrolled relationships show Confirmed View, Invited Takeover, and Accepted View contacts plus a complete RecoveryApproved View grantee card with View Vault. No takeover or recovered-vault dialog is open."
+  },
+  "33-emergency-recovered-vault": {
+    "covers": [
+      "emergency.recovered"
+    ],
+    "coverageNote": "Recovered-vault dialog shows grantor email, one item, the Emergency recovery note name, secure-note type subtitle, and Close. Note body and a standard vault-detail pane are not displayed."
+  },
+  "34-devices": {
+    "covers": [
+      "page.devices"
+    ],
+    "coverageNote": "Five device cards including a current-device badge. One pending request begins below the list with device, address, timestamp, and fingerprint; its action buttons are below the viewport."
+  },
+  "35-devices-pending-request": {
+    "covers": [
+      "page.devices"
+    ],
+    "coverageNote": "Complete pending request with device information, address, timestamp, fingerprint, Approve, and Deny. No approval or denial confirmation dialog is open."
+  },
+  "36-settings-integration": {
+    "covers": [
+      "page.settings",
+      "settings.application",
+      "settings.tray",
+      "settings.browser-integration",
+      "settings.future-controls"
+    ],
+    "coverageNote": "Tray icon on, minimize-to-tray off, close-to-tray on, browser integration off with portable-only help, and website icons on. Startup and hardware-acceleration controls are disabled; SSH row is only partly visible."
+  },
+  "37-settings-appearance-danger": {
+    "covers": [
+      "page.settings",
+      "settings.application",
+      "settings.theme",
+      "settings.future-controls",
+      "settings.about",
+      "settings.danger"
+    ],
+    "coverageNote": "Website icons and screenshot capture enabled, System theme in a closed dropdown, disabled SSH and language controls. About is collapsed with version 0.1.0 visible; Delete Account entry point is visible."
+  },
+  "38-settings-about": {
+    "covers": [
+      "page.settings",
+      "settings.about",
+      "settings.danger"
+    ],
+    "coverageNote": "Expanded About shows Copy Diagnostics, app 0.1.0, Windows 10.0.28000.0, .NET 10.0.9, and x64. Delete Account entry point remains visible."
+  },
+  "39-delete-account-warning": {
+    "covers": [
+      "settings.delete.consequences",
+      "settings.delete.owner-warning"
+    ],
+    "coverageNote": "Irreversible-deletion warning and organization-owner warning naming Contoso Review, with Continue and Cancel. No final credential confirmation or deletion result is shown."
+  },
+  "40-delete-account-email": {
+    "covers": [
+      "settings.delete.email"
+    ],
+    "coverageNote": "Required account address appears in the confirmation field, with Continue and Cancel. No mismatch error, final credential confirmation, or deletion result is shown."
+  },
+  "41-import-export": {
+    "covers": [
+      "page.import-export"
+    ],
+    "coverageNote": "Initial page with plaintext-export warning, JSON selected for export/import, Export, Select File, and disabled Import near the bottom edge. No loaded preview, picker, password prompt, or operation result is shown."
+  },
+  "42-import-export-formats": {
+    "covers": [
+      "page.import-export"
+    ],
+    "coverageNote": "Export-format dropdown is open with Bitwarden JSON selected and CSV offered. Import dropdown remains closed on JSON; no file preview or operation result is shown."
+  },
+  "43-card-detail": {
+    "covers": [
+      "vault.detail.card",
+      "vault.attachments",
+      "control.field",
+      "control.detail-card"
+    ],
+    "coverageNote": "Payment-card detail with masked card number and CVV, notes, no-attachment state, item history and actions. No reveal or editing operation is verified."
+  },
+  "44-identity-detail": {
+    "covers": [
+      "vault.detail.identity",
+      "vault.attachments",
+      "control.field",
+      "control.detail-card"
+    ],
+    "coverageNote": "Identity detail with masked ID and a truncated address, notes and no-attachment state. Bottom actions are partially below the viewport."
+  },
+  "45-note-detail": {
+    "covers": [
+      "vault.detail.note",
+      "vault.attachments",
+      "control.detail-card"
+    ],
+    "coverageNote": "Secure-note detail with the same text rendered in both Content and Notes sections, no-attachment state, item history and actions."
+  },
+  "46-ssh-detail": {
+    "covers": [
+      "vault.detail.ssh",
+      "vault.attachments",
+      "control.field",
+      "control.detail-card"
+    ],
+    "coverageNote": "SSH-key detail with masked private key, public-key truncation, fingerprint, notes, no-attachment state and actions. The key-shaped fixture is nonfunctional."
+  },
+  "47-vault-filters": {
+    "covers": [
+      "vault.filter-menu"
+    ],
+    "coverageNote": "Open facet flyout shows Has TOTP, Has attachment, Has URI, and Favorites only. No active refinement or filtered result is demonstrated."
+  },
+  "48-vault-saved-views": {
+    "covers": [
+      "vault.saved-views-menu"
+    ],
+    "coverageNote": "Saved-views flyout displays no saved views and the Save Current View action. The naming dialog and saved-view application are not shown."
+  },
+  "49-vault-batch-selection": {
+    "covers": [
+      "page.vault",
+      "vault.selection"
+    ],
+    "coverageNote": "Eleven selected rows and a warning about mixed personal/organization ownership are visible. The overflow batch-action menu and organization/collection dialogs are not open."
+  },
+  "50-vault-empty-folder": {
+    "covers": [
+      "page.vault",
+      "vault.folders",
+      "vault.no-results",
+      "vault.no-selection"
+    ],
+    "coverageNote": "The named Empty folder is selected. Rename/Delete Folder actions, no matching items, and no-selection pane are visible. This is an empty folder inside a populated vault, not the empty-vault onboarding state."
+  },
+  "51-vault-organization": {
+    "covers": [
+      "page.vault",
+      "vault.collections",
+      "vault.detail.login",
+      "vault.attachments",
+      "control.field",
+      "control.totp",
+      "control.detail-card"
+    ],
+    "coverageNote": "Engineering collection is selected and a shared login is shown. The organization sidebar entry is visible but not selected, so this capture does not cover the organization-filter view. Login username/URI values are blank, password row absent, and TOTP placeholder remains; notes and no-attachment state are visible.",
+    "relatedInventoryIds": [
+      "vault.organizations"
+    ]
+  },
+  "52-vault-manage-collections": {
+    "covers": ["vault.collection-select"],
+    "coverageNote": "The collection assignment dialog shows the existing Engineering selection. No assignment was changed or submitted."
+  },
+  "53-vault-archive": {
+    "covers": ["page.vault", "vault.archive", "vault.no-selection"],
+    "coverageNote": "The archive filter lists the seeded archived login. Its detail and unarchive action were not opened."
+  }
+}

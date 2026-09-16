@@ -15,6 +15,7 @@ public sealed partial class SendEditorDialog : ContentDialog
 
     public SendEditorDraft Draft { get; }
     public bool IsEditMode { get; }
+    public bool CanChangeType => !IsEditMode;
 
     public string DialogTitle => IsEditMode
         ? "编辑 Send"
@@ -22,8 +23,8 @@ public sealed partial class SendEditorDialog : ContentDialog
 
     public double MaxAccessCountValue
     {
-        get => Draft.MaxAccessCount ?? 0;
-        set => Draft.MaxAccessCount = value <= 0 ? null : (int)Math.Round(value);
+        get => Draft.MaxAccessCount ?? double.NaN;
+        set => Draft.MaxAccessCount = double.IsNaN(value) ? null : (int)Math.Clamp(Math.Round(value), 0, int.MaxValue);
     }
 
     public bool ShowCustomDeletionPicker => Draft.DeletionDateLabel == "自定义";
@@ -42,14 +43,18 @@ public sealed partial class SendEditorDialog : ContentDialog
         _save = save;
         InitializeComponent();
         if (isEditMode)
-            PrimaryButtonText = "保存";
+            PrimaryButtonText = "保存更改";
         Loaded += (_, _) =>
         {
             _canUpdateBindings = true;
             Bindings?.Update();
             _canApplyExpirationChanges = true;
         };
-        Opened += (_, _) => ApplyResponsiveWidth();
+        Opened += (_, _) =>
+        {
+            ApplyResponsiveWidth();
+            SendNameTextBox.Focus(FocusState.Programmatic);
+        };
         SizeChanged += (_, _) => ApplyResponsiveWidth();
     }
 
@@ -61,6 +66,7 @@ public sealed partial class SendEditorDialog : ContentDialog
             rootWidth,
             preferredWidth: 520,
             horizontalMargin: 48);
+        SendEditorScrollViewer.MaxHeight = Math.Clamp((XamlRoot?.Size.Height ?? 800) - 220, 120, 620);
     }
 
     private void OnTextChecked(object sender, RoutedEventArgs e) => SetType(SendType.Text);
@@ -69,6 +75,8 @@ public sealed partial class SendEditorDialog : ContentDialog
 
     private void SetType(SendType type)
     {
+        if (IsEditMode)
+            return;
         SendEditorDialogLifecycle.SetType(
             Draft,
             type,
@@ -79,7 +87,21 @@ public sealed partial class SendEditorDialog : ContentDialog
     private void OnDeletionLabelChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_canUpdateBindings)
+        {
+            if (ShowCustomDeletionPicker && Draft.DeletionDate is null)
+                Draft.DeletionDate = DateTimeOffset.Now.AddDays(7);
             Bindings?.Update();
+        }
+    }
+
+    private void OnCustomDeletionDateChanged(
+        CalendarDatePicker sender,
+        CalendarDatePickerDateChangedEventArgs args)
+    {
+        if (!_canApplyExpirationChanges || args.NewDate is not { } selectedDate)
+            return;
+        Draft.SelectCustomDeletionDate(selectedDate, TimeZoneInfo.Local);
+        Bindings?.Update();
     }
 
     private void OnExpirationLabelChanged(object sender, SelectionChangedEventArgs e)

@@ -596,7 +596,7 @@ public sealed class DpapiTokenStore : ITokenStore
                     AppJsonContext.Default.PersistedSession);
                 if (session is null || !session.TryMigrate(out var normalizedSession))
                     throw new InvalidDataException("Legacy persisted session is invalid.");
-                legacy = PersistedSessionCollection.FromMostRecent([normalizedSession]);
+                legacy = PersistedSessionCollection.FromMostRecent((PersistedSession[])[normalizedSession]);
                 return true;
             }
             finally

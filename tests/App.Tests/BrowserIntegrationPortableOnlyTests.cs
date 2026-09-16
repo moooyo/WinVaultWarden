@@ -27,6 +27,7 @@ public class SettingsViewModelBrowserGateTests : AppPreferencesTestBase
     {
         var vm = new SettingsViewModel(browserIntegrationSupported: false);
         Assert.False(vm.BrowserIntegrationSupported);
+        Assert.Contains("仅便携版可用", vm.BrowserIntegrationDescription);
     }
 
     [Fact]
@@ -143,7 +144,9 @@ public class SettingsPageBrowserIntegrationXamlTests
     public void BrowserIntegrationCard_HasPortableOnlyDescription()
     {
         var doc = LoadXaml();
-        Assert.Contains("仅便携版支持", doc.ToString(), StringComparison.Ordinal);
+        var card = doc.Descendants().Single(element =>
+            element.Name.LocalName == "SettingsCard" && element.Attribute("Header")?.Value == "允许浏览器集成");
+        Assert.Contains("ViewModel.BrowserIntegrationDescription", card.Attribute("Description")?.Value);
     }
 
     [Fact]

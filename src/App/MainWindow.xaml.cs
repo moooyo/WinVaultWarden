@@ -16,17 +16,17 @@ namespace App;
 
 public sealed partial class MainWindow : Window
 {
-    private const double LoginWindowInitialWidthDip = 440;
+    private const double LoginWindowInitialWidthDip = 480;
     private const double LoginWindowInitialHeightDip = 540;
-    private const double LoginWindowMeasureWidthDip = 440;
-    private const double LoginWindowMinWidthDip = 320;
+    private const double LoginWindowMeasureWidthDip = 480;
+    private const double LoginWindowMinWidthDip = 480;
     private const double LoginWindowMaxWidthDip = 520;
     private const double LoginWindowMinHeightDip = 500;
     private const double LoginWindowMaxHeightDip = 820;
     private const double LoginWindowWorkAreaMarginPerEdgeDip = 40;
     private const double LoginWindowVerticalBreathingRoomDip = 2;
-    private const double DefaultVaultWindowWidthDip = 1180;
-    private const double DefaultVaultWindowHeightDip = 760;
+    private const double DefaultVaultWindowWidthDip = 1280;
+    private const double DefaultVaultWindowHeightDip = 900;
     private const double VaultWindowWorkAreaMarginDip = 24;
 
     private SizeInt32? _lastVaultWindowSize;
@@ -48,12 +48,14 @@ public sealed partial class MainWindow : Window
     private readonly IntPtr _hwnd;
     private Services.TrayIconService? _tray;
     private bool _realExit;
+    private bool _generatorDialogOpen;
 
     public MainWindow()
     {
         InitializeComponent();
         // Frame 就绪后注入导航服务(须在任何导航如 ShowLogin 之前)。
         _nav.Initialize(ContentFrame, LoginFrame);
+        ContentFrame.Navigated += (_, _) => UpdateNavigationContext();
         // 窗口 DispatcherQueue 就绪后注入 UI 派发器(须在任何后台线程派发到 UI 之前)。
         global::App.App.Services.GetRequiredService<UiDispatcher>().Initialize(DispatcherQueue);
         _ = global::App.App.Services.GetRequiredService<SessionTerminationHost>();
@@ -204,6 +206,58 @@ public sealed partial class MainWindow : Window
             Core.Enums.OrganizationPolicyType.DisableSend)
             ? Visibility.Collapsed
             : Visibility.Visible;
+        UpdateNavigationContext();
+    }
+
+    private void UpdateNavigationContext()
+    {
+        var vaultPage = ContentFrame.Content as VaultPage;
+        var vaultVisibility = vaultPage is null ? Visibility.Collapsed : Visibility.Visible;
+        foreach (var item in new UIElement[] { VaultContextHeader, AllScopeNavItem, FavoritesNavItem, ArchiveNavItem, TrashNavItem })
+            item.Visibility = vaultVisibility;
+        foreach (var group in new[] { FoldersNavItem, OrganizationsNavItem, CollectionsNavItem })
+            group.Visibility = vaultPage is not null && group.MenuItems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        Nav.SelectedItem = ContentFrame.Content switch
+        {
+            VaultPage => FindNavigationItem(vaultPage!.ViewModel.SelectedFilterTag) ?? AllItemsNavItem,
+            SendPage => SendNavItem,
+            GeneratorPage => GeneratorNavItem,
+            SecurityReportPage => ReportsNavItem,
+            ImportExportPage => TransferNavItem,
+            DevicesPage => DevicesNavItem,
+            SettingsPage or EmergencyAccessPage => SettingsNavItem,
+            _ => null,
+        };
+    }
+
+    private NavigationViewItem? FindNavigationItem(string? tag)
+    {
+        // The primary vault destination restores the previous workspace; scopes remain explicit.
+        if (tag is null or "vault:allitems")
+            return AllItemsNavItem;
+        return Find(Nav.MenuItems);
+        NavigationViewItem? Find(IEnumerable<object> items)
+        {
+            foreach (var item in items.OfType<NavigationViewItem>())
+            {
+                if (string.Equals(item.Tag as string, tag, StringComparison.Ordinal))
+                    return item;
+                if (Find(item.MenuItems) is { } match)
+                    return match;
+            }
+            return null;
+        }
+    }
+
+    private void UpdateAccountContext()
+    {
+        var account = CurrentVaultSnapshot().Account;
+        AccountPicture.Initials = account.Initial;
+        AccountEmailText.Text = account.Email;
+        AccountServerText.Text = Uri.TryCreate(account.ServerUrl, UriKind.Absolute, out var server)
+            ? server.Authority : account.ServerUrl;
+        ToolTipService.SetToolTip(AccountEmailText, account.Email);
+        ToolTipService.SetToolTip(AccountServerText, account.ServerUrl);
     }
 
     private static void PopulateNavigationGroup(
@@ -262,6 +316,15 @@ public sealed partial class MainWindow : Window
         _idleTimer?.Stop();
 
         ApplyLoginWindowLayout();
+        AccountPicture.Initials = string.Empty;
+        AccountEmailText.Text = string.Empty;
+        AccountServerText.Text = string.Empty;
+        ToolTipService.SetToolTip(AccountEmailText, null);
+        ToolTipService.SetToolTip(AccountServerText, null);
+        FoldersNavItem.MenuItems.Clear();
+        OrganizationsNavItem.MenuItems.Clear();
+        CollectionsNavItem.MenuItems.Clear();
+        Nav.SelectedItem = null;
         Nav.Visibility = Visibility.Collapsed;
         LoginHost.Visibility = Visibility.Visible;
         _nav.GoToLoginPage();
@@ -303,6 +366,7 @@ public sealed partial class MainWindow : Window
         {
             ApplyVaultWindowLayout();
             PopulateFolderNavigation();
+            UpdateAccountContext();
             LoginHost.Visibility = Visibility.Collapsed;
             Nav.Visibility = Visibility.Visible;
             Nav.SelectedItem = AllItemsNavItem;
@@ -435,6 +499,7 @@ public sealed partial class MainWindow : Window
             return;
 
         await NavigateByTagAsync(item.Tag as string);
+        UpdateNavigationContext();
     }
 
     private async Task NavigateByTagAsync(string? tag)
@@ -446,6 +511,13 @@ public sealed partial class MainWindow : Window
         var vaultCreateGateActive = currentVaultPage is not null
             && global::App.App.Services.GetRequiredService<IVaultUiService>()
                 .HasPendingOrInFlightCipherCreate();
+
+        if (tag == "vault")
+        {
+            if (!vaultCreateGateActive)
+                _nav.GoToVault();
+            return;
+        }
 
         if (tag.StartsWith("vault:", StringComparison.Ordinal))
         {
@@ -484,7 +556,10 @@ public sealed partial class MainWindow : Window
         switch (tag)
         {
             case "gen":
-                await ShowGeneratorDialogAsync();
+                if (currentVaultPage?.ViewModel.EditorDraft is not null)
+                    await ShowGeneratorDialogAsync();
+                else
+                    _nav.GoToGenerator();
                 break;
             case "settings":
                 _nav.GoToSettings();
@@ -516,33 +591,35 @@ public sealed partial class MainWindow : Window
 
     private async Task ShowGeneratorDialogAsync()
     {
-        // 复用同一 GeneratorDialog 实例:生成器与历史对话框顺序打开(不嵌套),
-        // 查看历史后循环重开生成器,保留其已生成的口令/选项状态。历史对话框本身
-        // 只关闭并回报 ClearRequested,清除确认在其关闭之后由本宿主再单独弹出,
-        // 避免同一 XamlRoot 下两个 ContentDialog 同时 ShowAsync。
-        // 历史关闭后须检查真实 VaultState 仍 Unlocked 再继续,
-        // 不能只依赖 coordinator.IsTransitioning(过渡完成后该窗口已归 false)。
-        var dialog = new GeneratorDialog { XamlRoot = Nav.XamlRoot };
-        while (true)
+        if (_generatorDialogOpen || !IsVaultUnlocked())
+            return;
+        _generatorDialogOpen = true;
+        try
         {
-            await global::App.Views.DialogHelper.ShowTrackedAsync(dialog);
-            if (!dialog.ConsumeHistoryRequest())
-                break;
-
-            var history = new GeneratorHistoryDialog(dialog.ViewModel) { XamlRoot = Nav.XamlRoot };
-            await global::App.Views.DialogHelper.ShowTrackedAsync(history);
-            if (!IsVaultUnlocked())
-                break;
-
-            if (history.ClearRequested
-                && await global::App.Views.DialogHelper.ConfirmAsync(
-                    Nav.XamlRoot,
-                    "清除历史记录",
-                    "确定要清除全部生成历史吗?此操作无法撤销。",
-                    "清除"))
+            var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+            var lease = session.CaptureLease();
+            var dialog = new GeneratorDialog { XamlRoot = Nav.XamlRoot };
+            // Reopen only within the original unlock session; never clear a later account's history.
+            while (session.IsUnlocked(lease))
             {
-                dialog.ViewModel.ClearHistoryCommand.Execute(null);
+                await DialogHelper.ShowTrackedAsync(dialog, lease);
+                if (!session.IsUnlocked(lease) || !dialog.ConsumeHistoryRequest())
+                    break;
+                var history = new GeneratorHistoryDialog(dialog.ViewModel) { XamlRoot = Nav.XamlRoot };
+                await DialogHelper.ShowTrackedAsync(history, lease);
+                if (!session.IsUnlocked(lease))
+                    break;
+                if (history.ClearRequested
+                    && await DialogHelper.ConfirmAsync(Nav.XamlRoot, lease, "清除历史记录",
+                        "清除本次解锁期间复制的全部记录？已保存的条目不受影响。", "清除")
+                    && !_lifecycle.TryRunSensitive(() => session.TryRunIfUnlocked(lease,
+                        () => dialog.ViewModel.ClearHistoryCommand.Execute(null))))
+                    break;
             }
+        }
+        finally
+        {
+            _generatorDialogOpen = false;
         }
     }
 

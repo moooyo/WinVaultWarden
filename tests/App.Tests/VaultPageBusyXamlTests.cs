@@ -22,7 +22,7 @@ public sealed class VaultPageBusyXamlTests
                 attribute.Name.LocalName == "AutomationProperties.AutomationId"
                 && attribute.Value == name));
         Assert.Contains(
-            "ViewModel.CanStartVaultOperation",
+            name == "SaveCipherEditorButton" ? "ViewModel.CanSaveEditorDraft" : "ViewModel.CanStartVaultOperation",
             element.Attribute("IsEnabled")?.Value);
     }
 

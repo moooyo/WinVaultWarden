@@ -44,7 +44,8 @@ public sealed class ResponsiveLayoutXamlTests
         var text = Read("SendPage.xaml");
         Assert.Contains("WideColumns", text);
         Assert.Contains("NarrowColumns", text);
-        Assert.Contains("720", text);
+        Assert.Contains("Target=\"AccessColumn.Width\" Value=\"0\"", text);
+        Assert.Contains("Target=\"CompactAccessText.Visibility\" Value=\"Visible\"", text);
         Assert.DoesNotContain("Width=\"180\"", text);
         Assert.DoesNotContain("Width=\"104\"", text);
     }
@@ -58,7 +59,7 @@ public sealed class ResponsiveLayoutXamlTests
         var panel = document.Descendants().Single(node =>
             node.Attributes().Any(attribute =>
                 attribute.Name.LocalName == "Name" && attribute.Value == name));
-        Assert.Equal("360", panel.Attribute("MaxWidth")?.Value);
+        Assert.Equal("400", panel.Attribute("MaxWidth")?.Value);
         Assert.Null(panel.Attribute("Width"));
         Assert.Equal("Stretch", panel.Attribute("HorizontalAlignment")?.Value);
     }

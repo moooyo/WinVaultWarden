@@ -33,6 +33,14 @@ public sealed partial class ImportExportPage : Page
         InitializeComponent();
     }
 
+    private void OnTransferCardsSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var sideBySide = e.NewSize.Width >= 840;
+        ExportCardColumn.Width = sideBySide ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        Grid.SetColumn(ExportCard, sideBySide ? 1 : 0);
+        Grid.SetRow(ExportCard, sideBySide ? 0 : 1);
+    }
+
     private async void OnExportClick(object sender, RoutedEventArgs e)
     {
         var started = ViewModel.BeginOperation(ImportExportOperationKind.Export);

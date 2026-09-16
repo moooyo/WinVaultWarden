@@ -23,6 +23,12 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
     private readonly IClipboardService? _clipboard;
     private readonly PasswordStrengthEvaluator? _strength;
     private readonly VaultSession? _vault;
+    private readonly IAppLifecycleCoordinator? _lifecycle;
+    private readonly Dictionary<GeneratorMode, GeneratedValue> _modeValues = new();
+    private bool _suspended;
+    private string _copyFeedback = string.Empty;
+    private bool _copyFailed;
+    private sealed record GeneratedValue(object Options, string Value);
 
     private GeneratorMode _mode;
     private int _length = 14;
@@ -54,11 +60,10 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
             var changed = SetProperty(ref _mode, normalized);
             if (changed)
             {
-                OnPropertyChanged(nameof(ShowStrength));
-                OnPropertyChanged(nameof(CanGenerate));
+                NotifyModeChanged();
             }
             if (changed || policyChanged)
-                Regenerate();
+                Generate(allowReuse: true);
         }
     }
 
@@ -280,19 +285,69 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         {
             var policyChanged = RefreshAndApplyPolicy();
             if (SetProperty(ref _avoidAmbiguous, value) || policyChanged)
+            {
+                OnPropertyChanged(nameof(AdvancedOptionsSummary));
                 Regenerate();
+            }
         }
     }
 
     public string GeneratedPassword
     {
         get => _generatedPassword;
-        private set => SetProperty(ref _generatedPassword, value);
+        private set
+        {
+            if (!SetProperty(ref _generatedPassword, value))
+                return;
+            OnPropertyChanged(nameof(CanCopy));
+            OnPropertyChanged(nameof(GeneratedValueSummary));
+            OnPropertyChanged(nameof(ShowStrength));
+        }
     }
+
+    public int ModeIndex
+    {
+        get => (int)Mode;
+        set
+        {
+            if (value is >= 0 and <= 2)
+                Mode = (GeneratorMode)value;
+        }
+    }
+
+    public bool IsPasswordMode => Mode == GeneratorMode.Password;
+    public bool IsPassphraseMode => Mode == GeneratorMode.Passphrase;
+    public bool IsUsernameMode => Mode == GeneratorMode.Username;
+    public string GeneratedValueLabel => Mode switch
+    {
+        GeneratorMode.Passphrase => "已生成的密码短语",
+        GeneratorMode.Username => "已生成的用户名",
+        _ => "已生成的密码",
+    };
+    public string CopyLabel => Mode switch
+    {
+        GeneratorMode.Passphrase => "复制密码短语",
+        GeneratorMode.Username => "复制用户名",
+        _ => "复制密码",
+    };
+    public string GeneratedValueSummary => string.IsNullOrEmpty(GeneratedPassword)
+        ? "请先完成下面的生成选项。"
+        : Mode == GeneratorMode.Passphrase
+            ? $"{PassphraseWordCount} 个单词 · {GeneratedPassword.Length} 个字符"
+            : $"{GeneratedPassword.Length} 个字符";
+    public bool CanCopy => CanGenerate && !string.IsNullOrWhiteSpace(GeneratedPassword);
+    public bool HasHistory => History.Count > 0;
+    public bool IsHistoryEmpty => History.Count == 0;
+    public string HistorySummary => HasHistory ? $"本次解锁期间 · {History.Count} 项记录" : "本次解锁期间尚未复制";
+    public string AdvancedOptionsSummary => $"最少 {MinNumbers} 个数字 · {MinSpecial} 个符号"
+        + (AvoidAmbiguous ? " · 排除易混淆字符" : string.Empty);
+    public string CopyFeedback => _copyFeedback;
+    public bool HasCopyFeedback => !string.IsNullOrEmpty(_copyFeedback);
+    public bool CopyFailed => _copyFailed;
 
     public int StrengthScore => _strengthScore;
 
-    public bool ShowStrength => Mode != GeneratorMode.Username;
+    public bool ShowStrength => Mode != GeneratorMode.Username && !string.IsNullOrEmpty(GeneratedPassword);
 
     public double StrengthFraction => (_strengthScore + 1) / 5.0;
 
@@ -312,9 +367,9 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         ? "组织生成器策略数据无效；密码和密码短语生成已禁用。"
         : "已应用组织生成器策略。";
 
-    public bool CanGenerate => Mode == GeneratorMode.Username
+    public bool CanGenerate => !_suspended && (Mode == GeneratorMode.Username
         ? CanGenerateUsername()
-        : _policy.CanGenerateCompliantCredential;
+        : _policy.CanGenerateCompliantCredential);
 
     public bool CanUsePasswordMode =>
         _policy.OverridePasswordType != PasswordGeneratorCredentialType.Passphrase;
@@ -410,13 +465,54 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
     public GeneratorViewModel(
         IClipboardService? clipboard = null,
         PasswordStrengthEvaluator? strength = null,
-        VaultSession? vault = null)
+        VaultSession? vault = null,
+        IAppLifecycleCoordinator? lifecycle = null)
     {
         _clipboard = clipboard;
         _strength = strength;
         _vault = vault;
+        _lifecycle = lifecycle;
         _usernameEmail = DefaultUsernameEmail(vault);
+        History.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasHistory));
+            OnPropertyChanged(nameof(IsHistoryEmpty));
+            OnPropertyChanged(nameof(HistorySummary));
+        };
         Regenerate();
+    }
+
+    public void PrepareForDisplay()
+    {
+        bool Prepare()
+        {
+            if (_vault is not null && _vault.State != Core.Session.VaultState.Unlocked)
+                return false;
+            _suspended = false;
+            OnPropertyChanged(nameof(CanGenerate));
+            OnPropertyChanged(nameof(CanCopy));
+            Generate(allowReuse: true);
+            return true;
+        }
+
+        if (_lifecycle is null)
+            Prepare();
+        else
+            _lifecycle.TryRunSensitive(Prepare);
+    }
+
+    private void NotifyModeChanged()
+    {
+        OnPropertyChanged(nameof(ModeIndex));
+        OnPropertyChanged(nameof(IsPasswordMode));
+        OnPropertyChanged(nameof(IsPassphraseMode));
+        OnPropertyChanged(nameof(IsUsernameMode));
+        OnPropertyChanged(nameof(GeneratedValueLabel));
+        OnPropertyChanged(nameof(CopyLabel));
+        OnPropertyChanged(nameof(GeneratedValueSummary));
+        OnPropertyChanged(nameof(ShowStrength));
+        OnPropertyChanged(nameof(CanGenerate));
+        OnPropertyChanged(nameof(CanCopy));
     }
 
     private void CharacterSetChanged()
@@ -459,8 +555,7 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
             if (SetProperty(ref _mode, normalizedMode, nameof(Mode)))
             {
                 changed = true;
-                OnPropertyChanged(nameof(ShowStrength));
-                OnPropertyChanged(nameof(CanGenerate));
+                NotifyModeChanged();
             }
 
             changed |= RequireOption(
@@ -606,26 +701,51 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
     private const int MaxHistory = 20;
 
     [RelayCommand]
-    private void Regenerate()
+    private void Regenerate() => Generate(allowReuse: false);
+
+    private void Generate(bool allowReuse)
     {
+        SetCopyFeedback(string.Empty);
         RefreshAndApplyPolicy();
         if (!CanGenerate)
         {
+            _modeValues.Remove(Mode);
             GeneratedPassword = string.Empty;
             UpdateStrength();
             return;
         }
 
-        GeneratedPassword = Mode switch
+        object options = Mode switch
         {
-            GeneratorMode.Passphrase => PasswordGenerator.GeneratePassphrase(new PassphraseGenerationOptions(
+            GeneratorMode.Passphrase => new PassphraseGenerationOptions(
                 PassphraseWordCount,
                 string.IsNullOrEmpty(PassphraseSeparator) ? "-" : PassphraseSeparator,
                 PassphraseCapitalize,
-                PassphraseIncludeNumber)),
-            GeneratorMode.Username => GenerateUsername(),
-            _ => PasswordGenerator.Generate(BuildOptions()),
+                PassphraseIncludeNumber),
+            GeneratorMode.Username => new UsernameGenerationOptions(
+                UsernameType,
+                UsernameCapitalize,
+                UsernameIncludeNumber,
+                Email: ShowUsernameEmail ? UsernameEmail.Trim() : null,
+                Domain: ShowUsernameDomain ? UsernameDomain.Trim() : null),
+            _ => BuildOptions(),
         };
+        if (allowReuse && _modeValues.TryGetValue(Mode, out var previous)
+            && previous.Options.Equals(options))
+        {
+            GeneratedPassword = previous.Value;
+        }
+        else
+        {
+            GeneratedPassword = options switch
+            {
+                PassphraseGenerationOptions passphrase => PasswordGenerator.GeneratePassphrase(passphrase),
+                UsernameGenerationOptions => GenerateUsername(),
+                PasswordGenerationOptions password => PasswordGenerator.Generate(password),
+                _ => string.Empty,
+            };
+            _modeValues[Mode] = new GeneratedValue(options, GeneratedPassword);
+        }
         UpdateStrength();
     }
 
@@ -645,20 +765,72 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
     [RelayCommand]
     private void Copy()
     {
-        if (string.IsNullOrWhiteSpace(GeneratedPassword))
+        if (RefreshAndApplyPolicy())
+        {
+            Generate(allowReuse: true);
+            SetCopyFeedback("组织策略已更新，请确认新结果后再复制。", failed: true);
             return;
-        _clipboard?.SetSecretText(GeneratedPassword);
-        RecordHistory(GeneratedPassword);
+        }
+        if (!CanCopy)
+            return;
+        TryCopy(GeneratedPassword, recordHistory: true);
     }
 
     [RelayCommand]
-    private void ClearHistory() => History.Clear();
+    private void ClearHistory()
+    {
+        History.Clear();
+        SetCopyFeedback(string.Empty);
+    }
 
     [RelayCommand]
     private void CopyHistoryItem(GeneratorHistoryItem? item)
     {
-        if (!string.IsNullOrWhiteSpace(item?.Value))
-            _clipboard?.SetSecretText(item.Value);
+        if (!_suspended && item is not null && History.Contains(item)
+            && !string.IsNullOrWhiteSpace(item.Value))
+            TryCopy(item.Value);
+    }
+
+    public bool TryCopyCurrentValue()
+    {
+        Copy();
+        return HasCopyFeedback && !CopyFailed;
+    }
+
+    private bool TryCopy(string value, bool recordHistory = false)
+    {
+        bool WriteClipboard()
+        {
+            if (_clipboard is null || _suspended)
+                return false;
+            _clipboard.SetSecretText(value);
+            if (recordHistory)
+                RecordHistory(value);
+            SetCopyFeedback("已复制。剪贴板将按安全设置清除。");
+            return true;
+        }
+
+        try
+        {
+            var copied = _lifecycle is null
+                ? WriteClipboard()
+                : _lifecycle.TryRunSensitive(WriteClipboard);
+            if (!copied)
+                SetCopyFeedback("未能复制，请重试。", failed: true);
+            return copied;
+        }
+        catch (Exception)
+        {
+            SetCopyFeedback("未能复制，请重试。", failed: true);
+            return false;
+        }
+    }
+
+    private void SetCopyFeedback(string message, bool failed = false)
+    {
+        SetProperty(ref _copyFailed, failed, nameof(CopyFailed));
+        if (SetProperty(ref _copyFeedback, message, nameof(CopyFeedback)))
+            OnPropertyChanged(nameof(HasCopyFeedback));
     }
 
     // Record only values the user explicitly copies, deduplicate adjacent entries, and cap at 20.
@@ -666,7 +838,7 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
     {
         if (History.Count > 0 && History[0].Value == value)
             return;
-        History.Insert(0, new GeneratorHistoryItem(value, DateTimeOffset.Now));
+        History.Insert(0, new GeneratorHistoryItem(value, DateTimeOffset.Now, Mode));
         while (History.Count > MaxHistory)
             History.RemoveAt(History.Count - 1);
     }
@@ -674,11 +846,16 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
     // Clear generated secrets and username inputs when the vault locks or the account signs out.
     public void ClearSensitive()
     {
+        _suspended = true;
+        _modeValues.Clear();
         History.Clear();
         SetProperty(ref _usernameEmail, string.Empty, nameof(UsernameEmail));
         SetProperty(ref _usernameDomain, string.Empty, nameof(UsernameDomain));
         OnPropertyChanged(nameof(CanGenerate));
         GeneratedPassword = string.Empty;
+        SetCopyFeedback(string.Empty);
+        UpdateStrength();
+        OnPropertyChanged(nameof(CanCopy));
     }
 
     partial void OnPassphraseSeparatorChanged(string value) => Regenerate();
@@ -858,6 +1035,7 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
             return false;
 
         OnPropertyChanged(valuePropertyName);
+        OnPropertyChanged(nameof(AdvancedOptionsSummary));
         return true;
     }
 

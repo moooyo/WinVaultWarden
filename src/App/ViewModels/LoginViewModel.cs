@@ -720,28 +720,30 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     public string FormSubtitle => Stage switch
     {
-        LoginStage.Password => ServerSummary,
-        LoginStage.LoginWithDevice => AccountSummary,
-        LoginStage.DeviceVerification => AccountSummary,
-        LoginStage.PasswordChangeRequired => AccountSummary,
-        LoginStage.TwoFactor => AccountSummary,
-        LoginStage.Unlock => ServerSummary,
-        LoginStage.PinUnlock => ServerSummary,
-        LoginStage.KeyConnectorUnlock => ServerSummary,
-        LoginStage.TrustedDeviceSso => ServerSummary,
-        LoginStage.TrustedDeviceApproval => AccountSummary,
-        LoginStage.TdeV2JitProvisioning => AccountSummary,
-        LoginStage.AccountDeletionRecovery => AccountSummary,
+        LoginStage.Password => "输入此账户的主密码以继续。",
+        LoginStage.LoginWithDevice => "在已登录的设备上核对指纹并批准请求。",
+        LoginStage.DeviceVerification => "验证此设备后继续登录。",
+        LoginStage.PasswordChangeRequired => "满足账户要求后继续使用保险库。",
+        LoginStage.TwoFactor => IsRecoveryCodeMode
+            ? "使用账户的恢复代码完成身份验证。"
+            : "完成此账户要求的附加验证。",
+        LoginStage.Unlock => "解锁此设备上已保存的保险库。",
+        LoginStage.PinUnlock => "输入此设备的 PIN。",
+        LoginStage.KeyConnectorUnlock => "连接组织的 Key Connector 以解锁。",
+        LoginStage.TrustedDeviceSso => "重新完成企业身份验证以解锁。",
+        LoginStage.TrustedDeviceApproval => "核对指纹短语后批准此设备。",
+        LoginStage.TdeV2JitProvisioning => "完成企业账户的首次加密设置。",
+        LoginStage.AccountDeletionRecovery => "先确认删除状态并完成本地恢复。",
         _ => "连接到你的 Bitwarden / Vaultwarden 保险库",
     };
 
     public string StepText => Stage switch
     {
-        LoginStage.Password => "第 2 步 / 3",
+        LoginStage.Password => "主密码",
         LoginStage.LoginWithDevice => "在另一台设备上批准",
         LoginStage.DeviceVerification => "安全检查",
         LoginStage.PasswordChangeRequired => "账户恢复",
-        LoginStage.TwoFactor => "第 3 步 / 3",
+        LoginStage.TwoFactor => "附加验证",
         LoginStage.Unlock => "已锁定",
         LoginStage.PinUnlock => "已锁定",
         LoginStage.KeyConnectorUnlock => "已锁定",
@@ -749,8 +751,10 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         LoginStage.TrustedDeviceApproval => "需要另一台设备",
         LoginStage.TdeV2JitProvisioning => "首次企业登录",
         LoginStage.AccountDeletionRecovery => "安全恢复",
-        _ => "第 1 步 / 3",
+        _ => "账户信息",
     };
+
+    public bool ShowAccountContext => !IsAccountStage && !string.IsNullOrWhiteSpace(Email);
 
     public string AccountSummary => string.IsNullOrWhiteSpace(Email) ? "邮箱地址" : Email.Trim();
 
@@ -3437,6 +3441,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             && failure.Kind is AuthFailureKind.Unspecified
                 or AuthFailureKind.InvalidCredentials
                 or AuthFailureKind.Network
+                or AuthFailureKind.RateLimited
                 or AuthFailureKind.Timeout;
 
         if (!canRetryChallenge)
@@ -3458,6 +3463,8 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     private string FailureMessage(AuthResult.Failure failure, bool wasTwoFactor) =>
         failure.Kind switch
         {
+            AuthFailureKind.RateLimited =>
+                "登录请求过于频繁，请稍后重试。",
             AuthFailureKind.InvalidCredentials when wasTwoFactor && IsRecoveryCodeMode =>
                 "恢复代码无效，请重试。",
             AuthFailureKind.InvalidCredentials when wasTwoFactor =>
@@ -3625,6 +3632,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     partial void OnEmailChanged(string value)
     {
+        OnPropertyChanged(nameof(ShowAccountContext));
         OnPropertyChanged(nameof(AccountSummary));
         OnPropertyChanged(nameof(AccountInitial));
         OnPropertyChanged(nameof(FormSubtitle));
@@ -3734,6 +3742,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     private void NotifyStageProperties()
     {
+        OnPropertyChanged(nameof(ShowAccountContext));
         OnPropertyChanged(nameof(IsAccountStage));
         OnPropertyChanged(nameof(IsPasswordStage));
         OnPropertyChanged(nameof(IsLoginWithDeviceStage));

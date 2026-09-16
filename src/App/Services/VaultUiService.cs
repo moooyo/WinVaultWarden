@@ -603,6 +603,11 @@ public sealed class VaultUiService : IVaultUiService
                 Password = includeSensitive ? cipher.Login?.Password : null,
                 TotpSecret = includeSensitive ? cipher.Login?.Totp : null,
                 Uri = cipher.Login?.Uris.FirstOrDefault()?.Uri,
+                Uris = cipher.Login?.Uris
+                    .Select(item => item.Uri)
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => value!)
+                    .ToArray() ?? Array.Empty<string>(),
                 Passkeys = MapPasskeys(cipher.Login?.Fido2Credentials),
                 PasswordHistory = includeSensitive
                     ? (cipher.PasswordHistory ?? Array.Empty<Core.Models.PasswordHistoryEntry>())
@@ -662,6 +667,8 @@ public sealed class VaultUiService : IVaultUiService
                 IdNumber = includeSensitive
                     ? cipher.Identity?.Ssn ?? cipher.Identity?.PassportNumber ?? cipher.Identity?.LicenseNumber
                     : null,
+                PassportNumber = includeSensitive ? cipher.Identity?.PassportNumber : null,
+                LicenseNumber = includeSensitive ? cipher.Identity?.LicenseNumber : null,
                 Address = JoinNonEmpty(", ", cipher.Identity?.Address1, cipher.Identity?.Address2, cipher.Identity?.Address3,
                     cipher.Identity?.City, cipher.Identity?.State, cipher.Identity?.PostalCode, cipher.Identity?.Country),
             },

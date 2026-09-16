@@ -1,0 +1,159 @@
+[
+  {
+    "sceneId": "login-account",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P2", "issue": "The saved-account route supported by LoginPage.xaml is absent from the proposal. The lower server identity is too small to be a dependable security cue.", "fix": "Add a compact saved-account chooser or dedicated saved-account scene, with email and server together. Keep the selected server readable throughout authentication."},
+      {"severity": "P3", "issue": "The sign-in card is visually balanced, but the server selector and explicit address are independent in the preview, so switching to a hosted region still leaves the self-hosted address visible.", "fix": "Make server choice update or hide the address field; retain US, EU and self-hosted options and a clear loading/error state for Continue."}
+    ],
+    "verdict": "Needs a saved-account branch and consistent server selection. Light layout is otherwise clear."
+  },
+  {
+    "sceneId": "login-password",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P2", "issue": "One normal password form is mapped to PasswordChangeRequired and JIT encryption provisioning, although LoginViewModel treats them as different stages with different actions.", "fix": "Create distinct required-password-change and enterprise key-provisioning scenes, or explicitly mark those source states as pending instead of visually covered."},
+      {"severity": "P3", "issue": "The password input has no visible reveal control; the account checkmark can suggest verification has already completed.", "fix": "Add an accessible show/hide password action and use an account identity treatment without a success mark before authentication. Use Sign in wording for online authentication."}
+    ],
+    "verdict": "Normal sign-in is elegant, but conditional authentication stages need independent representations."
+  },
+  {
+    "sceneId": "register-account",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P1", "issue": "The self-hosted form omits Server address and omits the EU hosted option, while RegisterViewModel supports both. A user cannot specify their own server in this proposal.", "fix": "Restore the conditional server address input and US/EU/self-hosted options. Preserve the chosen server in all registration steps."},
+      {"severity": "P1", "issue": "Create account routes directly to sign-in and a single form is mapped to email-verification and outcome-uncertain states. RegisterViewModel deliberately distinguishes these states to avoid repeating an uncertain write.", "fix": "Add dedicated verification-required, registration-complete and outcome-uncertain views with retained account/server identity and safe next actions. Do not imply registration succeeded until the result is confirmed."},
+      {"severity": "P3", "issue": "Adding the missing field to the already tall form risks pushing the primary action below the 900px frame.", "fix": "Use a two-step account/security form or a scrollable body with a reachable primary action. Keep password guidance and hint guidance adjacent to their fields."}
+    ],
+    "verdict": "Needs semantic correction. Light and dark styling are consistent, but the complete registration flow is not yet shown."
+  },
+  {
+    "sceneId": "login-two-step",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P2", "issue": "Authenticator input is mapped to email device verification, WebAuthn and Duo. Use another verification method does not navigate to a method picker, and no recovery-code route is visible.", "fix": "Provide a method picker with authenticator, email, security key/provider handoff and recovery-code routes. Email needs resend and expiry feedback; external providers need a cancellable return state."},
+      {"severity": "P3", "issue": "Remember this device lacks an explanation of its effect and the form does not show invalid/expired-code feedback.", "fix": "Clarify that remembering affects two-step prompts, keep it off by default, accept pasted codes, and reserve inline space for a specific retry message."}
+    ],
+    "verdict": "Authenticator layout is good; alternate verification paths and failure feedback need reviewable scenes."
+  },
+  {
+    "sceneId": "login-recovery",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P2", "issue": "Back navigates to account entry rather than back to verification methods. The warning says two-step verification will be removed but does not explicitly state all currently configured methods are removed, as LoginViewModel does.", "fix": "Return to the two-step method chooser, say all configured two-step methods will be removed after successful verification, and keep the previously authenticated account context."},
+      {"severity": "P3", "issue": "The masked recovery-code field has no reveal control, making a long pasted code hard to inspect.", "fix": "Add an accessible reveal action and show invalid-code feedback beside the field without disclosing account-validity details."}
+    ],
+    "verdict": "The warning hierarchy is appropriate; back navigation and exact consequence wording should be tightened."
+  },
+  {
+    "sceneId": "login-locked",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P1", "issue": "The locked screen only offers a master password but claims coverage for PIN, Key Connector, trusted SSO and logout confirmation. Some enterprise accounts do not have a master password.", "fix": "Add separate PIN and enterprise unlock scenes. Show Windows Hello only when available, preserve an alternative unlock path, and separate logout confirmation from locked state."},
+      {"severity": "P2", "issue": "The generic Back label suggests ordinary backward navigation, while the actual operation is switching account or returning to sign-in. The lock reason is hardcoded to inactivity.", "fix": "Use Switch account or Sign out as appropriate, and derive lock reason from the actual event rather than always stating 15 minutes of inactivity."}
+    ],
+    "verdict": "The basic locked layout is calm and readable; unlock alternatives are materially incomplete."
+  },
+  {
+    "sceneId": "login-device-approval",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P2", "issue": "Device sign-in approval, trusted-device approval and SSO waiting are mapped to one fingerprint screen. SSO waiting does not necessarily have this phrase, and trusted approval has extra approval-method/trust controls in LoginPage.xaml.", "fix": "Split device request, trusted approval and SSO wait into separate states. Only display phrase matching for the request that actually supplies a phrase."},
+      {"severity": "P2", "issue": "Only a waiting countdown and Cancel are shown. Denied, expired and unavailable-request states have no reviewable next step.", "fix": "Add terminal states with Request again or Use master password when allowed; keep cancellation available and prevent a stale request from later unlocking the vault."}
+    ],
+    "verdict": "Phrase comparison is prominent and usable, but the distinct trust and terminal states need dedicated views."
+  },
+  {
+    "sceneId": "login-error",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P1", "issue": "The rate-limit message asserts Your password has not been rejected without supporting evidence. It can mislead users about credential validity.", "fix": "Use neutral server-derived wording such as Too many attempts. Wait before trying again, and show a countdown only when an actual retry interval exists."},
+      {"severity": "P1", "issue": "One throttled password form is mapped to device quarantine, account-deletion recovery and local-data cleanup dialogs. Those states have different destructive effects and recovery actions in LoginViewModel.", "fix": "Create separate quarantine/recovery and local-cleanup confirmation scenes. Distinguish local cleanup from server deletion and confirmed from uncertain deletion results."}
+    ],
+    "verdict": "Needs semantic correction despite good warning placement and disabled-button treatment in both themes."
+  },
+  {
+    "sceneId": "settings-security",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P2", "issue": "The bottom Allow screen capture setting is cut off in both 1280x900 renders. The settings groups spend enough vertical space that a security-relevant description is not visible in the review image.", "fix": "Reduce row/section spacing modestly or give privacy its own settings category, and capture any required scrolled states so every control can be reviewed."},
+      {"severity": "P2", "issue": "Trusted-device encryption, timeout-policy restrictions, PIN-policy restrictions and PIN setup are mapped here but not visible. Windows Hello says Unavailable without a useful next action.", "fix": "Add a policy-managed/security-capability scene and PIN setup dialog. Show the actual restriction reason, supported timeout choices and trusted-device state. Explain how to configure Windows Hello when absent."},
+      {"severity": "P3", "issue": "The capture toggle is presented as an ordinary preference without explaining that enabled capture includes screen sharing. The current enabled state matches AppPreferences and is not a source mismatch.", "fix": "Use precise screenshot/recording/screen-sharing language and consider a privacy-oriented default as an explicit design decision, not an undocumented change."}
+    ],
+    "verdict": "Grouping improves scanability, but visible coverage and policy/capability states need work."
+  },
+  {
+    "sceneId": "settings-preferences",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P2", "issue": "Browser integration is shown as generally available although SettingsViewModel.BrowserIntegrationSupported disables it for MSIX. Tray options also need a dependency on Show tray icon.", "fix": "Show the supported portable state or a disabled MSIX state with a clear reason. Disable tray behavior controls and explain why when the tray icon is off."},
+      {"severity": "P2", "issue": "The About mapping loses the diagnostic-copy command and version/runtime details available in SettingsPage.xaml. The future-features note omits Minimize on copy.", "fix": "Add a compact About disclosure with Copy diagnostics and the key version fields. Move unavailable future controls out of the main flow, keeping their audit coverage explicit."},
+      {"severity": "P3", "issue": "Website icons omits its privacy consequence; Minimize to tray omits the source behavior that minimization locks the vault.", "fix": "Explain that disabling site icons prevents icon requests to the server, and say minimizing locks the vault before hiding the window."}
+    ],
+    "verdict": "The page is visually orderly. Capability/dependency messaging and About coverage are incomplete."
+  },
+  {
+    "sceneId": "settings-account",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P2", "issue": "Edit profile has no reviewable edit dialog despite mapping settings.profile.edit. It is unclear whether email and server are editable.", "fix": "Add an Edit profile dialog prefilled with the current display name, and keep email/server explicitly read-only context unless supported by a distinct change flow."},
+      {"severity": "P3", "issue": "Emergency access appears in both Account and Security, while repeated Manage labels are generic.", "fix": "Choose a primary home for emergency access, keep any secondary entry intentional, and use descriptive accessible names such as Manage encryption settings."}
+    ],
+    "verdict": "Account grouping and the restrained danger section are good. The profile dialog needs its own scene."
+  },
+  {
+    "sceneId": "settings-change-password",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P2", "issue": "The dialog has no reviewable validation/error state and its sign-in notice does not clearly say the app signs out immediately on success, which SettingsPage.xaml.cs does through CredentialChanged.", "fix": "State the immediate sign-out consequence and retain field-specific validation for mismatch/current-password failure while preserving nonsecret context."},
+      {"severity": "P3", "issue": "Password fields lack reveal controls and the optional hint lacks the safety guidance already present in registration.", "fix": "Add accessible reveal actions and Never include your password in the hint guidance. Keep the first invalid field as the next focus target."}
+    ],
+    "verdict": "Field grouping and modal proportions are strong; feedback and consequence precision can improve."
+  },
+  {
+    "sceneId": "settings-kdf",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P2", "issue": "The stated 600,000 to 2,000,000 PBKDF2 write range matches KdfParameterPolicy, but the generic Encryption settings title can imply broader algorithm editing than the current implementation supports.", "fix": "Show the current algorithm and value, explicitly scope this form to PBKDF2 iteration changes, and do not silently offer conversion for Argon2 accounts."},
+      {"severity": "P3", "issue": "The form does not communicate the tradeoff between more iterations and slower unlock, and Apply changes is active with an empty password.", "fix": "Add a short performance explanation, numeric boundaries/step values and a disabled-until-valid primary state. State that successful changes sign this client out."}
+    ],
+    "verdict": "Correct numeric contract and readable layout; scope and validation need clearer presentation."
+  },
+  {
+    "sceneId": "settings-two-factor",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P1", "issue": "Two-step management does not show enabled state, disable actions or their identity verification, although the source has all of these. The recovery message provides no way to retrieve a recovery code.", "fix": "Show method status and state-appropriate Set up/Manage/Disable actions. Provide reauthentication before sensitive changes and a recovery-code retrieval path."},
+      {"severity": "P2", "issue": "Done and Close perform the same action, producing unnecessary competing footer actions. Email setup, provider loading and provider errors are mapped but absent.", "fix": "Use a single Close action for the read-only menu and add dedicated email setup plus loading/retry scenes."}
+    ],
+    "verdict": "The method list is easy to scan; management semantics and footer actions need correction."
+  },
+  {
+    "sceneId": "settings-totp-setup",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P1", "issue": "The setup-key scene is mapped to setup completion and missing-recovery-code outcomes, but it never shows the recovery code or the already-enabled/retry distinction implemented by SettingsPage.xaml.cs.", "fix": "Add successful activation with recovery-code handling, and a separate TOTP already enabled / recovery code unavailable state whose retry fetches the code instead of reenabling TOTP."},
+      {"severity": "P2", "issue": "The preceding current-master-password verification step is missing from the route. The raw otpauth URI is small technical clutter and repeats the visible secret.", "fix": "Add the reauthentication step, retain a copyable manual key, and place the URI behind an advanced disclosure or explicit copy action. A QR representation may be added only as an explicit proposal enhancement."},
+      {"severity": "P3", "issue": "The form has no invalid-code feedback or reveal/clear behavior for the setup secret after closing.", "fix": "Represent inline code errors and specify clearing setup secrets on cancel, completion or lock. Keep the manual setup text readable in both themes."}
+    ],
+    "verdict": "The two numbered setup actions read well; the surrounding security lifecycle is incomplete."
+  },
+  {
+    "sceneId": "settings-security-keys",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P1", "issue": "Removing a registered security key is represented only by an unlabeled trash icon and has no named-key confirmation or verification scene. Current code includes verification-method and deletion flows.", "fix": "Add a remove-key confirmation naming the key and account, explain its sign-in effect, and show the required identity verification before deletion."},
+      {"severity": "P2", "issue": "The same management card claims coverage for password/email/access-code verification, unsupported server and registration status, although none is visible.", "fix": "Add a verification chooser, explicit unsupported state and Windows verification pending/success/cancel/error return states. Keep local Hello unlock distinct from account two-step credentials."}
+    ],
+    "verdict": "The registered-key row is clean, but security-sensitive lifecycle states require their own views."
+  },
+  {
+    "sceneId": "settings-delete-account",
+    "reviewed": true,
+    "findings": [
+      {"severity": "P1", "issue": "Only step 1 of 3 is drawn, while email confirmation, password/OTP verification and deletion outcomes are marked as mapped. The final irreversible action and its account/server binding cannot be reviewed.", "fix": "Add email confirmation, credential/OTP confirmation, blocked-preflight and outcome scenes. Show account plus server at every step, keep Cancel focused initially, and use the destructive label only on the final dispatch action."},
+      {"severity": "P2", "issue": "Transfer ownership before continuing reads as a hard block while Continue remains enabled. Current code treats owner warnings separately from hard preflight blocks such as an organization-claimed account.", "fix": "Distinguish an ownership warning from a blocking condition. Use conditional wording and an enabled Continue only when the preflight permits it; show a separate blocked state otherwise."}
+    ],
+    "verdict": "The staged warning hierarchy is appropriate in both themes, but the irreversible flow is not yet fully reviewable."
+  }
+]

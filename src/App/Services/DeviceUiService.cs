@@ -35,9 +35,9 @@ public sealed class DeviceUiService : IDeviceUiService
 
         return new DeviceItem(
             device.Id,
-            string.IsNullOrWhiteSpace(device.Name) ? "Unknown device" : device.Name,
+            string.IsNullOrWhiteSpace(device.Name) ? "未知设备" : device.Name,
             GlyphFor(device.Type),
-            LastActiveText(device, isCurrent),
+            RegisteredText(device),
             isCurrent,
             device.IsTrusted);
     }
@@ -50,9 +50,9 @@ public sealed class DeviceUiService : IDeviceUiService
         _ => GlyphDesktop,
     };
 
-    private static string LastActiveText(DeviceInfo device, bool isCurrent)
+    private static string RegisteredText(DeviceInfo device)
     {
-        var date = device.CreationDate?.LocalDateTime.ToString("yyyy/M/d HH:mm") ?? string.Empty;
-        return isCurrent && date.Length > 0 ? $"{date} · 本机" : date;
+        var date = device.CreationDate?.LocalDateTime.ToString("yyyy/M/d HH:mm");
+        return date is null ? "登记时间未知" : $"登记于 {date}";
     }
 }

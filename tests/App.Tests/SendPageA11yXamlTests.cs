@@ -23,7 +23,7 @@ public class SendPageA11yXamlTests
         var doc = Load();
         var dateCell = doc.Descendants().FirstOrDefault(e =>
             e.Name.LocalName == "TextBlock"
-            && e.Attribute("Text")?.Value == "{x:Bind DeleteDate}");
+            && e.Attribute("Text")?.Value == "{x:Bind RetentionLabel}");
 
         Assert.NotNull(dateCell);
         Assert.Equal(

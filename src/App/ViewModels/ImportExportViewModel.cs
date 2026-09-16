@@ -161,6 +161,16 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
     public partial string ImportContent { get; set; } = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ImportFileLabel))]
+    public partial string? SelectedImportFileName { get; private set; }
+
+    public string ImportFileLabel => SelectedImportFileName ?? "尚未选择文件";
+    public bool CanPreviewAgain => CanOperate && !string.IsNullOrWhiteSpace(ImportContent) && !HasValidPreview;
+    public string ExportFormatDescription => SelectedExportFormat == ExportFormat.Json
+        ? "JSON 保留受支持的条目字段。"
+        : "CSV 仅适用于登录和安全笔记；其他类型请使用 JSON。";
+
+    [ObservableProperty]
     public partial int PreviewCipherCount { get; set; }
 
     [ObservableProperty]
@@ -175,6 +185,7 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
     [NotifyPropertyChangedFor(nameof(CanOperate))]
     [NotifyPropertyChangedFor(nameof(CanExport))]
     [NotifyPropertyChangedFor(nameof(CanImport))]
+    [NotifyPropertyChangedFor(nameof(CanPreviewAgain))]
     [NotifyPropertyChangedFor(nameof(HasSucceededStatus))]
     [NotifyPropertyChangedFor(nameof(HasWarningStatus))]
     [NotifyPropertyChangedFor(nameof(HasCancelledStatus))]
@@ -219,6 +230,7 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
     public bool CanImport =>
         !IsBusy
         && HasValidPreview
+        && PreviewCipherCount + PreviewFolderCount > 0
         && !string.IsNullOrEmpty(ImportContent);
 
     public UiOperationResult<ImportExportOperationScope> BeginOperation(
@@ -239,6 +251,7 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
             if (kind == ImportExportOperationKind.ChooseImportFile)
             {
                 ImportContent = string.Empty;
+                SelectedImportFileName = null;
                 ClearPreview();
             }
             else if (kind == ImportExportOperationKind.PreviewImport)
@@ -356,6 +369,7 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
 
         SelectedImportFormat = format;
         ImportContent = content;
+        SelectedImportFileName = Path.GetFileName(fileName);
         return ParsePreview(operation, format, _contentVersion, content);
     }
 
@@ -392,7 +406,8 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
                 || snapshot.Format != operation.ImportFormat
                 || snapshot.Format != SelectedImportFormat
                 || snapshot.ContentVersion != _contentVersion
-                || snapshot.Preview.Error is not null)
+                || snapshot.Preview.Error is not null
+                || snapshot.Preview.Ciphers + snapshot.Preview.Folders == 0)
             {
                 operation.Complete(UiOperationStatus.Failed, MissingPreviewMessage);
                 return UiOperationResult<int>.Failure(MissingPreviewMessage);
@@ -460,6 +475,7 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
         PreviewFolderCount = 0;
         OnPropertyChanged(nameof(HasValidPreview));
         OnPropertyChanged(nameof(CanImport));
+        OnPropertyChanged(nameof(CanPreviewAgain));
     }
 
     partial void OnImportContentChanged(string value)
@@ -473,6 +489,9 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
     }
 
     partial void OnSelectedImportFormatChanged(ImportFormat value) => ClearPreview();
+
+    partial void OnSelectedExportFormatChanged(ExportFormat value) =>
+        OnPropertyChanged(nameof(ExportFormatDescription));
 
     private UiOperationResult ParsePreview(
         ImportExportOperationScope operation,
@@ -492,6 +511,7 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
             PreviewFolderCount = 0;
             OnPropertyChanged(nameof(HasValidPreview));
             OnPropertyChanged(nameof(CanImport));
+            OnPropertyChanged(nameof(CanPreviewAgain));
             operation.Complete(UiOperationStatus.Failed, ImportParseFailureMessage);
             return UiOperationResult.Failure(ImportParseFailureMessage);
         }
@@ -505,6 +525,7 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
         PreviewFolderCount = preview.Folders;
         OnPropertyChanged(nameof(HasValidPreview));
         OnPropertyChanged(nameof(CanImport));
+        OnPropertyChanged(nameof(CanPreviewAgain));
         var message = $"文件已就绪：{preview.Ciphers} 个条目，{preview.Folders} 个文件夹。";
         operation.Complete(UiOperationStatus.Succeeded, message);
         return UiOperationResult.Success();
@@ -527,6 +548,7 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
         }
 
         ImportContent = string.Empty;
+        SelectedImportFileName = null;
     }
 
     private void ClearOperationMessages()
@@ -557,6 +579,7 @@ public partial class ImportExportViewModel : ObservableObject, ISensitiveState
         Interlocked.Increment(ref _operationGeneration);
         _activeOperation?.Cancel();
         ImportContent = string.Empty;
+        SelectedImportFileName = null;
         _previewSnapshot = null;
         PreviewCipherCount = 0;
         PreviewFolderCount = 0;

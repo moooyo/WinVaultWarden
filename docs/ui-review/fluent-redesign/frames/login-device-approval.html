@@ -1,0 +1,799 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Approve this device · Fluent proposal</title><link rel="stylesheet" href="../prototype.css"><script>document.documentElement.dataset.theme=new URLSearchParams(location.search).get('theme')||'light';</script></head><body data-scene-id="login-device-approval" data-scene-page="login"><div class="prototype-stage"><div class="auth-stage"><div class="auth-window review-auth "><header class="titlebar"><span class="app-mark"><span class="icon " aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M9.72265 2.08397C9.8906 1.97201 10.1094 1.97201 10.2774 2.08397C12.2155 3.3761 14.3117 4.18231 16.5707 4.50503C16.817 4.54021 17 4.75118 17 5V9.3411C16.744 8.95605 16.4014 8.63354 16 8.40135V5.42787C14.0146 5.09055 12.1473 4.39606 10.4009 3.34583L10 3.09715L9.59914 3.34583C7.85275 4.39606 5.98541 5.09055 4 5.42787V9.5C4 12.8921 5.96795 15.3634 10 16.9632V17C10 17.3416 10.0857 17.6633 10.2367 17.9446C10.2176 17.952 10.1986 17.9593 10.1795 17.9667C10.064 18.0111 9.93605 18.0111 9.82051 17.9667C5.30699 16.2307 3 13.3913 3 9.5V5C3 4.75118 3.18296 4.54021 3.42929 4.50503C5.68833 4.18231 7.78446 3.3761 9.72265 2.08397ZM12.5 12V11C12.5 9.89543 13.3954 9 14.5 9C15.6046 9 16.5 9.89543 16.5 11V12H17C17.5523 12 18 12.4477 18 13V17C18 17.5523 17.5523 18 17 18H12C11.4477 18 11 17.5523 11 17V13C11 12.4477 11.4477 12 12 12H12.5ZM13.5 11V12H15.5V11C15.5 10.4477 15.0523 10 14.5 10C13.9477 10 13.5 10.4477 13.5 11ZM15.25 15C15.25 14.5858 14.9142 14.25 14.5 14.25C14.0858 14.25 13.75 14.5858 13.75 15C13.75 15.4142 14.0858 15.75 14.5 15.75C14.9142 15.75 15.25 15.4142 15.25 15Z" fill="currentColor"/>
+</svg>
+</span></span><strong>WinVaultWarden</strong><span class="titlebar-spacer"></span><span class="window-control" aria-hidden="true">−</span><span class="window-control" aria-hidden="true">□</span><span class="window-control" aria-hidden="true">×</span></header><main class="auth-body"><span class="auth-brand"><span class="icon " aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M9.72265 2.08397C9.8906 1.97201 10.1094 1.97201 10.2774 2.08397C12.2155 3.3761 14.3117 4.18231 16.5707 4.50503C16.817 4.54021 17 4.75118 17 5V9.3411C16.744 8.95605 16.4014 8.63354 16 8.40135V5.42787C14.0146 5.09055 12.1473 4.39606 10.4009 3.34583L10 3.09715L9.59914 3.34583C7.85275 4.39606 5.98541 5.09055 4 5.42787V9.5C4 12.8921 5.96795 15.3634 10 16.9632V17C10 17.3416 10.0857 17.6633 10.2367 17.9446C10.2176 17.952 10.1986 17.9593 10.1795 17.9667C10.064 18.0111 9.93605 18.0111 9.82051 17.9667C5.30699 16.2307 3 13.3913 3 9.5V5C3 4.75118 3.18296 4.54021 3.42929 4.50503C5.68833 4.18231 7.78446 3.3761 9.72265 2.08397ZM12.5 12V11C12.5 9.89543 13.3954 9 14.5 9C15.6046 9 16.5 9.89543 16.5 11V12H17C17.5523 12 18 12.4477 18 13V17C18 17.5523 17.5523 18 17 18H12C11.4477 18 11 17.5523 11 17V13C11 12.4477 11.4477 12 12 12H12.5ZM13.5 11V12H15.5V11C15.5 10.4477 15.0523 10 14.5 10C13.9477 10 13.5 10.4477 13.5 11ZM15.25 15C15.25 14.5858 14.9142 14.25 14.5 14.25C14.0858 14.25 13.75 14.5858 13.75 15C13.75 15.4142 14.0858 15.75 14.5 15.75C14.9142 15.75 15.25 15.4142 15.25 15Z" fill="currentColor"/>
+</svg>
+</span></span><h1>Approve from another device</h1><p class="auth-subtitle">Open an unlocked vault on a device you trust.</p><button class="auth-back text-button" data-go="login-password">← Use another sign-in method</button><div class="auth-form" data-review-form><div class="auth-account review-account"><span class="avatar">AR</span><div><strong>Alex Review</strong><span>review@winvaultwarden.example</span><small>http://127.0.0.1:18083</small></div></div><div class="approval-phrase"><span class="field-label">Match this phrase on both devices</span><p class="mono">amber-cedar-river-meadow-harbor</p></div><div class="auth-help"><span class="icon " aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M10 2C14.4183 2 18 5.58172 18 10C18 14.4183 14.4183 18 10 18C5.58172 18 2 14.4183 2 10C2 5.58172 5.58172 2 10 2ZM10 3C6.13401 3 3 6.13401 3 10C3 13.866 6.13401 17 10 17C13.866 17 17 13.866 17 10C17 6.13401 13.866 3 10 3ZM9.5 5C9.74546 5 9.94961 5.17688 9.99194 5.41012L10 5.5V10H12.5C12.7761 10 13 10.2239 13 10.5C13 10.7455 12.8231 10.9496 12.5899 10.9919L12.5 11H9.5C9.25454 11 9.05039 10.8231 9.00806 10.5899L9 10.5V5.5C9 5.22386 9.22386 5 9.5 5Z" fill="currentColor"/>
+</svg>
+</span> Waiting for approval · Request expires in 4:32</div><button type="button" class="button wide" data-go="login-password" >Cancel request</button></div><footer class="auth-foot"><span class="icon " aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M10 18C14.4183 18 18 14.4183 18 10C18 5.58172 14.4183 2 10 2C5.58172 2 2 5.58172 2 10C2 14.4183 5.58172 18 10 18ZM10 3C10.6568 3 11.4068 3.59025 12.0218 4.90814C12.2393 5.37419 12.4283 5.90978 12.5806 6.5H7.41936C7.57172 5.90978 7.76073 5.37419 7.97822 4.90814C8.59323 3.59025 9.34315 3 10 3ZM7.07203 4.48526C6.79564 5.07753 6.56498 5.75696 6.38931 6.5H3.93648C4.77295 5.05399 6.11182 3.93497 7.71442 3.38163C7.47297 3.71222 7.25828 4.08617 7.07203 4.48526ZM6.19265 7.5C6.06723 8.28832 6 9.12934 6 10C6 10.8707 6.06723 11.7117 6.19265 12.5H3.45963C3.16268 11.7236 3 10.8808 3 10C3 9.1192 3.16268 8.2764 3.45963 7.5H6.19265ZM6.38931 13.5C6.56498 14.243 6.79564 14.9225 7.07203 15.5147C7.25828 15.9138 7.47297 16.2878 7.71442 16.6184C6.11182 16.065 4.77295 14.946 3.93648 13.5H6.38931ZM7.41936 13.5H12.5806C12.4283 14.0902 12.2393 14.6258 12.0218 15.0919C11.4068 16.4097 10.6568 17 10 17C9.34315 17 8.59323 16.4097 7.97822 15.0919C7.76073 14.6258 7.57172 14.0902 7.41936 13.5ZM12.7938 12.5H7.20617C7.07345 11.7253 7 10.8833 7 10C7 9.11669 7.07345 8.27472 7.20617 7.5H12.7938C12.9266 8.27472 13 9.11669 13 10C13 10.8833 12.9266 11.7253 12.7938 12.5ZM13.6107 13.5H16.0635C15.2271 14.946 13.8882 16.065 12.2856 16.6184C12.527 16.2878 12.7417 15.9138 12.928 15.5147C13.2044 14.9225 13.435 14.243 13.6107 13.5ZM16.5404 12.5H13.8074C13.9328 11.7117 14 10.8707 14 10C14 9.12934 13.9328 8.28832 13.8074 7.5H16.5404C16.8373 8.2764 17 9.1192 17 10C17 10.8808 16.8373 11.7236 16.5404 12.5ZM12.2856 3.38163C13.8882 3.93497 15.2271 5.05399 16.0635 6.5H13.6107C13.435 5.75696 13.2044 5.07753 12.928 4.48526C12.7417 4.08617 12.527 3.71222 12.2856 3.38163Z" fill="currentColor"/>
+</svg>
+</span><span data-auth-server>http://127.0.0.1:18083</span></footer></main></div><div class="toast" role="status" aria-live="polite"></div></div></div><script>
+const scenes=[{"id":"login-account","page":"login","variant":"account","itemType":null,"dialog":null},{"id":"login-password","page":"login","variant":"password","itemType":null,"dialog":null},{"id":"register-account","page":"register","variant":"form","itemType":null,"dialog":null},{"id":"login-two-step","page":"login","variant":"two-step","itemType":null,"dialog":null},{"id":"login-recovery","page":"login","variant":"recovery","itemType":null,"dialog":null},{"id":"login-locked","page":"login","variant":"locked","itemType":null,"dialog":null},{"id":"login-device-approval","page":"login","variant":"device-approval","itemType":null,"dialog":null},{"id":"login-error","page":"login","variant":"error","itemType":null,"dialog":null},{"id":"vault-overview","page":"vault","variant":"overview","itemType":null,"dialog":null},{"id":"vault-no-selection","page":"vault","variant":"no-selection","itemType":null,"dialog":null},{"id":"vault-detail-login","page":"vault","variant":"detail","itemType":"login","dialog":null},{"id":"vault-detail-card","page":"vault","variant":"detail","itemType":"card","dialog":null},{"id":"vault-detail-identity","page":"vault","variant":"detail","itemType":"identity","dialog":null},{"id":"vault-detail-note","page":"vault","variant":"detail","itemType":"note","dialog":null},{"id":"vault-detail-ssh","page":"vault","variant":"detail","itemType":"ssh","dialog":null},{"id":"vault-detail-bank","page":"vault","variant":"detail","itemType":"bank","dialog":null},{"id":"vault-detail-license","page":"vault","variant":"detail","itemType":"license","dialog":null},{"id":"vault-detail-passport","page":"vault","variant":"detail","itemType":"passport","dialog":null},{"id":"vault-editor-login","page":"vault","variant":"editor","itemType":"login","dialog":null},{"id":"vault-editor-card","page":"vault","variant":"editor","itemType":"card","dialog":null},{"id":"vault-editor-identity","page":"vault","variant":"editor","itemType":"identity","dialog":null},{"id":"vault-editor-note","page":"vault","variant":"editor","itemType":"note","dialog":null},{"id":"vault-editor-ssh","page":"vault","variant":"editor","itemType":"ssh","dialog":null},{"id":"vault-editor-bank","page":"vault","variant":"editor","itemType":"bank","dialog":null},{"id":"vault-editor-license","page":"vault","variant":"editor","itemType":"license","dialog":null},{"id":"vault-editor-passport","page":"vault","variant":"editor","itemType":"passport","dialog":null},{"id":"vault-batch","page":"vault","variant":"batch","itemType":null,"dialog":null},{"id":"vault-empty","page":"vault","variant":"empty","itemType":null,"dialog":null},{"id":"vault-no-results","page":"vault","variant":"no-results","itemType":null,"dialog":null},{"id":"vault-loading","page":"vault","variant":"loading","itemType":null,"dialog":null},{"id":"vault-sync-error","page":"vault","variant":"sync-error","itemType":null,"dialog":null},{"id":"vault-reprompt","page":"vault","variant":"detail","itemType":"login","dialog":"reprompt"},{"id":"vault-permanent-delete","page":"vault","variant":"detail","itemType":"login","dialog":"permanent-delete"},{"id":"send-overview","page":"send","variant":"overview","itemType":null,"dialog":null},{"id":"send-edit-text","page":"send","variant":"overview","itemType":null,"dialog":"edit-text"},{"id":"send-edit-file","page":"send","variant":"overview","itemType":null,"dialog":"edit-file"},{"id":"send-received","page":"send","variant":"received","itemType":null,"dialog":null},{"id":"generator-password","page":"generator","variant":"password","itemType":null,"dialog":null},{"id":"generator-passphrase","page":"generator","variant":"passphrase","itemType":null,"dialog":null},{"id":"generator-username","page":"generator","variant":"username","itemType":null,"dialog":null},{"id":"reports-overview","page":"reports","variant":"overview","itemType":null,"dialog":null},{"id":"reports-results","page":"reports","variant":"results","itemType":null,"dialog":null},{"id":"import-export-overview","page":"import-export","variant":"overview","itemType":null,"dialog":null},{"id":"export-confirm","page":"import-export","variant":"overview","itemType":null,"dialog":"export"},{"id":"devices-overview","page":"devices","variant":"overview","itemType":null,"dialog":null},{"id":"device-approve","page":"devices","variant":"overview","itemType":null,"dialog":"approve-device"},{"id":"emergency-overview","page":"emergency","variant":"overview","itemType":null,"dialog":null},{"id":"emergency-invite","page":"emergency","variant":"overview","itemType":null,"dialog":"invite"},{"id":"settings-security","page":"settings","variant":"security","itemType":null,"dialog":null},{"id":"settings-preferences","page":"settings","variant":"preferences","itemType":null,"dialog":null},{"id":"settings-account","page":"settings","variant":"account","itemType":null,"dialog":null},{"id":"settings-change-password","page":"settings","variant":"account","itemType":null,"dialog":"change-password"},{"id":"settings-kdf","page":"settings","variant":"account","itemType":null,"dialog":"kdf"},{"id":"settings-two-factor","page":"settings","variant":"security","itemType":null,"dialog":"two-factor"},{"id":"settings-totp-setup","page":"settings","variant":"security","itemType":null,"dialog":"totp-setup"},{"id":"settings-security-keys","page":"settings","variant":"security","itemType":null,"dialog":"security-keys"},{"id":"settings-delete-account","page":"settings","variant":"account","itemType":null,"dialog":"delete-account"},{"id":"system-boundaries","page":"system","variant":"boundary","itemType":null,"dialog":null},{"id":"vault-detail-github","page":"vault","variant":"detail","itemType":"login","dialog":null,"itemId":"github"},{"id":"vault-detail-google","page":"vault","variant":"detail","itemType":"login","dialog":null,"itemId":"google"},{"id":"vault-detail-amazon","page":"vault","variant":"detail","itemType":"login","dialog":null,"itemId":"amazon"},{"id":"vault-detail-shared","page":"vault","variant":"detail","itemType":"login","dialog":null,"itemId":"shared"},{"id":"vault-detail-reddit","page":"vault","variant":"detail","itemType":"login","dialog":null,"itemId":"reddit"},{"id":"vault-detail-router","page":"vault","variant":"detail","itemType":"login","dialog":null,"itemId":"router"},{"id":"vault-new-login","page":"vault","variant":"new","itemType":"login","dialog":null},{"id":"vault-favorites","page":"vault","variant":"favorites","itemType":null,"dialog":null},{"id":"vault-folder-work","page":"vault","variant":"folder","itemType":null,"dialog":null,"folder":"Work"},{"id":"vault-folder-personal","page":"vault","variant":"folder","itemType":null,"dialog":null,"folder":"Personal"},{"id":"vault-folder-finance","page":"vault","variant":"folder","itemType":null,"dialog":null,"folder":"Finance"},{"id":"vault-organization","page":"vault","variant":"organization","itemType":null,"dialog":null},{"id":"vault-archive","page":"vault","variant":"archive","itemType":"login","dialog":null,"itemId":"archived-email"},{"id":"vault-trash","page":"vault","variant":"trash","itemType":"login","dialog":null,"itemId":"trash-vpn"},{"id":"vault-pending-save","page":"vault","variant":"pending-save","itemType":"login","dialog":null},{"id":"vault-new-folder","page":"vault","variant":"no-selection","itemType":null,"dialog":"new-folder"},{"id":"register-email-verification","page":"register","variant":"verification","itemType":null,"dialog":null},{"id":"register-outcome-uncertain","page":"register","variant":"uncertain","itemType":null,"dialog":null},{"id":"login-methods","page":"login","variant":"methods","itemType":null,"dialog":null},{"id":"login-unlock-pin","page":"login","variant":"unlock-pin","itemType":null,"dialog":null},{"id":"settings-managed-policy","page":"settings","variant":"policy","itemType":null,"dialog":null},{"id":"settings-profile","page":"settings","variant":"account","itemType":null,"dialog":"profile"},{"id":"settings-pin-setup","page":"settings","variant":"security","itemType":null,"dialog":"pin-setup"},{"id":"settings-disable-twofactor","page":"settings","variant":"security","itemType":null,"dialog":"disable-twofactor"},{"id":"settings-totp-complete","page":"settings","variant":"security","itemType":null,"dialog":"totp-complete"},{"id":"settings-remove-security-key","page":"settings","variant":"security","itemType":null,"dialog":"remove-security-key"},{"id":"settings-delete-email","page":"settings","variant":"account","itemType":null,"dialog":"delete-email"},{"id":"settings-delete-credential","page":"settings","variant":"account","itemType":null,"dialog":"delete-credential"},{"id":"send-existing-text","page":"send","variant":"overview","itemType":null,"dialog":"existing-text"},{"id":"send-existing-file","page":"send","variant":"overview","itemType":null,"dialog":"existing-file"},{"id":"send-delete-confirm","page":"send","variant":"overview","itemType":null,"dialog":"delete-send"},{"id":"send-received-empty","page":"send","variant":"received-empty","itemType":null,"dialog":null},{"id":"send-received-file","page":"send","variant":"received-file","itemType":null,"dialog":null},{"id":"generator-history","page":"generator","variant":"password","itemType":null,"dialog":"generator-history"},{"id":"reports-weak","page":"reports","variant":"weak","itemType":null,"dialog":null},{"id":"reports-unsafe","page":"reports","variant":"unsafe","itemType":null,"dialog":null},{"id":"reports-exposure-failed","page":"reports","variant":"exposure-failed","itemType":null,"dialog":null},{"id":"import-preview","page":"import-export","variant":"preview","itemType":null,"dialog":null},{"id":"emergency-recovered","page":"emergency","variant":"overview","itemType":null,"dialog":"recovered"},{"id":"emergency-takeover","page":"emergency","variant":"overview","itemType":null,"dialog":"takeover"}];const current="login-device-approval";const currentScene=scenes.find(scene=>scene.id===current);
+function navigate(id){if(!scenes.some(scene=>scene.id===id)){toast('This branch is documented in the source inventory.');return;}if(parent!==window)parent.postMessage({type:'wvw-review-navigate',id,context:window.captureReviewVaultContext?.()||null},'*');else location.href=id+'.html?theme='+document.documentElement.dataset.theme;}
+function toast(message){let n=document.querySelector('.toast');if(!n){n=document.createElement('div');n.className='toast';n.setAttribute('role','status');document.body.append(n);}n.textContent=message;n.classList.add('visible');clearTimeout(window.reviewToastTimer);window.reviewToastTimer=setTimeout(()=>n.classList.remove('visible'),3500);}
+function closeModal(){const scene=currentScene;const match=scenes.find(x=>x.page===scene.page&&x.variant===scene.variant&&!x.dialog&&x.itemType===scene.itemType&&x.itemId===scene.itemId)||scenes.find(x=>x.page===scene.page&&x.variant===(scene.page==='settings'?'security':'overview')&&!x.dialog)||scenes.find(x=>x.page===scene.page&&!x.dialog);if(match)navigate(match.id);}
+
+(function () {
+  const surface = document.querySelector('.v-surface');
+  if (!surface) return;
+  const host = surface.querySelector('.v-pane-host');
+  const list = surface.querySelector('.v-list');
+  const typeNames = { login: 'Login', card: 'Payment card', identity: 'Identity', note: 'Secure note', ssh: 'SSH key', bank: 'Bank account', license: 'Driver’s license', passport: 'Passport' };
+  let savedDetail = surface.querySelector('#v-detail-template')?.innerHTML || '';
+  let pendingReveal = null;
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
+  const getForm = () => host.querySelector('.v-editor-form');
+  const getDetail = () => host.querySelector('.v-detail');
+  const consume = event => { event.preventDefault(); event.stopImmediatePropagation(); };
+  const localToast = text => toast(text + ' · Preview only');
+  const paneEmpty = (title, body) => '<section class="detail-pane empty-pane v-detail-empty"><h2>' + esc(title) + '</h2><p>' + esc(body) + '</p></section>';
+  function localDialog(title, message, primary, onAccept, options = {}) {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'v-local-dialog';
+    dialog.innerHTML = '<h2>' + esc(title) + '</h2><p>' + esc(message) + '</p>' + (options.fields || '') + '<div class="v-dialog-actions"><button type="button" class="button ' + (options.danger ? 'danger' : 'primary') + '" data-v-dialog-accept>' + esc(primary) + '</button><button type="button" class="button" data-v-dialog-cancel>Cancel</button></div>';
+    document.body.append(dialog);
+    const accept = dialog.querySelector('[data-v-dialog-accept]');
+    const valid = () => !options.required || [...dialog.querySelectorAll('[required]')].every(input => input.value.trim());
+    accept.disabled = !valid();
+    dialog.addEventListener('input', () => { accept.disabled = !valid(); });
+    dialog.querySelector('[data-v-dialog-cancel]').addEventListener('click', event => { consume(event); dialog.close(); });
+    accept.addEventListener('click', event => { consume(event); if (!valid()) return; onAccept(dialog); dialog.close(); });
+    dialog.addEventListener('close', () => dialog.remove());
+    dialog.showModal();
+    (options.required ? dialog.querySelector('[required]') : dialog.querySelector('[data-v-dialog-cancel]'))?.focus();
+  }
+  function guardNavigation(callback) {
+    const form = getForm();
+    if (form?.dataset.vPending === 'true') {
+      localDialog('Keep this draft until the result is known', 'The last create request may have reached your server. Check sync status before leaving this draft or creating another item.', 'Return to draft', () => form.querySelector('[data-v-action="check-pending"]')?.focus());
+      return;
+    }
+    if (form?.dataset.dirty === 'true') localDialog('Discard unsaved changes?', 'Your saved item will stay unchanged. The edits in this preview will be discarded.', 'Discard changes', callback);
+    else callback();
+  }
+  function navigateSafely(target) { guardNavigation(() => navigate(target)); }
+  function requiredValid(form) {
+    const fields = [...form.querySelectorAll('[required]')].filter(input => !input.disabled);
+    if (!fields.every(input => input.value.trim())) return false;
+    if (form.querySelector('[data-v-owner]')?.value === 'Contoso Review' && !form.querySelector('input[name="collection"]:checked')) return false;
+    return [...form.querySelectorAll('input[type="email"]')].every(input => !input.value || input.validity.valid);
+  }
+  function refineMatching(form) {
+    if(!form)return;
+    form.querySelectorAll('select[name^="match"]').forEach(select=>{
+      const label=select.closest('.form-field');
+      let details=select.closest('.v-match-details');
+      if(!details){details=document.createElement('details');details.className='disclosure v-disclosure v-match-details';details.innerHTML='<summary><strong>Website matching</strong><span data-v-match-summary></span></summary><div class="v-disclosure-body"></div>';label.before(details);details.lastElementChild.append(label);}
+      details.querySelector('[data-v-match-summary]').textContent=select.selectedOptions[0]?.textContent||'Default';
+    });
+  }
+  function refreshForm(form, dirty = true) {
+    refineMatching(form);
+    if (!form || form.dataset.vPending === 'true') return;
+    if (dirty) form.dataset.dirty = 'true';
+    form.querySelector('.v-dirty-label').textContent = form.dataset.dirty === 'true' ? 'Unsaved changes' : form.dataset.vNew === 'true' ? 'Blank draft' : 'No unsaved changes';
+    const save = form.querySelector('[data-v-action="save"]');
+    if (save) save.disabled = !requiredValid(form) || form.dataset.dirty !== 'true';
+    const collection = form.querySelector('.v-collections');
+    if (collection) collection.hidden = form.querySelector('[data-v-owner]')?.value !== 'Contoso Review';
+  }
+  function initializeForm() {
+    const form = getForm();
+    if (!form) return;
+    form.addEventListener('submit', event => { consume(event); saveForm(form); });
+    refreshForm(form, false);
+  }
+  function collectForm(form) {
+    const creating = form.dataset.vNew === 'true';
+    const source = surface.querySelector('#v-detail-template')?.content.querySelector('.v-detail');
+    let data = creating ? {} : JSON.parse(source?.dataset.vModel || '{}');
+    for (const input of form.querySelectorAll('[data-v-key]')) data[input.dataset.vKey] = input.value;
+    data.id = creating ? 'preview-new' : form.dataset.vRecord;
+    data.type = form.dataset.vType;
+    data.favorite = !!form.querySelector('[name="favorite"]:checked');
+    data.reprompt = !!form.querySelector('[name="reprompt"]:checked');
+    data.owner = creating ? form.querySelector('[name="owner"]').value : data.owner;
+    data.collection = creating && data.owner === 'Contoso Review' ? 'Engineering' : data.collection;
+    data.notes = data.type === 'note' ? form.querySelector('[name="notes"]')?.value || '' : form.querySelector('[name="notesExtra"]')?.value || '';
+    data.fullName = data.type === 'passport' ? [data.givenName, data.surname].filter(Boolean).join(' ') : [data.firstName, data.middleName, data.lastName].filter(Boolean).join(' ');
+    data.fullAddress = [data.address1, data.address2, data.address3, [data.city, data.state, data.postalCode].filter(Boolean).join(', '), data.country].filter(Boolean).join('\n');
+    data.expiry = [data.month || '—', data.year || '—'].join(' / ');
+    data.custom = [...form.querySelectorAll('.v-custom-editor')].map(row => ({ name: row.querySelector('[name^="customName"]')?.value || '', type: row.querySelector('[name^="customType"]')?.value || 'Text', value: row.querySelector('[name^="customValue"]')?.type === 'checkbox' ? String(row.querySelector('[name^="customValue"]').checked) : row.querySelector('[name^="customValue"]')?.value || '' })).filter(field => field.name.trim());
+    return data;
+  }
+  function saveForm(form) {
+    if (!requiredValid(form)) {
+      const error = form.querySelector('.v-form-error');
+      error.hidden = false;
+      error.textContent = form.querySelector('[data-v-owner]')?.value === 'Contoso Review' && !form.querySelector('[name="collection"]:checked') ? 'Choose at least one collection for this organization item.' : 'Complete the required fields before saving.';
+      form.querySelector('[required]:invalid')?.focus();
+      return;
+    }
+    if (form.dataset.dirty !== 'true') return;
+    const data = collectForm(form);
+    const creating = form.dataset.vNew === 'true';
+    const editClone = form.cloneNode(true);
+    const sourceInputs = [...form.querySelectorAll('input,select,textarea')];
+    [...editClone.querySelectorAll('input,select,textarea')].forEach((copy, index) => { const original = sourceInputs[index]; if (copy.tagName === 'TEXTAREA') copy.textContent = original.value; else if (copy.tagName === 'SELECT') [...copy.options].forEach(option => { option.selected = option.value === original.value; option.toggleAttribute('selected', option.selected); }); else { copy.setAttribute('value', original.value); copy.toggleAttribute('checked', original.checked); } });
+    editClone.dataset.dirty = 'false'; editClone.dataset.vNew = 'false'; editClone.dataset.vRecord = data.id;
+    editClone.querySelector('[data-v-create-type]')?.closest('.form-field').remove();
+    editClone.querySelector('.v-dirty-label').textContent = 'No unsaved changes';
+    editClone.querySelector('[data-v-editor-title]').textContent = 'Edit ' + (data.type === 'ssh' ? 'SSH key' : typeNames[data.type].toLowerCase());
+    editClone.querySelector('.eyebrow').textContent = data.owner + ' / ' + (data.collection || data.folder || 'No folder');
+    const editableOwner = editClone.querySelector('[data-v-owner]');
+    if (editableOwner) { const owner = document.createElement('div'); owner.className = 'v-owner-readonly'; owner.innerHTML = '<span class="field-label">Owner</span><strong>' + esc(data.owner) + '</strong><small>Ownership transfer is a separate action.</small>'; editableOwner.closest('.form-field').replaceWith(owner); editClone.querySelector('.v-collections')?.remove(); }
+    editClone.querySelector('[data-v-action="save"]').textContent = 'Save changes'; editClone.querySelector('[data-v-action="save"]').disabled = true;
+    surface.querySelector('#v-editor-template').innerHTML = editClone.outerHTML;
+    const template = creating ? surface.querySelector('[data-v-new-detail="' + data.type + '"]') : surface.querySelector('#v-detail-template');
+    if (!template) return;
+    host.innerHTML = template.innerHTML;
+    const detail = getDetail();
+    detail.dataset.vModel = JSON.stringify(data);
+    detail.dataset.vRecord = data.id;
+    detail.querySelector('[data-v-title]').textContent = data.name;
+    for (const span of detail.querySelectorAll('[data-v-bind]')) {
+      const key = span.dataset.vBind;
+      const value = key === 'folder' ? data.collection || data.folder || 'No folder' : data[key];
+      if (value === undefined) continue;
+      if (span.hasAttribute('data-v-secret')) { span.dataset.vSecret = value; span.textContent = value ? '••••••••' : 'Not set'; }
+      else span.textContent = value || '—';
+      span.closest('.v-field')?.querySelectorAll('.field-actions button').forEach(button => { button.disabled = !value; });
+    }
+    const websites = [...detail.querySelectorAll('.section')].find(section => section.querySelector('h3')?.textContent === 'Websites');
+    if (websites) for (const key of Object.keys(data).filter(key => /^website\d+$/.test(key) && data[key])) { if (!websites.querySelector('[data-v-bind="' + key + '"]')) { const row = document.createElement('div'); row.className = 'field-row v-field'; row.innerHTML = '<div class="field-value"><span class="field-label">Additional website</span><span class="value" data-v-bind="' + key + '">' + esc(data[key]) + '</span></div><div class="field-actions"><button type="button" class="button small" data-v-action="copy" data-v-label="Website">Copy</button></div>'; websites.append(row); } }
+    const code = detail.querySelector('[data-v-totp]');
+    if (code && !data.totp) code.closest('.field-row').hidden = true;
+    const cardTail = detail.querySelector('.v-card-summary .mono');
+    if (cardTail) cardTail.textContent = '•••• ' + String(data.number || '').replace(/\s/g, '').slice(-4);
+    const notes = detail.querySelector('[data-v-bind="notes"]');
+    if (!notes && data.notes) {
+      const block = document.createElement('details');
+      block.className = 'disclosure v-disclosure';
+      block.innerHTML = '<summary><strong>Notes</strong></summary><div class="v-disclosure-body"><p class="v-note-content" data-v-bind="notes">' + esc(data.notes) + '</p></div>';
+      detail.querySelector('.detail-end').before(block);
+    }
+    let customDetails = [...detail.querySelectorAll('details')].find(block => block.querySelector('summary strong')?.textContent === 'Custom fields');
+    if (!customDetails && data.custom.length) { customDetails = document.createElement('details'); customDetails.className = 'disclosure v-disclosure'; customDetails.innerHTML = '<summary><strong>Custom fields</strong><span></span></summary><div class="v-disclosure-body"></div>'; detail.querySelector('.detail-end').before(customDetails); }
+    if (customDetails && !data.custom.length) { customDetails.remove(); customDetails = null; }
+    if (customDetails) {
+      customDetails.querySelector('.v-disclosure-body').innerHTML = data.custom.length ? data.custom.map(field => '<div class="field-row v-field"><div class="field-value"><span class="field-label">' + esc(field.name) + '</span><span class="value" ' + (field.type === 'Hidden' || field.type === 'Linked' ? 'data-v-secret="' + esc(field.value) + '"' : '') + '>' + (field.type === 'Hidden' || field.type === 'Linked' ? '••••••••' : esc(field.value || '—')) + '</span></div></div>').join('') : '<p class="caption">No custom fields</p>';
+      const count = customDetails.querySelector('summary>span:not(.icon)');
+      if (count) count.textContent = data.custom.length + ' fields';
+    }
+    detail.querySelector('[data-v-timeline]').textContent = creating ? 'Created just now · Local preview' : 'Created 15 Aug 2026 · Edited just now · Local preview';
+    const sync = detail.querySelector('.sync-status');
+    if (sync) { sync.textContent = 'Local preview'; sync.className = 'pill warning'; }
+    const favorite = detail.querySelector('[data-v-action="favorite"]');
+    if (favorite) { favorite.classList.toggle('v-favorite-on', data.favorite); favorite.setAttribute('aria-pressed', String(data.favorite)); }
+    savedDetail = host.innerHTML;
+    surface.querySelector('#v-detail-template').innerHTML = savedDetail;
+    const row = surface.querySelector('[data-v-row="' + data.id + '"] .item-copy strong');
+    if (row) row.textContent = data.name;
+    if (creating) {
+      const row = document.createElement('div');
+      row.className = 'v-row-wrap'; row.dataset.vRow = data.id; row.dataset.vKind = data.type; row.dataset.vName = data.name; row.dataset.vOwner = data.owner; row.dataset.vFolder = data.folder;
+      row.innerHTML = '<button class="vault-list-row selected" data-v-action="saved-preview"><span class="item-copy"><strong>' + esc(data.name) + '</strong><small>Created in this preview</small></span></button>';
+      list.querySelector('[data-v-rows]').prepend(row);
+      list.querySelectorAll('.vault-list-row').forEach(button => { if (!row.contains(button)) button.classList.remove('selected'); });
+      filterRows();
+    }
+    localToast(creating ? 'Item created in the local preview. No server request was made' : 'Changes applied to the local preview. No server request was made');
+  }
+  function filterRows() {
+    const search = list.querySelector('[data-v-search]');
+    if (!search || search.disabled) return;
+    if (list.dataset.vLocalFolder) return;
+    const query = search.value.trim().toLowerCase();
+    const type = list.querySelector('[data-v-filter]').value;
+    const favorite = !!list.querySelector('[data-v-favorite-filter]')?.checked;
+    const rows = [...list.querySelectorAll('[data-v-row]')];
+    for (const row of rows) row.hidden = !!((query && !row.textContent.toLowerCase().includes(query)) || (type && row.dataset.vKind !== type) || (favorite && row.dataset.vFavorite !== 'true'));
+    const visible = rows.filter(row => !row.hidden);
+    const batch = !!host.querySelector('.v-batch');
+    if (!batch) list.querySelector('[data-v-list-count]').textContent = visible.length + ((query || type || favorite) ? (visible.length === 1 ? ' result' : ' results') : (visible.length === 1 ? ' item' : ' items'));
+    list.querySelector('[data-v-empty]').hidden = visible.length > 0;
+    const select = list.querySelector('[data-v-action="batch-start"]');
+    if (select) select.disabled = visible.length === 0;
+    if (list.dataset.vInitialState === 'no-results' && !query && !type && !favorite) host.innerHTML = paneEmpty('Choose an item', 'Select a login, card or key to see its details.');
+    else if (!visible.length && !getForm() && !batch) host.innerHTML = paneEmpty('No matching items', 'Clear search or change your filters. Your saved items have not changed.');
+  }
+  function showDetails() { host.innerHTML = savedDetail || surface.querySelector('#v-detail-template').innerHTML; }
+  function revealField(button) {
+    const detail = getDetail();
+    if (detail?.dataset.vProtected === 'true') {
+      pendingReveal = button;
+      localDialog('Verify your master password', 'This item requires verification before showing sensitive fields.', 'Verify and reveal', dialog => {
+        dialog.querySelector('input').value = '';
+        detail.dataset.vProtected = 'false';
+        const totp = detail.querySelector('[data-v-totp]');
+        if (totp) { totp.textContent = '482 916'; totp.nextElementSibling.textContent = 'Refreshes every 30 seconds'; }
+        const pending = pendingReveal; pendingReveal = null;
+        if (pending) revealField(pending);
+        localToast('Synthetic verification completed; no account authentication was performed');
+      }, { fields: '<label class="form-field"><span>Master password</span><input type="password" required autocomplete="off"></label>', required: true });
+      return;
+    }
+    const value = button.closest('.field-row')?.querySelector('[data-v-secret]');
+    if (!value) return;
+    const showing = button.getAttribute('aria-pressed') === 'true';
+    value.textContent = showing ? '••••••••' : value.dataset.vSecret || '—';
+    button.setAttribute('aria-pressed', String(!showing));
+    const label = button.dataset.vLabel || 'secret';
+    button.setAttribute('aria-label', (showing ? 'Show ' : 'Hide ') + label);
+    button.title = button.getAttribute('aria-label');
+  }
+  function updateBatch() {
+    const pane = host.querySelector('.v-batch');
+    if (!pane) return;
+    const selected = [...list.querySelectorAll('[data-v-row]')].filter(row => row.querySelector('.v-row-check')?.checked);
+    const count = selected.length;
+    list.querySelector('[data-v-list-count]').textContent = count + ' selected';
+    pane.querySelector('[data-v-batch-title]').textContent = count + ' items selected';
+    const owners = new Set(selected.map(row => row.dataset.vOwner));
+    const folders = new Set(selected.map(row => row.dataset.vFolder));
+    pane.querySelector('[data-v-batch-context]').textContent = count ? (owners.size === 1 ? [...owners][0] : owners.size + ' owners') + ' · ' + folders.size + ' folders' : 'Select items from the list to continue.';
+    pane.querySelector('[data-v-batch-items]').innerHTML = selected.map(row => '<div class="compact-row"><div><strong>' + esc(row.dataset.vName) + '</strong><p>' + esc(row.dataset.vFolder || 'No folder') + '</p></div></div>').join('');
+    const personal = count > 0 && selected.every(row => row.dataset.vOwner === 'Personal vault');
+    pane.querySelector('[data-v-batch-permission]').textContent = personal ? 'All selected items are personal and can be edited.' : count ? 'This selection includes a read-only organization item. Remove it to change personal items.' : 'No items are selected.';
+    pane.querySelectorAll('button[data-v-action]').forEach(button => { button.disabled = !personal; });
+    const favorites = count > 0 && selected.every(row => row.dataset.vFavorite === 'true');
+    const favoriteButton = pane.querySelector('[data-v-action="batch-favorite"]');
+    favoriteButton.textContent = favorites ? 'Remove from favorites' : 'Add to favorites';
+    favoriteButton.dataset.vRemoveFavorite = String(favorites);
+  }
+  function operationDialog(operation, itemName, count = 1) {
+    const isFolder = operation === 'Move to folder';
+    const isTransfer = operation === 'Transfer to organization';
+    const fields = isFolder ? '<label class="form-field"><span>Folder</span><select data-v-operation-folder><option>Work</option><option>Personal</option><option>Finance</option><option>No folder</option></select></label>' : isTransfer ? '<label class="form-field"><span>Organization</span><select><option>Contoso Review</option></select></label><label class="form-field"><span>Collection</span><select><option>Engineering</option></select></label>' : '';
+    const message = operation === 'Move to trash' ? itemName + '\nYou can restore the item from Trash.' : isTransfer ? itemName + '\nThe organization will own the selected item. Its policies and permissions will apply.' : operation === 'Archive' ? itemName + '\nArchived items remain available in Archive.' : itemName;
+    localDialog(operation + '?', message, operation, dialog => { const destination = dialog.querySelector('[data-v-operation-folder]')?.value; localToast(operation + (destination ? ' → ' + destination : '') + ' reviewed for ' + count + ' item' + (count === 1 ? '' : '')); }, { fields, danger: operation === 'Move to trash' });
+  }
+  function createLocalFolder(name) {
+    const folder = document.createElement('button'); folder.type = 'button'; folder.className = 'nav-item folder is-current'; folder.dataset.vAction = 'local-folder'; folder.dataset.vFolderName = name;
+    folder.innerHTML = (list.querySelector('[data-v-target="vault-folder-work"] .icon')?.outerHTML || '') + '<span>' + esc(name) + '</span><small>0</small>';
+    document.querySelector('.folder-nav')?.append(folder);
+    list.dataset.vLocalFolder = name;
+    list.querySelector('.list-heading h1').textContent = name;
+    list.querySelectorAll('[data-v-row]').forEach(row => { row.hidden = true; });
+    list.querySelector('[data-v-list-count]').textContent = '0 items';
+    list.querySelector('[data-v-empty]').hidden = false; list.querySelector('[data-v-empty]').textContent = 'No items in this folder';
+    const select = list.querySelector('[data-v-action="batch-start"]'); if (select) select.disabled = true;
+    host.innerHTML = paneEmpty('Your folder is ready', 'Move an existing item here, or add a new item to this folder.');
+    localToast('Folder created in the local preview; no server request was made');
+  }
+  function targetForRootButton(button) {
+    if (button.dataset.go) return button.dataset.go;
+    if (button.dataset.page) return scenes.find(scene => scene.page === button.dataset.page && !scene.dialog && scene.variant === (button.dataset.page === 'vault' ? 'no-selection' : button.dataset.page === 'settings' ? 'security' : button.dataset.page === 'generator' ? 'password' : button.dataset.page === 'login' ? 'locked' : 'overview'))?.id;
+    return null;
+  }
+  document.addEventListener('click', event => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    if (button.closest('.v-local-dialog')) return;
+    const action = button.dataset.vAction;
+    if (!action) {
+      if (current === 'vault-reprompt' && button.closest('.app-dialog') && button.textContent.trim() === 'Cancel') {
+        consume(event); document.querySelector('.modal-scrim')?.remove(); document.querySelector('.app-window').inert = false; getDetail()?.querySelector('[data-v-action="reveal"]')?.focus(); return;
+      }
+      if (current === 'vault-permanent-delete' && button.closest('.app-dialog') && button.textContent.trim() === 'Cancel') { consume(event); navigate('vault-trash'); return; }
+      const form = getForm();
+      if (form && (form.dataset.dirty === 'true' || form.dataset.vPending === 'true')) {
+        const target = targetForRootButton(button);
+        if (target) { consume(event); navigateSafely(target); }
+      }
+      return;
+    }
+    consume(event);
+    if (button.disabled) return;
+    const form = getForm(), detail = getDetail();
+    if (action === 'navigate' || action === 'row') { navigateSafely(button.dataset.vTarget); return; }
+    if (action === 'new-folder') { guardNavigation(() => localDialog('New folder', 'Create a folder to organize items in your personal vault.', 'Create folder', dialog => createLocalFolder(dialog.querySelector('input').value.trim()), { fields: '<label class="form-field"><span>Folder name (required)</span><input type="text" required maxlength="100"></label>', required: true })); return; }
+    if (action === 'saved-preview') { guardNavigation(showDetails); return; }
+    if (action === 'edit') {
+      const openEditor = () => { savedDetail = detail?.dataset.vProtected === 'true' ? surface.querySelector('#v-detail-template').innerHTML : host.innerHTML; host.innerHTML = surface.querySelector('#v-editor-template').innerHTML; initializeForm(); host.querySelector('[name="name"]')?.focus(); };
+      if (detail?.dataset.vProtected === 'true') localDialog('Verify your master password', 'Verify access before editing this protected item.', 'Verify and edit', dialog => { dialog.querySelector('input').value = ''; openEditor(); localToast('Synthetic verification completed; no account authentication was performed'); }, { fields: '<label class="form-field"><span>Master password</span><input type="password" required autocomplete="off"></label>', required: true });
+      else openEditor();
+      return;
+    }
+    if (action === 'cancel-edit') { guardNavigation(() => { if (form.dataset.vNew === 'true') navigate('vault-no-selection'); else showDetails(); }); return; }
+    if (action === 'save') { if (form) saveForm(form); return; }
+    if (action === 'input-reveal') {
+      const input = button.closest('.v-secret-input').querySelector('input,textarea');
+      const revealed = button.getAttribute('aria-pressed') === 'true';
+      if (input.tagName === 'TEXTAREA') input.classList.toggle('v-unmasked', !revealed); else input.type = revealed ? 'password' : 'text';
+      button.setAttribute('aria-pressed', String(!revealed));
+      const label = button.closest('.form-field').querySelector('span')?.textContent || 'secret';
+      button.setAttribute('aria-label', (revealed ? 'Show ' : 'Hide ') + label); button.title = button.getAttribute('aria-label'); return;
+    }
+    if (action === 'reveal') { revealField(button); return; }
+    if (action === 'copy') {
+      if (detail?.dataset.vProtected === 'true') {
+        localDialog('Verify before copying', 'Copying does not reveal the password on screen.', 'Verify and copy preview', dialog=>{dialog.querySelector('input').value='';localToast((button.dataset.vLabel||'Field')+' copy preview completed; the value stays hidden and the clipboard was not changed');},{fields:'<label class="form-field"><span>Master password</span><input type="password" required autocomplete="off"></label>',required:true});
+        return;
+      }
+      localToast('Copy feedback: ' + (button.dataset.vLabel || 'field') + ' · clipboard clears after 30 seconds'); return;
+    }
+    if (action === 'favorite') {
+      const on = button.getAttribute('aria-pressed') !== 'true'; button.setAttribute('aria-pressed', String(on)); button.classList.toggle('v-favorite-on', on); button.title = (on ? 'Remove from' : 'Add to') + ' favorites'; button.setAttribute('aria-label', button.title);
+      const row = list.querySelector('[data-v-row="' + detail.dataset.vRecord + '"]'); if (row) { row.dataset.vFavorite = String(on); const star = row.querySelector('.favorite'); if (star) star.hidden = !on; }
+      localToast(on ? 'Favorite added' : 'Favorite removed'); return;
+    }
+    if (action === 'clear-search') { list.querySelector('[data-v-search]').value = ''; list.querySelector('[data-v-filter]').value = ''; list.querySelector('[data-v-favorite-filter]').checked = false; filterRows(); list.querySelector('[data-v-search]').focus(); return; }
+    if (action === 'batch-start') { navigateSafely('vault-batch'); return; }
+    if (action === 'batch-done') { navigate('vault-no-selection'); return; }
+    if (action === 'select-row') { const check = button.closest('[data-v-row]').querySelector('.v-row-check'); check.checked = !check.checked; updateBatch(); return; }
+    if (action === 'batch-favorite') {
+      const remove = button.dataset.vRemoveFavorite === 'true'; list.querySelectorAll('[data-v-row]').forEach(row => { if (row.querySelector('.v-row-check')?.checked) { row.dataset.vFavorite = String(!remove); const star = row.querySelector('.favorite'); if (star) star.hidden = remove; } }); updateBatch(); localToast(remove ? 'Favorites removed from this selection' : 'Favorites added to this selection'); return;
+    }
+    if (action === 'batch-operation') { const rows = [...list.querySelectorAll('[data-v-row]')].filter(row => row.querySelector('.v-row-check')?.checked); operationDialog(button.dataset.vOperation, rows.map(row => row.dataset.vName).join('\n'), rows.length); return; }
+    if (action === 'move-folder' || action === 'transfer' || action === 'soft-delete') { operationDialog(action === 'move-folder' ? 'Move to folder' : action === 'transfer' ? 'Transfer to organization' : 'Move to trash', detail.querySelector('[data-v-title]').textContent); return; }
+    if (action === 'permanent-delete') { navigate('vault-permanent-delete'); return; }
+    if (action === 'confirm-permanent-delete') { localToast('Permanent deletion reviewed for Old VPN. No account data was changed'); return; }
+    if (action === 'restore' || action === 'unarchive') { operationDialog(action === 'restore' ? 'Restore item' : 'Unarchive item', detail.querySelector('[data-v-title]').textContent); return; }
+    if (action === 'website') { localDialog('Open this website?', button.dataset.vUrl, 'Open website preview', () => localToast('Website destination reviewed; no browser tab was opened')); return; }
+    if (action === 'information') { const r = JSON.parse(detail.dataset.vModel); localDialog('Item information', r.name + '\nOwner: ' + r.owner + '\nFolder: ' + (r.folder || 'No folder') + '\nCreated: ' + (r.created || 'Just now') + '\nEdited: ' + (r.edited || 'Just now'), 'Done', () => {}); return; }
+    if (action === 'attachment-delete') { localDialog('Delete this attachment?', 'review-checklist.txt\nThe vault item will remain. This attachment cannot be restored after deletion.', 'Delete attachment', () => localToast('Attachment deletion reviewed; no file was changed'), { danger: true }); return; }
+    if (action === 'attachment-add' || action === 'download') { localToast(action === 'attachment-add' ? 'Choose an attachment preview' : 'Download feedback for review-checklist.txt'); return; }
+    if (action === 'generate') { form.querySelector('.v-generator-inline').hidden = false; return; }
+    if (action === 'regenerate-password') { form.querySelector('[data-v-generated]').textContent = form.querySelector('[data-v-generated]').textContent.startsWith('R7') ? 'P8@cW3!nZ6#rT9$mK2' : 'R7!mQ2#zP9@vK4$wX6'; return; }
+    if (action === 'cancel-generator') { form.querySelector('.v-generator-inline').hidden = true; return; }
+    if (action === 'use-password') { form.querySelector('[name="password"]').value = form.querySelector('[data-v-generated]').textContent; form.querySelector('.v-generator-inline').hidden = true; refreshForm(form); return; }
+    if (action === 'add-uri') { const container = form.querySelector('[data-v-uri-list]'); const count = container.querySelectorAll('[name^="website"]').length + 1; const block = document.createElement('div'); block.innerHTML = '<label class="form-field"><span>Additional website</span><input name="website' + count + '" data-v-key="website' + count + '"></label><label class="form-field"><span>Match detection</span><select name="match' + count + '" data-v-key="match' + count + '"><option value="">Default</option><option value="0">Base domain</option><option value="1">Host</option><option value="2">Starts with</option><option value="3">Exact</option><option value="4">Regular expression</option><option value="5">Never</option></select></label>'; container.append(block); block.querySelector('input').focus(); refreshForm(form); return; }
+    if (action === 'add-custom') { const container = form.querySelector('[data-v-custom-list]'); const index = container.children.length; const row = document.createElement('div'); row.className = 'v-custom-editor'; row.innerHTML = '<label class="form-field"><span>Field name</span><input name="customName' + index + '"></label><label class="form-field"><span>Field type</span><select name="customType' + index + '" data-v-custom-type><option>Text</option><option>Hidden</option><option>Boolean</option></select></label><label class="form-field"><span>Value</span><input name="customValue' + index + '"></label>'; container.append(row); row.querySelector('input').focus(); refreshForm(form); return; }
+    if (action === 'retry-sync') { button.disabled = true; button.textContent = 'Retrying…'; setTimeout(() => { if (!button.isConnected) return; button.disabled = false; button.textContent = 'Retry sync'; localToast('Still offline. Saved items remain available'); }, 800); return; }
+    if (action === 'check-pending') { button.disabled = true; button.textContent = 'Checking…'; setTimeout(() => { if (!button.isConnected) return; button.disabled = false; button.textContent = 'Check sync status'; localToast('Result still unconfirmed. Keep the draft and check again when connected'); }, 800); return; }
+    if (action === 'keep-pending') { localToast('The unconfirmed draft is retained; no duplicate creation was attempted'); return; }
+    if (action === 'verify-reprompt') {
+      const input = document.querySelector('[data-v-master-password]'); if (!input?.value) return; input.value = '';
+      document.querySelector('.modal-scrim')?.remove(); document.querySelector('.app-window').inert = false;
+      if (detail) { detail.dataset.vProtected = 'false'; const code = detail.querySelector('[data-v-totp]'); if (code) { code.textContent = '482 916'; code.nextElementSibling.textContent = 'Refreshes every 30 seconds'; } }
+      localToast('Synthetic verification completed; no account authentication was performed'); return;
+    }
+    if (action === 'create-folder') {
+      const name = document.querySelector('[data-v-folder-name]')?.value.trim(); if (!name) return;
+      document.querySelector('.modal-scrim')?.remove(); document.querySelector('.app-window').inert = false;
+      createLocalFolder(name); return;
+    }
+    if (action === 'local-folder') { host.innerHTML = paneEmpty('Your folder is ready', 'This folder is empty in the current preview.'); return; }
+    if (action === 'reprompt') { const reveal = detail.querySelector('[data-v-action="reveal"]'); if (reveal) revealField(reveal); return; }
+    localToast('Action reviewed without changing account data');
+  }, true);
+  document.addEventListener('input', event => {
+    const input = event.target;
+    if (input.matches('[data-v-search]')) { consume(event); filterRows(); return; }
+    if (input.matches('[data-v-master-password]')) { const button = document.querySelector('[data-v-action="verify-reprompt"]'); if (button) button.disabled = !input.value; return; }
+    if (input.matches('[data-v-folder-name]')) { const button = document.querySelector('[data-v-action="create-folder"]'); if (button) button.disabled = !input.value.trim(); return; }
+    const form = input.closest('.v-editor-form'); if (form) refreshForm(form);
+  }, true);
+  document.addEventListener('change', event => {
+    const input = event.target;
+    if (input.matches('[data-v-filter],[data-v-favorite-filter]')) { consume(event); filterRows(); return; }
+    if (input.matches('[data-v-sort]')) { const rows = [...list.querySelectorAll('[data-v-row]')]; if (input.value !== 'default') rows.sort((a, b) => a.dataset.vName.localeCompare(b.dataset.vName) * (input.value === 'name-desc' ? -1 : 1)); rows.forEach(row => list.querySelector('[data-v-rows]').append(row)); return; }
+    if (input.matches('.v-row-check')) { updateBatch(); return; }
+    const form = input.closest('.v-editor-form'); if (!form) return;
+    if (input.matches('[data-v-create-type]')) {
+      form.dataset.vType = input.value;
+      form.querySelector('[data-v-type-fields]').innerHTML = surface.querySelector('[data-v-fields-template="' + input.value + '"]').innerHTML;
+      form.querySelector('[data-v-editor-title]').textContent = 'New ' + (input.value === 'ssh' ? 'SSH key' : typeNames[input.value].toLowerCase());
+      form.querySelector('[data-v-form-title]').textContent = typeNames[input.value] + ' information';
+      form.querySelector('[data-v-notes-field]').hidden = input.value === 'note';
+    }
+    if (input.matches('[data-v-custom-type]')) {
+      const value = input.closest('.v-custom-editor').querySelector('[name^="customValue"]');
+      if (value) {
+        value.type = input.value === 'Hidden' ? 'password' : input.value === 'Boolean' ? 'checkbox' : 'text'; value.readOnly = input.value === 'Linked';
+        const previous = value.closest('.v-secret-input');
+        if (input.value === 'Hidden' && !previous) { const wrapper = document.createElement('div'); wrapper.className = 'v-secret-input'; value.before(wrapper); wrapper.append(value); const reveal = document.createElement('button'); reveal.type = 'button'; reveal.className = 'button small'; reveal.dataset.vAction = 'input-reveal'; reveal.setAttribute('aria-label', 'Show field value'); reveal.textContent = 'Show'; wrapper.append(reveal); }
+        if (input.value !== 'Hidden' && previous) previous.replaceWith(value);
+      }
+    }
+    refreshForm(form);
+  }, true);
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !document.querySelector('.app-dialog')) return;
+    if (current === 'vault-reprompt') { consume(event); document.querySelector('.modal-scrim')?.remove(); document.querySelector('.app-window').inert = false; getDetail()?.querySelector('[data-v-action="reveal"]')?.focus(); }
+    if (current === 'vault-permanent-delete') { consume(event); navigate('vault-trash'); }
+  }, true);
+  initializeForm();
+  if (list.dataset.vInitialState === 'no-results') filterRows();
+  if (list.dataset.vInitialState === 'batch') updateBatch();
+  if (list.dataset.vInitialState === 'pending-save') list.querySelectorAll('button,select,input').forEach(input => { input.disabled = true; });
+  if (current === 'vault-reprompt') setTimeout(() => document.querySelector('[data-v-master-password]')?.focus(), 0);
+  if (current === 'vault-new-folder') setTimeout(() => document.querySelector('[data-v-folder-name]')?.focus(), 0);
+  list.querySelector('.vault-list-row.selected')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+})();
+
+
+function reviewMessage(message) { let n=document.querySelector('.toast'); if(!n){n=document.createElement('div');n.className='toast';n.setAttribute('role','status');document.body.append(n);} n.textContent=message;n.classList.add('visible');setTimeout(()=>n.classList.remove('visible'),4000); }
+function reviewRoute(id) { if(parent!==window) parent.postMessage({type:'wvw-review-navigate',id},'*'); else location.href=id+'.html?theme='+document.documentElement.dataset.theme; }
+document.addEventListener('click', event => {
+  const button=event.target.closest('button'); if(!button)return;
+  if(button.hasAttribute('data-review-setup')){event.preventDefault();const dialog=button.closest('.app-dialog');const gate=dialog?.querySelector('.review-verification-gate');if(gate){dialog.querySelector('.method-list').hidden=true;dialog.querySelector('.review-secondary-actions').hidden=true;gate.hidden=false;dialog.querySelector('h2').textContent='Verify your identity';gate.querySelector('input')?.focus();}return;}
+  if(button.hasAttribute('data-review-method')){event.preventDefault();const panel=document.querySelector('.review-method-detail');if(panel){panel.hidden=false;panel.querySelector('input')?.focus();}return;}
+  if(button.hasAttribute('data-password-toggle')) { event.preventDefault();const input=button.parentElement.querySelector('input');const showing=input.type==='password';input.type=showing?'text':'password';button.setAttribute('aria-pressed',String(showing));button.setAttribute('aria-label',(showing?'Hide ':'Show ')+input.closest('label').querySelector('span').textContent.toLowerCase());return; }
+  if(!button.hasAttribute('data-review-submit')&&!button.hasAttribute('data-review-next'))return;
+  event.preventDefault();const scope=button.closest('.app-dialog')||button.closest('[data-review-form]')||button.parentElement;
+  const fields=[...scope.querySelectorAll('input,select')].filter(x=>!x.disabled&&x.getClientRects().length);
+  for(const input of fields){input.setCustomValidity('');if(input.hasAttribute('data-six-digit-code')){input.value=input.value.replace(/\s/g,'');if(!/^[0-9]{6}$/.test(input.value))input.setCustomValidity('Enter exactly six digits.');}if(input.dataset.exactValue&&input.value!==input.dataset.exactValue)input.setCustomValidity('Enter the exact account email shown above.');}
+  const newPassword=scope.querySelector('[data-password-new]'), confirm=scope.querySelector('[data-password-confirm]');if(newPassword&&confirm&&newPassword.value!==confirm.value)confirm.setCustomValidity('The confirmation does not match.');
+  const invalid=fields.find(x=>!x.checkValidity());if(invalid){invalid.reportValidity();return;}
+  if(button.dataset.reviewNext){reviewRoute(button.dataset.reviewNext);return;}
+  reviewMessage('Design preview: no server request was sent. Review the next state using the gallery.');
+}, true);
+document.addEventListener('input', event=>{const input=event.target;if(input.matches('.review-password input,[data-exact-value]'))input.setCustomValidity('');if(input.matches('[data-six-digit-code]')){input.value=input.value.replace(/\s/g,'');input.setCustomValidity('');}if(input.closest('[data-server-address]')){const footer=document.querySelector('[data-auth-server]');if(footer)footer.textContent=input.value;}});
+document.addEventListener('change', event=>{
+  if(event.target.matches('[data-server-select]')){const scope=event.target.closest('.auth-form');const custom=scope.querySelector('[data-server-address]');const input=custom?.querySelector('input');const isSelf=event.target.value==='self';if(custom)custom.hidden=!isSelf;if(input)input.disabled=!isSelf;const address=event.target.value==='eu'?'https://vault.bitwarden.eu':event.target.value==='us'?'https://vault.bitwarden.com':input?.value;const footer=document.querySelector('[data-auth-server]');if(footer)footer.textContent=address||'';}
+  const input=event.target;if(input.type==='checkbox'&&input.getAttribute('aria-label')==='Show tray icon'){document.querySelectorAll('input[aria-label="Close to tray"],input[aria-label="Minimize to tray"]').forEach(x=>{x.disabled=!input.checked;const p=x.closest('.setting-row')?.querySelector('p');if(p){if(!p.dataset.enabledText)p.dataset.enabledText=p.textContent;p.textContent=input.checked?p.dataset.enabledText:'Turn on Show tray icon to configure this option.';}});}
+});
+
+
+(() => {
+  let generatorStep = 0;
+  const by = key => document.querySelector('[data-gen="' + key + '"]');
+  const generatorRoot = document.querySelector('[data-generator-mode]');
+  const getValue = key => by(key)?.value || '';
+  const checked = key => Boolean(by(key)?.checked);
+  function generatePreview() {
+    if (!generatorRoot) return;
+    const mode = generatorRoot.dataset.generatorMode;
+    const out = document.querySelector('[data-tool-generated]');
+    const status = document.querySelector('[data-gen-status]');
+    const copy = document.querySelector('[data-gen-copy]');
+    const words = ['amber', 'cedar', 'river', 'meadow', 'harbor', 'maple', 'sunset', 'ocean'];
+    let value = '';
+    let problem = '';
+    if (mode === 'password') {
+      const length = Math.min(128, Math.max(5, Number(getValue('length')) || 20));
+      const groups = [checked('upper') ? 'ABCDEFGHJKLMNPQRSTUVWXYZ' : '', checked('lower') ? 'abcdefghijkmnopqrstuvwxyz' : '', checked('digits') ? '23456789' : '', checked('symbols') ? '!@#$%&*?' : ''].filter(Boolean);
+      if (!groups.length) problem = 'Choose at least one character type.';
+      else {
+        let minDigits = Math.max(0, Number(getValue('min-digits')) || 0);
+        let minSymbols = Math.max(0, Number(getValue('min-symbols')) || 0);
+        if (!checked('digits')) minDigits = 0;
+        if (!checked('symbols')) minSymbols = 0;
+        const requiredLetters = Number(checked('upper')) + Number(checked('lower'));
+        if (minDigits + minSymbols + requiredLetters > length) problem = 'Minimum counts and required character types must fit within the length.';
+        else {
+          const all = groups.join('') + (checked('ambiguous') ? '' : (checked('upper') ? 'IO' : '') + (checked('lower') ? 'l' : '') + (checked('digits') ? '01' : ''));
+          const prefix = (checked('upper') ? 'ABCDEFGH'[(generatorStep + 2) % 8] : '') + (checked('lower') ? 'abcdefgh'[(generatorStep + 5) % 8] : '') + Array.from({length: minDigits}, (_, i) => '23456789'[(i + generatorStep) % 8]).join('') + Array.from({length: minSymbols}, (_, i) => '!@#$%&*?'[(i + generatorStep) % 8]).join('');
+          value = prefix + Array.from({length: length - prefix.length}, (_, i) => all[(i * 17 + generatorStep * 11) % all.length]).join('');
+        }
+      }
+      status.textContent = problem || length + ' characters';
+    } else if (mode === 'passphrase') {
+      const count = Math.min(20, Math.max(3, Number(getValue('words')) || 4));
+      const parts = Array.from({length: count}, (_, i) => words[(i + generatorStep) % words.length]);
+      if (checked('capitalize')) for (let i = 0; i < parts.length; i++) parts[i] = parts[i][0].toUpperCase() + parts[i].slice(1);
+      if (checked('number')) parts[1] += String((7 + generatorStep) % 10);
+      value = parts.join(getValue('separator'));
+      status.textContent = count + ' words';
+    } else {
+      const type = getValue('username-type');
+      document.querySelector('[data-gen-word]').hidden = type !== 'word';
+      document.querySelector('[data-gen-email]').hidden = type !== 'plus';
+      document.querySelector('[data-gen-domain]').hidden = type !== 'catchall';
+      const word = words[(1 + generatorStep) % words.length];
+      const suffix = String(4826 + generatorStep).padStart(4, '0').slice(-4);
+      if (type === 'word') value = (checked('capitalize') ? word[0].toUpperCase() + word.slice(1) : word) + (checked('number') ? suffix : '');
+      else if (type === 'plus') {
+        const email = getValue('email').trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) problem = 'Enter your email address to generate an alias.';
+        else { const at = email.lastIndexOf('@'); value = email.slice(0, at) + '+' + word + suffix + email.slice(at); }
+      } else {
+        const domain = getValue('domain').trim();
+        if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) problem = 'Enter your configured catch-all domain.';
+        else value = word + suffix + '@' + domain;
+      }
+      status.textContent = problem || (type === 'word' ? 'Random word' + (checked('number') ? ' + four digits' : '') : type === 'plus' ? 'Plus-addressed email' : 'Catch-all email');
+    }
+    out.textContent = value || '—';
+    copy.disabled = Boolean(problem);
+  }
+  function checkForms() {
+    const has = selector => Boolean(document.querySelector(selector)?.value.trim());
+    const exportButton = document.querySelector('[data-export-submit]');
+    if (exportButton) exportButton.disabled = !has('[data-export-password]');
+    const approval = document.querySelector('[data-device-submit]');
+    if (approval) approval.disabled = !document.querySelector('[data-device-verified]')?.checked;
+    const open = document.querySelector('[data-send-open]');
+    if (open) {
+      let valid = false;
+      try { const url = new URL(document.querySelector('[data-send-link]')?.value || ''); valid = ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && /^#\/send\/[^/\s]+\/[^/\s]+$/.test(url.hash); } catch {}
+      open.disabled = !valid;
+    }
+    const save = document.querySelector('[data-send-submit]');
+    if (save) save.disabled = !has('[data-send-name]') || (document.querySelector('[data-send-content]') && !has('[data-send-content]'));
+    const takeover = document.querySelector('[data-takeover-submit]');
+    if (takeover) { const password = document.querySelector('[data-takeover-password]').value; takeover.disabled = !password || password !== document.querySelector('[data-takeover-confirm]').value; }
+    const invite = document.querySelector('[data-invite-submit]');
+    if (invite) { const email = document.querySelector('[data-emergency-email]'); const wait = Number(document.querySelector('[data-emergency-wait]')?.value); invite.disabled = !email?.validity.valid || !email.value.trim() || wait < 1 || wait > 90; }
+    const passkey = document.querySelector('[data-passkey-submit]');
+    if (passkey) passkey.disabled = !has('[data-passkey-choice]');
+  }
+  document.addEventListener('input', event => {
+    if (event.target.matches('[data-gen]')) {
+      if (event.target.dataset.gen === 'length') by('length-number').value = event.target.value;
+      if (event.target.dataset.gen === 'length-number') by('length').value = event.target.value;
+      generatePreview();
+    }
+    checkForms();
+  });
+  document.addEventListener('change', event => {
+    if (event.target.matches('[data-gen]')) generatePreview();
+    if (event.target.matches('[data-send-deletion],[data-send-expiration]')) {
+      const deletion = document.querySelector('[data-send-deletion]').value === 'Custom';
+      const expiration = document.querySelector('[data-send-expiration]').value === 'Custom';
+      document.querySelector('[data-send-custom]').hidden = !deletion && !expiration;
+      document.querySelector('[data-custom-delete]').hidden = !deletion;
+      document.querySelector('[data-custom-expiry]').hidden = !expiration;
+    }
+    if (event.target.matches('[data-emergency-type]')) document.querySelector('[data-emergency-access-help]').textContent = event.target.value === 'View vault' ? 'View allows reading your personal vault after access is granted.' : 'Takeover allows resetting your master password and taking control of your account.';
+    if (event.target.matches('[data-import-format]')) { const submit = document.querySelector('[data-import-submit]'); submit.disabled = true; document.querySelector('.transfer-preview').innerHTML = '<strong>Preview required</strong><small>Choose and preview a file for the selected format.</small>'; }
+    if (event.target.matches('[data-export-format]')) {
+      const unsupported = event.target.value === 'Bitwarden CSV';
+      document.querySelector('[data-export-help]').textContent = unsupported ? 'This vault contains cards, identities, and SSH keys that CSV cannot export. Choose JSON to include them.' : 'JSON preserves the supported item fields.';
+      document.querySelector('[data-export-continue]').disabled = unsupported;
+    }
+    checkForms();
+  });
+  document.addEventListener('click', event => {
+    const b = event.target.closest('button[data-tool]');
+    if (!b) return;
+    event.preventDefault();
+    const action = b.dataset.tool;
+    if (action === 'send-filter') { for (const tab of b.parentElement.children) { tab.classList.toggle('active', tab === b); tab.setAttribute('aria-selected', String(tab === b)); } document.querySelectorAll('[data-send-type]').forEach(row => row.hidden = b.dataset.filter !== 'all' && row.dataset.sendType !== b.dataset.filter); return; }
+    if (action === 'copy-send') { toast('Preview: copy link for ' + b.dataset.sendTarget + '. ' + (b.dataset.sendDisabled === 'true' ? 'This Send is disabled, so recipients cannot open the link. ' : '') + 'Your clipboard was not changed.'); return; }
+    if (action === 'specific-send-edit' || action === 'specific-send-delete') { toast('Preview: ' + (action === 'specific-send-edit' ? 'open the editor for ' : 'confirm permanent deletion of ') + b.dataset.sendTarget + '. No Send was changed.'); return; }
+    if (action === 'regenerate') { generatorStep++; generatePreview(); toast('Illustrative value updated. Do not use review values as real credentials.'); return; }
+    if (action === 'clear-history') { document.querySelector('[data-history-confirm]').hidden = false; b.disabled = true; return; }
+    if (action === 'cancel-history-clear') { document.querySelector('[data-history-confirm]').hidden = true; document.querySelector('[data-tool="clear-history"]').disabled = false; return; }
+    if (action === 'confirm-history-clear') { document.querySelector('[data-tool-history]').innerHTML = '<div class="padded"><strong>No copied values in this preview</strong><p>Your saved vault items are unchanged.</p></div>'; document.querySelector('[data-history-confirm]').hidden = true; toast('Preview session history cleared.'); return; }
+    if (action === 'review-report-item') { const panel = document.querySelector('[data-report-detail]'); panel.hidden = false; panel.replaceChildren(); const title = document.createElement('strong'); title.textContent = b.dataset.reportName; const user = document.createElement('p'); user.textContent = b.dataset.reportUser; const instruction = document.createElement('p'); instruction.textContent = 'Change the credential on this account’s website, then update this saved login. The production action opens this exact item.'; panel.append(title, user, instruction); return; }
+    if (action.startsWith('copy')) { toast('Preview: copy the displayed synthetic value. Your clipboard was not changed.'); return; }
+    if (action === 'choose-import') { toast('Preview: Windows opens the file picker. Use the Import preview scene to review a parsed file.'); return; }
+    if (action === 'exposure-check') { toast('Preview: an explicit online exposure check starts here. No service was contacted.'); return; }
+    if (action === 'emergency-contact') { toast('Preview: ' + b.dataset.contactAction + ' for ' + b.dataset.contact + '. No relationship was changed.'); return; }
+    if (action === 'deny-device') { toast('Preview: confirm denial for Windows at 192.0.2.24. No request was denied.'); return; }
+    const messages = {
+      'received-open': 'Preview: the complete share link is verified before any content is revealed.',
+      'save-file': 'Preview: Windows opens Save file. No file was downloaded.',
+      'choose-send-file': 'Preview: Windows opens the file picker. Existing-file replacement preserves the service safeguards.',
+      'save-send': 'Preview: validate, encrypt, and save this Send. No content was shared.',
+      'delete-send': 'Preview: permanently delete Review handoff. No Send was deleted.',
+      'export': 'Preview: verify the master password, then open the save picker. No vault was exported.',
+      'import-items': 'Preview: import the three reviewed items. No items were imported.',
+      'approve-device': 'Preview: approve this verified request. No device access was granted.',
+      'invite': 'Preview: invite this contact with the selected access and waiting period. No invitation was sent.',
+      'takeover': 'Preview: reset the named grantor’s password. No account was changed.',
+      'passkey': 'Preview: use the selected credential for this verified website. No credential was sent.',
+      'refresh-report': 'Preview: refresh local findings. No new report was run.',
+      'refresh-devices': 'Preview: refresh registered devices and requests. No server was contacted.',
+    };
+    toast(messages[action] || 'Design preview: no account data changed.');
+  });
+  checkForms();
+})();
+
+
+(function () {
+  const surface = document.querySelector('.v-surface');
+  if (!surface) return;
+  const list = surface.querySelector('.v-list');
+  const rowsHost = list?.querySelector('[data-v-rows]');
+  const paneHost = surface.querySelector('.v-pane-host');
+  if (!list || !rowsHost || !paneHost) return;
+
+  function cleanReviewVaultContext(value) {
+    if (!value || typeof value !== 'object' || value.version !== 1) return null;
+    const token = input => typeof input === 'string' && /^[a-zA-Z0-9:_-]{1,100}$/.test(input) ? input : '';
+    const ids = input => Array.isArray(input) ? [...new Set(input.slice(0, 512).map(token).filter(Boolean))] : [];
+    const sceneId = token(value.sceneId), originScene = token(value.originScene), scope = token(value.scope);
+    if (!sceneId || !originScene || !scope) return null;
+    const types = ['', 'login', 'card', 'identity', 'note', 'ssh', 'bank', 'license', 'passport'];
+    const focusKind = ['search', 'type', 'favorite', 'sort', 'row'].includes(value.focus?.kind) ? value.focus.kind : 'search';
+    return {
+      version: 1, sceneId, originScene, scope,
+      title: typeof value.title === 'string' ? value.title.replace(/[\u0000-\u001f]/g, '').slice(0, 80) : 'All items',
+      query: typeof value.query === 'string' ? value.query.replace(/[\u0000-\u001f]/g, '').slice(0, 512) : '',
+      itemType: types.includes(value.itemType) ? value.itemType : '',
+      favoritesOnly: value.favoritesOnly === true,
+      sort: ['default', 'name', 'name-desc'].includes(value.sort) ? value.sort : 'default',
+      scopeRowIds: ids(value.scopeRowIds), visibleRowIds: ids(value.visibleRowIds),
+      listScrollTop: Number.isFinite(value.listScrollTop) ? Math.max(0, Math.min(1000000, value.listScrollTop)) : 0,
+      focus: { kind: focusKind, rowId: focusKind === 'row' ? token(value.focus?.rowId) : '' },
+      resultsOnly: value.resultsOnly === true,
+      intent: ['back-results', 'open-item'].includes(value.intent) ? value.intent : 'navigate',
+    };
+  }
+
+  const originalRows = [...rowsHost.querySelectorAll('[data-v-row]')];
+  const originalOrder = originalRows.map(row => row.dataset.vRow);
+  const rowNodes = new Map(originalRows.map(row => [row.dataset.vRow, row]));
+  const findScene = id => scenes.find(scene => scene.id === id);
+  const scene = currentScene || findScene(current);
+  const scopeOrigin = scene.dialog === 'permanent-delete' || scene.variant === 'trash' ? 'vault-trash'
+    : scene.variant === 'archive' ? 'vault-archive'
+    : scene.variant === 'favorites' ? 'vault-favorites'
+    : scene.variant === 'folder' ? 'vault-folder-' + String(scene.folder || 'Work').toLowerCase()
+    : scene.variant === 'organization' ? 'vault-organization' : 'vault-no-selection';
+  let view = {
+    scope: scopeOrigin === 'vault-no-selection' ? 'all' : scopeOrigin.slice(6),
+    originScene: scopeOrigin,
+    title: list.querySelector('.list-heading h1')?.textContent || 'All items',
+    scopeRowIds: originalOrder,
+    focus: { kind: 'search', rowId: '' },
+  };
+  let navigationIntent = 'navigate';
+  let captureScheduled = false;
+  let applyingContext = false;
+  let restoredToken = '';
+  const post = data => { if (parent !== window) parent.postMessage(data, '*'); };
+  const control = name => list.querySelector('[data-v-' + name + ']');
+  function captureFocus() {
+    const focused = document.activeElement;
+    if (focused?.closest('[data-v-row]')?.parentElement === rowsHost) {
+      return { kind: 'row', rowId: focused.closest('[data-v-row]').dataset.vRow };
+    }
+    const kind = focused === control('search') ? 'search' : focused === control('filter') ? 'type'
+      : focused === control('favorite-filter') ? 'favorite' : focused === control('sort') ? 'sort' : '';
+    return kind ? { kind, rowId: '' } : view.focus;
+  }
+  window.captureReviewVaultContext = function () {
+    if (['empty', 'loading'].includes(scene.variant) || list.dataset.vLocalFolder) return null;
+    view.focus = captureFocus();
+    return cleanReviewVaultContext({
+      version: 1, sceneId: current, ...view,
+      query: control('search')?.value || '', itemType: control('filter')?.value || '',
+      favoritesOnly: !!control('favorite-filter')?.checked, sort: control('sort')?.value || 'default',
+      scopeRowIds: [...rowsHost.querySelectorAll('[data-v-row]')].map(row => row.dataset.vRow),
+      visibleRowIds: [...rowsHost.querySelectorAll('[data-v-row]')].filter(row => !row.hidden).map(row => row.dataset.vRow),
+      listScrollTop: rowsHost.scrollTop, intent: navigationIntent,
+      resultsOnly: !!paneHost.querySelector('.v-detail-empty'),
+    });
+  };
+  function queueCapture() {
+    if (applyingContext || captureScheduled) return;
+    captureScheduled = true;
+    queueMicrotask(() => {
+      captureScheduled = false;
+      if (!applyingContext) post({ type: 'wvw-review-vault-context', context: window.captureReviewVaultContext() });
+    });
+  }
+  function emptyResultsPane() {
+    const empty = document.createElement('section');
+    empty.className = 'detail-pane empty-pane v-detail-empty';
+    const emblem = document.createElement('div');
+    emblem.className = 'empty-emblem';
+    const shield = document.querySelector('.vault-switch .icon');
+    if (shield) emblem.append(shield.cloneNode(true));
+    const heading = document.createElement('h2');
+    heading.textContent = 'Choose an item';
+    const description = document.createElement('p');
+    description.textContent = view.scope === 'archive' ? 'Select an archived item to see its details.'
+      : view.scope === 'trash' ? 'Select a deleted item to restore it or review its details.'
+      : view.scope === 'organization' ? 'Choose an item shared with you in the Engineering collection.'
+      : 'Select a login, card or key to see its details.';
+    empty.append(emblem, heading, description);
+    paneHost.replaceChildren(empty);
+    rowsHost.querySelectorAll('.vault-list-row').forEach(row => {
+      row.classList.remove('selected');
+      row.setAttribute('aria-current', 'false');
+    });
+  }
+  function ensureBackButton() {
+    const top = paneHost.querySelector('.v-detail .detail-top');
+    if (!top || top.querySelector('[data-review-back-results]')) return;
+    const breadcrumb = top.querySelector('.breadcrumb');
+    const wrapper = document.createElement('div');
+    wrapper.className = 'v-review-origin';
+    wrapper.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;min-width:0;flex:1';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'button v-text-action';
+    button.dataset.reviewBackResults = '';
+    button.textContent = '\u2190 Back to results';
+    button.setAttribute('aria-label', 'Back to ' + view.title + ' results');
+    wrapper.append(button);
+    if (breadcrumb) { breadcrumb.style.maxWidth = '100%'; wrapper.append(breadcrumb); }
+    top.prepend(wrapper);
+  }
+  function setNavigationScope() {
+    const title = list.querySelector('.list-heading h1');
+    if (title) title.textContent = view.title;
+    const scopeLabel = document.querySelector('.vault-switch strong');
+    if (scopeLabel) scopeLabel.textContent = view.scope === 'organization' ? 'Contoso Review' : 'All vaults';
+    document.querySelectorAll('.app-nav [data-go^="vault-folder-"],.app-nav [data-go="vault-organization"]').forEach(button => {
+      button.classList.toggle('is-current', button.dataset.go === view.originScene);
+    });
+    document.querySelector('.app-nav [data-go="vault-favorites"]')?.classList.toggle('active', view.scope === 'favorites');
+    const existing = list.querySelector('.v-list-context');
+    if (view.scope === 'organization' && !existing) {
+      const label = document.createElement('p');
+      label.className = 'v-list-context';
+      label.textContent = 'Contoso Review \u00b7 Shared collection';
+      list.querySelector('.list-heading')?.after(label);
+    } else if (view.scope !== 'organization') existing?.remove();
+  }
+  function focusResults(context) {
+    let target = context.focus.kind === 'row' ? rowNodes.get(context.focus.rowId)?.querySelector('.vault-list-row')
+      : control(({ search: 'search', type: 'filter', favorite: 'favorite-filter', sort: 'sort' })[context.focus.kind]);
+    if (target?.closest('[data-v-row]')?.hidden || !target?.isConnected || target?.disabled) target = control('search');
+    const menu = target?.closest('details');
+    if (menu) menu.open = true;
+    target?.focus({ preventScroll: true });
+    rowsHost.scrollTop = context.listScrollTop;
+  }
+  window.restoreReviewVaultContext = function (message) {
+    if (message?.sceneId !== current || !message.token) return false;
+    if (message.token === restoredToken) return true;
+    const context = cleanReviewVaultContext(message.context);
+    if (!context || !findScene(context.originScene) || findScene(context.originScene).page !== 'vault') return false;
+    const selectedId = paneHost.querySelector('.v-detail')?.dataset.vRecord;
+    const allowed = new Set(context.scopeRowIds.filter(id => rowNodes.has(id)));
+    if (!allowed.size && context.scopeRowIds.length) return false;
+    if (message.mode !== 'results' && selectedId && !allowed.has(selectedId)) return false;
+    applyingContext = true;
+    restoredToken = message.token;
+    view = { scope: context.scope, originScene: context.originScene, title: context.title, scopeRowIds: [...allowed], focus: context.focus };
+    // Detach other scopes so the existing filter handler cannot reveal them later.
+    originalRows.forEach(row => row.remove());
+    const empty = rowsHost.querySelector('[data-v-empty]');
+    originalOrder.filter(id => allowed.has(id)).forEach(id => rowsHost.insertBefore(rowNodes.get(id), empty));
+    if (control('search')) control('search').value = context.query;
+    if (control('filter')) control('filter').value = context.itemType;
+    if (control('favorite-filter')) control('favorite-filter').checked = context.favoritesOnly;
+    if (control('sort')) control('sort').value = context.sort;
+    setNavigationScope();
+    if (message.mode === 'results') emptyResultsPane();
+    control('search')?.dispatchEvent(new Event('input', { bubbles: true }));
+    control('sort')?.dispatchEvent(new Event('change', { bubbles: true }));
+    ensureBackButton();
+    requestAnimationFrame(() => {
+      rowsHost.scrollTop = context.listScrollTop;
+      if (message.focusResults) focusResults(context);
+      applyingContext = false;
+      post({ type: 'wvw-review-context-restored', token: message.token, context: window.captureReviewVaultContext() });
+    });
+    return true;
+  };
+  // Window capture runs before the existing document handlers consume events.
+  ['input', 'change', 'focusin'].forEach(type => window.addEventListener(type, event => {
+    if (event.target.closest?.('.v-list')) queueCapture();
+  }, true));
+  window.addEventListener('scroll', event => { if (event.target === rowsHost) queueCapture(); }, true);
+  window.addEventListener('click', event => {
+    if (event.target.closest?.('[data-v-action="row"]')) {
+      navigationIntent = 'open-item';
+      // Keep the intent through document listeners in the same user event.
+      setTimeout(() => { navigationIntent = 'navigate'; }, 0);
+    }
+    const button = event.target.closest?.('[data-review-back-results]');
+    if (!button) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    navigationIntent = 'back-results';
+    navigate(view.originScene);
+    navigationIntent = 'navigate';
+  }, true);
+  window.addEventListener('message', event => {
+    if (event.source !== parent) return;
+    if (event.data?.type === 'wvw-review-capture-for-theme') {
+      post({ type: 'wvw-review-theme-context', token: event.data.token, sceneId: current, context: window.captureReviewVaultContext() });
+      return;
+    }
+    if (event.data?.type !== 'wvw-review-restore-vault-context' || event.data.sceneId !== current) return;
+    if (!window.restoreReviewVaultContext(event.data)) {
+      post({ type: 'wvw-review-context-restored', token: event.data.token, context: window.captureReviewVaultContext() });
+    }
+  });
+  new MutationObserver(ensureBackButton).observe(paneHost, { childList: true, subtree: true });
+  ensureBackButton();
+  post({ type: 'wvw-review-context-ready', sceneId: current, context: window.captureReviewVaultContext() });
+})();
+
+document.addEventListener('click',event=>{if(event.defaultPrevented)return;const b=event.target.closest('button');if(!b||b.disabled)return;if(b.hasAttribute('data-close-modal')){closeModal();return;}if(b.dataset.go){navigate(b.dataset.go);return;}if(b.dataset.page){const p=b.dataset.page;const variant=b.dataset.login||(p==='login'?'account':p==='settings'?'security':p==='generator'?'password':p==='vault'?'no-selection':'overview');const target=scenes.find(x=>x.page===p&&x.variant===variant&&!x.dialog);if(target)navigate(target.id);return;}if(b.dataset.copyLabel){toast('Preview: copy '+b.dataset.copyLabel.toLowerCase()+'. No clipboard write performed.');return;}if(b.hasAttribute('data-shell-action')){toast('Folder creation is available from the vault management menu in this proposal.');return;}toast('Design preview: this action does not change account data.');});
+document.addEventListener('keydown',event=>{if(event.defaultPrevented)return;if(event.ctrlKey&&event.key.toLowerCase()==='k'&&!document.querySelector('.app-dialog')){const search=document.querySelector('.search input');if(search){event.preventDefault();search.focus();}}});
+const modalElement=document.querySelector('.app-dialog');if(modalElement){document.querySelector('.app-window').inert=true;const initial=[...modalElement.querySelectorAll('button,input,select,textarea,summary')].filter(x=>!x.disabled&&x.getClientRects().length);(modalElement.querySelector('[data-close-modal]')||initial.at(-1))?.focus();modalElement.addEventListener('keydown',event=>{if(event.defaultPrevented)return;if(event.key==='Escape'){event.preventDefault();closeModal();}if(event.key==='Tab'){const list=[...modalElement.querySelectorAll('button,input,select,textarea,summary')].filter(x=>!x.disabled&&x.getClientRects().length);if(!list.length)return;const first=list[0],last=list.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}}});}
+</script></body></html>

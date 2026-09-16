@@ -34,6 +34,41 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>当前运行环境是否支持浏览器集成（仅便携版为 true；MSIX packaged 为 false）。</summary>
     public bool BrowserIntegrationSupported => _browserIntegrationSupported;
 
+    private int _selectedSectionIndex;
+
+    public int SelectedSectionIndex
+    {
+        get => _selectedSectionIndex;
+        set
+        {
+            if (value is < 0 or > 3)
+            {
+                OnPropertyChanged(nameof(SelectedSectionIndex));
+                return;
+            }
+            if (!SetProperty(ref _selectedSectionIndex, value))
+                return;
+
+            OnPropertyChanged(nameof(IsSecuritySection));
+            OnPropertyChanged(nameof(IsAccountSection));
+            OnPropertyChanged(nameof(IsPreferencesSection));
+            OnPropertyChanged(nameof(IsAboutSection));
+        }
+    }
+
+    public bool IsSecuritySection => SelectedSectionIndex == 0;
+    public bool IsAccountSection => SelectedSectionIndex == 1;
+    public bool IsPreferencesSection => SelectedSectionIndex == 2;
+    public bool IsAboutSection => SelectedSectionIndex == 3;
+
+    public string BrowserIntegrationDescription => BrowserIntegrationSupported
+        ? "允许已配对的浏览器扩展请求填充，保险库需保持解锁。"
+        : "此安装方式暂不支持浏览器集成；仅便携版可用。";
+
+    public string TrayBehaviorDescription => CanConfigureTrayBehavior
+        ? "保留系统托盘入口，可从托盘重新打开窗口。"
+        : "先启用显示托盘图标，再配置此行为。";
+
     private int _selectedSessionTimeoutIndex = LoadSessionTimeoutIndex();
 
     public int SelectedSessionTimeoutIndex
@@ -189,6 +224,7 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanConfigureTrayBehavior))]
+    [NotifyPropertyChangedFor(nameof(TrayBehaviorDescription))]
     public partial bool ShowTrayIcon { get; set; } = AppPreferences.Current.ShowTrayIcon;
 
     public bool CanConfigureTrayBehavior => ShowTrayIcon;
@@ -458,11 +494,17 @@ public partial class SettingsViewModel : ObservableObject
         _vault.Snapshot,
         Core.Enums.OrganizationPolicyType.RemoveUnlockWithPin);
 
+    public string PinUnlockDescription => !CanUsePinUnlock
+        ? "组织策略不允许使用 PIN 解锁。"
+        : "使用独立 PIN 解锁此设备上已保存的保险库。";
+
     public void ApplyPolicyRestrictions()
     {
         ApplyTimeoutPolicyRestrictions();
         if (!CanUsePinUnlock && IsPinSet)
             ClearPin();
+        OnPropertyChanged(nameof(CanUsePinUnlock));
+        OnPropertyChanged(nameof(PinUnlockDescription));
     }
 
     private void ApplyTimeoutPolicyRestrictions()
@@ -527,10 +569,17 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanToggleWindowsHello))]
+    [NotifyPropertyChangedFor(nameof(WindowsHelloDescription))]
     public partial bool IsWindowsHelloAvailable { get; set; }
 
     public bool IsWindowsHelloEnabled => _helloUnlock?.IsHelloSet ?? false;
     public bool CanToggleWindowsHello => IsWindowsHelloAvailable || IsWindowsHelloEnabled;
+
+    public string WindowsHelloDescription => IsWindowsHelloAvailable
+        ? "使用 Windows Hello 验证身份并解锁此设备上的保险库。"
+        : IsWindowsHelloEnabled
+            ? "Windows Hello 当前不可用，仍可关闭已保存的解锁设置。"
+            : "请先在 Windows 设置中配置 Windows Hello。";
 
     public async Task RefreshWindowsHelloAvailabilityAsync()
         => IsWindowsHelloAvailable = _hello is not null && await _hello.IsAvailableAsync();
@@ -549,6 +598,7 @@ public partial class SettingsViewModel : ObservableObject
         _helloUnlock.SetHello(signature, challenge);
         OnPropertyChanged(nameof(IsWindowsHelloEnabled));
         OnPropertyChanged(nameof(CanToggleWindowsHello));
+        OnPropertyChanged(nameof(WindowsHelloDescription));
         return true;
     }
 
@@ -557,6 +607,7 @@ public partial class SettingsViewModel : ObservableObject
         _helloUnlock?.ClearHello();
         OnPropertyChanged(nameof(IsWindowsHelloEnabled));
         OnPropertyChanged(nameof(CanToggleWindowsHello));
+        OnPropertyChanged(nameof(WindowsHelloDescription));
     }
 
     public bool IsCurrentDeviceTrusted => _deviceTrust?.IsCurrentDeviceTrusted ?? false;
@@ -565,7 +616,7 @@ public partial class SettingsViewModel : ObservableObject
         !IsBusy && (_deviceTrust?.CanTrustCurrentDevice ?? false);
 
     public bool ShowTrustedDeviceSettings =>
-        IsCurrentDeviceTrusted || CanTrustCurrentDevice;
+        IsCurrentDeviceTrusted || (_deviceTrust?.CanTrustCurrentDevice ?? false);
 
     public string TrustedDeviceStatus => IsCurrentDeviceTrusted
         ? "此设备已受信任；锁定后将重新通过企业 SSO 验证信任状态。"

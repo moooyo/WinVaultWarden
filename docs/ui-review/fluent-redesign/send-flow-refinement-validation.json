@@ -1,0 +1,76 @@
+{
+  "generatedAt": "2026-09-16T03:49:05.206Z",
+  "scope": "Send list refinement only",
+  "applicationRuntimeTested": false,
+  "results": [
+    {
+      "theme": "light",
+      "viewport": "960x720",
+      "rowCount": 3,
+      "copyButtonCount": 3,
+      "copyHitAreas": [
+        {
+          "width": 102,
+          "height": 36
+        },
+        {
+          "width": 102,
+          "height": 36
+        },
+        {
+          "width": 102,
+          "height": 36
+        }
+      ],
+      "openMenus": 0,
+      "disabledSendCopyEnabled": true,
+      "clipping": [],
+      "disabledCopyMessage": "Preview: copy link for Contract draft. This Send is disabled, so recipients cannot open the link. Your clipboard was not changed.",
+      "fileFilterNames": [
+        "Review checklist.txt"
+      ],
+      "actualMenuTargets": [
+        "send-existing-text",
+        "send-delete-confirm"
+      ],
+      "screenshot": "C:\\Users\\moooyo\\AppData\\Local\\Temp\\wvw-send-refinement-960-light.png",
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "viewport": "960x720",
+      "rowCount": 3,
+      "copyButtonCount": 3,
+      "copyHitAreas": [
+        {
+          "width": 102,
+          "height": 36
+        },
+        {
+          "width": 102,
+          "height": 36
+        },
+        {
+          "width": 102,
+          "height": 36
+        }
+      ],
+      "openMenus": 0,
+      "disabledSendCopyEnabled": true,
+      "clipping": [],
+      "disabledCopyMessage": "Preview: copy link for Contract draft. This Send is disabled, so recipients cannot open the link. Your clipboard was not changed.",
+      "fileFilterNames": [
+        "Review checklist.txt"
+      ],
+      "actualMenuTargets": [
+        "send-existing-text",
+        "send-delete-confirm"
+      ],
+      "screenshot": "C:\\Users\\moooyo\\AppData\\Local\\Temp\\wvw-send-refinement-960-dark.png",
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "externalRequests": [],
+  "pass": true
+}

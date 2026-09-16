@@ -14,10 +14,14 @@
                   HorizontalScrollBarVisibility="Disabled"
                   HorizontalContentAlignment="Stretch">
         <StackPanel Spacing="24"
-                    MaxWidth="800"
+                    MaxWidth="1120"
                     HorizontalAlignment="Stretch">
-            <TextBlock Text="导入导出"
-                       Style="{ThemeResource TitleTextBlockStyle}" />
+            <StackPanel Spacing="6">
+                <TextBlock Text="导入与导出"
+                           Style="{ThemeResource TitleTextBlockStyle}" />
+                <TextBlock Text="迁移个人密码库，导入前核对内容，导出前确认范围。"
+                           TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
 
             <Grid x:Name="OperationBusyPanel"
                   ColumnSpacing="8"
@@ -42,6 +46,7 @@
                      AutomationProperties.AutomationId="OperationSucceededInfoBar"
                      AutomationProperties.LiveSetting="Polite"
                      IsOpen="{x:Bind ViewModel.HasSucceededStatus, Mode=OneWay}"
+                     Visibility="{x:Bind ViewModel.HasSucceededStatus, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                      Message="{x:Bind ViewModel.OperationMessage, Mode=OneWay}" />
 
             <InfoBar IsClosable="False"
@@ -50,6 +55,7 @@
                      AutomationProperties.AutomationId="OperationWarningInfoBar"
                      AutomationProperties.LiveSetting="Polite"
                      IsOpen="{x:Bind ViewModel.HasWarningStatus, Mode=OneWay}"
+                     Visibility="{x:Bind ViewModel.HasWarningStatus, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                      Message="{x:Bind ViewModel.OperationMessage, Mode=OneWay}" />
 
             <InfoBar IsClosable="False"
@@ -58,6 +64,7 @@
                      AutomationProperties.AutomationId="OperationCancelledInfoBar"
                      AutomationProperties.LiveSetting="Polite"
                      IsOpen="{x:Bind ViewModel.HasCancelledStatus, Mode=OneWay}"
+                     Visibility="{x:Bind ViewModel.HasCancelledStatus, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                      Message="{x:Bind ViewModel.OperationMessage, Mode=OneWay}" />
 
             <InfoBar IsClosable="False"
@@ -66,94 +73,127 @@
                      AutomationProperties.AutomationId="OperationFailedInfoBar"
                      AutomationProperties.LiveSetting="Assertive"
                      IsOpen="{x:Bind ViewModel.HasFailedStatus, Mode=OneWay}"
+                     Visibility="{x:Bind ViewModel.HasFailedStatus, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                      Message="{x:Bind ViewModel.OperationMessage, Mode=OneWay}" />
 
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{StaticResource CardCornerRadius}"
-                    Padding="{StaticResource CardContentPadding}"
-                    HorizontalAlignment="Stretch">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="导出密码库"
-                               Style="{ThemeResource SubtitleTextBlockStyle}" />
-
-                    <InfoBar IsClosable="False"
-                             IsOpen="True"
-                             Severity="Warning"
-                             Title="导出文件包含明文密码"
-                             Message="导出文件中的用户名、密码等字段均为未加密明文，请妥善保管并及时删除，不要通过不安全渠道传输。" />
-
-                    <InfoBar x:Name="ExportPolicyInfoBar"
-                             IsClosable="False"
-                             Severity="Warning"
-                             IsOpen="{x:Bind ViewModel.ShowExportPolicyInfo, Mode=OneWay}"
-                             Message="{x:Bind ViewModel.ExportPolicyNotice, Mode=OneWay}" />
-
-                    <ComboBox Header="导出格式"
-                              MaxWidth="320"
-                              HorizontalAlignment="Stretch"
-                              IsEnabled="{x:Bind ViewModel.CanExport, Mode=OneWay}"
-                              AutomationProperties.AutomationId="ExportFormatCombo"
-                              SelectedIndex="{x:Bind ViewModel.ExportFormatIndex, Mode=TwoWay}">
-                        <ComboBoxItem Content="Bitwarden JSON" />
-                        <ComboBoxItem Content="CSV" />
-                    </ComboBox>
-
-                    <Button Content="导出"
-                            Style="{ThemeResource AccentButtonStyle}"
-                            IsEnabled="{x:Bind ViewModel.CanExport, Mode=OneWay}"
-                            AutomationProperties.AutomationId="ExportButton"
-                            Click="OnExportClick" />
-                </StackPanel>
-            </Border>
-
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{StaticResource CardCornerRadius}"
-                    Padding="{StaticResource CardContentPadding}"
-                    HorizontalAlignment="Stretch">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="导入密码库"
-                               Style="{ThemeResource SubtitleTextBlockStyle}" />
-
-                    <ComboBox Header="导入格式"
-                              MaxWidth="320"
-                              HorizontalAlignment="Stretch"
-                              IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}"
-                              AutomationProperties.AutomationId="ImportFormatCombo"
-                              SelectedIndex="{x:Bind ViewModel.ImportFormatIndex, Mode=TwoWay}">
-                        <ComboBoxItem Content="Bitwarden JSON" />
-                        <ComboBoxItem Content="CSV" />
-                    </ComboBox>
-
-                    <Button Content="选择文件"
-                            IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}"
-                            AutomationProperties.AutomationId="ImportChooseFileButton"
-                            Click="OnChooseImportFileClick" />
-
-                    <StackPanel x:Name="ImportPreviewPanel"
-                                Spacing="4"
-                                Visibility="{x:Bind ViewModel.HasValidPreview, Mode=OneWay,
-                                    Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock TextWrapping="Wrap">
-                            <Run Text="预览：" />
-                            <Run Text="{x:Bind ViewModel.PreviewCipherCount, Mode=OneWay}" />
-                            <Run Text=" 个条目，" />
-                            <Run Text="{x:Bind ViewModel.PreviewFolderCount, Mode=OneWay}" />
-                            <Run Text=" 个文件夹" />
-                        </TextBlock>
-                    </StackPanel>
-
-                    <Button x:Name="ImportButton"
-                            Content="导入"
-                            Style="{ThemeResource AccentButtonStyle}"
-                            AutomationProperties.AutomationId="ImportButton"
-                            IsEnabled="{x:Bind ViewModel.CanImport, Mode=OneWay}"
-                            Command="{x:Bind ViewModel.DoImportCommand}" />
-                </StackPanel>
-            </Border>
+            <Grid x:Name="TransferCards" ColumnSpacing="24" RowSpacing="24" SizeChanged="OnTransferCardsSizeChanged">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition x:Name="ExportCardColumn" Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Border Style="{StaticResource CardBorderStyle}" Padding="24">
+                    <Grid RowSpacing="24">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <StackPanel Spacing="14">
+                            <Border Width="44" Height="44" HorizontalAlignment="Left" Style="{StaticResource IconBadgeBorderStyle}">
+                                <FontIcon Glyph="&#xE898;" FontSize="20" />
+                            </Border>
+                            <TextBlock Text="导入条目" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="从 Bitwarden JSON 或 CSV 文件添加条目。"
+                                       TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="1" Spacing="18">
+                            <ComboBox Header="导入格式" HorizontalAlignment="Stretch"
+                                      IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}"
+                                      AutomationProperties.AutomationId="ImportFormatCombo"
+                                      SelectedIndex="{x:Bind ViewModel.ImportFormatIndex, Mode=TwoWay}">
+                                <ComboBoxItem Content="Bitwarden JSON" />
+                                <ComboBoxItem Content="CSV" />
+                            </ComboBox>
+                            <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                                    CornerRadius="{StaticResource CardCornerRadius}" Padding="20">
+                                <StackPanel Spacing="12" HorizontalAlignment="Center">
+                                    <FontIcon Glyph="&#xE8A5;" FontSize="24" />
+                                    <TextBlock Text="选择要导入的文件" HorizontalAlignment="Center" />
+                                    <TextBlock Text="JSON 或 CSV" HorizontalAlignment="Center"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <Button Content="选择文件" HorizontalAlignment="Center"
+                                            IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}"
+                                            AutomationProperties.AutomationId="ImportChooseFileButton"
+                                            Click="OnChooseImportFileClick" />
+                                </StackPanel>
+                            </Border>
+                            <TextBlock Text="{x:Bind ViewModel.ImportFileLabel, Mode=OneWay}"
+                                       TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                            <StackPanel x:Name="ImportPreviewPanel" Spacing="4"
+                                        Visibility="{x:Bind ViewModel.HasValidPreview, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock TextWrapping="Wrap">
+                                    <Run Text="预览：" />
+                                    <Run Text="{x:Bind ViewModel.PreviewCipherCount, Mode=OneWay}" />
+                                    <Run Text=" 个条目，" />
+                                    <Run Text="{x:Bind ViewModel.PreviewFolderCount, Mode=OneWay}" />
+                                    <Run Text=" 个文件夹" />
+                                </TextBlock>
+                            </StackPanel>
+                            <Button Content="重新预览" Command="{x:Bind ViewModel.PreviewImportCommand}"
+                                    IsEnabled="{x:Bind ViewModel.CanPreviewAgain, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.CanPreviewAgain, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <TextBlock Text="导入会添加新条目，重复导入可能产生重复数据。"
+                                       TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <Button x:Name="ImportButton" Grid.Row="2" Content="导入条目" HorizontalAlignment="Stretch"
+                                Style="{ThemeResource AccentButtonStyle}" AutomationProperties.AutomationId="ImportButton"
+                                IsEnabled="{x:Bind ViewModel.CanImport, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.DoImportCommand}" />
+                    </Grid>
+                </Border>
+                <Border x:Name="ExportCard" Grid.Column="1" Style="{StaticResource CardBorderStyle}" Padding="24">
+                    <Grid RowSpacing="24">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <StackPanel Spacing="14">
+                            <Border Width="44" Height="44" HorizontalAlignment="Left" Style="{StaticResource IconBadgeBorderStyle}">
+                                <FontIcon Glyph="&#xE896;" FontSize="20" />
+                            </Border>
+                            <TextBlock Text="导出个人密码库" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="将个人密码库保存为可迁移的文件。"
+                                       TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="1" Spacing="18">
+                            <InfoBar IsClosable="False" IsOpen="True" Severity="Warning"
+                                     Title="导出文件包含明文密码"
+                                     Message="密码和备注均未加密。请选择私密的保存位置，并在使用后妥善删除文件。" />
+                            <InfoBar x:Name="ExportPolicyInfoBar" IsClosable="False" Severity="Warning"
+                                     IsOpen="{x:Bind ViewModel.ShowExportPolicyInfo, Mode=OneWay}"
+                                     Visibility="{x:Bind ViewModel.ShowExportPolicyInfo, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                     Message="{x:Bind ViewModel.ExportPolicyNotice, Mode=OneWay}" />
+                            <ComboBox Header="导出格式" HorizontalAlignment="Stretch"
+                                      IsEnabled="{x:Bind ViewModel.CanExport, Mode=OneWay}"
+                                      AutomationProperties.AutomationId="ExportFormatCombo"
+                                      SelectedIndex="{x:Bind ViewModel.ExportFormatIndex, Mode=TwoWay}">
+                                <ComboBoxItem Content="Bitwarden JSON" />
+                                <ComboBoxItem Content="CSV" />
+                            </ComboBox>
+                            <Border BorderThickness="0,1,0,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Padding="0,16,0,0">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="仅包含个人密码库" FontWeight="SemiBold" />
+                                    <TextBlock Text="包含已归档条目。不包含组织条目、回收站和附件。"
+                                               TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+                            <TextBlock Text="{x:Bind ViewModel.ExportFormatDescription, Mode=OneWay}"
+                                       TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="继续后验证主密码，再选择文件保存位置。"
+                                       TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <Button Grid.Row="2" Content="继续导出" HorizontalAlignment="Stretch"
+                                IsEnabled="{x:Bind ViewModel.CanExport, Mode=OneWay}"
+                                AutomationProperties.AutomationId="ExportButton" Click="OnExportClick" />
+                    </Grid>
+                </Border>
+            </Grid>
         </StackPanel>
     </ScrollViewer>
 </Page>

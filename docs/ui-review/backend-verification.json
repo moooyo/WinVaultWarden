@@ -1,0 +1,38 @@
+{
+  "generatedUtc": "2026-09-16T04:44:59.0609888+00:00",
+  "mode": "verify-only",
+  "server": "http://127.0.0.1:18083",
+  "account": "review@winvaultwarden.example",
+  "seedWritesPerformed": false,
+  "registrationFallbackEnabled": false,
+  "cipherCount": 13,
+  "skippedCipherCount": 0,
+  "folderCount": 4,
+  "sendCount": 3,
+  "organizationCount": 1,
+  "collectionCount": 1,
+  "attachmentCount": 1,
+  "trustedContactStates": {
+    "Confirmed": 1,
+    "Invited": 1,
+    "Accepted": 1
+  },
+  "grantedAccessStates": {
+    "RecoveryApproved": 1
+  },
+  "deviceCount": 7,
+  "pendingDeviceCount": 0,
+  "contosoLogin": {
+    "found": true,
+    "hasPassword": true,
+    "hasTotp": true,
+    "canViewPassword": true,
+    "reprompt": true
+  },
+  "sharedLogin": {
+    "found": true,
+    "hasUsername": true,
+    "hasPassword": true,
+    "hasUri": true
+  }
+}

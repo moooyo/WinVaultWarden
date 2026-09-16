@@ -13,7 +13,7 @@ public sealed partial class SendPage : Page
 {
     public SendViewModel ViewModel { get; }
     private readonly AsyncOperationGate _receivedFileSaveGate = new();
-    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Grid, RowActionState> _rowActionStates = new();
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _availabilityTimer;
     private CancellationTokenSource? _pageLifetimeCts;
     private int _receivedFileSaveInProgress;
 
@@ -21,12 +21,16 @@ public sealed partial class SendPage : Page
     {
         ViewModel = global::App.App.Services.GetRequiredService<SendViewModel>();
         InitializeComponent();
+        _availabilityTimer = DispatcherQueue.CreateTimer();
+        _availabilityTimer.Interval = TimeSpan.FromSeconds(30);
+        _availabilityTimer.Tick += (_, _) => ViewModel.RefreshAvailability(DateTimeOffset.UtcNow);
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
         ReplacePageLifetime();
+        _availabilityTimer.Start();
         SetReceivedFileSaveBusy(Volatile.Read(ref _receivedFileSaveInProgress) != 0);
         if (e.Parameter is string tag)
             ViewModel.SelectFilterByTag(tag);
@@ -38,6 +42,7 @@ public sealed partial class SendPage : Page
     {
         base.OnNavigatedFrom(e);
         CancelPageLifetime();
+        _availabilityTimer.Stop();
         ViewModel.CancelLoad();
         ViewModel.CancelReceive();
     }
@@ -305,79 +310,18 @@ public sealed partial class SendPage : Page
         }
     }
 
-    private sealed class RowActionState
+    private void OnFilterClick(object sender, RoutedEventArgs e)
     {
-        public bool IsPointerOver { get; set; }
-        public bool IsFocusWithin { get; set; }
+        if (sender is FrameworkElement { Tag: string tag })
+            ViewModel.SelectFilterByTag(tag);
     }
 
-    internal static bool ShouldShowRowActions(bool isPointerOver, bool isFocusWithin) =>
-        isPointerOver || isFocusWithin;
-
-    private void UpdateRowActionVisibility(
-        object sender,
-        bool? isPointerOver = null,
-        bool? isFocusWithin = null)
+    private void OnReceiveClick(object sender, RoutedEventArgs e)
     {
-        if (sender is not Grid root
-            || root.FindName("RowActions") is not FrameworkElement panel)
-        {
-            return;
-        }
-
-        var state = _rowActionStates.GetValue(root, static _ => new RowActionState());
-        if (isPointerOver.HasValue)
-            state.IsPointerOver = isPointerOver.Value;
-        if (isFocusWithin.HasValue)
-            state.IsFocusWithin = isFocusWithin.Value;
-
-        var show = ShouldShowRowActions(state.IsPointerOver, state.IsFocusWithin);
-        panel.Opacity = show ? 1 : 0;
-        panel.IsHitTestVisible = show;
-    }
-
-    private static bool IsWithinRow(DependencyObject? element, Grid row)
-    {
-        for (var current = element; current is not null;
-             current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current))
-        {
-            if (ReferenceEquals(current, row))
-                return true;
-        }
-
-        return false;
-    }
-
-    private void OnRowPointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e) =>
-        UpdateRowActionVisibility(sender, isPointerOver: true);
-
-    private void OnRowPointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e) =>
-        UpdateRowActionVisibility(sender, isPointerOver: false);
-
-    private void OnRowGotFocus(object sender, RoutedEventArgs e) =>
-        UpdateRowActionVisibility(sender, isFocusWithin: true);
-
-    private void OnRowLostFocus(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Grid root)
-            return;
-
-        var focusedElement = root.XamlRoot is { } xamlRoot
-            ? Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(xamlRoot) as DependencyObject
-            : null;
-        UpdateRowActionVisibility(root, isFocusWithin: IsWithinRow(focusedElement, root));
-    }
-
-    private void OnRowUnloaded(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Grid root)
-            return;
-
-        _rowActionStates.Remove(root);
-        if (root.FindName("RowActions") is FrameworkElement panel)
-        {
-            panel.Opacity = 0;
-            panel.IsHitTestVisible = false;
-        }
+        ReceivedSendExpander.Visibility = ReceivedSendExpander.Visibility == Visibility.Visible
+            ? Visibility.Collapsed : Visibility.Visible;
+        ReceivedSendExpander.IsExpanded = true;
+        if (ReceivedSendExpander.Visibility == Visibility.Visible)
+            ReceivedLinkTextBox.Focus(FocusState.Programmatic);
     }
 }

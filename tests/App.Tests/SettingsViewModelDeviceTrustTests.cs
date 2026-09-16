@@ -54,6 +54,7 @@ public sealed class SettingsViewModelDeviceTrustTests
         };
 
         Assert.False(viewModel.CanTrustCurrentDevice);
+        Assert.True(viewModel.ShowTrustedDeviceSettings);
         Assert.Equal("正在建立信任", viewModel.TrustedDeviceActionText);
     }
 

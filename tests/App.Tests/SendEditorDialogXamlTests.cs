@@ -9,17 +9,19 @@ public class SendEditorDialogXamlTests
     private static readonly XNamespace X = "http://schemas.microsoft.com/winfx/2006/xaml";
 
     [Fact]
-    public void SendEditorDialog_ExpandsContentWithoutCustomScrollBar()
+    public void SendEditorDialog_ScrollsContentWithinAnchoredNativeFooter()
     {
         var document = LoadDialogXaml();
         var root = document.Root!;
-        var form = root.Elements(Xaml + "StackPanel").Single();
+        var scroller = root.Elements(Xaml + "ScrollViewer").Single();
+        var form = scroller.Elements(Xaml + "StackPanel").Single();
 
         Assert.Null(root.Attribute("MinWidth"));
         Assert.Null(root.Attribute("MaxWidth"));
         Assert.Null(root.Attribute("HorizontalAlignment"));
         Assert.Null(root.Attribute("VerticalAlignment"));
-        Assert.Empty(document.Descendants(Xaml + "ScrollViewer"));
+        Assert.Equal("Disabled", scroller.Attribute("HorizontalScrollMode")?.Value);
+        Assert.Contains("SendEditorScrollViewer.MaxHeight", CodeBehindText());
         Assert.DoesNotContain(
             document.Descendants(Xaml + "Border"),
             element => element.Attribute("MinWidth") is not null || element.Attribute("MaxWidth") is not null);
@@ -92,7 +94,7 @@ public class SendEditorDialogXamlTests
         var doc = LoadDialogXaml();
         var expirationCombo = doc
             .Descendants(Xaml + "ComboBox")
-            .Single(element => element.Attribute("Header")?.Value == "过期时间（可选）");
+            .Single(element => element.Attribute("Header")?.Value == "停止访问时间（可选）");
         var customPicker = doc
             .Descendants(Xaml + "CalendarDatePicker")
             .Single(element => element.Attribute("Header")?.Value == "自定义过期日期");

@@ -1,0 +1,253 @@
+{
+  "retrievedAt": "2026-09-15",
+  "source": "https://github.com/microsoft/fluentui-system-icons",
+  "variant": "20 regular",
+  "modification": "Non-none explicit fills replaced with currentColor",
+  "results": [
+    {
+      "key": "shield",
+      "name": "Shield Lock",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Shield%20Lock/SVG/ic_fluent_shield_lock_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "search",
+      "name": "Search",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Search/SVG/ic_fluent_search_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "key",
+      "name": "Key",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Key/SVG/ic_fluent_key_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "add",
+      "name": "Add",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Add/SVG/ic_fluent_add_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "copy",
+      "name": "Copy",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Copy/SVG/ic_fluent_copy_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "chevron",
+      "name": "Chevron Down",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Chevron%20Down/SVG/ic_fluent_chevron_down_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "eye",
+      "name": "Eye",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Eye/SVG/ic_fluent_eye_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "eyeOff",
+      "name": "Eye Off",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Eye%20Off/SVG/ic_fluent_eye_off_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "arrow",
+      "name": "Arrow Right",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Arrow%20Right/SVG/ic_fluent_arrow_right_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "lock",
+      "name": "Lock Closed",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Lock%20Closed/SVG/ic_fluent_lock_closed_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "device",
+      "name": "Desktop",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Desktop/SVG/ic_fluent_desktop_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "back",
+      "name": "Arrow Left",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Arrow%20Left/SVG/ic_fluent_arrow_left_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "report",
+      "name": "Shield Checkmark",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Shield%20Checkmark/SVG/ic_fluent_shield_checkmark_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "settings",
+      "name": "Settings",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Settings/SVG/ic_fluent_settings_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "folder",
+      "name": "Folder",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Folder/SVG/ic_fluent_folder_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "send",
+      "name": "Send",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Send/SVG/ic_fluent_send_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "generator",
+      "name": "Arrow Sync",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Arrow%20Sync/SVG/ic_fluent_arrow_sync_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "star",
+      "name": "Star",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Star/SVG/ic_fluent_star_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "person",
+      "name": "Person",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Person/SVG/ic_fluent_person_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "more",
+      "name": "More Horizontal",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/More%20Horizontal/SVG/ic_fluent_more_horizontal_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "code",
+      "name": "Code",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Code/SVG/ic_fluent_code_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "note",
+      "name": "Document Text",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Document%20Text/SVG/ic_fluent_document_text_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "card",
+      "name": "Payment",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Payment/SVG/ic_fluent_payment_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "check",
+      "name": "Checkmark",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Checkmark/SVG/ic_fluent_checkmark_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "close",
+      "name": "Dismiss",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Dismiss/SVG/ic_fluent_dismiss_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "warning",
+      "name": "Warning",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Warning/SVG/ic_fluent_warning_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "info",
+      "name": "Info",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Info/SVG/ic_fluent_info_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "archive",
+      "name": "Archive",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Archive/SVG/ic_fluent_archive_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "cloud",
+      "name": "Cloud",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Cloud/SVG/ic_fluent_cloud_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "trash",
+      "name": "Delete",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Delete/SVG/ic_fluent_delete_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "download",
+      "name": "Arrow Download",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Arrow%20Download/SVG/ic_fluent_arrow_download_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "attachment",
+      "name": "Attach",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Attach/SVG/ic_fluent_attach_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "upload",
+      "name": "Arrow Upload",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Arrow%20Upload/SVG/ic_fluent_arrow_upload_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "clock",
+      "name": "Clock",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Clock/SVG/ic_fluent_clock_20_regular.svg",
+      "status": 200,
+      "error": null
+    },
+    {
+      "key": "globe",
+      "name": "Globe",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets/Globe/SVG/ic_fluent_globe_20_regular.svg",
+      "status": 200,
+      "error": null
+    }
+  ]
+}

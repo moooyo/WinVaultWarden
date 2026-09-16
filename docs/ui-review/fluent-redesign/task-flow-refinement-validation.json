@@ -1,0 +1,68 @@
+{
+  "generatedAt": "2026-09-16T03:58:16.274Z",
+  "scope": "Focused proposal task-flow refinements; no account operations or real clipboard writes",
+  "checks": [
+    {
+      "name": "vault-no-selection uses contextual vault navigation",
+      "pass": true
+    },
+    {
+      "name": "send-overview uses contextual vault navigation",
+      "pass": true
+    },
+    {
+      "name": "generator-password uses contextual vault navigation",
+      "pass": true
+    },
+    {
+      "name": "settings-security uses contextual vault navigation",
+      "pass": true
+    },
+    {
+      "name": "Primary navigation positions remain stable",
+      "pass": true
+    },
+    {
+      "name": "Password copy is a visible labelled action",
+      "pass": true
+    },
+    {
+      "name": "Ordinary copy keeps the password masked",
+      "pass": true
+    },
+    {
+      "name": "Protected copying has its own verification explanation",
+      "pass": true
+    },
+    {
+      "name": "Protected copy does not unmask the value",
+      "pass": true
+    },
+    {
+      "name": "Website matching is initially collapsed",
+      "pass": true
+    },
+    {
+      "name": "Existing matching rule stays visible",
+      "pass": true
+    },
+    {
+      "name": "Nondefault matching rule remains visible while collapsed",
+      "pass": true
+    },
+    {
+      "name": "vault-detail-login retains Lock at the smaller viewport",
+      "pass": true
+    },
+    {
+      "name": "send-overview retains Lock at the smaller viewport",
+      "pass": true
+    },
+    {
+      "name": "vault-editor-login retains Lock at the smaller viewport",
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "pass": true
+}

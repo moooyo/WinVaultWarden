@@ -18,6 +18,7 @@ public sealed class SyncService : ISyncService
     private readonly VaultCacheService _cache;
     private readonly ITokenStore? _tokenStore;
     private readonly ISessionTerminationSink? _termination;
+    private readonly ITokenRefresher? _tokenRefresher;
     private readonly object _syncGateLock = new();
     private readonly List<LeaseSyncGate> _syncGates = [];
 
@@ -27,7 +28,8 @@ public sealed class SyncService : ISyncService
         VaultSession session,
         VaultCacheService cache,
         ITokenStore? tokenStore = null,
-        ISessionTerminationSink? termination = null)
+        ISessionTerminationSink? termination = null,
+        ITokenRefresher? tokenRefresher = null)
     {
         _clients = clients;
         _decryptor = decryptor;
@@ -35,6 +37,7 @@ public sealed class SyncService : ISyncService
         _cache = cache;
         _tokenStore = tokenStore;
         _termination = termination;
+        _tokenRefresher = tokenRefresher;
     }
 
     // Capture one lease at the compatibility boundary, then keep it for the full operation.
@@ -145,6 +148,22 @@ public sealed class SyncService : ISyncService
             ct, lease.CancellationToken);
         if (!_session.TrySetCapabilities(lease, VaultCapabilities.None))
             throw new OperationCanceledException(lease.CancellationToken);
+
+        // Offline unlock restores only a refresh token. Recover the same authorized session
+        // before sending a vault request; the bearer handler cannot refresh an anonymous 401.
+        if (_session.TryGetTokenSnapshot(lease, out var accessToken, out var refreshToken)
+            && string.IsNullOrWhiteSpace(accessToken)
+            && !string.IsNullOrWhiteSpace(refreshToken))
+        {
+            var restored = _tokenRefresher is not null
+                && await _tokenRefresher.TryRefreshAsync(lease, linked.Token).ConfigureAwait(false);
+            linked.Token.ThrowIfCancellationRequested();
+            if (!restored || _session.GetAccessTokenBinding(lease) is null)
+            {
+                throw new HttpRequestException(
+                    "The offline session could not restore server authentication. Try again later.");
+            }
+        }
 
         var api = _clients.GetAuthenticated<IReadonlyApiClient>(lease);
         var sync = await api.GetSyncAsync(linked.Token).ConfigureAwait(false);

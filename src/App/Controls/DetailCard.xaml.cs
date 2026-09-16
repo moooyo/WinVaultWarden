@@ -5,7 +5,11 @@ namespace App.Controls;
 
 public sealed partial class DetailCard : UserControl
 {
-    public DetailCard() => InitializeComponent();
+    public DetailCard()
+    {
+        InitializeComponent();
+        UpdateCardContent();
+    }
 
     public string Title
     {
@@ -23,5 +27,12 @@ public sealed partial class DetailCard : UserControl
     }
     public static readonly DependencyProperty CardContentProperty =
         DependencyProperty.Register(nameof(CardContent), typeof(object), typeof(DetailCard),
-            new PropertyMetadata(null));
+            new PropertyMetadata(null, (d, _) => ((DetailCard)d).UpdateCardContent()));
+
+    private void UpdateCardContent()
+    {
+        // A direct dependency-property callback keeps content updates safe under trimming and AOT.
+        if (CardContentPresenter is not null)
+            CardContentPresenter.Content = CardContent;
+    }
 }

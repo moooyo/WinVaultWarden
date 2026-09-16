@@ -193,7 +193,32 @@ public sealed partial class LoginUriEditorDraft : ObservableObject
     public partial string Uri { get; set; } = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MatchIndex))]
+    [NotifyPropertyChangedFor(nameof(MatchSummary))]
     public partial int? Match { get; set; }
+
+    public int MatchIndex
+    {
+        get => Match is null ? 0 : Match is >= 0 and <= 5 ? Match.Value + 1 : -1;
+        set
+        {
+            // Unsupported server values must survive an untouched form.
+            if (value is >= 0 and <= 6)
+                Match = value == 0 ? null : value - 1;
+        }
+    }
+
+    public string MatchSummary => Match switch
+    {
+        null => "网站匹配 · 默认",
+        0 => "网站匹配 · 基础域名",
+        1 => "网站匹配 · 主机",
+        2 => "网站匹配 · 开头匹配",
+        3 => "网站匹配 · 完全匹配",
+        4 => "网站匹配 · 正则表达式",
+        5 => "网站匹配 · 不匹配",
+        _ => $"网站匹配 · 服务器规则 ({Match})",
+    };
 }
 
 public sealed partial class CardEditorDraft : ObservableObject
@@ -347,7 +372,21 @@ public sealed partial class CustomFieldEditorDraft : ObservableObject
     public partial CipherEditorFieldType Type { get; set; } = CipherEditorFieldType.Text;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TextValue))]
+    [NotifyPropertyChangedFor(nameof(HiddenValue))]
     public partial string Value { get; set; } = string.Empty;
+
+    public string TextValue
+    {
+        get => IsText ? Value : string.Empty;
+        set { if (IsText) Value = value; }
+    }
+
+    public string HiddenValue
+    {
+        get => IsHidden ? Value : string.Empty;
+        set { if (IsHidden) Value = value; }
+    }
 
     [ObservableProperty]
     public partial bool BooleanValue { get; set; }
@@ -399,5 +438,7 @@ public sealed partial class CustomFieldEditorDraft : ObservableObject
         OnPropertyChanged(nameof(IsBoolean));
         OnPropertyChanged(nameof(IsLinked));
         OnPropertyChanged(nameof(IsUnsupported));
+        OnPropertyChanged(nameof(TextValue));
+        OnPropertyChanged(nameof(HiddenValue));
     }
 }

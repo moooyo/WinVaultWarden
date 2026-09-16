@@ -2,7 +2,7 @@ namespace App.ViewModels.Models;
 
 internal readonly record struct SendExpirationSelection(string Label, DateTimeOffset? ExpirationDate)
 {
-    public const string NeverLabel = "永不";
+    public const string NeverLabel = "删除时";
     public const string OneHourLabel = "1 小时";
     public const string OneDayLabel = "1 天";
     public const string SevenDaysLabel = "7 天";

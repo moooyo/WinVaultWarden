@@ -15,20 +15,20 @@ public sealed class MockVaultHealthUiService : IVaultHealthUiService
 
     private static readonly HealthReport _report = new(
         Reused:
-        [
-            new ReusedGroup(Count: 2, Items: [_ref1, _ref2]),
+        (ReusedGroup[])[
+            new ReusedGroup(Count: 2, Items: (HealthItemRef[])[_ref1, _ref2]),
         ],
         Weak:
-        [
+        (WeakFinding[])[
             new WeakFinding(Item: _ref3, Score: 12),
         ],
         Unsecured:
-        [
+        (UnsecuredFinding[])[
             new UnsecuredFinding(Item: _ref3, Uri: "http://oldbank.example.com/login"),
         ]);
 
     private static readonly IReadOnlyList<ExposedFinding> _exposed =
-    [
+    (ExposedFinding[])[
         new ExposedFinding(Item: _ref1, BreachCount: 5),
     ];
 

@@ -25,6 +25,20 @@ public enum ExposureCheckState
     Failed
 }
 
+/// <summary>Projects immutable analysis results into a WinUI-compatible list source.</summary>
+public sealed class ReusedPasswordGroup
+{
+    public ReusedPasswordGroup(ReusedGroup group)
+    {
+        Items = new ObservableCollection<HealthItemRef>(group.Items);
+    }
+
+    public int Count => Items.Count;
+
+    // Pass a bindable list to ItemsRepeater instead of the domain service's array.
+    public ObservableCollection<HealthItemRef> Items { get; }
+}
+
 public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
 {
     private const string OfflineAnalysisFailureMessage = "无法完成安全报告分析，请稍后重试。";
@@ -34,7 +48,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     // ── 离线分析集合 ────────────────────────────────────────────────────────────
 
     /// <summary>复用密码分组（每组包含使用相同密码的条目列表）。</summary>
-    public ObservableCollection<ReusedGroup> ReusedGroups { get; } = new();
+    public ObservableCollection<ReusedPasswordGroup> ReusedGroups { get; } = new();
 
     /// <summary>弱密码条目列表（附强度评分）。</summary>
     public ObservableCollection<WeakFinding> WeakItems { get; } = new();
@@ -210,6 +224,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         CancellationToken ct = default)
     {
         CancelOfflineAnalysis();
+        CancelExposedCheck();
         var requestId = Interlocked.Increment(ref _offlineRequestId);
         _offlineCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var token = _offlineCts.Token;
@@ -278,7 +293,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     {
         ReusedGroups.Clear();
         foreach (var g in report.Reused)
-            ReusedGroups.Add(g);
+            ReusedGroups.Add(new ReusedPasswordGroup(g));
 
         WeakItems.Clear();
         foreach (var w in report.Weak)
@@ -377,6 +392,8 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         _exposedCts?.Cancel();
         _exposedCts?.Dispose();
         _exposedCts = null;
+        ExposedItems.Clear();
+        ExposedError = null;
         ExposureState = ExposureCheckState.NotStarted;
     }
 

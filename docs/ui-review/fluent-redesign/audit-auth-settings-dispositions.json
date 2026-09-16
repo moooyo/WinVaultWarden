@@ -1,0 +1,271 @@
+[
+  {
+    "sceneId": "login-account",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "Saved-account entry and explicit server selection are present. Hosted choices conditionally hide the custom URL; the server remains visible. No clipping observed."
+  },
+  {
+    "sceneId": "login-password",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "Account and server are grouped, the unverified success mark is removed, and the password has a reveal action. Required-password-change and enterprise provisioning stay explicitly related source states rather than a claim of visible execution."
+  },
+  {
+    "sceneId": "register-account",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light",
+      "dark"
+    ],
+    "notes": "Restored self-hosted address and US/EU choices. The two-column form keeps every field and action visible; verification-required and uncertain-result branches now have separate scenes."
+  },
+  {
+    "sceneId": "login-two-step",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light",
+      "dark"
+    ],
+    "notes": "The code form accepts exactly six digits after whitespace normalization, explains Remember this device, and routes to a method chooser. Submission cannot authenticate in the preview."
+  },
+  {
+    "sceneId": "login-recovery",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "The recovery consequence now explicitly covers all configured methods, the code is masked with reveal, and Other methods preserves the verification context."
+  },
+  {
+    "sceneId": "login-locked",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "Switch account is explicit and the hardcoded inactivity reason is removed. PIN has a separate scene; enterprise and Windows Hello availability remains conditional."
+  },
+  {
+    "sceneId": "login-device-approval",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "The five-word hyphenated fingerprint matches the source and Devices proposal. Cancel is secondary and there is a clear alternate sign-in route. SSO and trust variants remain distinct conditional source references."
+  },
+  {
+    "sceneId": "login-error",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "Removed the unsupported credential-validity assertion and fabricated countdown. Neutral retry feedback preserves account identity without claiming success. Quarantine and local reset remain explicitly separate source-family references."
+  },
+  {
+    "sceneId": "settings-security",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light",
+      "dark"
+    ],
+    "notes": "All privacy controls and descriptions fit in the 1280x900 frame. PIN setup is reviewable, Windows Hello absence is explained, and emergency-contact wording does not imply all invitations are confirmed."
+  },
+  {
+    "sceneId": "settings-preferences",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "Website-icon privacy, tray lock behavior, and portable-only browser integration are explicit. About diagnostics are preserved in a disclosure. The MSIX-disabled counterpart is in the managed-policy scene."
+  },
+  {
+    "sceneId": "settings-account",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "Profile edit now has a dedicated prefilled dialog. Generic actions are more descriptive and emergency access has one primary settings home."
+  },
+  {
+    "sceneId": "settings-change-password",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "Account/server binding, reveal actions, hint guidance and the immediate sign-out consequence are visible. The form validates confirmation before any preview submit."
+  },
+  {
+    "sceneId": "settings-kdf",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "Current PBKDF2 algorithm, source-supported write bounds and the unlock-speed tradeoff are explicit. No unsupported Argon2 conversion is introduced."
+  },
+  {
+    "sceneId": "settings-two-factor",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "Method states are visible, disable and recovery actions are present, and the redundant Done/Close pair is replaced by a single Close. Setup and recovery routes reveal an identity-verification gate."
+  },
+  {
+    "sceneId": "settings-totp-setup",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "The manual setup step is distinguished from reauthentication and completion. The raw setup URI is in an advanced disclosure. The already-enabled/recovery-unavailable source branch remains a conditional family reference."
+  },
+  {
+    "sceneId": "settings-security-keys",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "Named removal has a separate confirmation. Account verification precedes key registration in the proposal text; native verification and unsupported-provider branches remain documented boundaries."
+  },
+  {
+    "sceneId": "settings-delete-account",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "The complete password-based three-step path is now reviewable. Ownership is described as a server-dependent warning rather than a contradictory hard block. OTP and hard-preflight variants remain explicitly conditional."
+  },
+  {
+    "sceneId": "register-email-verification",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "The message is conditional on registration eligibility, preserves account/server context, and directs users through the email/Web Vault continuation before sign-in."
+  },
+  {
+    "sceneId": "register-outcome-uncertain",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light",
+      "dark"
+    ],
+    "notes": "The uncertain result is distinct from successful registration and recommends sign-in before any new registration attempt."
+  },
+  {
+    "sceneId": "login-methods",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light",
+      "dark"
+    ],
+    "notes": "Final refreshed composition inspected: ordinary methods precede recovery; forward navigation and inline email disclosure use distinct arrows. No clipping observed."
+  },
+  {
+    "sceneId": "login-unlock-pin",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "The saved account identity, masked PIN and master-password fallback are visible. This is a separate PIN-configured scenario, not an assertion that every account supports PIN."
+  },
+  {
+    "sceneId": "settings-managed-policy",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light",
+      "dark"
+    ],
+    "notes": "Final refreshed composition inspected: Trust this device describes enterprise-SSO decryption and matches the source setting; policy restrictions and MSIX limitations remain explicit."
+  },
+  {
+    "sceneId": "settings-profile",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "Only the display name is editable and it is prefilled. Email/server are retained as read-only identity context; the maximum length is visible."
+  },
+  {
+    "sceneId": "settings-pin-setup",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "The source minimum of six characters and supported letter/number input are stated. PIN and confirmation are masked and can be inspected with reveal actions."
+  },
+  {
+    "sceneId": "settings-disable-twofactor",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "Only enabled methods are selectable, identity verification is required, and the consequence of removing the last method is clearly stated."
+  },
+  {
+    "sceneId": "settings-totp-complete",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light",
+      "dark"
+    ],
+    "notes": "A separate completed state presents an unmistakably synthetic recovery code and explains the consequences of using it. The preview never reaches this state by claiming real activation."
+  },
+  {
+    "sceneId": "settings-remove-security-key",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "The key, account and server are named. Removal is distinct from deleting vault items and has a destructive final action with a safe Cancel focus."
+  },
+  {
+    "sceneId": "settings-delete-email",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light"
+    ],
+    "notes": "The middle step requires the exact account email and retains the server. The action advances only to verification, not to deletion."
+  },
+  {
+    "sceneId": "settings-delete-credential",
+    "outcome": "fixed",
+    "reviewed": true,
+    "themesReviewed": [
+      "light",
+      "dark"
+    ],
+    "notes": "The final irreversible action binds the account/server and requests the current master password. The preview never dispatches account deletion or fabricates its outcome."
+  }
+]

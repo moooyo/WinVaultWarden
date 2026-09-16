@@ -10,8 +10,9 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
     </Page.Resources>
 
-    <Grid Padding="{StaticResource PageContentPadding}" RowSpacing="14">
+    <Grid Padding="{StaticResource PageContentPadding}">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -19,30 +20,48 @@
             <RowDefinition Height="*" MinHeight="120" />
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Spacing="8">
+        <StackPanel Grid.Row="1">
             <InfoBar x:Name="SendErrorInfoBar"
                      IsClosable="True"
                      Severity="Error"
                      IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
+                     Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                     Margin="0,12,0,0"
                      Message="{x:Bind ViewModel.Error, Mode=OneWay}" />
             <InfoBar x:Name="SendNoticeInfoBar"
                      IsClosable="True"
                      Severity="Warning"
                      IsOpen="{x:Bind ViewModel.ShowNotice, Mode=OneWay}"
+                     Visibility="{x:Bind ViewModel.ShowNotice, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                     Margin="0,12,0,0"
                      Message="{x:Bind ViewModel.Notice, Mode=OneWay}" />
             <InfoBar x:Name="SendOfflineInfoBar"
                      IsClosable="False"
                      Severity="Warning"
                      IsOpen="{x:Bind ViewModel.ShowStaleInfo, Mode=OneWay}"
+                     Visibility="{x:Bind ViewModel.ShowStaleInfo, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                     Margin="0,12,0,0"
                      Message="正在显示离线缓存中的 Send。请先成功同步密码库，再进行新增、编辑或删除。" />
+            <InfoBar IsClosable="True"
+                     Severity="Informational"
+                     AutomationProperties.LiveSetting="Polite"
+                     IsOpen="{x:Bind ViewModel.HasCopyFeedback, Mode=OneWay}"
+                     Visibility="{x:Bind ViewModel.HasCopyFeedback, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                     Margin="0,12,0,0"
+                     Message="{x:Bind ViewModel.CopyFeedback, Mode=OneWay}" />
         </StackPanel>
 
-        <Grid Grid.Row="1" ColumnSpacing="12">
+        <Grid Grid.Row="0" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Text="Send" Style="{ThemeResource TitleTextBlockStyle}" />
+            <StackPanel Spacing="6">
+                <TextBlock Text="Send" Style="{ThemeResource TitleTextBlockStyle}" />
+                <TextBlock Text="通过可控的链接，安全分享加密文本和文件。"
+                           TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
             <Button x:Name="AddSendButton"
                     Grid.Column="1"
                     Style="{ThemeResource AccentButtonStyle}"
@@ -55,12 +74,35 @@
             </Button>
         </Grid>
 
-        <Expander Grid.Row="2"
+        <Grid Grid.Row="2" ColumnSpacing="12" Margin="0,20,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <ToggleButton Content="{x:Bind ViewModel.AllFilterLabel, Mode=OneWay}"
+                              IsChecked="{x:Bind ViewModel.IsAllFilter, Mode=OneWay}"
+                              Tag="send:all" Click="OnFilterClick" />
+                <ToggleButton Content="{x:Bind ViewModel.TextFilterLabel, Mode=OneWay}"
+                              IsChecked="{x:Bind ViewModel.IsTextFilter, Mode=OneWay}"
+                              Tag="send:text" Click="OnFilterClick" />
+                <ToggleButton Content="{x:Bind ViewModel.FileFilterLabel, Mode=OneWay}"
+                              IsChecked="{x:Bind ViewModel.IsFileFilter, Mode=OneWay}"
+                              Tag="send:file" Click="OnFilterClick" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="打开收到的 Send" Click="OnReceiveClick" />
+        </Grid>
+
+        <Expander x:Name="ReceivedSendExpander" Grid.Row="3"
+                  Visibility="Collapsed" IsExpanded="True"
+                  Margin="0,0,0,20"
                   HorizontalAlignment="Stretch"
                   HorizontalContentAlignment="Stretch"
                   Header="打开收到的 Send 链接">
+            <ScrollViewer MaxHeight="300" HorizontalScrollBarVisibility="Disabled"
+                          HorizontalScrollMode="Disabled" VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="10">
-                <TextBox Header="Send 链接"
+                <TextBox x:Name="ReceivedLinkTextBox" Header="Send 链接"
                          PlaceholderText="https://vault.example/#/send/&lt;accessId&gt;/&lt;seed&gt;"
                          Text="{x:Bind ViewModel.ReceivedLinkUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 <PasswordBox Header="访问密码（如有）"
@@ -69,6 +111,7 @@
                         Style="{ThemeResource AccentButtonStyle}"
                         Command="{x:Bind ViewModel.OpenReceivedLinkCommand}" />
                 <InfoBar IsOpen="{x:Bind ViewModel.ReceivedWrongPassword, Mode=OneWay}"
+                         Visibility="{x:Bind ViewModel.ReceivedWrongPassword, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                          IsClosable="False"
                          Severity="Warning"
                          Message="密码不正确，请重试。" />
@@ -95,16 +138,17 @@
                               AutomationProperties.LiveSetting="Polite"
                               HorizontalAlignment="Left" />
             </StackPanel>
+            </ScrollViewer>
         </Expander>
 
-        <Grid Grid.Row="3" MinHeight="36" Padding="12,0"
+        <Grid Grid.Row="4" MinHeight="36" Padding="12,0" ColumnSpacing="12"
               BorderThickness="0,0,0,1"
               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
             <VisualStateManager.VisualStateGroups>
                 <VisualStateGroup>
                     <VisualState x:Name="WideColumns">
                         <VisualState.StateTriggers>
-                            <AdaptiveTrigger MinWindowWidth="720" />
+                            <AdaptiveTrigger MinWindowWidth="1120" />
                         </VisualState.StateTriggers>
                     </VisualState>
                     <VisualState x:Name="NarrowColumns">
@@ -112,27 +156,30 @@
                             <AdaptiveTrigger MinWindowWidth="0" />
                         </VisualState.StateTriggers>
                         <VisualState.Setters>
-                            <Setter Target="DeleteDateColumn.Width" Value="0" />
-                            <Setter Target="DeleteDateCell.Visibility" Value="Collapsed" />
+                            <Setter Target="AccessColumn.Width" Value="0" />
+                            <Setter Target="AccessHeader.Visibility" Value="Collapsed" />
                         </VisualState.Setters>
                     </VisualState>
                 </VisualStateGroup>
             </VisualStateManager.VisualStateGroups>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="2*" />
-                <ColumnDefinition x:Name="DeleteDateColumn" Width="*" />
-                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition x:Name="AccessColumn" Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="152" />
             </Grid.ColumnDefinitions>
             <TextBlock Text="名称" VerticalAlignment="Center"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <TextBlock x:Name="DeleteDateCell" Grid.Column="1" Text="删除日期" VerticalAlignment="Center"
+            <TextBlock x:Name="AccessHeader" Grid.Column="1" Text="访问状态" VerticalAlignment="Center"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <TextBlock Grid.Column="2" Text="选项" VerticalAlignment="Center"
+            <TextBlock Grid.Column="2" Text="可访问至 / 删除时间" VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock Grid.Column="3" Text="操作" VerticalAlignment="Center"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         </Grid>
 
         <ProgressRing x:Name="SendLoadingRing"
-                      Grid.Row="4"
+                      Grid.Row="5"
                       Width="36" Height="36"
                       HorizontalAlignment="Center"
                       VerticalAlignment="Top"
@@ -143,7 +190,7 @@
                       Visibility="{x:Bind ViewModel.ShowLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
         <StackPanel x:Name="SendEmptyPanel"
-                    Grid.Row="4"
+                    Grid.Row="5"
                     HorizontalAlignment="Center"
                     Spacing="{StaticResource SpacingMedium}"
                     Margin="0,72,0,0"
@@ -161,23 +208,26 @@
         </StackPanel>
 
         <ListView x:Name="SendContentList"
-                  Grid.Row="4"
+                  Grid.Row="5"
+                  HorizontalContentAlignment="Stretch"
                   ItemsSource="{x:Bind ViewModel.FilteredItems, Mode=OneWay}"
                   SelectionMode="None"
                   Visibility="{x:Bind ViewModel.ShowContent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Padding" Value="0" />
+                </Style>
+            </ListView.ItemContainerStyle>
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:SendListItem">
-                    <Grid MinHeight="52" Padding="8,4" ColumnSpacing="12"
-                          PointerEntered="OnRowPointerEntered"
-                          PointerExited="OnRowPointerExited"
-                          GotFocus="OnRowGotFocus"
-                          LostFocus="OnRowLostFocus"
-                          Unloaded="OnRowUnloaded">
+                    <Grid MinHeight="88" Padding="8,12" ColumnSpacing="12"
+                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup>
                                 <VisualState x:Name="WideColumns">
                                     <VisualState.StateTriggers>
-                                        <AdaptiveTrigger MinWindowWidth="720" />
+                                        <AdaptiveTrigger MinWindowWidth="1120" />
                                     </VisualState.StateTriggers>
                                 </VisualState>
                                 <VisualState x:Name="NarrowColumns">
@@ -185,16 +235,18 @@
                                         <AdaptiveTrigger MinWindowWidth="0" />
                                     </VisualState.StateTriggers>
                                     <VisualState.Setters>
-                                        <Setter Target="DeleteDateColumn.Width" Value="0" />
-                                        <Setter Target="DeleteDateCell.Visibility" Value="Collapsed" />
+                                        <Setter Target="AccessColumn.Width" Value="0" />
+                                        <Setter Target="AccessCell.Visibility" Value="Collapsed" />
+                                        <Setter Target="CompactAccessText.Visibility" Value="Visible" />
                                     </VisualState.Setters>
                                 </VisualState>
                             </VisualStateGroup>
                         </VisualStateManager.VisualStateGroups>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="2*" />
-                            <ColumnDefinition x:Name="DeleteDateColumn" Width="*" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition x:Name="AccessColumn" Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="152" />
                         </Grid.ColumnDefinitions>
                         <Grid ColumnSpacing="10" VerticalAlignment="Center">
                             <Grid.ColumnDefinitions>
@@ -205,35 +257,51 @@
                                     Style="{StaticResource IconBadgeBorderStyle}">
                                 <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" />
                             </Border>
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
                                 <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold"
                                            TextTrimming="CharacterEllipsis" MaxLines="1" />
-                                <TextBlock Text="{x:Bind TypeLabel}" FontSize="12"
+                                <TextBlock Text="{x:Bind MetadataLabel}" FontSize="12"
+                                           TextTrimming="CharacterEllipsis" MaxLines="1"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock x:Name="CompactAccessText" Visibility="Collapsed"
+                                           Text="{x:Bind CompactAccessLabel}" FontSize="12"
                                            TextTrimming="CharacterEllipsis" MaxLines="1"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </StackPanel>
                         </Grid>
-                        <TextBlock x:Name="DeleteDateCell"
-                                   Grid.Column="1"
-                                   Text="{x:Bind DeleteDate}"
+                        <StackPanel x:Name="AccessCell" Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="{x:Bind AccessStatus}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{x:Bind AudienceLabel}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Spacing="6" VerticalAlignment="Center"
+                                    ToolTipService.ToolTip="{x:Bind AvailableUntilAccessibleLabel}">
+                            <TextBlock Text="{x:Bind AvailableUntilLabel}" TextTrimming="CharacterEllipsis"
+                                       AutomationProperties.Name="{x:Bind AvailableUntilAccessibleLabel}" />
+                            <TextBlock x:Name="DeleteDateCell"
+                                   Text="{x:Bind RetentionLabel}"
                                    AutomationProperties.Name="{x:Bind DeleteDateAccessibleLabel}"
-                                   VerticalAlignment="Center"
+                                   FontSize="12"
                                    TextTrimming="CharacterEllipsis"
                                    MaxLines="1"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
                         <StackPanel x:Name="RowActions"
-                                    Grid.Column="2" Orientation="Horizontal" Spacing="4"
-                                    Opacity="0"
-                                    IsHitTestVisible="False"
+                                    Grid.Column="3" Orientation="Horizontal" Spacing="4"
+                                    Opacity="1"
+                                    IsHitTestVisible="True"
                                     HorizontalAlignment="Right" VerticalAlignment="Center">
-                            <Button Width="36" Height="32" Padding="0"
+                            <Button MinWidth="36" MinHeight="36" Padding="10,0"
                                     AutomationProperties.Name="复制链接"
                                     AutomationProperties.AutomationId="SendRowCopyLinkButton"
                                     ToolTipService.ToolTip="复制链接"
                                     Click="OnCopyLinkClick">
-                                <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                                    <TextBlock Text="复制链接" />
+                                </StackPanel>
                             </Button>
-                            <Button Width="36" Height="32" Padding="0"
+                            <Button MinWidth="36" MinHeight="36" Padding="10,0"
                                     AutomationProperties.Name="更多"
                                     AutomationProperties.AutomationId="SendRowMoreButton"
                                     ToolTipService.ToolTip="更多"
@@ -241,11 +309,6 @@
                                 <FontIcon Glyph="&#xE712;" FontSize="14" />
                                 <Button.Flyout>
                                     <MenuFlyout>
-                                        <MenuFlyoutItem Text="复制链接" Click="OnCopyLinkMenuClick">
-                                            <MenuFlyoutItem.Icon>
-                                                <FontIcon Glyph="&#xE8C8;" />
-                                            </MenuFlyoutItem.Icon>
-                                        </MenuFlyoutItem>
                                         <MenuFlyoutItem Text="编辑"
                                                         IsEnabled="{x:Bind CanModify, Mode=OneTime}"
                                                         Click="OnEditSendClick">

@@ -35,7 +35,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             _session.SetUnlockedKey(key);
             _session.SetSnapshot(BuildVault());
             _session.SetDevices(
-            [
+            (DeviceInfo[])[
                 new DeviceInfo("demo-device", "WinVaultWarden Dev", 6, "demo-device", DemoDate(24, 9, 0), false),
             ]);
             // 演示 Send 存入会话内存,并把会话标记为演示/离线——SendUiService 据此从内存取值,
@@ -79,14 +79,14 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
 
         return new DecryptedVault(
             new AccountInfo("demo-account", "demo@winvaultwarden.local", new ServerOrigin("http://localhost"), "D", "Demo"),
-            [folder, folderWork, folderPersonal, folderFinance],
+            (Folder[])[folder, folderWork, folderPersonal, folderFinance],
             BuildCiphers(folder.Id, folderWork.Id, folderPersonal.Id, folderFinance.Id),
             SkippedCipherCount: 0,
             SkippedFolderCount: 0);
     }
 
     private static IReadOnlyList<Cipher> BuildCiphers(string folderId, string workFolderId, string personalFolderId, string financeFolderId) =>
-    [
+    (Cipher[])[
         new Cipher
         {
             Id = "demo-login",
@@ -97,9 +97,9 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             Notes = "本地演示登录条目，不会上传到服务器。",
             CreationDate = DemoDate(18, 9, 30),
             RevisionDate = DemoDate(23, 15, 45),
-            Login = new CipherLogin("octocat@example.com", "demo-password-123", "506999", [new CipherLoginUri("https://github.com", null)]),
+            Login = new CipherLogin("octocat@example.com", "demo-password-123", "506999", (CipherLoginUri[])[new CipherLoginUri("https://github.com", null)]),
             Fields =
-            [
+            (CipherField[])[
                 new CipherField("Recovery code", "ABCD-EFGH", CipherFieldType.Hidden),
             ],
         },
@@ -113,10 +113,10 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             Notes = "Local-only demo passkey for browser bridge testing.",
             CreationDate = DemoDate(18, 10, 30),
             RevisionDate = DemoDate(23, 16, 15),
-            Login = new CipherLogin("tester@localhost", null, null, [new CipherLoginUri("http://localhost:8787", null)])
+            Login = new CipherLogin("tester@localhost", null, null, (CipherLoginUri[])[new CipherLoginUri("http://localhost:8787", null)])
             {
                 Fido2Credentials =
-                [
+                (CipherFido2Credential[])[
                     new CipherFido2Credential(
                         LocalhostPasskeyCredentialId,
                         "public-key",
@@ -134,7 +134,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
                 ],
             },
             Fields =
-            [
+            (CipherField[])[
                 new CipherField("Purpose", "Browser passkey bridge smoke test", CipherFieldType.Text),
             ],
         },
@@ -200,7 +200,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             FolderId = personalFolderId,
             CreationDate = DemoDate(3, 9, 0),
             RevisionDate = DemoDate(3, 9, 0),
-            Login = new CipherLogin("reddituser", "Summer2024", null, [new CipherLoginUri("https://reddit.com", null)]),
+            Login = new CipherLogin("reddituser", "Summer2024", null, (CipherLoginUri[])[new CipherLoginUri("https://reddit.com", null)]),
         },
         new Cipher
         {
@@ -210,7 +210,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             FolderId = personalFolderId,
             CreationDate = DemoDate(3, 9, 30),
             RevisionDate = DemoDate(3, 9, 30),
-            Login = new CipherLogin("demo.ig", "Summer2024", null, [new CipherLoginUri("https://instagram.com", null)]),
+            Login = new CipherLogin("demo.ig", "Summer2024", null, (CipherLoginUri[])[new CipherLoginUri("https://instagram.com", null)]),
         },
         new Cipher
         {
@@ -220,7 +220,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             FolderId = personalFolderId,
             CreationDate = DemoDate(3, 10, 0),
             RevisionDate = DemoDate(3, 10, 0),
-            Login = new CipherLogin("oldforum", "Summer2024", null, [new CipherLoginUri("https://bbs.example.com", null)]),
+            Login = new CipherLogin("oldforum", "Summer2024", null, (CipherLoginUri[])[new CipherLoginUri("https://bbs.example.com", null)]),
         },
         new Cipher
         {
@@ -230,7 +230,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             FolderId = personalFolderId,
             CreationDate = DemoDate(4, 11, 0),
             RevisionDate = DemoDate(4, 11, 0),
-            Login = new CipherLogin("admin", "admin", null, [new CipherLoginUri("http://192.168.1.1", null)]),
+            Login = new CipherLogin("admin", "admin", null, (CipherLoginUri[])[new CipherLoginUri("http://192.168.1.1", null)]),
         },
         new Cipher
         {
@@ -240,7 +240,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             FolderId = personalFolderId,
             CreationDate = DemoDate(4, 11, 30),
             RevisionDate = DemoDate(4, 11, 30),
-            Login = new CipherLogin("nas-admin", "123456", null, [new CipherLoginUri("https://nas.local", null)]),
+            Login = new CipherLogin("nas-admin", "123456", null, (CipherLoginUri[])[new CipherLoginUri("https://nas.local", null)]),
         },
         new Cipher
         {
@@ -250,7 +250,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             FolderId = personalFolderId,
             CreationDate = DemoDate(4, 12, 0),
             RevisionDate = DemoDate(4, 12, 0),
-            Login = new CipherLogin("me@old.com", "qwerty", null, [new CipherLoginUri("https://mail.old.com", null)]),
+            Login = new CipherLogin("me@old.com", "qwerty", null, (CipherLoginUri[])[new CipherLoginUri("https://mail.old.com", null)]),
         },
         new Cipher
         {
@@ -260,7 +260,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             FolderId = workFolderId,
             CreationDate = DemoDate(6, 13, 0),
             RevisionDate = DemoDate(6, 13, 0),
-            Login = new CipherLogin("demo@work.com", "linkedin123", null, [new CipherLoginUri("https://linkedin.com", null)]),
+            Login = new CipherLogin("demo@work.com", "linkedin123", null, (CipherLoginUri[])[new CipherLoginUri("https://linkedin.com", null)]),
         },
         new Cipher
         {
@@ -270,7 +270,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             FolderId = workFolderId,
             CreationDate = DemoDate(6, 13, 30),
             RevisionDate = DemoDate(6, 13, 30),
-            Login = new CipherLogin("demo@work.com", "adobe123", null, [new CipherLoginUri("https://adobe.com", null)]),
+            Login = new CipherLogin("demo@work.com", "adobe123", null, (CipherLoginUri[])[new CipherLoginUri("https://adobe.com", null)]),
         },
         new Cipher
         {
@@ -280,7 +280,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             FolderId = workFolderId,
             CreationDate = DemoDate(6, 14, 0),
             RevisionDate = DemoDate(6, 14, 0),
-            Login = new CipherLogin("demo.user@gmail.com", "Qx7$mZ2!vKp9", null, [new CipherLoginUri("https://accounts.google.com", null)]),
+            Login = new CipherLogin("demo.user@gmail.com", "Qx7$mZ2!vKp9", null, (CipherLoginUri[])[new CipherLoginUri("https://accounts.google.com", null)]),
         },
         new Cipher
         {
@@ -290,7 +290,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             FolderId = financeFolderId,
             CreationDate = DemoDate(7, 15, 0),
             RevisionDate = DemoDate(7, 15, 0),
-            Login = new CipherLogin("demo_cmb", "T8w#nL5^rQ2q", null, [new CipherLoginUri("https://cmbchina.com", null)]),
+            Login = new CipherLogin("demo_cmb", "T8w#nL5^rQ2q", null, (CipherLoginUri[])[new CipherLoginUri("https://cmbchina.com", null)]),
         },
         new Cipher
         {
@@ -300,7 +300,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             FolderId = personalFolderId,
             CreationDate = DemoDate(7, 15, 30),
             RevisionDate = DemoDate(7, 15, 30),
-            Login = new CipherLogin("demo@home.com", "Zj4!pW9&xM1c", null, [new CipherLoginUri("https://netflix.com", null)]),
+            Login = new CipherLogin("demo@home.com", "Zj4!pW9&xM1c", null, (CipherLoginUri[])[new CipherLoginUri("https://netflix.com", null)]),
         },
         new Cipher
         {
@@ -354,7 +354,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
     // 本地演示 Send(一条文本 + 一条文件)。ShareUrl 为占位链接(仅用于「复制链接」演示,不可访问),
     // 删除日期设在演示叙事的近未来。均只存内存,不上传服务器。
     private static IReadOnlyList<Send> BuildSends() =>
-    [
+    (Send[])[
         new Send
         {
             Id = "demo-send-text",

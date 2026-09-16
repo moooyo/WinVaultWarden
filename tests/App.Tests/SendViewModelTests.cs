@@ -12,6 +12,63 @@ namespace App.Tests;
 
 public class SendViewModelTests
 {
+    [Fact]
+    public async Task FilterWithNoMatches_ShowsEmptyUntilReturningToAll()
+    {
+        var service = new FakeSendUiService();
+        service.Sends.RemoveAll(item => item.Type == SendType.Text);
+        var vm = await LoadedVmAsync(service);
+
+        vm.SelectFilterByTag("send:text");
+        Assert.True(vm.ShowEmpty);
+        Assert.False(vm.ShowContent);
+
+        vm.SelectFilterByTag("send:all");
+        Assert.True(vm.ShowContent);
+    }
+
+    [Fact]
+    public async Task DisabledSend_CopyProvidesActualClipboardAndUnavailableFeedback()
+    {
+        var clipboard = new RecordingClipboard();
+        var vm = await LoadedVmAsync(new FakeSendUiService(), clipboard);
+        var item = vm.Items[0] with { Disabled = true, DeletionDateTime = DateTimeOffset.UtcNow.AddDays(1) };
+
+        vm.CopyLinkCommand.Execute(item);
+
+        Assert.Equal(item.Link, clipboard.Text);
+        Assert.Contains("已复制", vm.CopyFeedback);
+        Assert.Contains("不可访问", vm.CopyFeedback);
+        Assert.True(item.CanModify);
+    }
+
+    [Fact]
+    public async Task ClipboardFailure_DoesNotPublishSuccess()
+    {
+        var vm = await LoadedVmAsync(new FakeSendUiService(), new RejectingClipboard());
+
+        vm.CopyLinkCommand.Execute(vm.Items[0]);
+
+        Assert.Null(vm.CopyFeedback);
+        Assert.Contains("无法复制", vm.Error);
+    }
+
+    [Fact]
+    public async Task MissingClipboard_DoesNotPublishSuccess()
+    {
+        var vm = await LoadedVmAsync(new FakeSendUiService());
+
+        vm.CopyLinkCommand.Execute(vm.Items[0]);
+
+        Assert.Null(vm.CopyFeedback);
+        Assert.True(vm.HasError);
+    }
+
+    private sealed class RejectingClipboard : IClipboardService
+    {
+        public void SetText(string text) => throw new InvalidOperationException("Clipboard is busy.");
+    }
+
     private sealed class RecordingClipboard : IClipboardService
     {
         public string? Text { get; private set; }

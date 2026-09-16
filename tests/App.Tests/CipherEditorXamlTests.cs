@@ -145,7 +145,7 @@ public class CipherEditorXamlTests
     {
         var document = LoadVaultPageXaml();
         var passkeyCard = document.Descendants()
-            .FirstOrDefault(element => element.Attribute("Title")?.Value == "Passkey");
+            .FirstOrDefault(element => element.Attribute("Header")?.Value == "Passkey");
 
         Assert.NotNull(passkeyCard);
         Assert.Contains("HasPasskeys", passkeyCard!.Attribute("Visibility")?.Value);
@@ -166,7 +166,7 @@ public class CipherEditorXamlTests
         Assert.Null(folderBox.Attribute("DisplayMemberPath"));
         Assert.Null(folderBox.Attribute("SelectedValuePath"));
         Assert.Contains("EditorSelectedFolder", folderBox.Attribute("SelectedItem")?.Value);
-        // ItemTemplate 用 x:Bind Label 展示文件夹名(编译绑定,无反射)。
+        // The typed template displays the current folder label.
         var templateText = folderBox.Descendants().First(e => e.Name.LocalName == "TextBlock");
         Assert.Contains("Label", templateText.Attribute("Text")?.Value);
         Assert.Equal("Stretch", folderBox.Attribute("HorizontalAlignment")?.Value);
@@ -198,7 +198,7 @@ public class CipherEditorXamlTests
         Assert.True(addButton.Attribute("Click") is not null || addButton.Attribute("Command") is not null);
         // RemoveCustomFieldButton uses Click handler (inside DataTemplate, AOT-safe)
         Assert.NotNull(removeButton.Attribute("Click"));
-        Assert.Contains("EditorDraft.CustomFields", customFields.Attribute("ItemsSource")?.Value);
+        Assert.Contains("EditorDisplayDraft.CustomFields", customFields.Attribute("ItemsSource")?.Value);
 
         var textBoxes = customFields.Descendants(Xaml + "TextBox").ToArray();
         Assert.Contains(textBoxes, textBox => textBox.Attribute("Header")?.Value == "名称"
@@ -216,10 +216,10 @@ public class CipherEditorXamlTests
         var editor = RequireByName(document, "TotpSecretEditor");
 
         Assert.Equal(Xaml + "PasswordBox", editor.Name);
-        Assert.Contains("EditorDraft.Login.Totp", editor.Attribute("Password")?.Value);
+        Assert.Contains("EditorDisplayDraft.Login.Totp", editor.Attribute("Password")?.Value);
         Assert.Contains("Mode=TwoWay", editor.Attribute("Password")?.Value);
         Assert.DoesNotContain(document.Descendants(Xaml + "TextBox"),
-            textBox => textBox.Attribute("Text")?.Value?.Contains("EditorDraft.Login.Totp") == true);
+            textBox => textBox.Attribute("Text")?.Value?.Contains("EditorDisplayDraft.Login.Totp") == true);
     }
 
     [Fact]
@@ -245,22 +245,24 @@ public class CipherEditorXamlTests
         Assert.Equal(Xaml + "TextBox", textValue.Name);
         Assert.Contains("Value", textValue.Attribute("Text")?.Value);
         Assert.Contains("Mode=TwoWay", textValue.Attribute("Text")?.Value);
-        Assert.Contains("IsText", textValue.Attribute(X + "Load")?.Value);
-        Assert.Contains("Mode=OneWay", textValue.Attribute(X + "Load")?.Value);
+        Assert.Contains("IsText", textValue.Attribute("Visibility")?.Value);
+        Assert.Contains("TextValue", textValue.Attribute("Text")?.Value);
+        Assert.Null(textValue.Attribute(X + "Load"));
 
         Assert.Equal(Xaml + "PasswordBox", hiddenValue.Name);
         Assert.Contains("Value", hiddenValue.Attribute("Password")?.Value);
         Assert.Contains("Mode=TwoWay", hiddenValue.Attribute("Password")?.Value);
-        Assert.Contains("IsHidden", hiddenValue.Attribute(X + "Load")?.Value);
-        Assert.Contains("Mode=OneWay", hiddenValue.Attribute(X + "Load")?.Value);
+        Assert.Contains("IsHidden", hiddenValue.Attribute("Visibility")?.Value);
+        Assert.Contains("HiddenValue", hiddenValue.Attribute("Password")?.Value);
+        Assert.Null(hiddenValue.Attribute(X + "Load"));
 
         Assert.Equal(Xaml + "CheckBox", booleanValue.Name);
         Assert.Contains("BooleanValue", booleanValue.Attribute("IsChecked")?.Value);
         Assert.Contains("Mode=TwoWay", booleanValue.Attribute("IsChecked")?.Value);
-        Assert.Contains("IsBoolean", booleanValue.Attribute(X + "Load")?.Value);
-        Assert.Contains("Mode=OneWay", booleanValue.Attribute(X + "Load")?.Value);
+        Assert.Contains("IsBoolean", booleanValue.Attribute("Visibility")?.Value);
+        Assert.Null(booleanValue.Attribute(X + "Load"));
 
-        Assert.DoesNotContain("{Binding ", customFields.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("{Binding ElementName=Root", customFields.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -368,24 +370,31 @@ public class CipherEditorXamlTests
         // No DataContext shim on the panel anymore.
         Assert.Null(panel.Attribute("DataContext"));
 
-        // Editable fields bind via x:Bind to ViewModel.EditorDraft.
+        // Editable fields bind via x:Bind to ViewModel.EditorDisplayDraft.
         var nameBox = panel.Descendants(Xaml + "TextBox")
             .First(tb => tb.Attribute("Header")?.Value == "项目名称（必填）");
         Assert.Contains("x:Bind", nameBox.Attribute("Text")?.Value);
-        Assert.Contains("ViewModel.EditorDraft.Name", nameBox.Attribute("Text")?.Value);
+        Assert.Contains("ViewModel.EditorDisplayDraft.Name", nameBox.Attribute("Text")?.Value);
         Assert.Contains("TwoWay", nameBox.Attribute("Text")?.Value);
     }
 
     [Fact]
-    public void VaultPage_LoginUri_BindsToPrimaryUriProxy()
+    public void VaultPage_LoginUrisPreserveEveryWebsiteAndMatchingRule()
     {
         var document = LoadVaultPageXaml();
         var panel = RequireByName(document, "CipherEditorPanel");
 
-        var uriBox = panel.Descendants(Xaml + "TextBox")
-            .First(tb => tb.Attribute("Header")?.Value == "网站（URI）");
-        Assert.Contains("ViewModel.EditorDraft.Login.PrimaryUri", uriBox.Attribute("Text")?.Value);
+        var uriItems = panel.Descendants(Xaml + "ItemsControl").Single(element =>
+            element.Attribute("ItemsSource")?.Value?.Contains("EditorDisplayDraft.Login.Uris") == true);
+        var uriBox = uriItems.Descendants(Xaml + "TextBox")
+            .First(tb => tb.Attribute("Header")?.Value == "网站地址");
+        Assert.Contains("Binding Uri, Mode=TwoWay", uriBox.Attribute("Text")?.Value);
         Assert.DoesNotContain("Uris[0]", uriBox.Attribute("Text")?.Value);
+        var matching = uriItems.Descendants(Xaml + "Expander").Single();
+        Assert.Contains("MatchSummary", matching.Attribute("Header")?.Value);
+        Assert.NotEqual("True", matching.Attribute("IsExpanded")?.Value);
+        Assert.Contains(matching.Descendants(Xaml + "ComboBox"), element =>
+            element.Attribute("SelectedIndex")?.Value?.Contains("MatchIndex") == true);
     }
 
     [Fact]

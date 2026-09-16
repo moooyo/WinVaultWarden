@@ -18,47 +18,58 @@
                 <controls:DetailCard Title="登录信息">
                     <controls:DetailCard.CardContent>
                         <StackPanel Spacing="2">
-                            <controls:FieldRow Label="用户名" Value="{x:Bind Username}" />
-                            <controls:FieldRow Label="密码" Value="{x:Bind Password}" IsSecret="True" />
-                            <controls:TotpField Secret="{x:Bind TotpSecret}" />
+                            <controls:FieldRow Label="用户名" Value="{Binding Username}" HideWhenEmpty="False" />
+                            <StackPanel Visibility="{Binding SensitiveUnlocked, Converter={StaticResource BoolToVis}}">
+                                <controls:FieldRow Label="密码" Value="{Binding Password}" IsSecret="True" HideWhenEmpty="False"
+                                                   CopyButtonText="复制密码" EmptyValueText="{Binding PasswordEmptyText}" />
+                            </StackPanel>
+                            <StackPanel Padding="0,10" Spacing="5"
+                                        Visibility="{Binding SensitiveUnlocked, Converter={StaticResource InverseBoolToVis}}">
+                                <TextBlock Text="密码" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                                <TextBlock Text="{Binding PasswordEmptyText}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <controls:TotpField Secret="{Binding TotpSecret}" />
                         </StackPanel>
                     </controls:DetailCard.CardContent>
                 </controls:DetailCard>
-                <controls:DetailCard Title="自动填充">
+                <controls:DetailCard Title="网站">
                     <controls:DetailCard.CardContent>
-                        <controls:FieldRow Label="网址" Value="{x:Bind Uri}" ShowOpen="True" />
-                    </controls:DetailCard.CardContent>
-                </controls:DetailCard>
-                <controls:DetailCard Title="Passkey"
-                                     Visibility="{x:Bind HasPasskeys, Converter={StaticResource BoolToVis}}">
-                    <controls:DetailCard.CardContent>
-                        <ItemsControl ItemsSource="{x:Bind Passkeys}">
+                        <ItemsControl ItemsSource="{Binding DisplayUris}">
                             <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="models:PasskeyDetail">
-                                    <StackPanel Spacing="2">
-                                        <controls:FieldRow Label="RP ID" Value="{x:Bind RpId}" />
-                                        <controls:FieldRow Label="账号" Value="{x:Bind DisplayName}" />
-                                        <controls:FieldRow Label="可发现" Value="{x:Bind DiscoverableText}" />
-                                        <controls:FieldRow Label="创建" Value="{x:Bind CreatedText}" />
-                                    </StackPanel>
+                                <DataTemplate x:DataType="x:String">
+                                    <controls:FieldRow Label="网址" Value="{Binding}" ShowOpen="True" />
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </controls:DetailCard.CardContent>
                 </controls:DetailCard>
-                <Expander HorizontalAlignment="Stretch"
-                          Visibility="{x:Bind HasPasswordHistory, Converter={StaticResource BoolToVis}}">
+                <Expander Header="Passkey" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                     Visibility="{Binding HasPasskeys, Converter={StaticResource BoolToVis}}">
+                        <ItemsControl ItemsSource="{Binding Passkeys}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:PasskeyDetail">
+                                    <StackPanel Spacing="2">
+                                        <controls:FieldRow Label="RP ID" Value="{Binding RpId}" />
+                                        <controls:FieldRow Label="账号" Value="{Binding DisplayName}" />
+                                        <controls:FieldRow Label="可发现" Value="{Binding DiscoverableText}" />
+                                        <controls:FieldRow Label="创建" Value="{Binding CreatedText}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                </Expander>
+                <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          Visibility="{Binding HasPasswordHistory, Converter={StaticResource BoolToVis}}">
                     <Expander.Header>
                         <TextBlock>
-                            <Run Text="密码历史 (" /><Run Text="{x:Bind PasswordHistoryCount}" /><Run Text=")" />
+                            <Run Text="密码历史 (" /><Run Text="{Binding PasswordHistoryCount}" /><Run Text=")" />
                         </TextBlock>
                     </Expander.Header>
-                    <ItemsControl ItemsSource="{x:Bind PasswordHistory}">
+                    <ItemsControl ItemsSource="{Binding PasswordHistory}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="models:PasswordHistoryItem">
-                                <!-- PasswordHistoryItem 无 Reprompt 字段(嵌套 DataTemplate 内 x:Bind/ElementName
-                                     均无法跨模板边界读取外层 Page 属性),故经 DataContextChanged 由代码隐藏回填。 -->
-                                <controls:FieldRow Label="{x:Bind DateLabel}" Value="{x:Bind Password}" IsSecret="True" />
+                                <!-- Password history values come from the authorized detail projection. -->
+                                <controls:FieldRow Label="{Binding DateLabel}" Value="{Binding Password}" IsSecret="True" />
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
@@ -69,11 +80,11 @@
             <controls:DetailCard Title="卡信息">
                 <controls:DetailCard.CardContent>
                     <StackPanel Spacing="2">
-                        <controls:FieldRow Label="持卡人" Value="{x:Bind Cardholder}" />
-                        <controls:FieldRow Label="卡号" Value="{x:Bind Number}" IsSecret="True" />
-                        <controls:FieldRow Label="有效期" Value="{x:Bind Expiry}" />
-                        <controls:FieldRow Label="品牌" Value="{x:Bind Brand}" />
-                        <controls:FieldRow Label="CVV" Value="{x:Bind Cvv}" IsSecret="True" />
+                        <controls:FieldRow Label="持卡人" Value="{Binding Cardholder}" />
+                        <controls:FieldRow Label="卡号" Value="{Binding Number}" IsSecret="True" />
+                        <controls:FieldRow Label="有效期" Value="{Binding Expiry}" />
+                        <controls:FieldRow Label="品牌" Value="{Binding Brand}" />
+                        <controls:FieldRow Label="CVV" Value="{Binding Cvv}" IsSecret="True" />
                     </StackPanel>
                 </controls:DetailCard.CardContent>
             </controls:DetailCard>
@@ -82,13 +93,15 @@
             <controls:DetailCard Title="个人信息">
                 <controls:DetailCard.CardContent>
                     <StackPanel Spacing="2">
-                        <controls:FieldRow Label="姓名" Value="{x:Bind FullName}" />
-                        <controls:FieldRow Label="用户名" Value="{x:Bind Username}" />
-                        <controls:FieldRow Label="公司" Value="{x:Bind Company}" />
-                        <controls:FieldRow Label="邮箱" Value="{x:Bind Email}" />
-                        <controls:FieldRow Label="电话" Value="{x:Bind Phone}" />
-                        <controls:FieldRow Label="证件号" Value="{x:Bind IdNumber}" IsSecret="True" />
-                        <controls:FieldRow Label="地址" Value="{x:Bind Address}" />
+                        <controls:FieldRow Label="姓名" Value="{Binding FullName}" />
+                        <controls:FieldRow Label="用户名" Value="{Binding Username}" />
+                        <controls:FieldRow Label="公司" Value="{Binding Company}" />
+                        <controls:FieldRow Label="邮箱" Value="{Binding Email}" />
+                        <controls:FieldRow Label="电话" Value="{Binding Phone}" />
+                        <controls:FieldRow Label="证件号" Value="{Binding IdNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="护照号码" Value="{Binding PassportNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="驾驶证号" Value="{Binding LicenseNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="地址" Value="{Binding Address}" />
                     </StackPanel>
                 </controls:DetailCard.CardContent>
             </controls:DetailCard>
@@ -96,7 +109,7 @@
         <DataTemplate x:Key="NoteTemplate" x:DataType="models:NoteDetail">
             <controls:DetailCard Title="内容">
                 <controls:DetailCard.CardContent>
-                    <TextBlock Text="{x:Bind Content}" TextWrapping="Wrap" />
+                    <controls:FieldRow Label="笔记" Value="{Binding Content}" CopyButtonText="复制笔记" />
                 </controls:DetailCard.CardContent>
             </controls:DetailCard>
         </DataTemplate>
@@ -104,9 +117,9 @@
             <controls:DetailCard Title="密钥">
                 <controls:DetailCard.CardContent>
                     <StackPanel Spacing="2">
-                        <controls:FieldRow Label="公钥" Value="{x:Bind PublicKey}" />
-                        <controls:FieldRow Label="私钥" Value="{x:Bind PrivateKey}" IsSecret="True" />
-                        <controls:FieldRow Label="指纹" Value="{x:Bind Fingerprint}" />
+                        <controls:FieldRow Label="公钥" Value="{Binding PublicKey}" />
+                        <controls:FieldRow Label="私钥" Value="{Binding PrivateKey}" IsSecret="True" />
+                        <controls:FieldRow Label="指纹" Value="{Binding Fingerprint}" />
                     </StackPanel>
                 </controls:DetailCard.CardContent>
             </controls:DetailCard>
@@ -115,16 +128,16 @@
             <controls:DetailCard Title="银行账户">
                 <controls:DetailCard.CardContent>
                     <StackPanel Spacing="2">
-                        <controls:FieldRow Label="银行" Value="{x:Bind BankName}" />
-                        <controls:FieldRow Label="账户持有人" Value="{x:Bind NameOnAccount}" />
-                        <controls:FieldRow Label="账户类型" Value="{x:Bind AccountType}" />
-                        <controls:FieldRow Label="账号" Value="{x:Bind AccountNumber}" IsSecret="True" />
-                        <controls:FieldRow Label="路由号码" Value="{x:Bind RoutingNumber}" IsSecret="True" />
-                        <controls:FieldRow Label="分行号码" Value="{x:Bind BranchNumber}" IsSecret="True" />
-                        <controls:FieldRow Label="PIN" Value="{x:Bind Pin}" IsSecret="True" />
-                        <controls:FieldRow Label="SWIFT / BIC" Value="{x:Bind SwiftCode}" IsSecret="True" />
-                        <controls:FieldRow Label="IBAN" Value="{x:Bind Iban}" IsSecret="True" />
-                        <controls:FieldRow Label="银行联系电话" Value="{x:Bind BankContactPhone}" />
+                        <controls:FieldRow Label="银行" Value="{Binding BankName}" />
+                        <controls:FieldRow Label="账户持有人" Value="{Binding NameOnAccount}" />
+                        <controls:FieldRow Label="账户类型" Value="{Binding AccountType}" />
+                        <controls:FieldRow Label="账号" Value="{Binding AccountNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="路由号码" Value="{Binding RoutingNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="分行号码" Value="{Binding BranchNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="PIN" Value="{Binding Pin}" IsSecret="True" />
+                        <controls:FieldRow Label="SWIFT / BIC" Value="{Binding SwiftCode}" IsSecret="True" />
+                        <controls:FieldRow Label="IBAN" Value="{Binding Iban}" IsSecret="True" />
+                        <controls:FieldRow Label="银行联系电话" Value="{Binding BankContactPhone}" />
                     </StackPanel>
                 </controls:DetailCard.CardContent>
             </controls:DetailCard>
@@ -133,15 +146,15 @@
             <controls:DetailCard Title="驾驶证">
                 <controls:DetailCard.CardContent>
                     <StackPanel Spacing="2">
-                        <controls:FieldRow Label="姓名" Value="{x:Bind FullName}" />
-                        <controls:FieldRow Label="出生日期" Value="{x:Bind DateOfBirth}" IsSecret="True" />
-                        <controls:FieldRow Label="驾驶证号" Value="{x:Bind LicenseNumber}" IsSecret="True" />
-                        <controls:FieldRow Label="签发国家/地区" Value="{x:Bind IssuingCountry}" />
-                        <controls:FieldRow Label="签发州/省" Value="{x:Bind IssuingState}" />
-                        <controls:FieldRow Label="签发日期" Value="{x:Bind IssueDate}" IsSecret="True" />
-                        <controls:FieldRow Label="到期日期" Value="{x:Bind ExpirationDate}" IsSecret="True" />
-                        <controls:FieldRow Label="签发机关" Value="{x:Bind IssuingAuthority}" />
-                        <controls:FieldRow Label="驾驶证类别" Value="{x:Bind LicenseClass}" />
+                        <controls:FieldRow Label="姓名" Value="{Binding FullName}" />
+                        <controls:FieldRow Label="出生日期" Value="{Binding DateOfBirth}" IsSecret="True" />
+                        <controls:FieldRow Label="驾驶证号" Value="{Binding LicenseNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="签发国家/地区" Value="{Binding IssuingCountry}" />
+                        <controls:FieldRow Label="签发州/省" Value="{Binding IssuingState}" />
+                        <controls:FieldRow Label="签发日期" Value="{Binding IssueDate}" IsSecret="True" />
+                        <controls:FieldRow Label="到期日期" Value="{Binding ExpirationDate}" IsSecret="True" />
+                        <controls:FieldRow Label="签发机关" Value="{Binding IssuingAuthority}" />
+                        <controls:FieldRow Label="驾驶证类别" Value="{Binding LicenseClass}" />
                     </StackPanel>
                 </controls:DetailCard.CardContent>
             </controls:DetailCard>
@@ -150,18 +163,18 @@
             <controls:DetailCard Title="护照">
                 <controls:DetailCard.CardContent>
                     <StackPanel Spacing="2">
-                        <controls:FieldRow Label="姓名" Value="{x:Bind FullName}" />
-                        <controls:FieldRow Label="出生日期" Value="{x:Bind DateOfBirth}" IsSecret="True" />
-                        <controls:FieldRow Label="性别" Value="{x:Bind Sex}" IsSecret="True" />
-                        <controls:FieldRow Label="出生地" Value="{x:Bind BirthPlace}" IsSecret="True" />
-                        <controls:FieldRow Label="国籍" Value="{x:Bind Nationality}" />
-                        <controls:FieldRow Label="签发国家/地区" Value="{x:Bind IssuingCountry}" />
-                        <controls:FieldRow Label="护照号码" Value="{x:Bind PassportNumber}" IsSecret="True" />
-                        <controls:FieldRow Label="护照类型" Value="{x:Bind PassportType}" />
-                        <controls:FieldRow Label="身份证件号码" Value="{x:Bind NationalIdentificationNumber}" IsSecret="True" />
-                        <controls:FieldRow Label="签发机关" Value="{x:Bind IssuingAuthority}" />
-                        <controls:FieldRow Label="签发日期" Value="{x:Bind IssueDate}" IsSecret="True" />
-                        <controls:FieldRow Label="到期日期" Value="{x:Bind ExpirationDate}" IsSecret="True" />
+                        <controls:FieldRow Label="姓名" Value="{Binding FullName}" />
+                        <controls:FieldRow Label="出生日期" Value="{Binding DateOfBirth}" IsSecret="True" />
+                        <controls:FieldRow Label="性别" Value="{Binding Sex}" IsSecret="True" />
+                        <controls:FieldRow Label="出生地" Value="{Binding BirthPlace}" IsSecret="True" />
+                        <controls:FieldRow Label="国籍" Value="{Binding Nationality}" />
+                        <controls:FieldRow Label="签发国家/地区" Value="{Binding IssuingCountry}" />
+                        <controls:FieldRow Label="护照号码" Value="{Binding PassportNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="护照类型" Value="{Binding PassportType}" />
+                        <controls:FieldRow Label="身份证件号码" Value="{Binding NationalIdentificationNumber}" IsSecret="True" />
+                        <controls:FieldRow Label="签发机关" Value="{Binding IssuingAuthority}" />
+                        <controls:FieldRow Label="签发日期" Value="{Binding IssueDate}" IsSecret="True" />
+                        <controls:FieldRow Label="到期日期" Value="{Binding ExpirationDate}" IsSecret="True" />
                     </StackPanel>
                 </controls:DetailCard.CardContent>
             </controls:DetailCard>
@@ -178,6 +191,7 @@
                         <Setter Target="VaultDetailColumn.Width" Value="*" />
                         <Setter Target="VaultListPane.Visibility" Value="Visible" />
                         <Setter Target="VaultDetailPane.Visibility" Value="Visible" />
+                        <Setter Target="VaultNarrowBackButton.Visibility" Value="Collapsed" />
                         <Setter Target="PendingCipherCreateActions.Orientation" Value="Horizontal" />
                         <Setter Target="PendingCipherCreateCheckButton.HorizontalAlignment" Value="Left" />
                         <Setter Target="PendingCipherCreateAbandonButton.HorizontalAlignment" Value="Left" />
@@ -189,6 +203,7 @@
                         <Setter Target="VaultDetailColumn.Width" Value="0" />
                         <Setter Target="VaultListPane.Visibility" Value="Visible" />
                         <Setter Target="VaultDetailPane.Visibility" Value="Collapsed" />
+                        <Setter Target="VaultNarrowBackButton.Visibility" Value="Collapsed" />
                         <Setter Target="PendingCipherCreateActions.Orientation" Value="Vertical" />
                         <Setter Target="PendingCipherCreateCheckButton.HorizontalAlignment" Value="Stretch" />
                         <Setter Target="PendingCipherCreateAbandonButton.HorizontalAlignment" Value="Stretch" />
@@ -200,6 +215,7 @@
                         <Setter Target="VaultDetailColumn.Width" Value="*" />
                         <Setter Target="VaultListPane.Visibility" Value="Collapsed" />
                         <Setter Target="VaultDetailPane.Visibility" Value="Visible" />
+                        <Setter Target="VaultNarrowBackButton.Visibility" Value="Visible" />
                         <Setter Target="PendingCipherCreateActions.Orientation" Value="Vertical" />
                         <Setter Target="PendingCipherCreateCheckButton.HorizontalAlignment" Value="Stretch" />
                         <Setter Target="PendingCipherCreateAbandonButton.HorizontalAlignment" Value="Stretch" />
@@ -295,7 +311,8 @@
         </StackPanel>
 
         <!-- 列表 -->
-        <Grid x:Name="VaultListPane" Grid.Row="1" Grid.Column="0" Padding="12" RowSpacing="10"
+        <Grid x:Name="VaultListPane" Grid.Row="1" Grid.Column="0" Padding="16,20,12,12" RowSpacing="0"
+              Background="{ThemeResource LayerFillColorDefaultBrush}"
               BorderThickness="0,0,1,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -303,18 +320,24 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <Grid ColumnSpacing="8">
+            <Grid Grid.Row="1" ColumnSpacing="8" Margin="0,0,0,12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <AutoSuggestBox PlaceholderText="搜索你的保险库…"
+                <AutoSuggestBox x:Name="VaultSearchBox" PlaceholderText="搜索名称、网站或用户名"
+                                GotFocus="OnSearchGotFocus"
                                 Text="{x:Bind ViewModel.SearchText, Mode=TwoWay}"
                                 QueryIcon="Find"
                                 AutomationProperties.Name="搜索保险库"
-                                AutomationProperties.AutomationId="VaultSearchBox" />
+                                AutomationProperties.AutomationId="VaultSearchBox">
+                    <AutoSuggestBox.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="K" Modifiers="Control" Invoked="OnSearchAcceleratorInvoked" />
+                    </AutoSuggestBox.KeyboardAccelerators>
+                </AutoSuggestBox>
                 <Button Grid.Column="1" Command="{x:Bind ViewModel.SyncCommand}"
                         IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}"
                         AutomationProperties.Name="同步保险库"
@@ -326,12 +349,20 @@
                 </Button>
             </Grid>
 
-            <CommandBar Grid.Row="1" DefaultLabelPosition="Right" HorizontalAlignment="Left"
+            <CommandBar Grid.Row="0" DefaultLabelPosition="Right" HorizontalAlignment="Stretch" Margin="0,0,0,16"
                         Background="Transparent">
+                <CommandBar.Content>
+                    <StackPanel Spacing="2" VerticalAlignment="Center" Margin="0,0,8,0">
+                        <TextBlock Text="{x:Bind ViewModel.WorkspaceTitle, Mode=OneWay}"
+                                   TextTrimming="CharacterEllipsis" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                        <TextBlock Text="{x:Bind ViewModel.VisibleItemCountText, Mode=OneWay}"
+                                   Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                    </StackPanel>
+                </CommandBar.Content>
                 <AppBarButton x:Name="AddCipherButton" Icon="Add" Label="新增"
                               IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanBeginCipherCreate, ViewModel.CanStartVaultOperation), Mode=OneWay}">
                     <AppBarButton.Flyout>
-                        <MenuFlyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedLeft">
                             <MenuFlyoutItem Text="登录" Click="OnAddLoginClick">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE7B7;" />
@@ -396,6 +427,10 @@
                         <FontIcon Glyph="&#xE762;" />
                     </AppBarButton.Icon>
                 </AppBarButton>
+            </CommandBar>
+            <StackPanel Grid.Row="3" Spacing="6" Margin="0,0,0,12"
+                        Visibility="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <CommandBar DefaultLabelPosition="Right" HorizontalAlignment="Stretch" Background="Transparent">
                 <AppBarButton Icon="SelectAll" Label="全选"
                               Command="{x:Bind ViewModel.SelectAllCommand}"
                               Click="OnSelectAllClick"
@@ -450,8 +485,6 @@
                               IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanDeleteSelection, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                               Visibility="{x:Bind ViewModel.IsTrashFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
             </CommandBar>
-            <StackPanel Grid.Row="3" Spacing="6" Margin="0,4,0,0"
-                        Visibility="{x:Bind ViewModel.IsSelectionMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <TextBlock VerticalAlignment="Center"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -465,7 +498,7 @@
                          IsOpen="{x:Bind ViewModel.HasSelectionPlacementError, Mode=OneWay}"
                          Message="{x:Bind ViewModel.SelectionPlacementError, Mode=OneWay}" />
             </StackPanel>
-            <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8"
+            <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8" Margin="0,0,0,12"
                         Visibility="{x:Bind ViewModel.IsFolderFilterSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                 <Button x:Name="RenameFolderButton" Content="重命名文件夹" Click="OnRenameFolderClick"
                         IsEnabled="{x:Bind ViewModel.CanStartVaultOperation, Mode=OneWay}" />
@@ -474,7 +507,7 @@
             </StackPanel>
 
             <!-- 筛选栏:分面 ToggleButton + 排序 + 保存视图 + 保存/清除 -->
-            <StackPanel Grid.Row="2" Spacing="8" Margin="0,4,0,0">
+            <StackPanel Grid.Row="2" Spacing="8" Margin="0,0,0,12">
                 <InfoBar x:Name="VaultOfflineInfoBar"
                          Severity="Warning"
                          IsOpen="{x:Bind ViewModel.ShowDataStaleInfo, Mode=OneWay}"
@@ -499,7 +532,20 @@
                          IsOpen="{x:Bind ViewModel.HasUnsupportedOrganizationCiphers, Mode=OneWay}"
                          Title="共享保险库不可用"
                          Message="{x:Bind ViewModel.UnsupportedOrganizationCipherMessage, Mode=OneWay}" />
-                <!-- 紧凑单行:排序 + 筛选(分面下拉,含激活计数徽标) + 视图(已保存视图 + 保存当前视图) -->
+                <ComboBox x:Name="VaultTypeFilterBox" HorizontalAlignment="Stretch"
+                          SelectedIndex="{x:Bind ViewModel.SelectedTypeIndex, Mode=TwoWay}"
+                          AutomationProperties.Name="条目类型">
+                    <ComboBoxItem Content="所有类型" />
+                    <ComboBoxItem Content="登录" />
+                    <ComboBoxItem Content="支付卡" />
+                    <ComboBoxItem Content="身份" />
+                    <ComboBoxItem Content="笔记" />
+                    <ComboBoxItem Content="SSH 密钥" />
+                    <ComboBoxItem Content="银行账户" />
+                    <ComboBoxItem Content="驾驶证" />
+                    <ComboBoxItem Content="护照" />
+                </ComboBox>
+                <!-- Refinements retain their values within the current vault scope. -->
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <ComboBox x:Name="SortComboBox"
                               MinWidth="130"
@@ -606,17 +652,18 @@
                 </Grid>
             </StackPanel>
 
-            <ListView Grid.Row="5"
+            <ListView Grid.Row="6"
                       x:Name="CipherList"
                       ItemsSource="{x:Bind ViewModel.FilteredItems, Mode=OneWay}"
                       SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
+                      SingleSelectionFollowsFocus="False"
                       SelectionChanged="OnCipherSelectionChanged"
                       SelectionMode="{x:Bind local:VaultPage.SelectionModeFromBool(ViewModel.IsSelectionMode), Mode=OneWay}">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="models:CipherListItem">
                         <Grid x:Name="RowRoot"
                               ColumnSpacing="10"
-                              Padding="4,6"
+                              Padding="4,10"
                               PointerEntered="OnRowPointerEntered"
                               PointerExited="OnRowPointerExited"
                               GotFocus="OnRowGotFocus"
@@ -628,15 +675,15 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Border Width="32" Height="32"
+                            <Border Width="36" Height="36"
                                     Style="{StaticResource IconBadgeBorderStyle}">
-                                <controls:FaviconView Domain="{x:Bind IconDomain}"
-                                                      FallbackGlyph="{x:Bind Glyph}"
+                                <controls:FaviconView Domain="{Binding IconDomain}"
+                                                      FallbackGlyph="{Binding Glyph}"
                                                       IconSize="16" />
                             </Border>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" />
-                                <TextBlock Text="{x:Bind Subtitle}"
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding Subtitle}"
                                            Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
                             </StackPanel>
                             <FontIcon Grid.Column="2"
@@ -657,7 +704,7 @@
                                         AutomationProperties.Name="复制"
                                         AutomationProperties.AutomationId="VaultRowCopyButton"
                                         ToolTipService.ToolTip="复制主值"
-                                        IsEnabled="{x:Bind CanViewPassword}"
+                                        IsEnabled="{Binding CanViewPassword}"
                                         Click="OnRowCopyPrimaryClick">
                                     <FontIcon Glyph="&#xE8C8;" FontSize="14" />
                                 </Button>
@@ -669,49 +716,49 @@
                                     <Button.Flyout>
                                         <MenuFlyout>
                                             <MenuFlyoutItem Text="编辑"
-                                                            IsEnabled="{x:Bind CanModify}"
+                                                            IsEnabled="{Binding CanModify}"
                                                             Click="OnRowEditClick"
                                                             Visibility="{x:Bind local:VaultPage.VisibleIfFalse(IsDeleted)}">
                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE70F;" /></MenuFlyoutItem.Icon>
                                             </MenuFlyoutItem>
                                             <MenuFlyoutItem Text="创建副本"
-                                                            IsEnabled="{x:Bind CanClone}"
+                                                            IsEnabled="{Binding CanClone}"
                                                             Click="OnRowCloneClick"
                                                             Visibility="{x:Bind local:VaultPage.VisibleIfFalse(IsDeleted)}">
                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B0;" /></MenuFlyoutItem.Icon>
                                             </MenuFlyoutItem>
                                             <MenuFlyoutItem Text="收藏 / 取消收藏"
-                                                            IsEnabled="{x:Bind CanFavorite}"
+                                                            IsEnabled="{Binding CanFavorite}"
                                                             Click="OnRowFavoriteClick"
                                                             Visibility="{x:Bind local:VaultPage.VisibleIfFalse(IsDeleted)}">
                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE734;" /></MenuFlyoutItem.Icon>
                                             </MenuFlyoutItem>
                                             <MenuFlyoutItem Text="归档"
-                                                            IsEnabled="{x:Bind ShowArchiveAction}"
+                                                            IsEnabled="{Binding ShowArchiveAction}"
                                                             Click="OnRowArchiveClick"
                                                             Visibility="{x:Bind local:VaultPage.VisibleIfTrue(ShowArchiveAction)}">
                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7B8;" /></MenuFlyoutItem.Icon>
                                             </MenuFlyoutItem>
                                             <MenuFlyoutItem Text="取消归档"
-                                                            IsEnabled="{x:Bind ShowUnarchiveAction}"
+                                                            IsEnabled="{Binding ShowUnarchiveAction}"
                                                             Click="OnRowUnarchiveClick"
                                                             Visibility="{x:Bind local:VaultPage.VisibleIfTrue(ShowUnarchiveAction)}">
                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7A7;" /></MenuFlyoutItem.Icon>
                                             </MenuFlyoutItem>
                                             <MenuFlyoutItem Text="移到回收站"
-                                                            IsEnabled="{x:Bind CanDelete}"
+                                                            IsEnabled="{Binding CanDelete}"
                                                             Click="OnRowSoftDeleteClick"
                                                             Visibility="{x:Bind local:VaultPage.VisibleIfFalse(IsDeleted)}">
                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
                                             </MenuFlyoutItem>
                                             <MenuFlyoutItem Text="恢复"
-                                                            IsEnabled="{x:Bind CanRestore}"
+                                                            IsEnabled="{Binding CanRestore}"
                                                             Click="OnRowRestoreClick"
                                                             Visibility="{x:Bind local:VaultPage.VisibleIfTrue(IsDeleted)}">
                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7A7;" /></MenuFlyoutItem.Icon>
                                             </MenuFlyoutItem>
                                             <MenuFlyoutItem Text="永久删除"
-                                                            IsEnabled="{x:Bind CanDelete}"
+                                                            IsEnabled="{Binding CanDelete}"
                                                             Click="OnRowPermanentDeleteClick"
                                                             Visibility="{x:Bind local:VaultPage.VisibleIfTrue(IsDeleted)}">
                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
@@ -727,14 +774,16 @@
 
             <InfoBar x:Name="VaultErrorInfoBar"
                      Grid.Row="5"
+                     Margin="0,0,0,12"
                      VerticalAlignment="Top"
                      IsClosable="True"
                      Severity="Error"
                      IsOpen="{x:Bind ViewModel.HasOperationError, Mode=OneWay}"
+                     Visibility="{x:Bind ViewModel.HasOperationError, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                      Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" />
 
             <StackPanel x:Name="VaultEmptyPanel"
-                        Grid.Row="5"
+                        Grid.Row="6"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Center"
                         Spacing="{StaticResource SpacingMedium}"
@@ -752,7 +801,7 @@
             </StackPanel>
 
             <StackPanel x:Name="VaultNoResultsPanel"
-                        Grid.Row="5"
+                        Grid.Row="6"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Center"
                         Spacing="{StaticResource SpacingMedium}"
@@ -769,20 +818,24 @@
                            HorizontalAlignment="Center" />
             </StackPanel>
 
-            <TextBlock Grid.Row="5" Text="回收站为空" Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+            <TextBlock Grid.Row="6" Text="回收站为空" Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                        Margin="0,8" HorizontalAlignment="Center"
                        Visibility="{x:Bind ViewModel.IsTrashEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-            <TextBlock Grid.Row="5" Text="归档为空" Style="{StaticResource CaptionSecondaryTextBlockStyle}"
+            <TextBlock Grid.Row="6" Text="归档为空" Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                        Margin="0,8" HorizontalAlignment="Center"
                        Visibility="{x:Bind ViewModel.IsArchiveEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
         </Grid>
 
         <!-- 详情 -->
-        <Grid x:Name="VaultDetailPane" Grid.Row="1" Grid.Column="1">
-        <ScrollViewer Padding="16">
-            <StackPanel Spacing="12" MaxWidth="720" HorizontalAlignment="Stretch">
-                <!-- 窄屏详情态返回列表入口:仅 NarrowDetail 可见,由 code-behind 切换。 -->
+        <Grid x:Name="VaultDetailPane" Grid.Row="1" Grid.Column="1"
+              Background="{ThemeResource LayerFillColorAltBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
                 <Button x:Name="VaultNarrowBackButton"
+                        Grid.Row="0" Margin="24,12,24,0"
                         HorizontalAlignment="Left"
                         IsEnabled="{x:Bind ViewModel.CanCancelEditor, Mode=OneWay}"
                         Click="OnVaultNarrowBackClick"
@@ -793,8 +846,9 @@
                         <FontIcon Glyph="&#xE72B;" FontSize="14" /><TextBlock Text="返回列表" />
                     </StackPanel>
                 </Button>
+        <ScrollViewer x:Name="VaultDetailScroll" Grid.Row="1" Padding="24,20,24,24">
+            <StackPanel Spacing="16" MaxWidth="800" HorizontalAlignment="Stretch">
                 <ContentControl x:Name="CipherEditorPanel"
-                                x:Load="{x:Bind ViewModel.IsEditing, Mode=OneWay}"
                                 IsEnabled="{x:Bind ViewModel.CanEditEditorDraft, Mode=OneWay}"
                                 HorizontalContentAlignment="Stretch"
                                 Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay, Converter={StaticResource BoolToVis}}">
@@ -828,19 +882,6 @@
                             </ComboBox>
                         </StackPanel>
 
-                        <Button x:Name="CancelCipherEditorButton"
-                                Grid.Column="1"
-                                Content="取消"
-                                VerticalAlignment="Bottom"
-                                IsEnabled="{x:Bind ViewModel.CanCancelEditor, Mode=OneWay}"
-                                Click="OnCancelCipherEditorClick" />
-                        <Button x:Name="SaveCipherEditorButton"
-                                Grid.Column="2"
-                                Content="保存"
-                                VerticalAlignment="Bottom"
-                                Style="{StaticResource AccentButtonStyle}"
-                                IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanSaveEditorDraft, ViewModel.CanStartVaultOperation), Mode=OneWay}"
-                                Click="OnSaveCipherEditorClick" />
                     </Grid>
 
                     <TextBlock Text="{x:Bind ViewModel.EditorError, Mode=OneWay}"
@@ -855,9 +896,9 @@
                     <controls:DetailCard Title="项目详细信息">
                         <controls:DetailCard.CardContent>
                             <StackPanel Spacing="10">
-                                <TextBox Header="项目名称（必填）"
+                                <TextBox x:Name="CipherEditorNameBox" Header="项目名称（必填）"
                                          HorizontalAlignment="Stretch"
-                                         Text="{x:Bind ViewModel.EditorDraft.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                         Text="{x:Bind ViewModel.EditorDisplayDraft.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <ComboBox x:Name="CipherEditorDestinationBox"
                                           Header="保存到"
                                           HorizontalAlignment="Stretch"
@@ -867,7 +908,7 @@
                                           PlaceholderText="没有可写入的位置">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate x:DataType="models:CipherDestinationOption">
-                                            <TextBlock Text="{x:Bind DisplayName}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
                                         </DataTemplate>
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
@@ -877,9 +918,9 @@
                                     <ItemsControl ItemsSource="{x:Bind ViewModel.EditorCollectionOptions, Mode=OneWay}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="models:CipherCollectionOption">
-                                                <CheckBox Content="{x:Bind Name}"
-                                                          IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
-                                                          IsEnabled="{x:Bind CanSelect}" />
+                                                <CheckBox Content="{Binding Name}"
+                                                          IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                          IsEnabled="{Binding CanSelect}" />
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -892,11 +933,11 @@
                                           PlaceholderText="-- 选择 --">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate x:DataType="models:FilterNode">
-                                            <TextBlock Text="{x:Bind Label}" />
+                                            <TextBlock Text="{Binding Label}" />
                                         </DataTemplate>
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
-                                <CheckBox IsChecked="{x:Bind ViewModel.EditorDraft.Favorite, Mode=TwoWay}">
+                                <CheckBox IsChecked="{x:Bind ViewModel.EditorDisplayDraft.Favorite, Mode=TwoWay}">
                                     <TextBlock Text="收藏" />
                                 </CheckBox>
                             </StackPanel>
@@ -904,36 +945,76 @@
                     </controls:DetailCard>
 
                     <controls:DetailCard Title="登录凭据"
-                                         Visibility="{x:Bind ViewModel.EditorDraft.IsLogin, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                         Visibility="{x:Bind ViewModel.EditorDisplayDraft.IsLogin, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <controls:DetailCard.CardContent>
                             <StackPanel Spacing="10">
                                 <TextBox Header="用户名"
                                          HorizontalAlignment="Stretch"
-                                         Text="{x:Bind ViewModel.EditorDraft.Login.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                         Text="{x:Bind ViewModel.EditorDisplayDraft.Login.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <PasswordBox Header="密码"
                                              HorizontalAlignment="Stretch"
-                                             Password="{x:Bind ViewModel.EditorDraft.Login.Password, Mode=TwoWay}" />
+                                             Password="{x:Bind ViewModel.EditorDisplayDraft.Login.Password, Mode=TwoWay}" />
                                 <PasswordBox x:Name="TotpSecretEditor"
                                              Header="验证器密钥"
                                              HorizontalAlignment="Stretch"
-                                             Password="{x:Bind ViewModel.EditorDraft.Login.Totp, Mode=TwoWay}" />
-                                <TextBox Header="网站（URI）"
-                                         HorizontalAlignment="Stretch"
-                                         Text="{x:Bind ViewModel.EditorDraft.Login.PrimaryUri, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                             Password="{x:Bind ViewModel.EditorDisplayDraft.Login.Totp, Mode=TwoWay}" />
+                                <TextBlock Text="用于生成一次性验证码的设置密钥。"
+                                           Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                                <Expander Header="网站" IsExpanded="True"
+                                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                                    <StackPanel Spacing="12">
+                                        <ItemsControl ItemsSource="{x:Bind ViewModel.EditorDisplayDraft.Login.Uris, Mode=OneWay}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="models:LoginUriEditorDraft">
+                                                    <StackPanel Spacing="8" Margin="0,0,0,16">
+                                                        <Grid ColumnSpacing="8">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBox Header="网站地址" HorizontalAlignment="Stretch"
+                                                                     Text="{Binding Uri, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                            <Button Grid.Column="1" VerticalAlignment="Bottom"
+                                                                    AutomationProperties.Name="删除网站地址"
+                                                                    ToolTipService.ToolTip="删除网站地址"
+                                                                    Click="OnRemoveWebsiteClick">
+                                                                <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                                                            </Button>
+                                                        </Grid>
+                                                        <Expander Header="{Binding MatchSummary, Mode=OneWay}"
+                                                                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                                                            <ComboBox Header="匹配规则" HorizontalAlignment="Stretch"
+                                                                      SelectedIndex="{Binding MatchIndex, Mode=TwoWay}">
+                                                                <ComboBoxItem Content="默认" />
+                                                                <ComboBoxItem Content="基础域名" />
+                                                                <ComboBoxItem Content="主机" />
+                                                                <ComboBoxItem Content="开头匹配" />
+                                                                <ComboBoxItem Content="完全匹配" />
+                                                                <ComboBoxItem Content="正则表达式" />
+                                                                <ComboBoxItem Content="不匹配" />
+                                                            </ComboBox>
+                                                        </Expander>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <Button Content="添加网站" HorizontalAlignment="Left" Click="OnAddWebsiteClick" />
+                                    </StackPanel>
+                                </Expander>
                             </StackPanel>
                         </controls:DetailCard.CardContent>
                     </controls:DetailCard>
 
                     <controls:DetailCard Title="支付卡信息"
-                                         Visibility="{x:Bind ViewModel.EditorDraft.IsCard, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                         Visibility="{x:Bind ViewModel.EditorDisplayDraft.IsCard, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <controls:DetailCard.CardContent>
                             <StackPanel Spacing="10">
                                 <TextBox Header="持卡人"
                                          HorizontalAlignment="Stretch"
-                                         Text="{x:Bind ViewModel.EditorDraft.Card.CardholderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                         Text="{x:Bind ViewModel.EditorDisplayDraft.Card.CardholderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <PasswordBox Header="卡号"
                                              HorizontalAlignment="Stretch"
-                                             Password="{x:Bind ViewModel.EditorDraft.Card.Number, Mode=TwoWay}" />
+                                             Password="{x:Bind ViewModel.EditorDisplayDraft.Card.Number, Mode=TwoWay}" />
                                 <Grid ColumnSpacing="8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -941,26 +1022,26 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBox Header="到期月份"
                                              HorizontalAlignment="Stretch"
-                                             Text="{x:Bind ViewModel.EditorDraft.Card.ExpMonth, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                             Text="{x:Bind ViewModel.EditorDisplayDraft.Card.ExpMonth, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBox Grid.Column="1"
                                              Header="到期年份"
                                              HorizontalAlignment="Stretch"
-                                             Text="{x:Bind ViewModel.EditorDraft.Card.ExpYear, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                             Text="{x:Bind ViewModel.EditorDisplayDraft.Card.ExpYear, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </Grid>
                                 <PasswordBox Header="安全码"
                                              HorizontalAlignment="Stretch"
-                                             Password="{x:Bind ViewModel.EditorDraft.Card.Code, Mode=TwoWay}" />
+                                             Password="{x:Bind ViewModel.EditorDisplayDraft.Card.Code, Mode=TwoWay}" />
                                 <Expander Header="更多支付卡字段">
                                     <TextBox Header="品牌"
                                              HorizontalAlignment="Stretch"
-                                             Text="{x:Bind ViewModel.EditorDraft.Card.Brand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                             Text="{x:Bind ViewModel.EditorDisplayDraft.Card.Brand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </Expander>
                             </StackPanel>
                         </controls:DetailCard.CardContent>
                     </controls:DetailCard>
 
                     <controls:DetailCard Title="身份信息"
-                                         Visibility="{x:Bind ViewModel.EditorDraft.IsIdentity, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                         Visibility="{x:Bind ViewModel.EditorDisplayDraft.IsIdentity, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <controls:DetailCard.CardContent>
                             <StackPanel Spacing="10">
                                 <Grid ColumnSpacing="8">
@@ -970,35 +1051,53 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBox Header="名"
                                              HorizontalAlignment="Stretch"
-                                             Text="{x:Bind ViewModel.EditorDraft.Identity.FirstName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                             Text="{x:Bind ViewModel.EditorDisplayDraft.Identity.FirstName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBox Grid.Column="1"
                                              Header="姓"
                                              HorizontalAlignment="Stretch"
-                                             Text="{x:Bind ViewModel.EditorDraft.Identity.LastName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                             Text="{x:Bind ViewModel.EditorDisplayDraft.Identity.LastName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </Grid>
                                 <TextBox Header="电子邮箱"
                                          HorizontalAlignment="Stretch"
-                                         Text="{x:Bind ViewModel.EditorDraft.Identity.Email, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                         Text="{x:Bind ViewModel.EditorDisplayDraft.Identity.Email, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBox Header="电话"
                                          HorizontalAlignment="Stretch"
-                                         Text="{x:Bind ViewModel.EditorDraft.Identity.Phone, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                         Text="{x:Bind ViewModel.EditorDisplayDraft.Identity.Phone, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBox Header="地址"
                                          HorizontalAlignment="Stretch"
-                                         Text="{x:Bind ViewModel.EditorDraft.Identity.Address1, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <Expander Header="更多身份字段">
+                                         Text="{x:Bind ViewModel.EditorDisplayDraft.Identity.Address1, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <Expander Header="更多身份字段" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                                     <StackPanel Spacing="10">
+                                        <TextBox Header="称谓" HorizontalAlignment="Stretch"
+                                                 Text="{x:Bind ViewModel.EditorDisplayDraft.Identity.Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox Header="中间名" HorizontalAlignment="Stretch"
+                                                 Text="{x:Bind ViewModel.EditorDisplayDraft.Identity.MiddleName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                         <TextBox Header="用户名"
                                                  HorizontalAlignment="Stretch"
-                                                 Text="{x:Bind ViewModel.EditorDraft.Identity.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                 Text="{x:Bind ViewModel.EditorDisplayDraft.Identity.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                         <TextBox Header="公司"
                                                  HorizontalAlignment="Stretch"
-                                                 Text="{x:Bind ViewModel.EditorDraft.Identity.Company, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                 Text="{x:Bind ViewModel.EditorDisplayDraft.Identity.Company, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                         <PasswordBox Header="社会安全号 / 身份号"
                                                      HorizontalAlignment="Stretch"
-                                                     Password="{x:Bind ViewModel.EditorDraft.Identity.Ssn, Mode=TwoWay}" />
-                                        <TextBox Header="护照号"
+                                                     Password="{x:Bind ViewModel.EditorDisplayDraft.Identity.Ssn, Mode=TwoWay}" />
+                                        <PasswordBox Header="护照号"
                                                  HorizontalAlignment="Stretch"
-                                                 Text="{x:Bind ViewModel.EditorDraft.Identity.PassportNumber, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                 Password="{x:Bind ViewModel.EditorDisplayDraft.Identity.PassportNumber, Mode=TwoWay}" />
+                                        <PasswordBox Header="驾驶证号" HorizontalAlignment="Stretch"
+                                                     Password="{x:Bind ViewModel.EditorDisplayDraft.Identity.LicenseNumber, Mode=TwoWay}" />
+                                        <TextBox Header="地址行 2" HorizontalAlignment="Stretch"
+                                                 Text="{x:Bind ViewModel.EditorDisplayDraft.Identity.Address2, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox Header="地址行 3" HorizontalAlignment="Stretch"
+                                                 Text="{x:Bind ViewModel.EditorDisplayDraft.Identity.Address3, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox Header="城市" HorizontalAlignment="Stretch"
+                                                 Text="{x:Bind ViewModel.EditorDisplayDraft.Identity.City, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox Header="州 / 省" HorizontalAlignment="Stretch"
+                                                 Text="{x:Bind ViewModel.EditorDisplayDraft.Identity.State, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox Header="邮政编码" HorizontalAlignment="Stretch"
+                                                 Text="{x:Bind ViewModel.EditorDisplayDraft.Identity.PostalCode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox Header="国家 / 地区" HorizontalAlignment="Stretch"
+                                                 Text="{x:Bind ViewModel.EditorDisplayDraft.Identity.Country, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     </StackPanel>
                                 </Expander>
                             </StackPanel>
@@ -1006,105 +1105,107 @@
                     </controls:DetailCard>
 
                     <controls:DetailCard Title="SSH 密钥"
-                                         Visibility="{x:Bind ViewModel.EditorDraft.IsSshKey, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                         Visibility="{x:Bind ViewModel.EditorDisplayDraft.IsSshKey, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <controls:DetailCard.CardContent>
                             <StackPanel Spacing="10">
                                 <TextBox Header="公钥"
                                          HorizontalAlignment="Stretch"
-                                         Text="{x:Bind ViewModel.EditorDraft.SshKey.PublicKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Text="{x:Bind ViewModel.EditorDisplayDraft.SshKey.PublicKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          AcceptsReturn="True"
                                          MinHeight="72"
                                          TextWrapping="Wrap" />
                                 <PasswordBox Header="私钥"
                                              HorizontalAlignment="Stretch"
-                                             Password="{x:Bind ViewModel.EditorDraft.SshKey.PrivateKey, Mode=TwoWay}" />
+                                             Password="{x:Bind ViewModel.EditorDisplayDraft.SshKey.PrivateKey, Mode=TwoWay}" />
                                 <TextBox Header="指纹"
                                          HorizontalAlignment="Stretch"
-                                         Text="{x:Bind ViewModel.EditorDraft.SshKey.KeyFingerprint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                         Text="{x:Bind ViewModel.EditorDisplayDraft.SshKey.KeyFingerprint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
                         </controls:DetailCard.CardContent>
                     </controls:DetailCard>
 
                     <controls:DetailCard Title="银行账户"
-                                         Visibility="{x:Bind ViewModel.EditorDraft.IsBankAccount, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                         Visibility="{x:Bind ViewModel.EditorDisplayDraft.IsBankAccount, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <controls:DetailCard.CardContent>
                             <StackPanel Spacing="10">
-                                <TextBox Header="银行" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.BankAccount.BankName, Mode=TwoWay}" />
-                                <TextBox Header="账户持有人" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.BankAccount.NameOnAccount, Mode=TwoWay}" />
-                                <TextBox Header="账户类型" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.BankAccount.AccountType, Mode=TwoWay}" />
-                                <PasswordBox Header="账号" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.BankAccount.AccountNumber, Mode=TwoWay}" />
-                                <PasswordBox Header="路由号码" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.BankAccount.RoutingNumber, Mode=TwoWay}" />
-                                <PasswordBox Header="分行号码" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.BankAccount.BranchNumber, Mode=TwoWay}" />
-                                <PasswordBox Header="PIN" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.BankAccount.Pin, Mode=TwoWay}" />
-                                <PasswordBox Header="SWIFT / BIC" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.BankAccount.SwiftCode, Mode=TwoWay}" />
-                                <PasswordBox Header="IBAN" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.BankAccount.Iban, Mode=TwoWay}" />
-                                <TextBox Header="银行联系电话" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.BankAccount.BankContactPhone, Mode=TwoWay}" />
+                                <TextBox Header="银行" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.BankAccount.BankName, Mode=TwoWay}" />
+                                <TextBox Header="账户持有人" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.BankAccount.NameOnAccount, Mode=TwoWay}" />
+                                <TextBox Header="账户类型" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.BankAccount.AccountType, Mode=TwoWay}" />
+                                <PasswordBox Header="账号" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.BankAccount.AccountNumber, Mode=TwoWay}" />
+                                <PasswordBox Header="路由号码" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.BankAccount.RoutingNumber, Mode=TwoWay}" />
+                                <PasswordBox Header="分行号码" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.BankAccount.BranchNumber, Mode=TwoWay}" />
+                                <PasswordBox Header="PIN" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.BankAccount.Pin, Mode=TwoWay}" />
+                                <PasswordBox Header="SWIFT / BIC" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.BankAccount.SwiftCode, Mode=TwoWay}" />
+                                <PasswordBox Header="IBAN" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.BankAccount.Iban, Mode=TwoWay}" />
+                                <TextBox Header="银行联系电话" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.BankAccount.BankContactPhone, Mode=TwoWay}" />
                             </StackPanel>
                         </controls:DetailCard.CardContent>
                     </controls:DetailCard>
 
                     <controls:DetailCard Title="驾驶证"
-                                         Visibility="{x:Bind ViewModel.EditorDraft.IsDriversLicense, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                         Visibility="{x:Bind ViewModel.EditorDisplayDraft.IsDriversLicense, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <controls:DetailCard.CardContent>
                             <StackPanel Spacing="10">
-                                <TextBox Header="名" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.DriversLicense.FirstName, Mode=TwoWay}" />
-                                <TextBox Header="中间名" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.DriversLicense.MiddleName, Mode=TwoWay}" />
-                                <TextBox Header="姓" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.DriversLicense.LastName, Mode=TwoWay}" />
-                                <PasswordBox Header="出生日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.DriversLicense.DateOfBirth, Mode=TwoWay}" />
-                                <PasswordBox Header="驾驶证号" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.DriversLicense.LicenseNumber, Mode=TwoWay}" />
-                                <TextBox Header="签发国家/地区" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.DriversLicense.IssuingCountry, Mode=TwoWay}" />
-                                <TextBox Header="签发州/省" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.DriversLicense.IssuingState, Mode=TwoWay}" />
-                                <PasswordBox Header="签发日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.DriversLicense.IssueDate, Mode=TwoWay}" />
-                                <PasswordBox Header="到期日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.DriversLicense.ExpirationDate, Mode=TwoWay}" />
-                                <TextBox Header="签发机关" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.DriversLicense.IssuingAuthority, Mode=TwoWay}" />
-                                <TextBox Header="驾驶证类别" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.DriversLicense.LicenseClass, Mode=TwoWay}" />
+                                <TextBox Header="名" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.DriversLicense.FirstName, Mode=TwoWay}" />
+                                <TextBox Header="中间名" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.DriversLicense.MiddleName, Mode=TwoWay}" />
+                                <TextBox Header="姓" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.DriversLicense.LastName, Mode=TwoWay}" />
+                                <PasswordBox Header="出生日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.DriversLicense.DateOfBirth, Mode=TwoWay}" />
+                                <PasswordBox Header="驾驶证号" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.DriversLicense.LicenseNumber, Mode=TwoWay}" />
+                                <TextBox Header="签发国家/地区" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.DriversLicense.IssuingCountry, Mode=TwoWay}" />
+                                <TextBox Header="签发州/省" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.DriversLicense.IssuingState, Mode=TwoWay}" />
+                                <PasswordBox Header="签发日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.DriversLicense.IssueDate, Mode=TwoWay}" />
+                                <PasswordBox Header="到期日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.DriversLicense.ExpirationDate, Mode=TwoWay}" />
+                                <TextBox Header="签发机关" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.DriversLicense.IssuingAuthority, Mode=TwoWay}" />
+                                <TextBox Header="驾驶证类别" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.DriversLicense.LicenseClass, Mode=TwoWay}" />
                             </StackPanel>
                         </controls:DetailCard.CardContent>
                     </controls:DetailCard>
 
                     <controls:DetailCard Title="护照"
-                                         Visibility="{x:Bind ViewModel.EditorDraft.IsPassport, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                         Visibility="{x:Bind ViewModel.EditorDisplayDraft.IsPassport, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <controls:DetailCard.CardContent>
                             <StackPanel Spacing="10">
-                                <TextBox Header="姓" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.Passport.Surname, Mode=TwoWay}" />
-                                <TextBox Header="名" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.Passport.GivenName, Mode=TwoWay}" />
-                                <PasswordBox Header="出生日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.Passport.DateOfBirth, Mode=TwoWay}" />
-                                <PasswordBox Header="性别" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.Passport.Sex, Mode=TwoWay}" />
-                                <PasswordBox Header="出生地" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.Passport.BirthPlace, Mode=TwoWay}" />
-                                <TextBox Header="国籍" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.Passport.Nationality, Mode=TwoWay}" />
-                                <TextBox Header="签发国家/地区" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.Passport.IssuingCountry, Mode=TwoWay}" />
-                                <PasswordBox Header="护照号码" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.Passport.PassportNumber, Mode=TwoWay}" />
-                                <TextBox Header="护照类型" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.Passport.PassportType, Mode=TwoWay}" />
-                                <PasswordBox Header="身份证件号码" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.Passport.NationalIdentificationNumber, Mode=TwoWay}" />
-                                <TextBox Header="签发机关" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDraft.Passport.IssuingAuthority, Mode=TwoWay}" />
-                                <PasswordBox Header="签发日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.Passport.IssueDate, Mode=TwoWay}" />
-                                <PasswordBox Header="到期日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDraft.Passport.ExpirationDate, Mode=TwoWay}" />
+                                <TextBox Header="姓" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.Passport.Surname, Mode=TwoWay}" />
+                                <TextBox Header="名" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.Passport.GivenName, Mode=TwoWay}" />
+                                <PasswordBox Header="出生日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.Passport.DateOfBirth, Mode=TwoWay}" />
+                                <PasswordBox Header="性别" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.Passport.Sex, Mode=TwoWay}" />
+                                <PasswordBox Header="出生地" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.Passport.BirthPlace, Mode=TwoWay}" />
+                                <TextBox Header="国籍" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.Passport.Nationality, Mode=TwoWay}" />
+                                <TextBox Header="签发国家/地区" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.Passport.IssuingCountry, Mode=TwoWay}" />
+                                <PasswordBox Header="护照号码" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.Passport.PassportNumber, Mode=TwoWay}" />
+                                <TextBox Header="护照类型" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.Passport.PassportType, Mode=TwoWay}" />
+                                <PasswordBox Header="身份证件号码" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.Passport.NationalIdentificationNumber, Mode=TwoWay}" />
+                                <TextBox Header="签发机关" HorizontalAlignment="Stretch" Text="{x:Bind ViewModel.EditorDisplayDraft.Passport.IssuingAuthority, Mode=TwoWay}" />
+                                <PasswordBox Header="签发日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.Passport.IssueDate, Mode=TwoWay}" />
+                                <PasswordBox Header="到期日期" HorizontalAlignment="Stretch" Password="{x:Bind ViewModel.EditorDisplayDraft.Passport.ExpirationDate, Mode=TwoWay}" />
                             </StackPanel>
                         </controls:DetailCard.CardContent>
                     </controls:DetailCard>
 
                     <controls:DetailCard Title="安全笔记"
-                                         Visibility="{x:Bind ViewModel.EditorDraft.IsSecureNote, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                         Visibility="{x:Bind ViewModel.EditorDisplayDraft.IsSecureNote, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <controls:DetailCard.CardContent>
                             <TextBlock Text="安全笔记内容请填写在下方备注中。"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </controls:DetailCard.CardContent>
                     </controls:DetailCard>
 
-                    <controls:DetailCard Title="附加选项">
+                    <controls:DetailCard Title="备注与安全">
                         <controls:DetailCard.CardContent>
                             <StackPanel Spacing="10">
                                 <TextBox Header="备注"
                                          HorizontalAlignment="Stretch"
-                                         Text="{x:Bind ViewModel.EditorDraft.Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Text="{x:Bind ViewModel.EditorDisplayDraft.Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          AcceptsReturn="True"
                                          MinHeight="96"
                                          TextWrapping="Wrap" />
-                                <CheckBox IsChecked="{x:Bind ViewModel.EditorDraft.Reprompt, Mode=TwoWay}">
+                                <CheckBox IsChecked="{x:Bind ViewModel.EditorDisplayDraft.Reprompt, Mode=TwoWay}">
                                     <TextBlock Text="主密码重新提示" />
                                 </CheckBox>
+                                <Expander Header="自定义字段" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                                <StackPanel Spacing="12">
                                 <ItemsControl x:Name="CustomFieldsEditorItems"
-                                              ItemsSource="{x:Bind ViewModel.EditorDraft.CustomFields, Mode=OneWay}">
+                                              ItemsSource="{x:Bind ViewModel.EditorDisplayDraft.CustomFields, Mode=OneWay}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="models:CustomFieldEditorDraft">
                                             <Grid ColumnSpacing="8" Margin="0,4,0,0">
@@ -1115,11 +1216,11 @@
                                                 <StackPanel Spacing="8">
                                                     <TextBox Header="名称"
                                                              HorizontalAlignment="Stretch"
-                                                             Text="{x:Bind Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                             Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                                     <ComboBox x:Name="CustomFieldTypeBox"
                                                               Header="类型"
                                                               HorizontalAlignment="Stretch"
-                                                              SelectedIndex="{x:Bind TypeIndex, Mode=TwoWay}">
+                                                              SelectedIndex="{Binding TypeIndex, Mode=TwoWay}">
                                                         <ComboBoxItem Content="文本" Tag="Text" />
                                                         <ComboBoxItem Content="隐藏" Tag="Hidden" />
                                                         <ComboBoxItem Content="布尔值" Tag="Boolean" />
@@ -1129,17 +1230,17 @@
                                                     <TextBox x:Name="CustomFieldTextValueBox"
                                                              Header="值"
                                                              HorizontalAlignment="Stretch"
-                                                             Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                             x:Load="{x:Bind IsText, Mode=OneWay}" />
+                                                             Text="{Binding TextValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                             Visibility="{Binding IsText, Converter={StaticResource BoolToVis}}" />
                                                     <PasswordBox x:Name="CustomFieldHiddenValueBox"
                                                                  Header="值"
                                                                  HorizontalAlignment="Stretch"
-                                                                 Password="{x:Bind Value, Mode=TwoWay}"
-                                                                 x:Load="{x:Bind IsHidden, Mode=OneWay}" />
+                                                                 Password="{Binding HiddenValue, Mode=TwoWay}"
+                                                                 Visibility="{Binding IsHidden, Converter={StaticResource BoolToVis}}" />
                                                     <CheckBox x:Name="CustomFieldBooleanValueCheckBox"
                                                               Content="已启用"
-                                                              IsChecked="{x:Bind BooleanValue, Mode=TwoWay}"
-                                                              x:Load="{x:Bind IsBoolean, Mode=OneWay}" />
+                                                              IsChecked="{Binding BooleanValue, Mode=TwoWay}"
+                                                              Visibility="{Binding IsBoolean, Converter={StaticResource BoolToVis}}" />
                                                 </StackPanel>
                                                 <Button x:Name="RemoveCustomFieldButton"
                                                         Grid.Column="1"
@@ -1158,6 +1259,8 @@
                                         Content="添加字段"
                                         HorizontalAlignment="Left"
                                         Command="{x:Bind ViewModel.AddCustomFieldCommand}" />
+                                </StackPanel>
+                                </Expander>
                             </StackPanel>
                         </controls:DetailCard.CardContent>
                     </controls:DetailCard>
@@ -1166,31 +1269,58 @@
 
                 <StackPanel Spacing="12"
                             Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}">
-                <StackPanel Spacing="2"
+                <StackPanel Spacing="12"
                             Visibility="{x:Bind ViewModel.HasDetailSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <controls:FaviconView Domain="{x:Bind ViewModel.DetailIconDomain, Mode=OneWay}"
                                               FallbackGlyph="{x:Bind ViewModel.SelectedItem.Glyph, Mode=OneWay}"
-                                              IconSize="18"
-                                              Width="24" Height="24"
+                                              IconSize="24"
+                                              Width="40" Height="40"
                                               VerticalAlignment="Center" />
-                        <TextBlock Text="{x:Bind ViewModel.Detail.Name, Mode=OneWay}"
+                        <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.Detail.Name, Mode=OneWay}"
+                                   TextWrapping="Wrap" VerticalAlignment="Center"
                                    Style="{ThemeResource SubtitleTextBlockStyle}" />
-                        <FontIcon Glyph="&#xE735;" FontSize="14"
+                        <FontIcon Grid.Column="2" Glyph="&#xE735;" FontSize="14"
                                   VerticalAlignment="Center"
                                   Foreground="{ThemeResource SystemFillColorAttentionBrush}"
                                   Visibility="{x:Bind local:VaultPage.VisibleIfTrue(ViewModel.Detail.Favorite), Mode=OneWay}" />
-                    </StackPanel>
-                    <TextBlock Text="{x:Bind ViewModel.Detail.FolderName, Mode=OneWay}"
+                    </Grid>
+                        <Button x:Name="EditCipherButton" Grid.Column="1" Content="编辑" VerticalAlignment="Center"
+                                IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanModifySelectedItem, ViewModel.CanStartVaultOperation), Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.IsSelectedItemDeleted, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}"
+                                Click="OnEditCipherClick" />
+                    </Grid>
+                    <TextBlock Text="{x:Bind ViewModel.DetailLocation, Mode=OneWay}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <!-- 条目级重提示未解锁时:显示"验证后显示敏感字段"入口(经 Task 3 tracked 主密码对话框)。 -->
+                    <InfoBar Severity="Informational" IsOpen="True" IsClosable="False"
+                             Title="只读条目" Message="你可以查看此条目。编辑需要保险库所有者授予权限。"
+                             Visibility="{x:Bind ViewModel.ShowReadOnlyNotice, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                    <InfoBar Severity="Informational" IsOpen="True" IsClosable="False"
+                             Title="敏感字段已隐藏" Message="此组织条目的权限不允许查看或复制密码。"
+                             Visibility="{x:Bind ViewModel.ShowHiddenSecretsNotice, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                    <!-- Authorization actions remain distinct from revealing a protected value. -->
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left"
+                                Visibility="{x:Bind ViewModel.ShowSensitiveUnlock, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <Button x:Name="UnlockSensitiveFieldsButton"
                             Content="验证后显示敏感字段"
-                            Margin="0,4,0,0"
                             Click="OnUnlockSensitiveFieldsClick"
                             AutomationProperties.AutomationId="VaultUnlockSensitiveFieldsButton"
                             Visibility="{x:Bind ViewModel.ShowSensitiveUnlock, Mode=OneWay,
                                 Converter={StaticResource BoolToVis}}" />
+                    <Button x:Name="ProtectedPasswordCopyButton" Content="复制密码"
+                            Click="OnCopyProtectedPasswordClick"
+                            Visibility="{x:Bind ViewModel.ShowProtectedPasswordCopy, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
                 </StackPanel>
                 <ContentControl x:Name="DetailHost"
                                 HorizontalContentAlignment="Stretch" />
@@ -1199,15 +1329,16 @@
                 <StackPanel Spacing="12"
                             Visibility="{x:Bind ViewModel.HasDetailSelected, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <!-- 备注 -->
-                    <StackPanel Spacing="4"
-                                Visibility="{x:Bind ViewModel.Detail.Notes, Mode=OneWay, Converter={StaticResource EmptyToCollapsed}}">
-                        <TextBlock Text="备注" Style="{StaticResource SectionHeaderTextBlockStyle}" />
-                        <TextBlock Text="{x:Bind ViewModel.Detail.Notes, Mode=OneWay}" TextWrapping="Wrap" />
-                    </StackPanel>
+                    <controls:DetailCard Title="备注"
+                                Visibility="{x:Bind ViewModel.ShowDetailNotes, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <controls:DetailCard.CardContent>
+                            <controls:FieldRow Label="备注" Value="{x:Bind ViewModel.Detail.Notes, Mode=OneWay}" />
+                        </controls:DetailCard.CardContent>
+                    </controls:DetailCard>
                     <!-- 附件 -->
+                    <Expander Header="{x:Bind ViewModel.Detail.AttachmentHeader, Mode=OneWay}"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                     <StackPanel Spacing="6">
-                        <TextBlock Text="{x:Bind ViewModel.Detail.AttachmentHeader, Mode=OneWay}"
-                                   Style="{StaticResource SectionHeaderTextBlockStyle}" />
                         <TextBlock Text="暂无附件"
                                    Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                                    Visibility="{x:Bind ViewModel.Detail.HasAttachments, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}" />
@@ -1225,15 +1356,15 @@
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <FontIcon Glyph="{x:Bind Glyph}" FontSize="16"
+                                        <FontIcon Glyph="{Binding Glyph}" FontSize="16"
                                                   VerticalAlignment="Center"
                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                         <TextBlock Grid.Column="1"
-                                                   Text="{x:Bind FileName}"
+                                                   Text="{Binding FileName}"
                                                    VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis" />
                                         <TextBlock Grid.Column="2"
-                                                   Text="{x:Bind SizeName}"
+                                                   Text="{Binding SizeName}"
                                                    VerticalAlignment="Center"
                                                    Margin="0,0,4,0"
                                                    Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
@@ -1262,21 +1393,25 @@
                                 IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanModifySelectedItem, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                                 Click="OnAddAttachmentClick" />
                     </StackPanel>
+                    </Expander>
                     <!-- 自定义字段 -->
+                    <Expander Header="{x:Bind ViewModel.Detail.CustomFieldsHeader, Mode=OneWay}"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                              Visibility="{x:Bind ViewModel.Detail.HasCustomFields, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <ItemsControl ItemsSource="{x:Bind ViewModel.Detail.CustomFields, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="models:CustomField">
-                                <!-- CustomField 无 Reprompt 字段,同 PasswordHistoryItem 理由经 DataContextChanged 回填。 -->
-                                <controls:FieldRow Label="{x:Bind Label}" Value="{x:Bind Value}" IsSecret="{x:Bind IsSecret}" />
+                                <!-- Protected values are absent until the item authorization succeeds. -->
+                                <controls:FieldRow Label="{Binding Label}" Value="{Binding Value}" IsSecret="{Binding IsSecret}" />
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                    </Expander>
                     <!-- 历史 -->
-                    <StackPanel Spacing="2">
-                        <TextBlock Text="项目历史" Style="{StaticResource SectionHeaderTextBlockStyle}" />
+                    <Expander Header="项目历史" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                         <TextBlock Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                                    Text="{x:Bind ViewModel.Detail.HistoryText, Mode=OneWay}" />
-                    </StackPanel>
+                    </Expander>
                     <!-- 操作错误条 -->
                     <TextBlock Text="{x:Bind ViewModel.OperationError, Mode=OneWay}"
                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
@@ -1310,14 +1445,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <Button x:Name="EditCipherButton" HorizontalAlignment="Stretch"
-                                IsEnabled="{x:Bind ViewModel.CanModifySelectedItem, Mode=OneWay}"
-                                Click="OnEditCipherClick">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="&#xE70F;" FontSize="14" /><TextBlock Text="编辑" />
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="DeleteCipherButton" Grid.Column="1" HorizontalAlignment="Stretch"
+                        <Button x:Name="DeleteCipherButton" Grid.Column="0" HorizontalAlignment="Stretch"
                                 IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanDeleteSelectedItem, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                                 Click="OnDeleteCipherClick">
                             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -1325,7 +1453,7 @@
                                 <TextBlock Text="删除" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="ArchiveCipherButton" Grid.Column="2" HorizontalAlignment="Stretch"
+                        <Button x:Name="ArchiveCipherButton" Grid.Column="1" HorizontalAlignment="Stretch"
                                 IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanArchiveSelectedItem, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                                 Click="OnArchiveCipherClick"
                                 Visibility="{x:Bind ViewModel.CanArchiveSelectedItem, Mode=OneWay, Converter={StaticResource BoolToVis}}">
@@ -1333,7 +1461,7 @@
                                 <FontIcon Glyph="&#xE7B8;" FontSize="14" /><TextBlock Text="归档" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="UnarchiveCipherButton" Grid.Column="2" HorizontalAlignment="Stretch"
+                        <Button x:Name="UnarchiveCipherButton" Grid.Column="1" HorizontalAlignment="Stretch"
                                 IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanUnarchiveSelectedItem, ViewModel.CanStartVaultOperation), Mode=OneWay}"
                                 Click="OnUnarchiveCipherClick"
                                 Visibility="{x:Bind ViewModel.CanUnarchiveSelectedItem, Mode=OneWay, Converter={StaticResource BoolToVis}}">
@@ -1370,19 +1498,43 @@
             </StackPanel>
         </ScrollViewer>
 
+            <Border x:Name="CipherEditorFooter" Grid.Row="2" Padding="24,16"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"
+                    Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="保存前在此设备加密" TextWrapping="Wrap"
+                               VerticalAlignment="Center" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                    <Button x:Name="SaveCipherEditorButton" Grid.Column="1" Content="保存" MinWidth="88"
+                            Style="{StaticResource AccentButtonStyle}"
+                            IsEnabled="{x:Bind local:VaultPage.CanBatchOperate(ViewModel.CanSaveEditorDraft, ViewModel.HasValidEditorDraft), Mode=OneWay}"
+                            Click="OnSaveCipherEditorClick" />
+                    <Button x:Name="CancelCipherEditorButton" Grid.Column="2" Content="取消" MinWidth="80"
+                            IsEnabled="{x:Bind ViewModel.CanCancelEditor, Mode=OneWay}"
+                            Click="OnCancelCipherEditorClick" />
+                </Grid>
+            </Border>
+
             <!-- 空状态浮层:在整个右栏内水平+垂直居中(不再随详情内容靠左偏上) -->
             <StackPanel x:Name="VaultNoSelectionPanel"
+                        Grid.Row="1" Margin="24"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Center"
                         Spacing="{StaticResource SpacingMedium}"
                         Visibility="{x:Bind ViewModel.ShowNoSelectionPlaceholder, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <FontIcon Glyph="&#xE8F1;" FontSize="44"
-                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                          HorizontalAlignment="Center" />
-                <TextBlock Text="未选择任何项目"
+                <Border Width="76" Height="76" CornerRadius="20"
+                        Background="{ThemeResource AccentFillColorSecondaryBrush}" HorizontalAlignment="Center">
+                    <FontIcon Glyph="&#xE72E;" FontSize="30" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                </Border>
+                <TextBlock Text="选择一个条目"
                            Style="{ThemeResource SubtitleTextBlockStyle}"
                            HorizontalAlignment="Center" />
-                <TextBlock Text="从左侧列表选择一个条目以查看详情。"
+                <TextBlock Text="选择登录、支付卡或密钥，查看其详细信息。" TextWrapping="Wrap"
                            Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                            TextAlignment="Center"
                            HorizontalAlignment="Center" />

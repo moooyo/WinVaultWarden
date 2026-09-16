@@ -1,4 +1,5 @@
 using App.ViewModels;
+using App.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -29,10 +30,18 @@ public sealed partial class SecurityReportPage : Page
         base.OnNavigatedFrom(e);
     }
 
-    /// <summary>格式化重复密码分组标题,如 "3 个条目共用同一密码"。</summary>
+    private void OnOpenItemClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string cipherId } && !string.IsNullOrWhiteSpace(cipherId))
+            global::App.App.Services.GetRequiredService<INavigationService>().GoToVault("vault:item:" + cipherId);
+    }
+
+    public static string FormatOpenItem(string name) => $"查看条目：{name}";
+
+    /// <summary>Formats a group without exposing the reused password.</summary>
     public static string FormatReusedHeader(int count) => $"{count} 个条目共用同一密码";
 
-    /// <summary>"未发现已暴露的密码" 空态仅在检查已完成且确实无结果时显示,避免在尚未检查时误导用户。</summary>
+    /// <summary>Shows a clean result only after a successful check.</summary>
     public static Visibility ShowNoExposedFound(bool exposedChecked, bool hasExposed) =>
         exposedChecked && !hasExposed ? Visibility.Visible : Visibility.Collapsed;
 }

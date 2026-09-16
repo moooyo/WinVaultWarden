@@ -23,6 +23,7 @@ public sealed partial class SendEditorDraft : ObservableObject
     public partial string ViewerLabel { get; set; } = "拥有链接的任何人";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AccessPrivacySummary))]
     public partial int? MaxAccessCount { get; set; }
 
     [ObservableProperty]
@@ -35,10 +36,23 @@ public sealed partial class SendEditorDraft : ObservableObject
     public partial string Notes { get; set; } = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AccessPrivacySummary))]
     public partial bool Disabled { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AccessPrivacySummary))]
     public partial string Password { get; set; } = string.Empty;
+
+    public string AccessPrivacySummary
+    {
+        get
+        {
+            var protection = ExistingHasPassword || !string.IsNullOrEmpty(Password)
+                ? "需要访问密码" : "拥有链接的任何人";
+            var limit = MaxAccessCount is { } count ? $" · 最多 {count} 次访问" : string.Empty;
+            return $"{(Disabled ? "已停用 · " : string.Empty)}{protection}{limit}";
+        }
+    }
 
     private SendExpirationSelection _expirationSelection =
         SendExpirationSelection.FromExpiration(expirationDate: null);
@@ -65,7 +79,18 @@ public sealed partial class SendEditorDraft : ObservableObject
             : string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CustomDeletionDescription))]
     public partial DateTimeOffset? DeletionDate { get; set; }
+
+    public string CustomDeletionDescription => DeletionDate is { } deletion
+        ? $"本地时间：{deletion.ToLocalTime():yyyy/MM/dd HH:mm:ss zzz}" : string.Empty;
+
+    public void SelectCustomDeletionDate(DateTimeOffset selectedDate, TimeZoneInfo localTimeZone)
+    {
+        var current = DeletionDate ?? DateTimeOffset.UtcNow.AddDays(7);
+        DeletionDate = SendExpirationSelection.FromExpiration(current)
+            .SelectCustomDate(selectedDate, localTimeZone).ExpirationDate;
+    }
 
     public bool IsText => Type == SendType.Text;
     public bool IsFile => Type == SendType.File;

@@ -1,0 +1,2927 @@
+{
+  "generatedAt": "2026-09-15",
+  "sourceRevision": "8cbbdbd218d029baf6acf3d385e3fdbeb95850cd",
+  "status": "complete-source-inventory",
+  "evidence": "Source inspection only; runtime captures and schematic renders are tracked separately.",
+  "summary": {
+    "reachablePages": 9,
+    "unusedPages": 1,
+    "xamlDialogClasses": 3,
+    "userControlClasses": 5,
+    "surfaceCount": 178,
+    "byKind": {
+      "shell": 1,
+      "page": 9,
+      "unreachable": 1,
+      "view": 6,
+      "state": 56,
+      "detail": 8,
+      "editor": 8,
+      "flyout": 7,
+      "dialog": 60,
+      "dialog-tab": 3,
+      "native": 8,
+      "control": 5,
+      "test-harness": 5,
+      "transition": 1
+    }
+  },
+  "notes": [
+    "Coverage is derived from MainWindow, FrameNavigationService, every XAML Page and ContentDialog, Controls, and code-created dialogs/flyouts under src/App. It is not a claim that every listed state was executed or captured.",
+    "Titles are English semantic translations of existing Chinese UI labels. Source references preserve the original visible wording.",
+    "The application contains nine reachable Page classes, one unused SimplePage, three XAML ContentDialog classes, five reusable UserControl classes, and one MainWindow. Individual inventory records also include dialog variants, embedded editors, menu flyouts, shared controls, and developer test pages; surface count is not page count.",
+    "Debug demo entry is registered only under DEBUG. Its session seeds five traditional cipher types, four folders, one device, and two Sends. It does not establish a real server-authenticated session or populate organization/collection membership.",
+    "Demo VaultUiService and SendUiService implement local read/write behavior. External received Send links are explicitly unavailable in demo mode. Attachments, emergency access, two-factor management, registration, export verification, and account changes require appropriate live services for successful completion.",
+    "Demo VaultSession capabilities default to None. Bank-account, driver's-license, and passport creation/editing require CanWriteNewCipherTypes. Archive requires server archive protocol plus entitlement; unarchive requires archive protocol. The resolver reads pm-32009-new-item-types and archive configuration/version as implemented in src/Vault/VaultCapabilityResolver.cs.",
+    "Emergency access supports View and Takeover and status-dependent actions. The service exposes AcceptAsync, but there is no invitation-acceptance control on EmergencyAccessPage; do not invent a client acceptance page.",
+    "Registration has no independent success page: completed registration returns to the login form with account prefill. Email verification uses mail/Web Vault continuation.",
+    "Settings intentionally disable minimize-on-copy, start-on-login, hardware-acceleration selection, SSH-agent features, and language selection as coming-soon controls. These are visible controls, not functioning feature pages.",
+    "Browser integration is limited to portable builds. The Chrome and Edge manifests declare background/content scripts and nativeMessaging, with no action popup, options page, or side panel. The five HTML pages are developer test harnesses, not extension product pages.",
+    "Windows Hello/WebAuthn prompts, browser SSO, Windows file pickers, and third-party Duo pages are environment-owned surfaces. The atlas may show schematic placeholders and prerequisite labels when actual invocation is not available.",
+    "Vault responsive split behavior switches at 800 DIP of VaultLayoutRoot width. Login/Register padding changes below 400 window DIP, Send hides deletion-date columns below 720 window DIP, and the security-report summary rearranges below 760 window DIP.",
+    "AllowScreenshots=false applies WDA_EXCLUDEFROMCAPTURE to the native window. A black image under that setting is expected capture protection, not proof of a blank page.",
+    "Third-party Vaultwarden Web Vault and admin pages are outside the native-client page inventory. Arbitrary combinations of theme, window width, transient error text, and backend data are grouped as states rather than enumerated as separate pages."
+  ],
+  "surfaces": [
+    {
+      "id": "shell.main",
+      "kind": "shell",
+      "title": "Main navigation shell",
+      "source": "src/App/MainWindow.xaml:31",
+      "route": "Successful login or Debug demo vault",
+      "controls": "Title bar; expandable vault and Send navigation; generator; security reports; import/export; settings; devices; lock; logout",
+      "feasibility": "demo/live",
+      "prerequisites": "Unlocked session",
+      "states": [
+        "Expanded navigation",
+        "Collapsed navigation",
+        "Light theme",
+        "Dark theme",
+        "Auto theme",
+        "Login overlay",
+        "Tray minimized"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "page.vault",
+      "kind": "page",
+      "title": "My vault",
+      "source": "src/App/Views/VaultPage.xaml:170",
+      "route": "vault:allitems",
+      "controls": "Search and sync; list; filters and sorting; row actions; detail or inline editor; global operation status",
+      "feasibility": "demo/live",
+      "prerequisites": "Unlocked session",
+      "states": [
+        "Wide list/detail",
+        "Narrow list",
+        "Narrow detail",
+        "Busy",
+        "Offline cached data",
+        "Operation error",
+        "Committed but sync required",
+        "Skipped undecryptable items",
+        "Unsupported organization keys"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "page.send",
+      "kind": "page",
+      "title": "Send",
+      "source": "src/App/Views/SendPage.xaml:14",
+      "route": "send:all | send:text | send:file",
+      "controls": "Add Send; received-link expander; name/deletion-date/options list; copy-link and more menu",
+      "feasibility": "demo/live",
+      "prerequisites": "Unlocked session",
+      "states": [
+        "All",
+        "Text",
+        "File",
+        "Loading",
+        "Empty",
+        "Error",
+        "Narrow columns",
+        "Row hover/focus actions"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "page.reports",
+      "kind": "page",
+      "title": "Security reports",
+      "source": "src/App/Views/SecurityReportPage.xaml:17",
+      "route": "reports",
+      "controls": "Vault-health summary; reused, weak, HTTP, exposed password expanders; run exposure check",
+      "feasibility": "demo/live",
+      "prerequisites": "Unlocked session; external HIBP service for live exposure results",
+      "states": [
+        "Offline analysis progress",
+        "Offline error and retry",
+        "Health summary",
+        "Each expander open",
+        "Exposure not checked",
+        "Exposure running",
+        "Exposure success",
+        "Exposure partial/error",
+        "No findings",
+        "Narrow summary"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "page.import-export",
+      "kind": "page",
+      "title": "Import and export",
+      "source": "src/App/Views/ImportExportPage.xaml:14",
+      "route": "io",
+      "controls": "Export card; plaintext warning; JSON/CSV format selectors; import file picker; cipher/folder preview; import/export actions",
+      "feasibility": "ui/live",
+      "prerequisites": "Unlocked account; master password for export; local synthetic import file",
+      "states": [
+        "JSON",
+        "CSV",
+        "File preview loaded",
+        "Busy",
+        "Succeeded",
+        "Committed import requiring sync",
+        "Cancelled",
+        "Failed"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "page.devices",
+      "kind": "page",
+      "title": "Device management",
+      "source": "src/App/Views/DevicesPage.xaml:14",
+      "route": "devices",
+      "controls": "Device cards; current/trusted badges; last-active text; pending request list; fingerprint; refresh; approve/deny",
+      "feasibility": "demo/live",
+      "prerequisites": "Unlocked session; second device request for request content",
+      "states": [
+        "Device list",
+        "No devices",
+        "Requests loading",
+        "No requests",
+        "Pending requests",
+        "Request error",
+        "Busy"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "page.emergency",
+      "kind": "page",
+      "title": "Emergency access",
+      "source": "src/App/Views/EmergencyAccessPage.xaml:25",
+      "route": "Settings > Emergency access",
+      "controls": "Invite; trusted contacts; accounts trusting this account; per-status controls; recovered vault items",
+      "feasibility": "ui/live",
+      "prerequisites": "Live account and emergency-access-enabled server; additional synthetic accounts for relationships",
+      "states": [
+        "Loading",
+        "Error",
+        "No relationships",
+        "Invited",
+        "Accepted",
+        "Confirmed",
+        "Recovery initiated",
+        "Recovery approved View",
+        "Recovery approved Takeover",
+        "Recovered read-only vault"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "page.placeholder",
+      "kind": "unreachable",
+      "title": "Generic unfinished-feature placeholder",
+      "source": "src/App/Views/SimplePage.xaml:1",
+      "route": "No current navigation route",
+      "controls": "Icon; passed title; unfinished-feature subtitle",
+      "feasibility": "unreachable",
+      "prerequisites": "Not referenced by MainWindow or FrameNavigationService",
+      "states": [
+        "Unused"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.favorites",
+      "kind": "view",
+      "title": "Favorites",
+      "source": "src/App/MainWindow.xaml:47",
+      "route": "vault:favorites",
+      "controls": "Vault shell filtered to favorite items",
+      "feasibility": "demo/live",
+      "prerequisites": "At least one synthetic favorite",
+      "states": [
+        "Populated",
+        "Empty result"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.folders",
+      "kind": "view",
+      "title": "Folders",
+      "source": "src/App/MainWindow.xaml:62",
+      "route": "vault:folder:<id>",
+      "controls": "Dynamic sidebar folder name; filtered items; rename/delete folder actions",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic folders",
+      "states": [
+        "Named folder",
+        "Empty folder"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.organizations",
+      "kind": "view",
+      "title": "Organizations",
+      "source": "src/App/MainWindow.xaml:81",
+      "route": "vault:organization:<id>",
+      "controls": "Dynamic organization navigation; shared items and permissions",
+      "feasibility": "live",
+      "prerequisites": "Organization membership and decryptable organization key",
+      "states": [
+        "Writable organization",
+        "Read-only organization",
+        "Missing organization key"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.collections",
+      "kind": "view",
+      "title": "Collections",
+      "source": "src/App/MainWindow.xaml:88",
+      "route": "vault:collection:<id>",
+      "controls": "Dynamic collection navigation; shared items; collection placement",
+      "feasibility": "live",
+      "prerequisites": "Organization and collection membership",
+      "states": [
+        "Writable collection",
+        "Read-only collection",
+        "Empty collection"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.archive",
+      "kind": "view",
+      "title": "Archive",
+      "source": "src/App/MainWindow.xaml:95",
+      "route": "vault:archive",
+      "controls": "Archived list; detail; unarchive action",
+      "feasibility": "ui/live",
+      "prerequisites": "Server/account archive capability for mutations",
+      "states": [
+        "Populated",
+        "Empty",
+        "Selection"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.trash",
+      "kind": "view",
+      "title": "Recycle bin",
+      "source": "src/App/MainWindow.xaml:98",
+      "route": "vault:trash",
+      "controls": "Deleted-item count; deleted list; restore/permanent-delete detail actions; empty-bin action",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic deleted items",
+      "states": [
+        "Populated",
+        "Empty",
+        "Selection"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.empty",
+      "kind": "state",
+      "title": "Empty vault",
+      "source": "src/App/Views/VaultPage.xaml:741",
+      "route": "Account with no active items",
+      "controls": "Empty-vault glyph; first-item guidance; add action",
+      "feasibility": "demo/live",
+      "prerequisites": "Disposable empty synthetic account",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.no-results",
+      "kind": "state",
+      "title": "No matching items",
+      "source": "src/App/Views/VaultPage.xaml:759",
+      "route": "Search for a nonmatching value or combine incompatible filters",
+      "controls": "Search term; filters; no-results message",
+      "feasibility": "demo/live",
+      "prerequisites": "Any populated vault",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.no-selection",
+      "kind": "state",
+      "title": "No item selected",
+      "source": "src/App/Views/VaultPage.xaml:1376",
+      "route": "Open vault before selecting an item",
+      "controls": "Right-pane no-selection glyph and guidance",
+      "feasibility": "demo/live",
+      "prerequisites": "Unlocked session",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.selection",
+      "kind": "state",
+      "title": "Batch selection",
+      "source": "src/App/Views/VaultPage.xaml:391",
+      "route": "Vault > Select > choose items",
+      "controls": "Selected count; Done; select all; move folder; organization transfer; add/remove collection; archive/unarchive; trash/restore/delete",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic editable items; live organization data for placement actions",
+      "states": [
+        "Normal items",
+        "Archived items",
+        "Deleted items",
+        "Mixed-permission selection warning"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.pending-create",
+      "kind": "state",
+      "title": "Pending item-creation reconciliation",
+      "source": "src/App/Views/VaultPage.xaml:231",
+      "route": "Create response interrupted or successful creation cannot be located",
+      "controls": "Warning title; risk description; retained-draft note; resync check; abandon pending state",
+      "feasibility": "conditional",
+      "prerequisites": "Controlled ambiguous-create response; do not infer from happy-path live data",
+      "states": [
+        "Commit unknown",
+        "Server accepted but item unresolved",
+        "Recoverable current draft",
+        "No recoverable draft",
+        "Abandoned warning"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.item-warning",
+      "kind": "state",
+      "title": "Vault operation and decryption warnings",
+      "source": "src/App/Views/VaultPage.xaml:477",
+      "route": "Offline unlock, partial sync, or failed mutation",
+      "controls": "Offline warning; saved-needs-sync warning; operation error; skipped-item count; unavailable shared vault warning",
+      "feasibility": "conditional",
+      "prerequisites": "Controlled cached or partial-sync scenarios",
+      "states": [
+        "Offline",
+        "Saved-needs-sync",
+        "Decrypt failures",
+        "Organization-key failures",
+        "Operation error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.detail.login",
+      "kind": "detail",
+      "title": "Login details",
+      "source": "src/App/Views/VaultPage.xaml:16",
+      "route": "vault:type:Login > item",
+      "controls": "Username; masked password; TOTP; website; optional passkeys and password history; common name/folder/favorite; notes; attachments; custom fields; item history; actions",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic item of this type",
+      "states": [
+        "Masked",
+        "Revealed where permitted",
+        "Reprompt locked",
+        "Attachments",
+        "Custom fields"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.editor.login",
+      "kind": "editor",
+      "title": "Create or edit login",
+      "source": "src/App/Views/VaultPage.xaml:906",
+      "route": "Vault > Add > Login; or item > Edit",
+      "controls": "Username; password; authenticator secret; primary URI; common name; save destination; folder; favorite; notes; master-password reprompt; custom fields; Save/Cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic writable item",
+      "states": [
+        "Create",
+        "Edit with fixed type",
+        "Invalid required fields",
+        "Saving",
+        "Saved-needs-sync warning"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.detail.card",
+      "kind": "detail",
+      "title": "Payment card details",
+      "source": "src/App/Views/VaultPage.xaml:68",
+      "route": "vault:type:Card > item",
+      "controls": "Cardholder; masked card number; expiry; brand; CVV; common name/folder/favorite; notes; attachments; custom fields; item history; actions",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic item of this type",
+      "states": [
+        "Masked",
+        "Revealed where permitted",
+        "Reprompt locked",
+        "Attachments",
+        "Custom fields"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.editor.card",
+      "kind": "editor",
+      "title": "Create or edit payment card",
+      "source": "src/App/Views/VaultPage.xaml:927",
+      "route": "Vault > Add > Payment card; or item > Edit",
+      "controls": "Cardholder; card number; expiry month/year; security code; brand expander; common name; save destination; folder; favorite; notes; master-password reprompt; custom fields; Save/Cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic writable item",
+      "states": [
+        "Create",
+        "Edit with fixed type",
+        "Invalid required fields",
+        "Saving",
+        "Saved-needs-sync warning"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.detail.identity",
+      "kind": "detail",
+      "title": "Identity details",
+      "source": "src/App/Views/VaultPage.xaml:81",
+      "route": "vault:type:Identity > item",
+      "controls": "Full name; username; company; email; phone; ID number; address; common name/folder/favorite; notes; attachments; custom fields; item history; actions",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic item of this type",
+      "states": [
+        "Masked",
+        "Revealed where permitted",
+        "Reprompt locked",
+        "Attachments",
+        "Custom fields"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.editor.identity",
+      "kind": "editor",
+      "title": "Create or edit identity",
+      "source": "src/App/Views/VaultPage.xaml:962",
+      "route": "Vault > Add > Identity; or item > Edit",
+      "controls": "First/last name; email; phone; address; more fields for username/company/ID/passport; common name; save destination; folder; favorite; notes; master-password reprompt; custom fields; Save/Cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic writable item",
+      "states": [
+        "Create",
+        "Edit with fixed type",
+        "Invalid required fields",
+        "Saving",
+        "Saved-needs-sync warning"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.detail.note",
+      "kind": "detail",
+      "title": "Secure note details",
+      "source": "src/App/Views/VaultPage.xaml:96",
+      "route": "vault:type:Note > item",
+      "controls": "Multiline note content; common name/folder/favorite; notes; attachments; custom fields; item history; actions",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic item of this type",
+      "states": [
+        "Masked",
+        "Revealed where permitted",
+        "Reprompt locked",
+        "Attachments",
+        "Custom fields"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.editor.note",
+      "kind": "editor",
+      "title": "Create or edit secure note",
+      "source": "src/App/Views/VaultPage.xaml:1086",
+      "route": "Vault > Add > Secure note; or item > Edit",
+      "controls": "Multiline secure-note content; common name; save destination; folder; favorite; notes; master-password reprompt; custom fields; Save/Cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic writable item",
+      "states": [
+        "Create",
+        "Edit with fixed type",
+        "Invalid required fields",
+        "Saving",
+        "Saved-needs-sync warning"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.detail.ssh",
+      "kind": "detail",
+      "title": "SSH key details",
+      "source": "src/App/Views/VaultPage.xaml:103",
+      "route": "vault:type:Ssh > item",
+      "controls": "Public key; masked private key; fingerprint; common name/folder/favorite; notes; attachments; custom fields; item history; actions",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic item of this type",
+      "states": [
+        "Masked",
+        "Revealed where permitted",
+        "Reprompt locked",
+        "Attachments",
+        "Custom fields"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.editor.ssh",
+      "kind": "editor",
+      "title": "Create or edit ssh key",
+      "source": "src/App/Views/VaultPage.xaml:1008",
+      "route": "Vault > Add > SSH key; or item > Edit",
+      "controls": "Public key; private key; fingerprint; common name; save destination; folder; favorite; notes; master-password reprompt; custom fields; Save/Cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic writable item",
+      "states": [
+        "Create",
+        "Edit with fixed type",
+        "Invalid required fields",
+        "Saving",
+        "Saved-needs-sync warning"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.detail.bank",
+      "kind": "detail",
+      "title": "Bank account details",
+      "source": "src/App/Views/VaultPage.xaml:114",
+      "route": "vault:type:BankAccount > item",
+      "controls": "Bank; holder; account type; account/routing/branch numbers; PIN; SWIFT; IBAN; contact phone; common name/folder/favorite; notes; attachments; custom fields; item history; actions",
+      "feasibility": "conditional",
+      "prerequisites": "Server/account supporting this cipher type or source-derived schematic",
+      "states": [
+        "Masked",
+        "Revealed where permitted",
+        "Reprompt locked",
+        "Attachments",
+        "Custom fields"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.editor.bank",
+      "kind": "editor",
+      "title": "Create or edit bank account",
+      "source": "src/App/Views/VaultPage.xaml:1028",
+      "route": "Vault > Add > Bank account; or item > Edit",
+      "controls": "Bank; holder; type; account/routing/branch numbers; PIN; SWIFT; IBAN; contact phone; common name; save destination; folder; favorite; notes; master-password reprompt; custom fields; Save/Cancel",
+      "feasibility": "conditional",
+      "prerequisites": "CanWriteNewCipherTypes capability required for create/edit",
+      "states": [
+        "Create",
+        "Edit with fixed type",
+        "Invalid required fields",
+        "Saving",
+        "Saved-needs-sync warning"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.detail.license",
+      "kind": "detail",
+      "title": "Driver's license details",
+      "source": "src/App/Views/VaultPage.xaml:132",
+      "route": "vault:type:DriversLicense > item",
+      "controls": "Name; birth date; license number; country/state; issue/expiry dates; issuer; class; common name/folder/favorite; notes; attachments; custom fields; item history; actions",
+      "feasibility": "conditional",
+      "prerequisites": "Server/account supporting this cipher type or source-derived schematic",
+      "states": [
+        "Masked",
+        "Revealed where permitted",
+        "Reprompt locked",
+        "Attachments",
+        "Custom fields"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.editor.license",
+      "kind": "editor",
+      "title": "Create or edit driver's license",
+      "source": "src/App/Views/VaultPage.xaml:1046",
+      "route": "Vault > Add > Driver's license; or item > Edit",
+      "controls": "First/middle/last name; birth date; number; country/state; issue/expiry; issuer; class; common name; save destination; folder; favorite; notes; master-password reprompt; custom fields; Save/Cancel",
+      "feasibility": "conditional",
+      "prerequisites": "CanWriteNewCipherTypes capability required for create/edit",
+      "states": [
+        "Create",
+        "Edit with fixed type",
+        "Invalid required fields",
+        "Saving",
+        "Saved-needs-sync warning"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.detail.passport",
+      "kind": "detail",
+      "title": "Passport details",
+      "source": "src/App/Views/VaultPage.xaml:149",
+      "route": "vault:type:Passport > item",
+      "controls": "Name; birth date; sex; birth place; nationality; country; passport number/type; national ID; issuer; issue/expiry; common name/folder/favorite; notes; attachments; custom fields; item history; actions",
+      "feasibility": "conditional",
+      "prerequisites": "Server/account supporting this cipher type or source-derived schematic",
+      "states": [
+        "Masked",
+        "Revealed where permitted",
+        "Reprompt locked",
+        "Attachments",
+        "Custom fields"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.editor.passport",
+      "kind": "editor",
+      "title": "Create or edit passport",
+      "source": "src/App/Views/VaultPage.xaml:1065",
+      "route": "Vault > Add > Passport; or item > Edit",
+      "controls": "Name parts; birth date; sex; birth place; nationality; country; number/type; national ID; issuer; issue/expiry; common name; save destination; folder; favorite; notes; master-password reprompt; custom fields; Save/Cancel",
+      "feasibility": "conditional",
+      "prerequisites": "CanWriteNewCipherTypes capability required for create/edit",
+      "states": [
+        "Create",
+        "Edit with fixed type",
+        "Invalid required fields",
+        "Saving",
+        "Saved-needs-sync warning"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.editor.options",
+      "kind": "state",
+      "title": "Editor destination and extra fields",
+      "source": "src/App/Views/VaultPage.xaml:855",
+      "route": "Any item editor > common fields / extra options",
+      "controls": "Personal or organization destination; collection checkboxes; folder; favorite; notes; reprompt; custom text/hidden/boolean fields; remove/add field",
+      "feasibility": "demo/live",
+      "prerequisites": "Organization destination and collections require live membership",
+      "states": [
+        "Personal destination",
+        "Organization destination",
+        "Custom text",
+        "Custom hidden",
+        "Custom boolean",
+        "Linked/unsupported fields preserved and not editable"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.login.passkeys",
+      "kind": "state",
+      "title": "Stored passkey information",
+      "source": "src/App/Views/VaultPage.xaml:32",
+      "route": "Login item containing passkeys",
+      "controls": "RP ID; account display name; discoverability; creation date",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic login with passkey; Debug demo includes localhost credential",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.login.history",
+      "kind": "state",
+      "title": "Password history",
+      "source": "src/App/Views/VaultPage.xaml:47",
+      "route": "Login details > expand password history",
+      "controls": "Previous masked passwords; change dates; reveal/copy controls",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic login with password history",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.attachments",
+      "kind": "state",
+      "title": "Attachments",
+      "source": "src/App/Views/VaultPage.xaml:1208",
+      "route": "Item detail > attachments section",
+      "controls": "Count; filename; size; download/delete icon buttons; add attachment; progress/operation status",
+      "feasibility": "ui/live",
+      "prerequisites": "Live synthetic attachment and writable item for transfers",
+      "states": [
+        "Empty",
+        "Populated",
+        "Upload/download/delete busy",
+        "Transfer failure"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.add-menu",
+      "kind": "flyout",
+      "title": "Add item menu",
+      "source": "src/App/Views/VaultPage.xaml:333",
+      "route": "Vault > Add",
+      "controls": "Eight item-type choices; new folder",
+      "feasibility": "demo/live",
+      "prerequisites": "New types are hidden without capability",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.filter-menu",
+      "kind": "flyout",
+      "title": "Vault refinement filters",
+      "source": "src/App/Views/VaultPage.xaml:526",
+      "route": "Vault > Filter",
+      "controls": "Has TOTP; has attachments; has URI; favorite only; clear all",
+      "feasibility": "demo/live",
+      "prerequisites": "Populated synthetic vault",
+      "states": [
+        "No refinements",
+        "Active refinements"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.sort-menu",
+      "kind": "flyout",
+      "title": "Vault sort choices",
+      "source": "src/App/Views/VaultPage.xaml:505",
+      "route": "Vault > sort ComboBox",
+      "controls": "Name ascending; name descending; recent modification; creation time",
+      "feasibility": "demo/live",
+      "prerequisites": "Any vault",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.saved-views-menu",
+      "kind": "flyout",
+      "title": "Saved views",
+      "source": "src/App/Views/VaultPage.xaml:573",
+      "route": "Vault > Views",
+      "controls": "Saved view names; delete each saved view; save current view",
+      "feasibility": "demo/live",
+      "prerequisites": "Local saved view data",
+      "states": [
+        "No saved views",
+        "Populated"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.row-menu",
+      "kind": "flyout",
+      "title": "Vault row actions",
+      "source": "src/App/Views/VaultPage.xaml:670",
+      "route": "Hover/focus item > More",
+      "controls": "Edit; clone; favorite; archive/unarchive; move to trash; restore; permanent delete",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic item; capability/permission controls visibility",
+      "states": [
+        "Active",
+        "Archived",
+        "Deleted",
+        "Read-only"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.move-menu",
+      "kind": "flyout",
+      "title": "Move selected items to folder",
+      "source": "src/App/Views/VaultPage.xaml.cs:501",
+      "route": "Select items > Move",
+      "controls": "No folder; each folder destination",
+      "feasibility": "demo/live",
+      "prerequisites": "At least one selected item",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.reprompt",
+      "kind": "dialog",
+      "title": "Verify master password",
+      "source": "src/App/Views/VaultPage.xaml.cs:265",
+      "route": "Protected item reveal/copy/open/edit or unlock-sensitive-fields action",
+      "controls": "PasswordBox; explanatory text; verify/cancel",
+      "feasibility": "ui/live",
+      "prerequisites": "Real master password for successful verification; protected synthetic item",
+      "states": [
+        "Initial",
+        "Incorrect password"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.transfer",
+      "kind": "dialog",
+      "title": "Transfer to organization",
+      "source": "src/App/Views/VaultPage.xaml.cs:674",
+      "route": "Personal item > Transfer to organization",
+      "controls": "Organization ComboBox; writable collection checkboxes; transfer/cancel",
+      "feasibility": "live",
+      "prerequisites": "Writable organization collection",
+      "states": [
+        "Single item",
+        "Batch selected items"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.collection-select",
+      "kind": "dialog",
+      "title": "Manage item collections",
+      "source": "src/App/Views/VaultPage.xaml.cs:774",
+      "route": "Organization item > Manage collections; selection > Add/remove collection",
+      "controls": "Collection checkboxes; locked read-only assignments; save/cancel",
+      "feasibility": "live",
+      "prerequisites": "Shared synthetic items and collection permissions",
+      "states": [
+        "Single-item membership",
+        "Batch add",
+        "Batch remove"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.folder-create",
+      "kind": "dialog",
+      "title": "New folder",
+      "source": "src/App/Views/VaultPage.xaml.cs:858",
+      "route": "Vault > Add > New folder",
+      "controls": "Folder-name TextBox; confirm/cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Unlocked session",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.folder-rename",
+      "kind": "dialog",
+      "title": "Rename folder",
+      "source": "src/App/Views/VaultPage.xaml.cs:865",
+      "route": "Select folder > Rename folder",
+      "controls": "Prefilled folder-name TextBox; confirm/cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic folder",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.saved-view-create",
+      "kind": "dialog",
+      "title": "Save current view",
+      "source": "src/App/Views/VaultPage.xaml.cs:1103",
+      "route": "Vault > Views > Save current view",
+      "controls": "View-name TextBox; save/cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Search/filter/sort state",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.trash-confirm",
+      "kind": "dialog",
+      "title": "Move item to recycle bin",
+      "source": "src/App/Views/VaultPage.xaml.cs:828",
+      "route": "Item detail or row menu > Delete",
+      "controls": "Named item; delete/cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Disposable active item",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.delete-confirm",
+      "kind": "dialog",
+      "title": "Permanently delete item",
+      "source": "src/App/Views/VaultPage.xaml.cs:854",
+      "route": "Deleted item detail or row menu > Permanent delete",
+      "controls": "Named item; irreversible warning; delete/cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Disposable deleted item",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.delete-selected-confirm",
+      "kind": "dialog",
+      "title": "Permanently delete selected items",
+      "source": "src/App/Views/VaultPage.xaml.cs:524",
+      "route": "Recycle bin > selection > Permanent delete",
+      "controls": "Selected count; irreversible warning; delete/cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Disposable deleted items",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.empty-bin-confirm",
+      "kind": "dialog",
+      "title": "Empty recycle bin",
+      "source": "src/App/Views/VaultPage.xaml.cs:889",
+      "route": "Recycle bin > Empty recycle bin",
+      "controls": "Total deleted count; irreversible warning; delete/cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Disposable deleted items",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.folder-delete-confirm",
+      "kind": "dialog",
+      "title": "Delete folder",
+      "source": "src/App/Views/VaultPage.xaml.cs:878",
+      "route": "Select folder > Delete folder",
+      "controls": "Folder name; contained items move out; delete/cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Disposable synthetic folder",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.attachment-delete-confirm",
+      "kind": "dialog",
+      "title": "Delete attachment",
+      "source": "src/App/Views/VaultPage.xaml.cs:1062",
+      "route": "Attachment > Delete",
+      "controls": "Filename; irreversible warning; delete/cancel",
+      "feasibility": "live",
+      "prerequisites": "Disposable attachment",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.pending-abandon-confirm",
+      "kind": "dialog",
+      "title": "Abandon pending item state",
+      "source": "src/App/Views/VaultPage.xaml.cs:432",
+      "route": "Pending-creation warning > Abandon pending state",
+      "controls": "Server commit status; duplicate risk; abandon/back to check",
+      "feasibility": "conditional",
+      "prerequisites": "Controlled pending-creation ledger",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "send.editor.text",
+      "kind": "dialog",
+      "title": "New or edit text Send",
+      "source": "src/App/Views/SendEditorDialog.xaml:7",
+      "route": "Send > Add Send; row > Edit",
+      "controls": "Text/file type; name; text; hide text; deletion date; audience; maximum accesses; expiration; access password; disabled; hide email; private notes; Save/Cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Live server for shareable result",
+      "states": [
+        "New",
+        "Edit",
+        "Validation error",
+        "Saving",
+        "Custom deletion date",
+        "Custom expiration date"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "send.editor.file",
+      "kind": "dialog",
+      "title": "New or edit file Send",
+      "source": "src/App/Views/SendEditorDialog.xaml:69",
+      "route": "Send editor > File",
+      "controls": "File picker; filename; 500 MB copy; common restrictions and notes; Save/Cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic file; live server for actual upload/download",
+      "states": [
+        "No file selected",
+        "File selected",
+        "Replacement file",
+        "Oversized/unreadable file error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "send.row-menu",
+      "kind": "flyout",
+      "title": "Send row actions",
+      "source": "src/App/Views/SendPage.xaml:243",
+      "route": "Hover/focus Send row > More",
+      "controls": "Copy link; edit; delete",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic Send",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "send.delete-confirm",
+      "kind": "dialog",
+      "title": "Delete Send",
+      "source": "src/App/Views/SendPage.xaml.cs:137",
+      "route": "Send row menu > Delete",
+      "controls": "Named Send; irreversible warning; delete/cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Disposable Send",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "send.receive",
+      "kind": "state",
+      "title": "Open a received Send",
+      "source": "src/App/Views/SendPage.xaml:61",
+      "route": "Send > expand received-link section",
+      "controls": "Send URL; optional access password; Open; received text; save file",
+      "feasibility": "ui/live",
+      "prerequisites": "Valid live Send URL and matching key; cross-server URL support as configured",
+      "states": [
+        "Initial",
+        "Receiving",
+        "Text result",
+        "File result",
+        "Wrong password/invalid link",
+        "Demo unavailable"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "generator.password",
+      "kind": "dialog-tab",
+      "title": "Password generator",
+      "source": "src/App/Views/GeneratorDialog.xaml:33",
+      "route": "Navigation > Generator > Password",
+      "controls": "Generated password; regenerate/copy; strength; length slider/number; uppercase/lowercase/digits/symbols; minimum counts; avoid ambiguous; history",
+      "feasibility": "demo/live",
+      "prerequisites": "Unlocked session",
+      "states": [
+        "Default options",
+        "Customized",
+        "Organization policy notice",
+        "Policy-constrained controls"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "generator.passphrase",
+      "kind": "dialog-tab",
+      "title": "Passphrase generator",
+      "source": "src/App/Views/GeneratorDialog.xaml:171",
+      "route": "Generator > Passphrase",
+      "controls": "Generated phrase; strength; regenerate/copy; word count; separator; capitalization; include number; history",
+      "feasibility": "demo/live",
+      "prerequisites": "Unlocked session",
+      "states": [
+        "Default",
+        "Customized"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "generator.username",
+      "kind": "dialog-tab",
+      "title": "Username generator",
+      "source": "src/App/Views/GeneratorDialog.xaml:252",
+      "route": "Generator > Username",
+      "controls": "Generated username; type; random-word options; plus-address email; catch-all domain; regenerate/copy; history",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic email/domain for respective modes",
+      "states": [
+        "Random word",
+        "Plus-addressed email",
+        "Catch-all email",
+        "Invalid email/domain"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "generator.history",
+      "kind": "dialog",
+      "title": "Generator history",
+      "source": "src/App/Views/GeneratorHistoryDialog.xaml:7",
+      "route": "Generator > History",
+      "controls": "Values and timestamps; row copy; clear history; close",
+      "feasibility": "demo/live",
+      "prerequisites": "Generate at least one value",
+      "states": [
+        "Empty",
+        "Populated"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "generator.clear-confirm",
+      "kind": "dialog",
+      "title": "Clear generator history",
+      "source": "src/App/MainWindow.xaml.cs:541",
+      "route": "History > Clear history",
+      "controls": "Irreversible-clear warning; clear/cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "History entries; confirmation appears after history closes",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "import.export-confirm",
+      "kind": "dialog",
+      "title": "Confirm vault export",
+      "source": "src/App/Views/ImportExportPage.xaml.cs:84",
+      "route": "Import/export > Export",
+      "controls": "Current master-password field; verify/cancel; inline wrong-password error",
+      "feasibility": "ui/live",
+      "prerequisites": "Live master-password account for successful export",
+      "states": [
+        "Initial",
+        "Wrong password"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "devices.approve-confirm",
+      "kind": "dialog",
+      "title": "Confirm device login request",
+      "source": "src/App/Views/DevicesPage.xaml.cs:62",
+      "route": "Pending request > Approve",
+      "controls": "Fingerprint phrase; compare-device warning; confirm and approve/cancel",
+      "feasibility": "live",
+      "prerequisites": "Second synthetic device auth request",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "devices.deny-confirm",
+      "kind": "dialog",
+      "title": "Deny login request",
+      "source": "src/App/Views/DevicesPage.xaml.cs:84",
+      "route": "Pending request > Deny",
+      "controls": "Request device type; deny/cancel",
+      "feasibility": "live",
+      "prerequisites": "Disposable pending request",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "emergency.invite",
+      "kind": "dialog",
+      "title": "Invite emergency contact",
+      "source": "src/App/Views/EmergencyAccessPage.xaml.cs:108",
+      "route": "Emergency access > Invite",
+      "controls": "Contact email; View/Takeover type; wait days 1-90; invite/cancel; inline error",
+      "feasibility": "ui/live",
+      "prerequisites": "Synthetic recipient account; mail sink if invitation delivery is exercised",
+      "states": [
+        "Initial",
+        "Validation/server error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "emergency.update",
+      "kind": "dialog",
+      "title": "Edit emergency access",
+      "source": "src/App/Views/EmergencyAccessPage.xaml.cs:223",
+      "route": "Trusted contact > Edit",
+      "controls": "View/Takeover type; wait days; save/cancel; inline error",
+      "feasibility": "live",
+      "prerequisites": "Existing synthetic trusted relationship",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "emergency.reject-confirm",
+      "kind": "dialog",
+      "title": "Reject emergency-access request",
+      "source": "src/App/Views/EmergencyAccessPage.xaml.cs:170",
+      "route": "Trusted contact in recovery > Reject",
+      "controls": "Contact email; reject/cancel",
+      "feasibility": "live",
+      "prerequisites": "RecoveryInitiated relationship",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "emergency.remove-confirm",
+      "kind": "dialog",
+      "title": "Remove emergency contact",
+      "source": "src/App/Views/EmergencyAccessPage.xaml.cs:186",
+      "route": "Trusted contact > Remove",
+      "controls": "Contact email; irreversible warning; remove/cancel",
+      "feasibility": "live",
+      "prerequisites": "Disposable trusted relationship",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "emergency.recovered",
+      "kind": "dialog",
+      "title": "Recovered vault",
+      "source": "src/App/Views/EmergencyAccessPage.xaml.cs:292",
+      "route": "Granted View relationship > View vault",
+      "controls": "Grantor email; item count; read-only name/subtitle list; close",
+      "feasibility": "live",
+      "prerequisites": "RecoveryApproved View relationship and encrypted grantor key",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "emergency.takeover",
+      "kind": "dialog",
+      "title": "Take over account and reset master password",
+      "source": "src/App/Views/EmergencyAccessPage.xaml.cs:332",
+      "route": "Granted Takeover relationship > Take over",
+      "controls": "Grantor identity; new password; confirm password; irreversible warning; confirm/cancel; error",
+      "feasibility": "live",
+      "prerequisites": "Disposable RecoveryApproved Takeover relationship",
+      "states": [
+        "Initial",
+        "Mismatch/error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "native.file-open",
+      "kind": "native",
+      "title": "Windows open-file picker",
+      "source": "src/App/Views/FilePickerHelper.cs:1",
+      "route": "Import > Choose file; Send file > Choose file; item > Add attachment",
+      "controls": "Windows file navigation; filename; file-type filter; open/cancel",
+      "feasibility": "native",
+      "prerequisites": "Local synthetic files; OS-controlled surface",
+      "states": [
+        "Import JSON/CSV",
+        "Send file",
+        "Attachment file"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "native.file-save",
+      "kind": "native",
+      "title": "Windows save-file picker",
+      "source": "src/App/Views/FilePickerHelper.cs:1",
+      "route": "Verified export; received Send file > Save; attachment > Download",
+      "controls": "Windows destination navigation; filename; type; save/cancel",
+      "feasibility": "native",
+      "prerequisites": "Live transfer or validated export; OS-controlled surface",
+      "states": [
+        "Vault export",
+        "Send received file",
+        "Attachment download"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "control.field",
+      "kind": "control",
+      "title": "Field row",
+      "source": "src/App/Controls/FieldRow.xaml:7",
+      "route": "Any type detail",
+      "controls": "Label; value; reveal/hide; optional open link; copy",
+      "feasibility": "demo/live",
+      "prerequisites": "Relevant synthetic field",
+      "states": [
+        "Plaintext",
+        "Masked",
+        "Revealed",
+        "Openable URI",
+        "Reprompt-protected"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "control.totp",
+      "kind": "control",
+      "title": "TOTP field",
+      "source": "src/App/Controls/TotpField.xaml:8",
+      "route": "Login with authenticator secret",
+      "controls": "Code; 30-second ring; seconds remaining; copy",
+      "feasibility": "demo/live",
+      "prerequisites": "Synthetic valid TOTP secret",
+      "states": [
+        "Valid ticking code",
+        "Missing/invalid secret",
+        "Protected"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "control.favicon",
+      "kind": "control",
+      "title": "Website icon",
+      "source": "src/App/Controls/FaviconView.xaml:1",
+      "route": "Login item list or detail",
+      "controls": "Site icon with glyph fallback",
+      "feasibility": "demo/live",
+      "prerequisites": "Live icon proxy for downloaded favicon",
+      "states": [
+        "Fallback",
+        "Downloaded icon"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "control.detail-card",
+      "kind": "control",
+      "title": "Detail section card",
+      "source": "src/App/Controls/DetailCard.xaml:1",
+      "route": "Item detail or editor",
+      "controls": "Section title; card content",
+      "feasibility": "demo/live",
+      "prerequisites": "Detail/editor",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "browser.test.get",
+      "kind": "test-harness",
+      "title": "Passkey assertion test",
+      "source": "browser-extension/test-pages/passkey-get.html:1",
+      "route": "Open localhost test page",
+      "controls": "RP ID; user verification; mediation; optional credential ID; request/abort; result log",
+      "feasibility": "external",
+      "prerequisites": "Extension and native host; matching localhost credential",
+      "states": [
+        "Success",
+        "Failure/cancel as applicable"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "browser.test.create",
+      "kind": "test-harness",
+      "title": "Passkey registration test",
+      "source": "browser-extension/test-pages/passkey-create.html:1",
+      "route": "Open localhost test page",
+      "controls": "Create passkey button; result log",
+      "feasibility": "external",
+      "prerequisites": "Extension and native host; writable vault item destination",
+      "states": [
+        "Success",
+        "Failure/cancel as applicable"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "browser.test.abort",
+      "kind": "test-harness",
+      "title": "Passkey cancellation test",
+      "source": "browser-extension/test-pages/abort-deadline.html:1",
+      "route": "Open localhost test page",
+      "controls": "Start request; Abort; log",
+      "feasibility": "external",
+      "prerequisites": "Extension and native host; pending ceremony",
+      "states": [
+        "Success",
+        "Failure/cancel as applicable"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "browser.test.iframe-top",
+      "kind": "test-harness",
+      "title": "Cross-origin iframe policy test",
+      "source": "browser-extension/test-pages/iframe-top.html:1",
+      "route": "Open configured top-level test origin",
+      "controls": "Allowed iframe; denied iframe; child assertion controls",
+      "feasibility": "external",
+      "prerequisites": "Two local origins/ports; extension and native host; secure-context policy",
+      "states": [
+        "Success",
+        "Failure/cancel as applicable"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "browser.test.iframe-child",
+      "kind": "test-harness",
+      "title": "Passkey iframe child",
+      "source": "browser-extension/test-pages/iframe-child.html:1",
+      "route": "Embedded by iframe-top",
+      "controls": "Get passkey; result log",
+      "feasibility": "external",
+      "prerequisites": "Test harness child page; permissions policy determined by parent",
+      "states": [
+        "Success",
+        "Failure/cancel as applicable"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "shell.leave-pending",
+      "kind": "dialog",
+      "title": "Save result pending",
+      "source": "src/App/MainWindow.xaml.cs:466",
+      "route": "Navigate away from a vault editor with pending or in-flight creation",
+      "controls": "Warning about unresolved save state; navigation acknowledgment",
+      "feasibility": "conditional",
+      "prerequisites": "Controlled pending/in-flight creation",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "shell.logout-confirm",
+      "kind": "dialog",
+      "title": "Log out",
+      "source": "src/App/MainWindow.xaml.cs:502",
+      "route": "Navigation > Log out",
+      "controls": "Confirmation; log out/cancel",
+      "feasibility": "demo/live",
+      "prerequisites": "Unlocked session",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "shell.tray-menu",
+      "kind": "native",
+      "title": "System tray menu",
+      "source": "src/App/Services/TrayIconService.cs:107",
+      "route": "Right-click WinVaultWarden tray icon",
+      "controls": "Open; Lock; Exit",
+      "feasibility": "native",
+      "prerequisites": "Show tray icon enabled; Windows notification area",
+      "states": [],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "vault.grouping",
+      "kind": "state",
+      "title": "Grouped vault list",
+      "source": "src/App/ViewModels/VaultViewModel.cs:729",
+      "route": "All items or type filter; change sort order",
+      "controls": "Type headers for aggregate views; folder headers for a type; unassigned-folder group; no headers for date sorting and specific folder/organization/collection",
+      "feasibility": "demo/live",
+      "prerequisites": "Multiple synthetic types and folders",
+      "states": [
+        "Grouped by type",
+        "Grouped by folder",
+        "Flat date ordering"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "page.login",
+      "kind": "page",
+      "title": "Login and vault unlock",
+      "source": "src/App/Views/LoginPage.xaml:22",
+      "route": "Startup, lock, logout, account switch, or registration completion",
+      "controls": "Brand; contextual title and subtitle; step; back button; stage-specific form; status InfoBar; primary action; demo action",
+      "feasibility": "offline/demo/live",
+      "prerequisites": "No account required for initial form; persisted or live authentication state for later stages",
+      "states": [
+        "Account",
+        "Password",
+        "Login with device",
+        "New-device verification",
+        "Two-factor",
+        "Required password change",
+        "Password unlock",
+        "PIN unlock",
+        "Key Connector unlock",
+        "Trusted-device SSO",
+        "Trusted-device approval",
+        "TDE v2 JIT provisioning",
+        "Account-deletion recovery",
+        "Wide padding at 400 px and above",
+        "Narrow padding below 400 px"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "auth.login.account",
+      "kind": "state",
+      "title": "Login: account",
+      "source": "src/App/Views/LoginPage.xaml:111",
+      "route": "Startup or Switch account",
+      "controls": "US/EU/self-host server selector; custom URL; email; saved accounts; enterprise SSO; registration link; demo vault",
+      "feasibility": "offline",
+      "prerequisites": "Saved-account variant needs saved profiles; demo button requires registered demo service",
+      "states": [
+        "US server",
+        "EU server",
+        "Self-hosted URL",
+        "No saved accounts",
+        "Saved account list"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "auth.login.sso-pending",
+      "kind": "state",
+      "title": "Login: SSO in progress",
+      "source": "src/App/Views/LoginPage.xaml:193",
+      "route": "Account > Enterprise SSO",
+      "controls": "Busy state; browser-completion status; Cancel SSO action",
+      "feasibility": "live",
+      "prerequisites": "Valid email/server; supported SSO authorization service; server and browser flow",
+      "states": [
+        "Waiting for browser",
+        "Completing SSO",
+        "Cancelled",
+        "Error"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/ViewModels/LoginViewModel.cs:1605"
+      ]
+    },
+    {
+      "id": "auth.login.password",
+      "kind": "state",
+      "title": "Enter master password",
+      "source": "src/App/Views/LoginPage.xaml:257",
+      "route": "Account > Continue",
+      "controls": "Account/server badge; master password; optional Log in with a device action",
+      "feasibility": "offline-form/live-action",
+      "prerequisites": "Valid URL and nonempty email open form; device availability starts a live probe",
+      "states": [
+        "Device login available",
+        "Device login unavailable",
+        "Busy",
+        "Error"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/ViewModels/LoginViewModel.cs:2917"
+      ]
+    },
+    {
+      "id": "auth.login.device-quarantine",
+      "kind": "state",
+      "title": "Device login quarantined",
+      "source": "src/App/Views/LoginPage.xaml:287",
+      "route": "Password stage with device-login quarantine record",
+      "controls": "Warning InfoBar; optional clear-quarantine action",
+      "feasibility": "controlled-fixture/live-recovery",
+      "prerequisites": "Persisted quarantine state; no ordinary demo path",
+      "states": [
+        "Eligible to clear",
+        "Quarantine period active",
+        "Corrupt state",
+        "Unavailable state"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/ViewModels/LoginViewModel.cs:420"
+      ]
+    },
+    {
+      "id": "auth.login.device-wait",
+      "kind": "state",
+      "title": "Log in with a device",
+      "source": "src/App/Views/LoginPage.xaml:322",
+      "route": "Password > Log in with a device",
+      "controls": "Waiting ring; fingerprint phrase; expiration timestamp; cancel action",
+      "feasibility": "live",
+      "prerequisites": "Auth-request capable server and another signed-in device",
+      "states": [
+        "Waiting without fingerprint",
+        "Fingerprint available",
+        "Expiry available",
+        "Cancelled/denied/expired result returns status"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "auth.login.verify-device",
+      "kind": "state",
+      "title": "Verify new device",
+      "source": "src/App/Views/LoginPage.xaml:389",
+      "route": "Authentication returns DeviceVerificationRequired",
+      "controls": "Device verification code; resend code; Verify device primary action",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Live new-device challenge and mailbox access",
+      "states": [
+        "Code entry",
+        "Resending",
+        "Verifying",
+        "Error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "auth.login.password-change-required",
+      "kind": "state",
+      "title": "Update master password",
+      "source": "src/App/Views/LoginPage.xaml:410",
+      "route": "Authentication requires a password change",
+      "controls": "Policy warning; new password; confirmation; optional hint; switch account; Update master password",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Organization password policy or administrator temporary-password scenario",
+      "states": [
+        "Policy requirements",
+        "Busy",
+        "Validation error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "auth.login.2fa-code",
+      "kind": "state",
+      "title": "Two-step login: code",
+      "source": "src/App/Views/LoginPage.xaml:444",
+      "route": "Authentication returns a typed-code two-factor challenge",
+      "controls": "Provider picker; code input; remember device; recovery-code switch; email resend when applicable",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Authenticator, email, or YubiKey OTP challenge; YubiKey needed to complete its OTP flow",
+      "states": [
+        "Authenticator",
+        "Email",
+        "YubiKey OTP",
+        "One provider",
+        "Multiple providers",
+        "Device-login request expiry notice"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/ViewModels/LoginViewModel.cs:591"
+      ]
+    },
+    {
+      "id": "auth.login.2fa-recovery",
+      "kind": "state",
+      "title": "Two-step login: recovery code",
+      "source": "src/App/Views/LoginPage.xaml:477",
+      "route": "Two-factor > Use recovery code",
+      "controls": "Recovery-code input; warning that recovery removes all configured two-factor methods; alternate-method link",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Existing two-factor challenge; recovery code required for completion",
+      "states": [
+        "Provider picker hidden",
+        "Remember-device hidden",
+        "Busy",
+        "Error"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/ViewModels/LoginViewModel.cs:497"
+      ]
+    },
+    {
+      "id": "auth.login.2fa-webauthn",
+      "kind": "state",
+      "title": "Security-key verification",
+      "source": "src/App/Views/LoginPage.xaml:444",
+      "route": "Select WebAuthn two-factor provider",
+      "controls": "Use security key primary action; remember device; recovery switch; no code field",
+      "feasibility": "live/native",
+      "prerequisites": "Live WebAuthn challenge and Windows WebAuthn/Hello or security key",
+      "states": [
+        "Idle",
+        "Waiting for security key",
+        "Error"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/ViewModels/LoginViewModel.cs:504"
+      ]
+    },
+    {
+      "id": "auth.login.2fa-duo",
+      "kind": "state",
+      "title": "Duo two-step login",
+      "source": "src/App/Views/LoginPage.xaml:444",
+      "route": "Select Duo or Organization Duo provider",
+      "controls": "Open Duo primary action; remember device; recovery switch; no code field",
+      "feasibility": "live",
+      "prerequisites": "Supported live Duo challenge",
+      "states": [
+        "Duo",
+        "Organization Duo",
+        "Waiting for Duo",
+        "Error"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/ViewModels/LoginViewModel.cs:508"
+      ]
+    },
+    {
+      "id": "auth.login.unlock-password",
+      "kind": "state",
+      "title": "Unlock vault",
+      "source": "src/App/Views/LoginPage.xaml:581",
+      "route": "Restore a locked persisted password session",
+      "controls": "Account/server badge; master password; optional Windows Hello; switch account; Unlock",
+      "feasibility": "persisted-session",
+      "prerequisites": "Saved authenticated session; ordinary demo does not create a persisted authentication route",
+      "states": [
+        "Password entry",
+        "Hello available",
+        "Busy",
+        "Error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "auth.login.unlock-pin",
+      "kind": "state",
+      "title": "Unlock with PIN",
+      "source": "src/App/Views/LoginPage.xaml:632",
+      "route": "Restore locked persisted session with PIN configured",
+      "controls": "PIN; optional Hello; alternative unlock method; switch account",
+      "feasibility": "persisted-session",
+      "prerequisites": "Previously configured PIN and matching saved session",
+      "states": [
+        "Password alternative",
+        "Key Connector alternative",
+        "SSO alternative",
+        "Hello available"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "auth.login.unlock-keyconnector",
+      "kind": "state",
+      "title": "Unlock through Key Connector",
+      "source": "src/App/Views/LoginPage.xaml:581",
+      "route": "Restore saved Key Connector session",
+      "controls": "Account/server badge; Key Connector primary action; optional Hello; switch account; no password field",
+      "feasibility": "live",
+      "prerequisites": "Enterprise Key Connector setup and persisted session",
+      "states": [
+        "Idle",
+        "Connecting",
+        "Error"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/ViewModels/LoginViewModel.cs:713"
+      ]
+    },
+    {
+      "id": "auth.login.unlock-trusted-sso",
+      "kind": "state",
+      "title": "Trusted-device sign-in",
+      "source": "src/App/Views/LoginPage.xaml:581",
+      "route": "Restore saved trusted-device SSO session",
+      "controls": "Account/server badge; enterprise SSO unlock; optional Hello; switch account; no password field",
+      "feasibility": "live",
+      "prerequisites": "Enterprise trusted-device setup and saved session",
+      "states": [
+        "Idle",
+        "SSO pending",
+        "Error"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/ViewModels/LoginViewModel.cs:714"
+      ]
+    },
+    {
+      "id": "auth.login.trusted-approval",
+      "kind": "state",
+      "title": "Approve this device",
+      "source": "src/App/Views/LoginPage.xaml:501",
+      "route": "Authentication requires trusted-device approval",
+      "controls": "Account/server badge; device/admin method picker; fingerprint; trust-after-approval; cancel waiting; switch account",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Enterprise approval flow; another eligible device or administrator",
+      "states": [
+        "Single approval method",
+        "Multiple approval methods",
+        "Request not sent",
+        "Waiting with fingerprint"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "auth.login.jit-encryption",
+      "kind": "state",
+      "title": "Set up account encryption",
+      "source": "src/App/Views/LoginPage.xaml:566",
+      "route": "Authentication returns TDE v2 JIT provisioning",
+      "controls": "Initialization explanation; trust-device checkbox; account switch; Finish initialization",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "First enterprise sign-in requiring encryption setup",
+      "states": [
+        "Trust choice editable",
+        "Trust choice fixed by policy",
+        "Busy",
+        "Error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "auth.login.deletion-recovery",
+      "kind": "state",
+      "title": "Account-deletion recovery",
+      "source": "src/App/Views/LoginPage.xaml:209",
+      "route": "Startup or account switch detects deletion recovery state",
+      "controls": "Contextual warning; retry cleanup; clear this device; other account; recheck security storage; full reset action",
+      "feasibility": "controlled-fixture/live-recovery",
+      "prerequisites": "Prior deletion ledger or recovery fixture; ordinary demo unavailable",
+      "states": [
+        "Prepared/uncertain outcome",
+        "Server confirmed",
+        "Deleted-account local residue",
+        "Uncertain-account local residue",
+        "Unreadable ledger"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/ViewModels/LoginViewModel.cs:367"
+      ]
+    },
+    {
+      "id": "auth.login.status-busy",
+      "kind": "state",
+      "title": "Login status and busy feedback",
+      "source": "src/App/Views/LoginPage.xaml:105",
+      "route": "Validation, authentication, recovery, or async stage transition",
+      "controls": "InfoBar; contextual busy primary text and ProgressRing; action gating",
+      "feasibility": "offline/live/controlled-fixture",
+      "prerequisites": "Validation can be exercised without credentials; other results need matching flow",
+      "states": [
+        "Informational",
+        "Success",
+        "Error",
+        "Busy"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/Views/LoginPage.xaml:690"
+      ]
+    },
+    {
+      "id": "dialog.login.clear-quarantine",
+      "kind": "dialog",
+      "title": "Clear device-login quarantine?",
+      "source": "src/App/Views/LoginPage.xaml.cs:61",
+      "route": "Password quarantine notice > Clear quarantine",
+      "controls": "Warning to review/revoke suspicious sessions first; Clear quarantine; Cancel",
+      "feasibility": "controlled-fixture/live-recovery",
+      "prerequisites": "Eligible persisted quarantine record",
+      "states": [
+        "Confirmation"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "dialog.login.clear-local-deletion-data",
+      "kind": "dialog",
+      "title": "Clear data on this device only?",
+      "source": "src/App/Views/LoginPage.xaml.cs:92",
+      "route": "Prepared account-deletion recovery > Clear this device",
+      "controls": "Uncertain server-result and permanent local-isolation warning; confirm; Cancel",
+      "feasibility": "controlled-fixture/live-recovery",
+      "prerequisites": "Prepared deletion-recovery state",
+      "states": [
+        "Confirmation"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "dialog.login.reset-local-data",
+      "kind": "dialog",
+      "title": "Clear all local data and exit?",
+      "source": "src/App/Views/LoginPage.xaml.cs:123",
+      "route": "Unreadable deletion ledger > Clear all local data and exit",
+      "controls": "Reset consequences; exact RESET text field; gated destructive action; Cancel",
+      "feasibility": "controlled-fixture/live-recovery",
+      "prerequisites": "Unreadable recovery ledger and local-reset service",
+      "states": [
+        "Empty confirmation",
+        "Invalid confirmation",
+        "Exact RESET enables action"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "page.register",
+      "kind": "page",
+      "title": "Registration",
+      "source": "src/App/Views/RegisterPage.xaml:18",
+      "route": "Login > Register",
+      "controls": "Create-account form; operation error; email-verification result; uncertain-result panel",
+      "feasibility": "offline-form/live-action",
+      "prerequisites": "No account required to open; server registration support for completion",
+      "states": [
+        "Editing",
+        "Awaiting email verification",
+        "Outcome uncertain",
+        "Busy",
+        "Wide padding at 400 px and above",
+        "Narrow padding below 400 px"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "auth.register.form",
+      "kind": "state",
+      "title": "Create account",
+      "source": "src/App/Views/RegisterPage.xaml:61",
+      "route": "Open Registration or edit submitted details",
+      "controls": "Server/URL; email; optional name; password; confirmation; hint; Create account; Back to login",
+      "feasibility": "offline-form/live-action",
+      "prerequisites": "Valid inputs and registration-enabled server for completion",
+      "states": [
+        "US/EU/self-hosted",
+        "Busy disables entire form",
+        "Validation/operation error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "auth.register.email-verification",
+      "kind": "state",
+      "title": "Check email to continue",
+      "source": "src/App/Views/RegisterPage.xaml:182",
+      "route": "Server accepts registration email-verification request",
+      "controls": "Submitted email; Web Vault completion explanation; Log in after verification; Change email",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Server email-verification outcome; mailbox and Web Vault for completion",
+      "states": [
+        "Awaiting email verification"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "auth.register.uncertain",
+      "kind": "state",
+      "title": "Registration result pending",
+      "source": "src/App/Views/RegisterPage.xaml:212",
+      "route": "Connection interrupted during registration submission",
+      "controls": "Submitted email; uncertainty explanation; Try login; Change information",
+      "feasibility": "controlled-fixture/live-failure",
+      "prerequisites": "Ambiguous registration result",
+      "states": [
+        "Outcome uncertain"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "auth.register.success-navigation",
+      "kind": "transition",
+      "title": "Registration completed: return to login",
+      "source": "src/App/Views/RegisterPage.xaml.cs:96",
+      "route": "Registration result is Registered",
+      "controls": "Login page prefilled with registered server and email",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Successful registration result; no dedicated success page exists",
+      "states": [
+        "Login prefill"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "dialog.passkey.use",
+      "kind": "dialog",
+      "title": "Use a passkey to sign in",
+      "source": "src/App/Services/PasskeyApprovalDialogService.cs:101",
+      "route": "Browser passkey assertion request",
+      "controls": "Verified frame origin, RP ID and top origin in Unicode/ASCII; account picker; Use passkey; optional Verify and approve; Cancel",
+      "feasibility": "browser-integration/controlled-fixture",
+      "prerequisites": "Unlocked vault, validated request and credential candidates; real user verification when required",
+      "states": [
+        "Single candidate",
+        "Multiple candidates unselected",
+        "Multiple candidates selected",
+        "Cross-origin warning",
+        "Preferred verification secondary action",
+        "Required verification"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/Controls/PasskeyApprovalView.xaml:7"
+      ]
+    },
+    {
+      "id": "dialog.passkey.create",
+      "kind": "dialog",
+      "title": "Create a passkey",
+      "source": "src/App/Services/PasskeyApprovalDialogService.cs:257",
+      "route": "Browser passkey creation request",
+      "controls": "RP ID; frame origin; optional reported site name; account; new-entry versus existing-entry radio choices; existing-entry picker; Create; Cancel",
+      "feasibility": "browser-integration/controlled-fixture",
+      "prerequisites": "Unlocked vault and validated browser creation request; live save for completion",
+      "states": [
+        "Create new entry",
+        "Attach to existing login",
+        "No existing logins disables attach",
+        "Cross-origin warning"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "dialog.passkey.master-password",
+      "kind": "dialog",
+      "title": "Verify master password for passkey",
+      "source": "src/App/Services/PasskeyApprovalDialogService.cs:338",
+      "route": "Passkey item reprompt or user-verification fallback",
+      "controls": "PasswordBox; reprompt explanation; Confirm; Cancel",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Selected item requiring reprompt, or Windows Hello unavailable/failed/cancelled",
+      "states": [
+        "Master-password entry"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "native.user-verification",
+      "kind": "native",
+      "title": "Windows Hello user verification",
+      "source": "src/App/Services/UserVerificationService.cs:25",
+      "route": "Passkey required verification, preferred Verify and approve, or Hello vault unlock",
+      "controls": "Windows-owned credential gesture prompt; application falls back to supplied password prompt when verification is unavailable or fails",
+      "feasibility": "native",
+      "prerequisites": "Windows Hello available and configured credential; OS prompt appearance is not app-owned",
+      "states": [
+        "Hello gesture",
+        "Password fallback"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/Services/WindowsHelloAuthenticator.cs:47"
+      ]
+    },
+    {
+      "id": "native.login-hello",
+      "kind": "native",
+      "title": "Windows Hello vault unlock",
+      "source": "src/App/Views/LoginPage.xaml.cs:269",
+      "route": "Enter an unlock stage with Hello enabled, or click Unlock with Windows Hello",
+      "controls": "Windows-owned Hello gesture prompt",
+      "feasibility": "native/persisted-session",
+      "prerequisites": "Persisted Hello protector and Windows Hello available; automatically prompted once per unlock stage",
+      "states": [
+        "Automatic prompt",
+        "Button-triggered prompt"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/Services/WindowsHelloAuthenticator.cs:47"
+      ]
+    },
+    {
+      "id": "native.login-webauthn",
+      "kind": "native",
+      "title": "Windows WebAuthn sign-in",
+      "source": "src/App/Services/WindowsWebAuthnTwoFactorService.cs:115",
+      "route": "Two-factor > Use security key",
+      "controls": "Windows-owned authenticator choice and verification prompt",
+      "feasibility": "live/native",
+      "prerequisites": "Live challenge; supported Windows WebAuthn; registered security key or platform authenticator",
+      "states": [
+        "Authenticator choice",
+        "Security-key interaction",
+        "Platform verification"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "dialog.duo.webview",
+      "kind": "dialog",
+      "title": "Duo two-step verification",
+      "source": "src/App/Services/DuoWebViewTwoFactorService.cs:97",
+      "route": "Two-factor > Open Duo",
+      "controls": "480-wide WebView2 with minimum 360 x 540 content; live Duo authorization page; Cancel",
+      "feasibility": "live",
+      "prerequisites": "Supported parsed Duo challenge, network, Windows, WebView2 runtime; no offline demo page",
+      "states": [
+        "Duo-hosted loading",
+        "Duo-hosted verification",
+        "Cancel",
+        "Failure closes dialog and returns error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "page.settings",
+      "kind": "page",
+      "title": "Settings",
+      "source": "src/App/Views/SettingsPage.xaml:13",
+      "route": "Main navigation > Settings",
+      "controls": "Account; Security; Preferences; Application; About; Danger zone in one vertically scrolling page",
+      "feasibility": "demo/live",
+      "prerequisites": "Unlocked session",
+      "states": [
+        "Six sections",
+        "About collapsed/expanded",
+        "Policy-constrained controls",
+        "Theme variants"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.account",
+      "kind": "state",
+      "title": "Settings: Account",
+      "source": "src/App/Views/SettingsPage.xaml:23",
+      "route": "Settings top section",
+      "controls": "Email/server; Edit Profile; Change Master Password; Encryption Settings and KDF summary",
+      "feasibility": "demo/live",
+      "prerequisites": "Unlocked session",
+      "states": [
+        "Account and KDF summary"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.security",
+      "kind": "state",
+      "title": "Settings: Security",
+      "source": "src/App/Views/SettingsPage.xaml:59",
+      "route": "Settings security section",
+      "controls": "Session timeout/action; PIN; Windows Hello; trusted device; two-factor; Emergency Access navigation",
+      "feasibility": "demo/live",
+      "prerequisites": "Unlocked session; device/account-specific eligibility for actions",
+      "states": [
+        "Timeout",
+        "PIN",
+        "Hello",
+        "Trusted device",
+        "Two-factor"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.preferences",
+      "kind": "state",
+      "title": "Settings: Preferences",
+      "source": "src/App/Views/SettingsPage.xaml:172",
+      "route": "Settings preferences section",
+      "controls": "Clipboard timeout; disabled minimize-after-copy toggle",
+      "feasibility": "demo/live",
+      "prerequisites": "Local settings",
+      "states": [
+        "Clipboard timeout options"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.application",
+      "kind": "state",
+      "title": "Settings: Application",
+      "source": "src/App/Views/SettingsPage.xaml:206",
+      "route": "Settings application section",
+      "controls": "Tray behavior; startup; browser integration; acceleration; website icons; SSH; screenshots; theme; language",
+      "feasibility": "demo/live",
+      "prerequisites": "Local settings; packaging-dependent browser integration",
+      "states": [
+        "Tray on/off",
+        "Portable/MSIX",
+        "Screenshots allowed/blocked"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.about",
+      "kind": "state",
+      "title": "Settings: About",
+      "source": "src/App/Views/SettingsPage.xaml:321",
+      "route": "Settings > About expander",
+      "controls": "Version summary; expanded app/Windows/.NET versions and architecture; Copy diagnostics",
+      "feasibility": "demo/live",
+      "prerequisites": "Unlocked session",
+      "states": [
+        "Collapsed",
+        "Expanded"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.danger",
+      "kind": "state",
+      "title": "Settings: Danger zone",
+      "source": "src/App/Views/SettingsPage.xaml:364",
+      "route": "Settings bottom section",
+      "controls": "Delete account action",
+      "feasibility": "demo-form/live-action",
+      "prerequisites": "Valid deletion flow requires unlocked matching persisted session",
+      "states": [
+        "Action visible"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.timeout-policy",
+      "kind": "state",
+      "title": "Policy-constrained timeout",
+      "source": "src/App/Views/SettingsPage.xaml:64",
+      "route": "Settings with organization session policy",
+      "controls": "Individually gated timeout options; policy-only option; policy hint; potentially disabled timeout-action selector",
+      "feasibility": "policy-fixture/live",
+      "prerequisites": "Organization policy snapshot; ordinary demo has no such policy",
+      "states": [
+        "Normal timeout options",
+        "Policy-only timeout",
+        "Forced timeout action"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/ViewModels/SettingsViewModel.cs:95"
+      ]
+    },
+    {
+      "id": "settings.pin-policy",
+      "kind": "state",
+      "title": "PIN allowed or prohibited",
+      "source": "src/App/Views/SettingsPage.xaml:116",
+      "route": "Settings with PIN restriction policy",
+      "controls": "PIN toggle; disabled prohibited state",
+      "feasibility": "policy-fixture/live",
+      "prerequisites": "RemoveUnlockWithPin policy variant; existing PIN is cleared when prohibited",
+      "states": [
+        "Allowed",
+        "Configured",
+        "Prohibited"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/ViewModels/SettingsViewModel.cs:457",
+        "src/App/Views/SettingsPage.xaml.cs:38"
+      ]
+    },
+    {
+      "id": "settings.hello",
+      "kind": "state",
+      "title": "Windows Hello availability",
+      "source": "src/App/Views/SettingsPage.xaml:126",
+      "route": "Settings loads Hello availability",
+      "controls": "Hello toggle and description; unavailable text",
+      "feasibility": "native",
+      "prerequisites": "Windows Hello availability/configuration",
+      "states": [
+        "Available",
+        "Unavailable",
+        "Already configured"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/Views/SettingsPage.xaml.cs:70",
+        "src/App/ViewModels/SettingsViewModel.cs:532"
+      ]
+    },
+    {
+      "id": "settings.trusted-device",
+      "kind": "state",
+      "title": "Trusted-device eligibility and status",
+      "source": "src/App/Views/SettingsPage.xaml:137",
+      "route": "Settings loads account device-trust eligibility",
+      "controls": "Contextual device-trust card and action",
+      "feasibility": "live/persisted-session",
+      "prerequisites": "Matching persisted session and supported device-trust capability; ordinary demo cannot trust device",
+      "states": [
+        "Hidden",
+        "Eligible untrusted",
+        "Trusted",
+        "Eligible card hidden while busy"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/ViewModels/SettingsViewModel.cs:562"
+      ]
+    },
+    {
+      "id": "settings.tray",
+      "kind": "state",
+      "title": "Tray behavior",
+      "source": "src/App/Views/SettingsPage.xaml:211",
+      "route": "Settings > Application > Tray icon",
+      "controls": "Tray icon toggle; minimize/close-to-tray child toggles",
+      "feasibility": "demo/live",
+      "prerequisites": "Local preferences",
+      "states": [
+        "Tray on enables child controls",
+        "Tray off disables child controls"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/ViewModels/SettingsViewModel.cs:194"
+      ]
+    },
+    {
+      "id": "settings.browser-integration",
+      "kind": "state",
+      "title": "Portable and MSIX browser integration",
+      "source": "src/App/Views/SettingsPage.xaml:240",
+      "route": "Settings > Application > Browser integration",
+      "controls": "Browser integration toggle",
+      "feasibility": "packaging-dependent",
+      "prerequisites": "Only enabled in unpackaged build",
+      "states": [
+        "Portable enabled",
+        "MSIX disabled"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/ViewModels/SettingsViewModel.cs:407"
+      ]
+    },
+    {
+      "id": "settings.theme",
+      "kind": "state",
+      "title": "Application theme",
+      "source": "src/App/Views/SettingsPage.xaml:291",
+      "route": "Settings > Theme",
+      "controls": "System, Light, and Dark options applied immediately",
+      "feasibility": "demo/live",
+      "prerequisites": "Local preference",
+      "states": [
+        "System",
+        "Light",
+        "Dark"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.future-controls",
+      "kind": "state",
+      "title": "Disabled future settings",
+      "source": "src/App/Views/SettingsPage.xaml:195",
+      "route": "Settings Preferences/Application sections",
+      "controls": "Disabled minimize-after-copy, startup, acceleration, SSH expander, and language controls",
+      "feasibility": "demo/live",
+      "prerequisites": "No implemented enabling path",
+      "states": [
+        "Disabled"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.trust.error",
+      "kind": "dialog",
+      "title": "Unable to trust this device",
+      "source": "src/App/Views/SettingsPage.xaml.cs:88",
+      "route": "Trust current device fails",
+      "controls": "Error message; OK",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Eligible device-trust operation",
+      "states": [
+        "Failure"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.profile.edit",
+      "kind": "dialog",
+      "title": "Edit Profile",
+      "source": "src/App/Views/SettingsPage.xaml.cs:130",
+      "route": "Settings > Account > Edit Profile",
+      "controls": "Display-name field; Save; Cancel; inline error",
+      "feasibility": "demo-form/live-action",
+      "prerequisites": "Demo can open; save uses live API",
+      "states": [
+        "Initial",
+        "Error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.password.change",
+      "kind": "dialog",
+      "title": "Change Master Password",
+      "source": "src/App/Views/SettingsPage.xaml.cs:188",
+      "route": "Settings > Account > Change Master Password",
+      "controls": "Current/new/confirm passwords; optional hint; Change; Cancel; inline error",
+      "feasibility": "demo-form/live-action",
+      "prerequisites": "Completion requires matching persisted authenticated session; success logs out",
+      "states": [
+        "Initial",
+        "Validation/operation error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.kdf.change",
+      "kind": "dialog",
+      "title": "Encryption Settings",
+      "source": "src/App/Views/SettingsPage.xaml.cs:269",
+      "route": "Settings > Account > Encryption Settings",
+      "controls": "Current password; PBKDF2 iterations NumberBox; Apply; Cancel; inline error; no KDF-type selector",
+      "feasibility": "demo-form/live-action",
+      "prerequisites": "Completion requires matching persisted authenticated session",
+      "states": [
+        "Initial",
+        "Error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.pin.setup",
+      "kind": "dialog",
+      "title": "Set PIN",
+      "source": "src/App/Views/SettingsPage.xaml.cs:354",
+      "route": "Settings > PIN toggle on",
+      "controls": "PIN and confirmation; Set; Cancel",
+      "feasibility": "demo-form/persisted-session-action",
+      "prerequisites": "Demo can open; completion requires persisted session (src/Vault/PinService.cs:38)",
+      "states": [
+        "Initial",
+        "Too short",
+        "Mismatch"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.hello.failure",
+      "kind": "dialog",
+      "title": "Windows Hello setup failure",
+      "source": "src/App/Views/SettingsPage.xaml.cs:421",
+      "route": "Enable Hello returns false",
+      "controls": "Failure message; Close",
+      "feasibility": "native/controlled-fixture",
+      "prerequisites": "Native Hello setup attempt",
+      "states": [
+        "Failure"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.twofactor.menu",
+      "kind": "dialog",
+      "title": "Two-Factor management",
+      "source": "src/App/Views/SettingsPage.xaml.cs:501",
+      "route": "Settings > Two-Factor",
+      "controls": "Provider status/empty summary; Enable TOTP; Enable Email; Manage Security Keys/Hello; Disable; Close",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Production provider service; successful live load required for management actions; no demo fixture",
+      "states": [
+        "Loading",
+        "Error/retry",
+        "No enabled providers",
+        "Enabled provider summary"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/Views/SettingsPage.xaml.cs:474"
+      ]
+    },
+    {
+      "id": "settings.twofactor.loading",
+      "kind": "state",
+      "title": "Two-Factor loading",
+      "source": "src/App/Views/SettingsPage.xaml.cs:444",
+      "route": "Open Two-Factor management while provider request is pending",
+      "controls": "ProgressRing; loading text",
+      "feasibility": "demo/live",
+      "prerequisites": "Provider request pending",
+      "states": [
+        "Loading"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.twofactor.error",
+      "kind": "state",
+      "title": "Two-Factor load error",
+      "source": "src/App/Views/SettingsPage.xaml.cs:458",
+      "route": "Two-Factor provider request fails",
+      "controls": "Error InfoBar; Retry; management content hidden",
+      "feasibility": "demo/live-failure",
+      "prerequisites": "Failed provider request",
+      "states": [
+        "Error",
+        "Retrying"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.totp.password",
+      "kind": "dialog",
+      "title": "Enable TOTP: Step 1",
+      "source": "src/App/Views/SettingsPage.xaml.cs:604",
+      "route": "Two-Factor management > Enable TOTP",
+      "controls": "Current password; Next; Cancel; inline error",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Successfully loaded two-factor menu; live password verification for progression",
+      "states": [
+        "Initial",
+        "Error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.totp.secret",
+      "kind": "dialog",
+      "title": "Enable TOTP: Step 2",
+      "source": "src/App/Views/SettingsPage.xaml.cs:681",
+      "route": "TOTP Step 1 succeeds",
+      "controls": "Selectable Base32 secret and OTPAuth URI; code input; Enable; Cancel; inline error",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Live setup secret; authenticator code for completion",
+      "states": [
+        "Secret and URI",
+        "Error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.totp.complete",
+      "kind": "dialog",
+      "title": "TOTP setup success",
+      "source": "src/App/Views/SettingsPage.xaml.cs:770",
+      "route": "TOTP activation succeeds",
+      "controls": "Recovery code; Done; optional recovery-code fetch controls",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Successful TOTP activation",
+      "states": [
+        "Recovery code available",
+        "Recovery code missing"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.totp.recovery-missing",
+      "kind": "state",
+      "title": "TOTP active but recovery code unavailable",
+      "source": "src/App/Views/SettingsPage.xaml.cs:745",
+      "route": "Activation succeeds but recovery-code fetch fails",
+      "controls": "Warning InfoBar; current password; Fetch Recovery Code; Done",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "TOTP enabled with missing recovery code",
+      "states": [
+        "Retry available",
+        "Retry failure",
+        "Fetch success replaces controls with code"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/Views/SettingsPage.xaml.cs:756",
+        "src/App/Views/SettingsPage.xaml.cs:774"
+      ]
+    },
+    {
+      "id": "settings.email.password",
+      "kind": "dialog",
+      "title": "Enable Email Code: Step 1",
+      "source": "src/App/Views/SettingsPage.xaml.cs:851",
+      "route": "Two-Factor management > Enable Email",
+      "controls": "Current password; destination email; Send Code; Cancel; inline error",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Loaded menu; account and email delivery for progression",
+      "states": [
+        "Initial",
+        "Error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.email.code",
+      "kind": "dialog",
+      "title": "Enable Email Code: Step 2",
+      "source": "src/App/Views/SettingsPage.xaml.cs:899",
+      "route": "Email verification code sent",
+      "controls": "Sent-to-address text; token input; Enable; Cancel; inline error",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Successful email send and received code",
+      "states": [
+        "Initial",
+        "Error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.email.complete",
+      "kind": "dialog",
+      "title": "Email verification enabled",
+      "source": "src/App/Views/SettingsPage.xaml.cs:936",
+      "route": "Email two-factor activation succeeds",
+      "controls": "Success text; Done",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Successful activation",
+      "states": [
+        "Success"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.webauthn.verify",
+      "kind": "dialog",
+      "title": "Verify security-key management",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1094",
+      "route": "Two-Factor management > Manage Security Keys/Hello",
+      "controls": "Verification-method selector; secret input; contextual help; optional Send Code; Continue; Cancel; inline status",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Successfully loaded two-factor menu",
+      "states": [
+        "Master password",
+        "Email OTP",
+        "Device-login access code",
+        "Missing input",
+        "Busy/load error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.webauthn.verify-email",
+      "kind": "state",
+      "title": "Security-key management: email OTP verification",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1058",
+      "route": "Select email OTP in security-key verification",
+      "controls": "Send Code; OTP placeholder/help; send success/error InfoBar",
+      "feasibility": "live",
+      "prerequisites": "Account email delivery",
+      "states": [
+        "Before send",
+        "Sent",
+        "Send error"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/Views/SettingsPage.xaml.cs:1072"
+      ]
+    },
+    {
+      "id": "settings.webauthn.verify-access-code",
+      "kind": "state",
+      "title": "Security-key management: device-login access code",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1063",
+      "route": "Select device-login access code verification",
+      "controls": "Access-code placeholder/help; Send Code hidden",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Other-device login session with access code",
+      "states": [
+        "Access-code entry"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.webauthn.manage",
+      "kind": "dialog",
+      "title": "Security Keys",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1284",
+      "route": "Security-key management verification succeeds",
+      "controls": "Scrollable credential rows; Delete; new-key name; Add Security Key; Done",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Successful live verification and list load",
+      "states": [
+        "Empty",
+        "Populated",
+        "Migrated U2F suffix",
+        "Unsupported registration",
+        "Operation status"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.webauthn.unsupported",
+      "kind": "state",
+      "title": "Security Keys: registration unavailable",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1167",
+      "route": "Security-key dialog when registration service is unsupported",
+      "controls": "Warning; existing credential viewing/deletion; Add disabled",
+      "feasibility": "native/controlled-fixture",
+      "prerequisites": "Unsupported registration service with successfully loaded credential list",
+      "states": [
+        "Warning"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/Views/SettingsPage.xaml.cs:1289"
+      ]
+    },
+    {
+      "id": "settings.webauthn.status",
+      "kind": "state",
+      "title": "Security-key operation feedback",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1250",
+      "route": "Add/delete security-key operations",
+      "controls": "Inline success, busy warning, invalid-name/error, or registration-error feedback",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Corresponding operation result",
+      "states": [
+        "Success",
+        "Busy",
+        "Invalid name",
+        "Add error",
+        "Delete error"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/Views/SettingsPage.xaml.cs:1330",
+        "src/App/Views/SettingsPage.xaml.cs:1354",
+        "src/App/Views/SettingsPage.xaml.cs:1392"
+      ]
+    },
+    {
+      "id": "settings.webauthn.delete",
+      "kind": "dialog",
+      "title": "Delete Security Key",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1307",
+      "route": "Security-key credential row > Delete",
+      "controls": "Deletion confirmation; last-key disables-WebAuthn warning; Delete; Cancel",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Populated credential list",
+      "states": [
+        "Normal key",
+        "Last key"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "native.settings.webauthn-create",
+      "kind": "native",
+      "title": "Windows WebAuthn credential creation",
+      "source": "src/App/Services/WindowsWebAuthnTwoFactorRegistrationService.cs:115",
+      "route": "Security Keys > Add Security Key",
+      "controls": "Windows-owned authenticator choice and credential-creation prompt",
+      "feasibility": "live/native",
+      "prerequisites": "Verified management session; live server challenge; supported Windows WebAuthn and authenticator",
+      "states": [
+        "Platform authenticator",
+        "External security key"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "native.settings.hello-setup",
+      "kind": "native",
+      "title": "Windows Hello setup",
+      "source": "src/App/Services/WindowsHelloAuthenticator.cs:24",
+      "route": "Settings > Enable Windows Hello",
+      "controls": "Windows-owned Hello credential creation and verification prompt",
+      "feasibility": "native/persisted-session",
+      "prerequisites": "Native Windows Hello support and matching saved session for protector persistence",
+      "states": [
+        "Create credential",
+        "Verify gesture"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.twofactor.disable-empty",
+      "kind": "dialog",
+      "title": "Disable Two-Factor: none enabled",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1421",
+      "route": "Two-Factor management > Disable with no enabled provider",
+      "controls": "Information text; Close",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Successfully loaded provider list with none enabled",
+      "states": [
+        "Empty"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.twofactor.disable",
+      "kind": "dialog",
+      "title": "Disable Two-Factor",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1458",
+      "route": "Two-Factor management > Disable",
+      "controls": "Enabled-provider selector; current password; Disable; Cancel; inline error",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "At least one enabled provider",
+      "states": [
+        "Provider selection",
+        "Error"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.twofactor.disabled",
+      "kind": "dialog",
+      "title": "Two-Factor disabled",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1500",
+      "route": "Provider disable succeeds",
+      "controls": "Success text; Done",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Successful live disable",
+      "states": [
+        "Success"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.delete.consequences",
+      "kind": "dialog",
+      "title": "Permanently delete account?",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1810",
+      "route": "Settings > Delete Account after successful preflight",
+      "controls": "Irreversible-action Error InfoBar; optional organization-owner warning; Continue; Cancel",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Unlocked matching persisted account; demo cannot enter valid flow (src/Vault/AccountDeletionService.cs:1061)",
+      "states": [
+        "Standard warning",
+        "Organization-owner warning"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.delete.owner-warning",
+      "kind": "state",
+      "title": "Account deletion: organization ownership",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1795",
+      "route": "Deletion consequences with preflight ownership warnings",
+      "controls": "Warning InfoBar; organization names",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Preflight reports owned organizations",
+      "states": [
+        "Owner warning"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.delete.email",
+      "kind": "dialog",
+      "title": "Confirm Account Email",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1854",
+      "route": "Delete consequences > Continue",
+      "controls": "Exact-email confirmation field; Continue; Cancel; mismatch error",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Valid preflight and exact normalized account email",
+      "states": [
+        "Initial",
+        "Mismatch"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "settings.delete.credential-password",
+      "kind": "dialog",
+      "title": "Delete account: final master-password confirmation",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1710",
+      "route": "Email confirmation succeeds for password account",
+      "controls": "Master-password input; Permanently Delete Account; Cancel",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Password account and valid deletion preflight",
+      "states": [
+        "Password entry"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/Views/SettingsPage.xaml.cs:1674"
+      ]
+    },
+    {
+      "id": "settings.delete.credential-otp",
+      "kind": "dialog",
+      "title": "Delete account: final email-OTP confirmation",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1710",
+      "route": "Email confirmation succeeds for passwordless account",
+      "controls": "Sent-to-email message; OTP PasswordBox; Permanently Delete Account; Cancel",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Passwordless account and successful deletion OTP request",
+      "states": [
+        "OTP entry"
+      ],
+      "evidence": "source-inspected",
+      "additionalSources": [
+        "src/App/Views/SettingsPage.xaml.cs:1702"
+      ]
+    },
+    {
+      "id": "settings.delete.message",
+      "kind": "dialog",
+      "title": "Account-deletion outcome or blocked operation",
+      "source": "src/App/Views/SettingsPage.xaml.cs:1942",
+      "route": "Deletion preflight, OTP request, or deletion returns a blocked/error/outcome branch",
+      "controls": "Dynamic title; wrapped explanation; OK",
+      "feasibility": "live/controlled-fixture",
+      "prerequisites": "Corresponding controlled branch; missing credential opens this dialog rather than inline final-confirmation error",
+      "states": [
+        "Unable to delete account (:1530)",
+        "Operation in progress (:1584)",
+        "Unable to check deletion conditions (:1591)",
+        "Organization account cannot be deleted here (:1604)",
+        "Online sign-in required (:1607, :1667)",
+        "Account deletion temporarily unavailable (:1610)",
+        "Unable to send code (:1630, :1644)",
+        "Verification request not sent (:1650)",
+        "Verification-code request uncertain (:1656)",
+        "Missing verification information (:1734)",
+        "Unable to confirm deletion result (:1763)",
+        "Account not deleted (:1901)",
+        "Deletion request not sent (:1913)"
+      ],
+      "evidence": "source-inspected"
+    },
+    {
+      "id": "control.passkey-approval",
+      "kind": "control",
+      "title": "Passkey approval identity and account picker",
+      "source": "src/App/Controls/PasskeyApprovalView.xaml:7",
+      "route": "Passkey use-approval dialog",
+      "controls": "RP ID; frame and top origins; Unicode/ASCII identity lines; cross-origin warning; explicit credential picker; account names",
+      "feasibility": "browser-integration/controlled-fixture",
+      "prerequisites": "Validated browser request and candidate credentials",
+      "states": [
+        "One credential",
+        "Multiple credentials",
+        "Cross-origin iframe"
+      ],
+      "evidence": "source-inspected"
+    }
+  ]
+}

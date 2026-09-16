@@ -1,10 +1,13 @@
 namespace App.ViewModels.Models;
 
-// 设备列表项。Glyph 为 Segoe Fluent 图标(桌面/手机/浏览器)。
+// Registration metadata from the server; it is not a last-activity timestamp.
 public sealed record DeviceItem(
     string Id,
     string Name,
     string Glyph,
     string LastActive,
     bool IsCurrent,
-    bool IsTrusted = false);
+    bool IsTrusted = false)
+{
+    public string RegisteredLabel => LastActive;
+}

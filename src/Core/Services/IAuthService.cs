@@ -115,6 +115,7 @@ public enum AuthFailureKind
     SafeMessage,
     OutcomeUncertain,
     AccountDeletionRecoveryRequired,
+    RateLimited,
 }
 
 public enum LoginWithDeviceUiStatus

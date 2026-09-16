@@ -1,0 +1,1971 @@
+{
+  "generatedAt": "2026-09-16T03:59:18.458Z",
+  "scope": "complete-frame-render",
+  "proposalOnly": true,
+  "frames": 196,
+  "scenarios": 98,
+  "inventory": 178,
+  "errors": [],
+  "results": [
+    {
+      "id": "login-account",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 3,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-password",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "register-account",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 7,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-two-step",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 2,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-recovery",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-locked",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-device-approval",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-error",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-overview",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-no-selection",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-login",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-card",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-identity",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-note",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-ssh",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-bank",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-license",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-passport",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-login",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 22,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-card",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 15,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-identity",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 27,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-note",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 10,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-ssh",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 12,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-bank",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 19,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-license",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 20,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-passport",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 22,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-batch",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 18,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-empty",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-no-results",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-loading",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-sync-error",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-reprompt",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 5,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-permanent-delete",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-overview",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-edit-text",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 12,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-edit-file",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 10,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-received",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "generator-password",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 9,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "generator-passphrase",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "generator-username",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 5,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "reports-overview",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "reports-results",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "import-export-overview",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 2,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "export-confirm",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 3,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "devices-overview",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "device-approve",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "emergency-overview",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "emergency-invite",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 3,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-security",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-preferences",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 6,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-account",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-change-password",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-kdf",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 2,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-two-factor",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 5,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-totp-setup",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 5,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-security-keys",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 5,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-delete-account",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "system-boundaries",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-github",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-google",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-amazon",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-shared",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-reddit",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-router",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-new-login",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 17,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-favorites",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-folder-work",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-folder-personal",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-folder-finance",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-organization",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-archive",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-trash",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-pending-save",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 17,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-new-folder",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 5,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "register-email-verification",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "register-outcome-uncertain",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-methods",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-unlock-pin",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-managed-policy",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 3,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-profile",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-pin-setup",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 6,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-disable-twofactor",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 6,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-totp-complete",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-remove-security-key",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 5,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-delete-email",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-delete-credential",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-existing-text",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 12,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-existing-file",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 10,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-delete-confirm",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-received-empty",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 2,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-received-file",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "generator-history",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 9,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "reports-weak",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "reports-unsafe",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "reports-exposure-failed",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "import-preview",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 2,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "emergency-recovered",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "emergency-takeover",
+      "theme": "light",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 2,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-account",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 3,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-password",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "register-account",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 7,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-two-step",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 2,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-recovery",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-locked",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-device-approval",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-error",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-overview",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-no-selection",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-login",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-card",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-identity",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-note",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-ssh",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-bank",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-license",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-passport",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-login",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 22,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-card",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 15,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-identity",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 27,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-note",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 10,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-ssh",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 12,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-bank",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 19,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-license",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 20,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-editor-passport",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 22,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-batch",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 18,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-empty",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-no-results",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-loading",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-sync-error",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-reprompt",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 5,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-permanent-delete",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-overview",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-edit-text",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 12,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-edit-file",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 10,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-received",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "generator-password",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 9,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "generator-passphrase",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "generator-username",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 5,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "reports-overview",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "reports-results",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "import-export-overview",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 2,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "export-confirm",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 3,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "devices-overview",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "device-approve",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "emergency-overview",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "emergency-invite",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 3,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-security",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-preferences",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 6,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-account",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-change-password",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-kdf",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 2,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-two-factor",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 5,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-totp-setup",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 5,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-security-keys",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 5,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-delete-account",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "system-boundaries",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-github",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-google",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-amazon",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-shared",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-reddit",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-detail-router",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-new-login",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 17,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-favorites",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-folder-work",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-folder-personal",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-folder-finance",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-organization",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-archive",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-trash",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-pending-save",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 17,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "vault-new-folder",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 5,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "register-email-verification",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "register-outcome-uncertain",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-methods",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "login-unlock-pin",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-managed-policy",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 3,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-profile",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-pin-setup",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 6,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-disable-twofactor",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 6,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-totp-complete",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 4,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-remove-security-key",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 5,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-delete-email",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "settings-delete-credential",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 1,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-existing-text",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 12,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-existing-file",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 10,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-delete-confirm",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-received-empty",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 2,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "send-received-file",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "generator-history",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 9,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "reports-weak",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "reports-unsafe",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "reports-exposure-failed",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "import-preview",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 2,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "emergency-recovered",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 0,
+      "invalidTargets": [],
+      "errors": []
+    },
+    {
+      "id": "emergency-takeover",
+      "theme": "dark",
+      "width": 1280,
+      "height": 900,
+      "clippedHorizontally": [],
+      "inputs": 2,
+      "invalidTargets": [],
+      "errors": []
+    }
+  ]
+}

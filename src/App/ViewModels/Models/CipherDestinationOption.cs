@@ -2,7 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace App.ViewModels.Models;
 
-public sealed record CipherDestinationOption(
+public sealed partial record CipherDestinationOption(
     string DisplayName,
     string? OrganizationId,
     string? CollectionId)

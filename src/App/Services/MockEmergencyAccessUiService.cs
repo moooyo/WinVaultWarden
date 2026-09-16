@@ -10,7 +10,7 @@ namespace App.Services;
 public sealed class MockEmergencyAccessUiService : IEmergencyAccessUiService
 {
     private readonly IReadOnlyList<EmergencyContact> _trusted =
-    [
+    (EmergencyContact[])[
         new EmergencyContact(
             Id: "ec-1",
             GranteeId: "user-alice",
@@ -30,7 +30,7 @@ public sealed class MockEmergencyAccessUiService : IEmergencyAccessUiService
     ];
 
     private readonly IReadOnlyList<GrantedAccess> _granted =
-    [
+    (GrantedAccess[])[
         new GrantedAccess(
             Id: "ga-1",
             GrantorId: "user-carol",

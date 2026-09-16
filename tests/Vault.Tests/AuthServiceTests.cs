@@ -26,6 +26,70 @@ public class AuthServiceTests
 
     private readonly CryptoService _crypto = new();
 
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest, AuthFailureKind.InvalidCredentials)]
+    [InlineData(HttpStatusCode.Unauthorized, AuthFailureKind.InvalidCredentials)]
+    [InlineData(HttpStatusCode.TooManyRequests, AuthFailureKind.RateLimited)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, AuthFailureKind.Unspecified)]
+    public async Task LoginAsync_TokenFailurePreservesStatusWithoutEstablishingSession(
+        HttpStatusCode status,
+        AuthFailureKind expectedKind)
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, PreloginJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(status,
+            """{"error":"invalid_grant","error_description":"sensitive server diagnostic"}"""));
+        var tokenStore = new MemoryTokenStore();
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, tokenStore);
+
+        var result = await service.LoginAsync(
+            "https://vault.example", Email, Password, TestContext.Current.CancellationToken);
+
+        var failure = Assert.IsType<AuthResult.Failure>(result);
+        Assert.Equal(expectedKind, failure.Kind);
+        Assert.DoesNotContain("sensitive server diagnostic", failure.Message, StringComparison.Ordinal);
+        Assert.Null(session.UserKey);
+        Assert.Null(session.AccessToken);
+        Assert.False(tokenStore.TryLoad(out _));
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task SubmitTwoFactorAsync_RateLimitedPreservesChallengeForExplicitRetry()
+    {
+        var fixture = CreateLoginFixture();
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, PreloginJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.BadRequest,
+            """{"error":"invalid_grant","error_description":"Two factor required.","TwoFactorProviders":["0"]}"""));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.TooManyRequests,
+            """{"error":"invalid_grant","error_description":"sensitive server diagnostic"}"""));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, TokenJson(fixture.ProtectedUserKey)));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, SyncJson()));
+        handler.Enqueue(_ => FakeHttpMessageHandler.Json(HttpStatusCode.OK, DevicesJson()));
+        var tokenStore = new MemoryTokenStore();
+        var session = new VaultSession();
+        var service = CreateAuthService(handler, session, tokenStore);
+
+        Assert.IsType<AuthResult.TwoFactorRequired>(await service.LoginAsync(
+            "https://vault.example", Email, Password, TestContext.Current.CancellationToken));
+        var limited = await service.SubmitTwoFactorAsync(
+            "123456", provider: 0, TestContext.Current.CancellationToken);
+
+        Assert.Equal(AuthFailureKind.RateLimited, Assert.IsType<AuthResult.Failure>(limited).Kind);
+        Assert.Equal(3, handler.Requests.Count);
+        Assert.False(tokenStore.TryLoad(out _));
+        Assert.Null(session.UserKey);
+
+        var retried = await service.SubmitTwoFactorAsync(
+            "654321", provider: 0, TestContext.Current.CancellationToken);
+
+        Assert.IsType<AuthResult.Success>(retried);
+        Assert.Equal(6, handler.Requests.Count);
+        Assert.Equal("654321", ParseForm(handler.Bodies[3])["twoFactorToken"]);
+    }
+
     [Fact]
     public async Task LoginAsync_Pbkdf2Success_SavesSessionAndBootstrapsVault()
     {
@@ -294,7 +358,7 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public async Task LoginAsync_UnknownServerError_DoesNotReturnServerMessage()
+    public async Task LoginAsync_RateLimited_DoesNotReturnServerMessage()
     {
         const string serverDetail = "SENSITIVE-SERVER-DETAIL";
         var handler = new FakeHttpMessageHandler();
@@ -314,7 +378,7 @@ public class AuthServiceTests
             TestContext.Current.CancellationToken);
 
         var failure = Assert.IsType<AuthResult.Failure>(result);
-        Assert.Equal(AuthFailureKind.Unspecified, failure.Kind);
+        Assert.Equal(AuthFailureKind.RateLimited, failure.Kind);
         Assert.DoesNotContain(serverDetail, failure.Message);
     }
 

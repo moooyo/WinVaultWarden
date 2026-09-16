@@ -20,6 +20,7 @@ public class SendPageStateXamlTests
         Assert.Contains("ViewModel.Error", infoBar.Attribute("Message")?.Value);
         Assert.Contains("ViewModel.HasError", infoBar.Attribute("IsOpen")?.Value);
         Assert.DoesNotContain("ViewModel.ShowError", infoBar.Attribute("IsOpen")?.Value);
+        Assert.Contains("ViewModel.HasError", infoBar.Attribute("Visibility")?.Value);
     }
 
     [Fact]
@@ -33,6 +34,7 @@ public class SendPageStateXamlTests
         Assert.Equal("Warning", infoBar.Attribute("Severity")?.Value);
         Assert.Contains("ViewModel.Notice", infoBar.Attribute("Message")?.Value);
         Assert.Contains("ViewModel.ShowNotice", infoBar.Attribute("IsOpen")?.Value);
+        Assert.Contains("ViewModel.ShowNotice", infoBar.Attribute("Visibility")?.Value);
     }
 
     [Fact]
@@ -86,32 +88,20 @@ public class SendPageStateXamlTests
     }
 
     [Fact]
-    public void RowActions_UsePointerAndFocusWithinStateTogether()
+    public void RowActions_KeepCopyVisibleAndReachableWithoutHover()
     {
         var document = LoadXaml();
-        var row = document
-            .Descendants(Xaml + "Grid")
-            .Single(item => item.Attribute("PointerEntered")?.Value == "OnRowPointerEntered");
-        var actions = row
-            .Descendants(Xaml + "StackPanel")
+        var actions = document.Descendants(Xaml + "StackPanel")
             .Single(item => item.Attribute(X + "Name")?.Value == "RowActions");
+        var copy = actions.Descendants(Xaml + "Button")
+            .Single(item => item.Attribute("Click")?.Value == "OnCopyLinkClick");
 
-        Assert.Equal("OnRowPointerExited", row.Attribute("PointerExited")?.Value);
-        Assert.Equal("OnRowGotFocus", row.Attribute("GotFocus")?.Value);
-        Assert.Equal("OnRowLostFocus", row.Attribute("LostFocus")?.Value);
-        Assert.Equal("OnRowUnloaded", row.Attribute("Unloaded")?.Value);
-        Assert.Equal("0", actions.Attribute("Opacity")?.Value);
-        Assert.Equal("False", actions.Attribute("IsHitTestVisible")?.Value);
-
-        var source = LoadCode();
-        Assert.Contains("ConditionalWeakTable<Grid, RowActionState>", source, StringComparison.Ordinal);
-        Assert.Contains("isPointerOver || isFocusWithin", source, StringComparison.Ordinal);
-        Assert.Contains("state.IsPointerOver", source, StringComparison.Ordinal);
-        Assert.Contains("state.IsFocusWithin", source, StringComparison.Ordinal);
-        Assert.Contains("FocusManager.GetFocusedElement", source, StringComparison.Ordinal);
-        Assert.Contains("panel.IsHitTestVisible = show", source, StringComparison.Ordinal);
+        Assert.Equal("1", actions.Attribute("Opacity")?.Value);
+        Assert.Equal("True", actions.Attribute("IsHitTestVisible")?.Value);
+        Assert.Contains(copy.Descendants(Xaml + "TextBlock"), item => item.Attribute("Text")?.Value == "复制链接");
+        Assert.Equal("36", copy.Attribute("MinHeight")?.Value);
+        Assert.DoesNotContain(document.Descendants(Xaml + "Grid"), item => item.Attribute("PointerExited") is not null);
     }
-
     [Fact]
     public void ReceivedText_IsSelectableInsideConstrainedScroller()
     {

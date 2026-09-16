@@ -1,0 +1,150 @@
+[
+  {
+    "sceneId": "send-overview",
+    "reviewed": true,
+    "findings": [
+      { "severity": "high", "issue": "Every overflow action opened the new text-Send dialog, including the file row. The action lost both operation type and row identity.", "fix": "Use actual row menus, dedicated existing text/file editor scenes, and identity-specific preview messages for other rows. Deletion has its own named irreversible confirmation." },
+      { "severity": "medium", "issue": "The Access column omitted the available access counts and the deletion column duplicated an ambiguous relative duration.", "fix": "Show access counts beneath access scope, retain explicit Active/Disabled text, and show an absolute deletion date with its relative time." }
+    ],
+    "verdict": "Revised. Three rows, two text Sends and one file Send, remain internally consistent; filters now operate on those exact rows. Light and dark source images were inspected."
+  },
+  {
+    "sceneId": "send-edit-text",
+    "reviewed": true,
+    "findings": [
+      { "severity": "medium", "issue": "Expanded access restrictions pushed the Hide my email control underneath the footer at 1280 by 900; private notes, disable state, and custom date inputs were omitted.", "fix": "Keep the first-step content compact, collapse Access and privacy initially, retain all source controls inside the scroll region, and expose custom dates conditionally." },
+      { "severity": "medium", "issue": "Delete after 7 days and Expires Never can be read as contradictory promises.", "fix": "Label the latter Stop access after, use When deleted for no earlier expiration, and explain deletion versus earlier access expiry." }
+    ],
+    "verdict": "Revised. The initial creation form has a visible footer and an explicit Create Send action. No save or sharing result is fabricated."
+  },
+  {
+    "sceneId": "send-edit-file",
+    "reviewed": true,
+    "findings": [
+      { "severity": "medium", "issue": "A large dashed file tile consumed most of the dialog height and made later restrictions difficult to discover.", "fix": "Use a compact selected-file row with name, size, and Choose file or Replace file, leaving space for lifetime and the privacy disclosure." },
+      { "severity": "high", "issue": "The only file editor was a New file Send form, so existing-file operations were indistinguishable from creation.", "fix": "Add a dedicated existing-file scene with a fixed type and Save changes. File replacement remains an explicit service-dependent action." }
+    ],
+    "verdict": "Revised. File identity and operation type are retained. Custom expiry, disable state, optional password, private notes, and email privacy remain reachable."
+  },
+  {
+    "sceneId": "send-received",
+    "reviewed": true,
+    "findings": [
+      { "severity": "high", "issue": "The input contained an incomplete Send URL while decrypted content was already visible, merging the initial and successful states.", "fix": "Separate empty input, text result, and file result scenes. Gate Open on a complete HTTP(S) share URL with both access ID and key." },
+      { "severity": "medium", "issue": "Expires in 7 days was shown although the app's SendAccessResult projection does not expose an expiry value.", "fix": "Remove the unbacked expiry badge. Preserve the actual source host, read-only content, and sender-controlled access explanation." }
+    ],
+    "verdict": "Revised. Result content is identified as a received Send and never presented as a saved vault item. File saving remains a Windows boundary."
+  },
+  {
+    "sceneId": "generator-password",
+    "reviewed": true,
+    "findings": [
+      { "severity": "medium", "issue": "The length control was capped at 64 instead of the source-supported 128, and changing options did not update the value.", "fix": "Support the 5 to 128 range with a slider plus number input, validate character/minimum constraints, and update the mode-appropriate synthetic value." },
+      { "severity": "medium", "issue": "Stored on this device implied persistent secret history, while GeneratorViewModel keeps only the latest 20 explicitly copied values in memory and clears them on lock or sign-out.", "fix": "Use Copied this session, explain clearing on lock, and add a history scene with explicit clear confirmation." },
+      { "severity": "low", "issue": "Every advanced option was visually equal to the frequent length and character controls.", "fix": "Place minimum counts and ambiguous-character controls in an Advanced options disclosure, keeping the value and frequent actions prominent." }
+    ],
+    "verdict": "Revised. The generator remains the primary focus, cleartext is intentional in this context, and preview values are not falsely scored as production credentials."
+  },
+  {
+    "sceneId": "generator-passphrase",
+    "reviewed": true,
+    "findings": [
+      { "severity": "high", "issue": "The generic Regenerate handler replaced the passphrase with a password string, ignoring the active mode.", "fix": "Generate synthetic word sequences according to count, separator, capitalization, and number options. Preserve a clear words count." },
+      { "severity": "medium", "issue": "The history storage claim was inaccurate and its visible action had no distinct review state.", "fix": "Use the shared in-memory copied-session history wording and dedicated history scene." }
+    ],
+    "verdict": "Revised. Four selected words correspond to four visible words. The 3 to 20 word source range is retained, and the repeated generator structure remains visually consistent."
+  },
+  {
+    "sceneId": "generator-username",
+    "reviewed": true,
+    "findings": [
+      { "severity": "high", "issue": "Regenerate produced password syntax in Username mode, and choosing an email method did not expose its required input.", "fix": "Keep username-specific generation and conditionally show the email address or configured catch-all domain. Disable copying while the necessary input is invalid." },
+      { "severity": "low", "issue": "The password-reuse advice and Unique by default heading did not explain username availability or email ownership.", "fix": "Use account-name guidance, explain that the website must confirm availability, and require an address or domain controlled by the user for email formats." }
+    ],
+    "verdict": "Revised. Username options now match all three supported methods without inventing a relay provider or implying availability has been checked."
+  },
+  {
+    "sceneId": "reports-overview",
+    "reviewed": true,
+    "findings": [
+      { "severity": "high", "issue": "All three Review actions navigated to reused-password results, regardless of the selected category.", "fix": "Provide distinct reused, weak, and HTTP result scenes with consistent category tabs." },
+      { "severity": "medium", "issue": "The header presented five improvements without explaining that one reused group and per-item findings are summed; exposure had no explicit Not checked state.", "fix": "Show the component counts and overlap explanation, label the local check separately, and explicitly display Not checked or Check failed for exposure." },
+      { "severity": "low", "issue": "The explanation of what is sent to Have I Been Pwned was too small to read comfortably.", "fix": "Use the standard 12-pixel caption size and keep it next to Run check." }
+    ],
+    "verdict": "Revised. Local findings never imply an exposure check succeeded. A failed-check scene preserves the local results and states that exposure is unknown."
+  },
+  {
+    "sceneId": "reports-results",
+    "reviewed": true,
+    "findings": [
+      { "severity": "high", "issue": "Amazon and Reddit both opened the Contoso Cloud detail scene, losing the affected item identity.", "fix": "Present an identity-preserving inline review panel for the exact synthetic item instead of navigating to an unrelated credential." },
+      { "severity": "medium", "issue": "Tabs did not provide distinct category navigation, and exposure status was omitted.", "fix": "Use navigable result-category tabs and the shared explicit exposure state panel." }
+    ],
+    "verdict": "Revised. The reused group still contains exactly Amazon and Reddit, with no displayed password. Action guidance preserves the safe website-first change sequence."
+  },
+  {
+    "sceneId": "import-export-overview",
+    "reviewed": true,
+    "findings": [
+      { "severity": "high", "issue": "Import items was enabled before a file had been chosen and a valid preview existed, contradicting ImportExportViewModel.CanImport.", "fix": "Disable the initial action, add a parsed-preview scene, and invalidate that preview when the format changes." },
+      { "severity": "high", "issue": "13 personal export items included the organization and trash examples, while VaultExportService explicitly excludes them.", "fix": "Use the final shared fixture count of 14 personal items, including the archived item, and explicitly exclude organization items, trash, and attachments." },
+      { "severity": "medium", "issue": "CSV appeared interchangeable with JSON despite BitwardenCsvCodec rejecting unsupported types in this fixture.", "fix": "Explain the CSV limitation and disable continuing with CSV for this mixed-type vault. JSON remains available." }
+    ],
+    "verdict": "Revised. The initial page has no active import before preview and no implied duplicate merge. The plaintext warning is adjacent to export controls."
+  },
+  {
+    "sceneId": "export-confirm",
+    "reviewed": true,
+    "findings": [
+      { "severity": "high", "issue": "The confirmation repeated the incorrect 13 personal items and omitted organization and trash exclusions.", "fix": "Use the same shared 14-item scope as the overview and list all meaningful exclusions." },
+      { "severity": "medium", "issue": "Choose destination was enabled with no master password entered and did not state the verification step.", "fix": "Use Verify and choose destination and disable it until an input is present. The preview explicitly does not claim verification or export succeeded." }
+    ],
+    "verdict": "Revised. The cleartext warning, scope, verification input, and safe Cancel remain grouped in one dialog before the Windows save boundary."
+  },
+  {
+    "sceneId": "devices-overview",
+    "reviewed": true,
+    "findings": [
+      { "severity": "high", "issue": "DeviceUiService maps DeviceInfo.CreationDate, but the proposal called it Last active and invented Active now.", "fix": "Label the dates Registered and explain they are not activity records. Preserve the separate This device status." },
+      { "severity": "high", "issue": "The displayed comparison phrase had four words, while FingerprintService defines PhraseWords = 5 and joins with hyphens.", "fix": "Use the same five-word hyphenated phrase in both the request list and approval dialog, with matching guidance for all five words." },
+      { "severity": "medium", "issue": "The request omitted the available IP address, reducing the context for approval.", "fix": "Show the synthetic documentation-range IP beside the requesting platform and request time." }
+    ],
+    "verdict": "Revised. Registration information is no longer represented as telemetry. No unsupported remote-revocation capability is introduced."
+  },
+  {
+    "sceneId": "device-approve",
+    "reviewed": true,
+    "findings": [
+      { "severity": "high", "issue": "The four-word comparison and vague Confirm and approve action did not describe the vault access being granted.", "fix": "Show the five-word fingerprint, device IP and time, explain access to the unlocked vault, and require an explicit match acknowledgement before enabling approval." }
+    ],
+    "verdict": "Revised. Cancel remains the safe default, and the high-impact action is disabled until the comparison is acknowledged. The review performs no real approval."
+  },
+  {
+    "sceneId": "emergency-overview",
+    "reviewed": true,
+    "findings": [
+      { "severity": "medium", "issue": "Accounts that trust me did not state the access type, although View and Takeover grant substantially different abilities.", "fix": "Show approved View and Takeover rows with their permission descriptions and different destinations." },
+      { "severity": "medium", "issue": "The relationship table was overly wide and repeated separate Access and Status columns with very small email text.", "fix": "Use compact identity-first rows, readable email metadata, then status and the status-valid action." },
+      { "severity": "high", "issue": "Mapped recovery and takeover flows had no dedicated compositions, leaving the account-switch and password-reset consequences unauditable.", "fix": "Add a named read-only recovered-vault dialog and a separate named takeover confirmation with password reset, two-step removal, and organization membership consequences." }
+    ],
+    "verdict": "Revised. Invited, accepted, and confirmed contacts retain their valid Resend, Confirm, and Manage actions; View and Takeover are explicit."
+  },
+  {
+    "sceneId": "emergency-invite",
+    "reviewed": true,
+    "findings": [
+      { "severity": "high", "issue": "Access begins only after they accept and you confirm implied that confirmation immediately grants vault access, omitting the later request and waiting/approval step.", "fix": "Explain invitation acceptance, contact confirmation, then per-request approval or completion of the waiting period." },
+      { "severity": "medium", "issue": "The waiting-period list offered only a few values and omitted the source-supported 1 to 90 day range.", "fix": "Use a bounded numeric day control, describe when the clock starts, and guard invalid email or day values." }
+    ],
+    "verdict": "Revised. View and Takeover help follows the selected type; the default remains seven days and no invitation is sent by the artifact."
+  },
+  {
+    "sceneId": "system-boundaries",
+    "reviewed": true,
+    "findings": [
+      { "severity": "high", "issue": "A generic Requesting website card stood in for the app-owned passkey approval flow but omitted RP ID, frame/top origin, and explicit credential selection required by PasskeyApprovalPresentation.", "fix": "Use an actual app-side passkey request composition with website, passkey domain, request details, and a credential picker. Disable Use passkey until one account is selected." },
+      { "severity": "medium", "issue": "A large Windows or provider UI placeholder and implementation prose dominated the application screen.", "fix": "Keep the product task as the main surface and limit external-boundary explanation to a secondary review annotation. Do not fabricate provider-owned screens." }
+    ],
+    "verdict": "Revised. The same-origin example uses matching Unicode and ASCII names, and external verification remains a documented boundary rather than an invented provider page."
+  }
+]

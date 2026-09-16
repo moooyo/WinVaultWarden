@@ -21,6 +21,8 @@ public class RealDeviceUiServiceTests
         Assert.True(devices[0].IsTrusted);
         Assert.False(devices[1].IsTrusted);
         Assert.NotEmpty(devices[0].Glyph);
+        Assert.StartsWith("登记于 ", devices[0].RegisteredLabel);
+        Assert.DoesNotContain("最近", devices[0].RegisteredLabel);
         Assert.Equal("me@example.com", account.Email);
         Assert.Equal("https://vault.example", account.ServerUrl);
         Assert.Equal("M", account.Initial);

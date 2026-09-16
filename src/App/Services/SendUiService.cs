@@ -764,9 +764,19 @@ public sealed class SendUiService : ISendUiService
             send.Id,
             send.Name,
             MapType(send.Type),
-            $"{deletion} 截止",
+            deletion,
             send.ShareUrl,
-            IsReadOnly: isReadOnly);
+            IsReadOnly: isReadOnly)
+        {
+            DeletionDateTime = send.DeletionDate,
+            ExpirationDate = send.ExpirationDate,
+            Disabled = send.Disabled,
+            AccessCount = send.AccessCount,
+            MaxAccessCount = send.MaxAccessCount,
+            FileSize = send.File?.Size,
+            HasPassword = send.HasPassword,
+            AuthType = send.AuthType,
+        };
     }
 
     private SendDraftModel ToDraftModel(SendEditorDraft draft, string? id) => new()

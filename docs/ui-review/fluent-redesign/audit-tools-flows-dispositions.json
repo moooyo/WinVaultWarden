@@ -1,0 +1,243 @@
+{
+  "reviewScope": "Final integrated proposal PNGs; 28 light images and 8 representative dark images personally inspected.",
+  "productionRuntimeTested": false,
+  "renderEvidence": {
+    "file": "render-validation.json",
+    "relevantFrames": 56,
+    "errors": 0,
+    "invalidTargets": 0,
+    "horizontalClipping": 0
+  },
+  "interactionEvidence": {
+    "file": "review-validation.json",
+    "method": "Read the final validation output for root-path Send links, type filtering, content/date gates, export credentials, device acknowledgement, takeover inputs, import format invalidation, and generator options.",
+    "result": "Passed; no external requests were made by these preview checks."
+  },
+  "scenes": [
+    {
+      "sceneId": "send-overview",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "Three rows and their access counts align. Text/file counts match the rows, with visible per-row menus."
+    },
+    {
+      "sceneId": "send-edit-text",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": true,
+      "verdict": "accepted",
+      "note": "Creation title and Create Send are distinct from editing. The footer is fully visible and privacy options are initially collapsed."
+    },
+    {
+      "sceneId": "send-edit-file",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "Compact selected-file row leaves lifetime controls and the footer fully visible. The action remains Create Send."
+    },
+    {
+      "sceneId": "send-received",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "Only the successful text result appears. Source host, shared read-only content, Copy text, and Open another link are clear."
+    },
+    {
+      "sceneId": "generator-password",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": true,
+      "verdict": "accepted",
+      "note": "The result and frequent actions dominate. Length has both slider and number entry; advanced controls are neatly collapsed."
+    },
+    {
+      "sceneId": "generator-passphrase",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "Four visible words match the selected count. Separator, capitalization, and number options are readable and mode-specific."
+    },
+    {
+      "sceneId": "generator-username",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "Random-word output matches its four-digit option. Username-specific availability guidance replaces password-reuse advice."
+    },
+    {
+      "sceneId": "reports-overview",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "Five findings are decomposed into the correct categories, with overlap explained. Exposure explicitly remains Not checked."
+    },
+    {
+      "sceneId": "reports-results",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "The reused group contains Amazon and Reddit only, with no password revealed and exact account identity retained."
+    },
+    {
+      "sceneId": "import-export-overview",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": true,
+      "verdict": "accepted",
+      "note": "No file selected is explicit and Import items is disabled. Export correctly names 14 personal items and its exclusions."
+    },
+    {
+      "sceneId": "export-confirm",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "The 14-item summary is consistent with the overview. Verification is disabled with empty input and Cancel is the safe default."
+    },
+    {
+      "sceneId": "devices-overview",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "All five fingerprint words fit on one line. Device dates are correctly labeled Registered rather than Last active."
+    },
+    {
+      "sceneId": "device-approve",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": true,
+      "verdict": "accepted",
+      "note": "Five-word fingerprint and request IP are visible. Approval starts disabled until the user acknowledges the exact phrase match."
+    },
+    {
+      "sceneId": "emergency-overview",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "Contact states use valid actions. Approved View and Takeover accounts are distinguishable and all five relationship rows fit."
+    },
+    {
+      "sceneId": "emergency-invite",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "Email, access type, 1 to 90 day waiting period, and the later request/approval boundary are all visible above the footer."
+    },
+    {
+      "sceneId": "system-boundaries",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": true,
+      "verdict": "accepted",
+      "note": "Website origin and RP ID are prominent. Account selection is explicit and Use passkey starts disabled. External UI is confined to the side annotation.",
+      "minorPolish": "Use passkey and Cancel have a small inline baseline offset. An explicit flex action row can align them in implementation."
+    },
+    {
+      "sceneId": "send-existing-text",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "The fixed Text Send type and Save changes distinguish the existing item from creation. No fields overlap the footer."
+    },
+    {
+      "sceneId": "send-existing-file",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "Current filename and Replace file are explicit, with Save changes and a fixed type. The dialog is compact and readable."
+    },
+    {
+      "sceneId": "send-delete-confirm",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "Named Send and permanent link invalidation precede the red Delete Send action; Cancel has default focus."
+    },
+    {
+      "sceneId": "send-received-empty",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": true,
+      "verdict": "accepted",
+      "note": "A placeholder is separate from entered data. Open Send is visibly disabled and no received content is pre-rendered."
+    },
+    {
+      "sceneId": "send-received-file",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "The file result has its own visible Save file action and does not invent a file preview or completed download."
+    },
+    {
+      "sceneId": "generator-history",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "Two synthetic copied values and times are readable, with per-row Copy and explicit session-lifetime guidance."
+    },
+    {
+      "sceneId": "reports-weak",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "Three named weak logins match the category count. The exposure action remains visible; the secondary final note is available by scrolling."
+    },
+    {
+      "sceneId": "reports-unsafe",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "The one Router HTTP finding matches the category count. Guidance requires verifying HTTPS support before changing the saved URL."
+    },
+    {
+      "sceneId": "reports-exposure-failed",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": true,
+      "verdict": "accepted",
+      "note": "Failure is shown as unknown exposure status, not zero findings. Local results remain available and Retry check is visible."
+    },
+    {
+      "sceneId": "import-preview",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "The parsed fixture shows 3 items and 1 folder before Import 3 items. Duplicate behavior is explained and export scope remains consistent."
+    },
+    {
+      "sceneId": "emergency-recovered",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": false,
+      "verdict": "accepted",
+      "note": "The named grantor and read-only access are explicit. Two recovered items and a single Done action are visible."
+    },
+    {
+      "sceneId": "emergency-takeover",
+      "reviewed": true,
+      "lightReviewed": true,
+      "darkReviewed": true,
+      "verdict": "accepted",
+      "note": "The named grantor and password, two-step, and organization consequences are visible. Empty confirmation inputs keep takeover disabled."
+    }
+  ]
+}

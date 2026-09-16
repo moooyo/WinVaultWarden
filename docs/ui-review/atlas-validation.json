@@ -1,0 +1,35 @@
+{
+  "generatedAt": "2026-09-15T12:42:39.886Z",
+  "counts": {
+    "records": 231,
+    "captures": 53,
+    "schematics": 178,
+    "coverageRows": 178
+  },
+  "filteredCaptures": 53,
+  "brokenImages": [],
+  "missingLocalLinks": [],
+  "javascriptErrors": [],
+  "networkRequests": [],
+  "mobile": {
+    "scrollWidth": 390,
+    "viewport": 390
+  },
+  "imageFormats": [
+    "png"
+  ],
+  "overview": {
+    "format": "png",
+    "width": 3000,
+    "height": 2398
+  },
+  "editorEvidence": {
+    "inventoryIds": [
+      "page.vault"
+    ],
+    "relatedInventoryIds": [
+      "vault.editor.login"
+    ],
+    "scope": "Observed failure after Edit: the right pane is blank. This capture does not show or verify the login editor."
+  }
+}

@@ -9,8 +9,8 @@ public sealed class MainWindowSizingSourceTests
     {
         var source = ReadMainWindowSource();
 
-        Assert.Contains("private const double DefaultVaultWindowWidthDip = 1180;", source);
-        Assert.Contains("private const double DefaultVaultWindowHeightDip = 760;", source);
+        Assert.Contains("private const double DefaultVaultWindowWidthDip = 1280;", source);
+        Assert.Contains("private const double DefaultVaultWindowHeightDip = 900;", source);
         Assert.Contains("private const double VaultWindowWorkAreaMarginDip = 24;", source);
         Assert.Contains("AppWindow.Resize(ClampVaultWindowSizeToWorkArea(size));", source);
         Assert.Contains("AppWindow.Resize(ClampVaultWindowSizeToWorkArea(requestedSize));", source);

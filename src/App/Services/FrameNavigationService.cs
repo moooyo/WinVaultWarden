@@ -1,5 +1,8 @@
 using App.Views;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.Extensions.DependencyInjection;
+using Core.Services;
+using Core.Session;
 
 namespace App.Services;
 
@@ -22,13 +25,37 @@ public sealed class FrameNavigationService : INavigationService
     }
 
     // ── 内容区导航(ContentFrame)────────────────────────────────────────────
-    public void GoToVault(string? tag = null) => _contentFrame?.Navigate(typeof(VaultPage), tag);
-    public void GoToSend(string? tag = null) => _contentFrame?.Navigate(typeof(SendPage), tag);
-    public void GoToSettings() => _contentFrame?.Navigate(typeof(SettingsPage));
-    public void GoToDevices() => _contentFrame?.Navigate(typeof(DevicesPage));
-    public void GoToSecurityReport() => _contentFrame?.Navigate(typeof(SecurityReportPage));
-    public void GoToImportExport() => _contentFrame?.Navigate(typeof(ImportExportPage));
-    public void GoToEmergencyAccess() => _contentFrame?.Navigate(typeof(EmergencyAccessPage));
+    public void GoToVault(string? tag = null) => NavigateContent(typeof(VaultPage), tag);
+    public void GoToSend(string? tag = null) => NavigateContent(typeof(SendPage), tag);
+    public void GoToGenerator() => NavigateContent(typeof(GeneratorPage));
+    public void GoToSettings() => NavigateContent(typeof(SettingsPage));
+    public void GoToDevices() => NavigateContent(typeof(DevicesPage));
+    public void GoToSecurityReport() => NavigateContent(typeof(SecurityReportPage));
+    public void GoToImportExport() => NavigateContent(typeof(ImportExportPage));
+    public void GoToEmergencyAccess() => NavigateContent(typeof(EmergencyAccessPage));
+
+    private void NavigateContent(Type pageType, string? tag = null)
+    {
+        // A delayed callback must never restore an unlocked page after a lifecycle transition.
+        if (_contentFrame is null
+            || global::App.App.Services.GetRequiredService<IVaultService>().Snapshot.State != VaultState.Unlocked
+            || global::App.App.Services.GetRequiredService<IAppLifecycleCoordinator>().IsTransitioning)
+            return;
+        if (_contentFrame.Content is VaultPage vaultPage)
+        {
+            vaultPage.RememberWorkspaceContext();
+            if (pageType == typeof(VaultPage))
+            {
+                vaultPage.RestoreWorkspaceContext(tag);
+                return;
+            }
+        }
+        // Only explicitly cacheable pages survive navigation, and only within this unlock session.
+        _contentFrame.CacheSize = 2;
+        _contentFrame.Navigate(pageType, tag);
+        _contentFrame.BackStack.Clear();
+        _contentFrame.ForwardStack.Clear();
+    }
 
     // ── 登录流导航(LoginFrame)──────────────────────────────────────────────
     public void GoToRegister() => _loginFrame?.Navigate(typeof(RegisterPage));
@@ -47,6 +74,8 @@ public sealed class FrameNavigationService : INavigationService
     {
         if (frame is null)
             return;
+        // Enabled caches are evicted before content and journal references are released.
+        frame.CacheSize = 0;
         frame.Content = null;
         frame.BackStack.Clear();
         frame.ForwardStack.Clear();

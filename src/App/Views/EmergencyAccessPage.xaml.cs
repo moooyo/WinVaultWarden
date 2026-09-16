@@ -1,4 +1,5 @@
 using App.ViewModels;
+using App.Services;
 using App.ViewModels.Models;
 using Core.Models;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,8 +23,43 @@ public sealed partial class EmergencyAccessPage : Page
         _ = ViewModel.LoadAsync();
     }
 
-    // ── 状态矩阵：每个按钮只在其状态允许的场景下可见 ─────────────────────────────
-    // 不存在无条件显示的行级操作；具体状态转换见 Task 7 brief 的状态矩阵。
+    private void OnRetryClick(object sender, RoutedEventArgs e) => _ = ViewModel.LoadAsync();
+
+    private void OnBackToSettingsClick(object sender, RoutedEventArgs e) =>
+        global::App.App.Services.GetRequiredService<INavigationService>().GoToSettings();
+
+    public static string FormatStatus(EmergencyAccessStatus status) => status switch
+    {
+        EmergencyAccessStatus.Invited => "等待接受邀请",
+        EmergencyAccessStatus.Accepted => "等待确认联系人",
+        EmergencyAccessStatus.Confirmed => "已确认",
+        EmergencyAccessStatus.RecoveryInitiated => "等待访问授权",
+        EmergencyAccessStatus.RecoveryApproved => "已获准访问",
+        _ => "未知状态",
+    };
+
+    public static string FormatAccessType(EmergencyAccessType type) =>
+        type == EmergencyAccessType.Takeover ? "接管账户" : "查看密码库";
+
+    public static string FormatWaitTime(int days) => $"等待期：{days} 天";
+
+    public static string FormatStatusHelp(EmergencyAccessStatus status, EmergencyAccessType type) => status switch
+    {
+        EmergencyAccessStatus.Invited => "邀请需通过邮件接受，然后由账户所有者确认。",
+        EmergencyAccessStatus.Accepted => "账户所有者确认后，紧急访问授权才生效。",
+        EmergencyAccessStatus.RecoveryInitiated => "等待期结束或账户所有者提前批准后，才可访问。",
+        EmergencyAccessStatus.RecoveryApproved when type == EmergencyAccessType.Takeover => "可重置主密码并接管账户。请在继续前核对后果。",
+        EmergencyAccessStatus.RecoveryApproved => "已授权读取个人密码库。",
+        _ => "发起紧急访问请求后，按等待期和授权范围处理。",
+    };
+
+    private static string AccessConsequences(EmergencyAccessType type) => type == EmergencyAccessType.Takeover
+        ? "接管允许重置主密码并控制账户，同时停用该账户的两步登录，并移除该账户在非所有者组织中的成员资格。"
+        : "查看允许在访问获准后读取个人密码库，不会更改主密码。";
+
+    private static bool IsValidWaitTime(double value) =>
+        double.IsFinite(value) && value >= 1 && value <= 90 && value == Math.Truncate(value);
+
 
     public static Visibility ShowReinvite(EmergencyAccessStatus status) =>
         status == EmergencyAccessStatus.Invited ? Visibility.Visible : Visibility.Collapsed;
@@ -68,20 +104,21 @@ public sealed partial class EmergencyAccessPage : Page
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-    // ── 邀请对话框 ────────────────────────────────────────────────────────────
 
     private async void OnInviteClick(object sender, RoutedEventArgs e)
     {
         var emailBox = new TextBox
         {
+            Header = "联系人邮箱",
             PlaceholderText = "联系人邮箱",
             MinWidth = 320,
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(emailBox, "InviteEmailBox");
 
-        var typeCombo = new ComboBox { MinWidth = 200, SelectedIndex = 0 };
+        var typeCombo = new ComboBox { MinWidth = 200, Header = "访问权限" };
         typeCombo.Items.Add(new ComboBoxItem { Content = "查看 (View)", Tag = EmergencyAccessType.View });
         typeCombo.Items.Add(new ComboBoxItem { Content = "接管 (Takeover)", Tag = EmergencyAccessType.Takeover });
+        typeCombo.SelectedIndex = 0;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(typeCombo, "InviteTypeCombo");
 
         var waitDaysBox = new NumberBox
@@ -100,20 +137,39 @@ public sealed partial class EmergencyAccessPage : Page
 
         var panel = new StackPanel { Spacing = 12 };
         panel.Children.Add(emailBox);
-        panel.Children.Add(new TextBlock { Text = "访问类型" });
         panel.Children.Add(typeCombo);
+        var accessHelp = new TextBlock { Text = AccessConsequences(EmergencyAccessType.View), TextWrapping = TextWrapping.Wrap };
+        panel.Children.Add(accessHelp);
         panel.Children.Add(waitDaysBox);
+        panel.Children.Add(new TextBlock
+        {
+            Text = "邀请被接受后，您还需要确认联系人，授权才会生效。等待期从联系人发起紧急访问时开始。",
+            TextWrapping = TextWrapping.Wrap,
+        });
         panel.Children.Add(errorText);
 
         var dialog = new ContentDialog
         {
             Title = "邀请紧急联系人",
-            Content = panel,
+            Content = new ScrollViewer { Content = panel, MaxHeight = 460 },
             PrimaryButtonText = "邀请",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
+            IsPrimaryButtonEnabled = false,
         };
+
+        void UpdateInviteState()
+        {
+            var email = emailBox.Text.Trim();
+            dialog.IsPrimaryButtonEnabled = System.Net.Mail.MailAddress.TryCreate(email, out var address)
+                && string.Equals(address.Address, email, StringComparison.OrdinalIgnoreCase)
+                && IsValidWaitTime(waitDaysBox.Value);
+        }
+        emailBox.TextChanged += (_, _) => UpdateInviteState();
+        waitDaysBox.ValueChanged += (_, _) => UpdateInviteState();
+        typeCombo.SelectionChanged += (_, _) => accessHelp.Text = AccessConsequences(
+            typeCombo.SelectedItem is ComboBoxItem { Tag: EmergencyAccessType type } ? type : EmergencyAccessType.View);
 
         while (true)
         {
@@ -136,11 +192,13 @@ public sealed partial class EmergencyAccessPage : Page
         }
     }
 
-    // ── 授予方按钮（均从 Tag 取具体 item，不依赖可变 SelectedId）─────────────────
 
     private async void OnConfirmClick(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not EmergencyContact item)
+            return;
+        if (!await DialogHelper.ConfirmAsync(XamlRoot, "确认紧急联系人",
+            $"确认 {item.Email} 为紧急联系人。\n{AccessConsequences(item.Type)}\n{FormatWaitTime(item.WaitTimeDays)}", "确认联系人"))
             return;
         await ViewModel.ConfirmAsync(item);
     }
@@ -155,6 +213,9 @@ public sealed partial class EmergencyAccessPage : Page
     private async void OnApproveClick(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not EmergencyContact item)
+            return;
+        if (!await DialogHelper.ConfirmAsync(XamlRoot, "立即批准紧急访问",
+            $"批准后，{item.Email} 无需继续等待即可获得访问权限。\n{AccessConsequences(item.Type)}", "批准访问"))
             return;
         await ViewModel.ApproveAsync(item);
     }
@@ -183,7 +244,7 @@ public sealed partial class EmergencyAccessPage : Page
             (contact, ct) => DialogHelper.ConfirmAsync(
                 XamlRoot,
                 "移除紧急联系人",
-                $"确定要移除 {contact.Email} 吗？此操作无法撤销。",
+                $"移除 {contact.Email} 后，对方将失去紧急访问权限。如需恢复，必须重新邀请并确认。",
                 "移除",
                 ct: ct),
             CancellationToken.None);
@@ -194,7 +255,7 @@ public sealed partial class EmergencyAccessPage : Page
         if ((sender as FrameworkElement)?.Tag is not EmergencyContact item)
             return;
 
-        var typeCombo = new ComboBox { MinWidth = 200 };
+        var typeCombo = new ComboBox { MinWidth = 200, Header = "访问权限" };
         typeCombo.Items.Add(new ComboBoxItem { Content = "查看 (View)", Tag = EmergencyAccessType.View });
         typeCombo.Items.Add(new ComboBoxItem { Content = "接管 (Takeover)", Tag = EmergencyAccessType.Takeover });
         typeCombo.SelectedIndex = item.Type == EmergencyAccessType.Takeover ? 1 : 0;
@@ -215,20 +276,24 @@ public sealed partial class EmergencyAccessPage : Page
         errorText.SetValue(ForegroundProperty, Application.Current.Resources["SystemFillColorCriticalBrush"]);
 
         var panel = new StackPanel { Spacing = 12 };
-        panel.Children.Add(new TextBlock { Text = "访问类型" });
         panel.Children.Add(typeCombo);
+        var accessHelp = new TextBlock { Text = AccessConsequences(item.Type), TextWrapping = TextWrapping.Wrap };
+        panel.Children.Add(accessHelp);
         panel.Children.Add(waitDaysBox);
         panel.Children.Add(errorText);
 
         var dialog = new ContentDialog
         {
             Title = $"修改紧急访问 — {item.Email}",
-            Content = panel,
+            Content = new ScrollViewer { Content = panel, MaxHeight = 460 },
             PrimaryButtonText = "保存",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
         };
+        waitDaysBox.ValueChanged += (_, _) => dialog.IsPrimaryButtonEnabled = IsValidWaitTime(waitDaysBox.Value);
+        typeCombo.SelectionChanged += (_, _) => accessHelp.Text = AccessConsequences(
+            typeCombo.SelectedItem is ComboBoxItem { Tag: EmergencyAccessType type } ? type : item.Type);
 
         while (true)
         {
@@ -250,11 +315,13 @@ public sealed partial class EmergencyAccessPage : Page
         }
     }
 
-    // ── 受托方按钮 ────────────────────────────────────────────────────────────
 
     private async void OnInitiateClick(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not GrantedAccess item)
+            return;
+        if (!await DialogHelper.ConfirmAsync(XamlRoot, "发起紧急访问",
+            $"将通知 {item.Email}。等待期为 {item.WaitTimeDays} 天，期间对方可以批准或拒绝请求。\n{AccessConsequences(item.Type)}", "发起请求"))
             return;
         await ViewModel.InitiateAsync(item);
     }
@@ -299,7 +366,6 @@ public sealed partial class EmergencyAccessPage : Page
         await DialogHelper.ShowTrackedAsync(dialog);
     }
 
-    // ── 接管对话框 ────────────────────────────────────────────────────────────
 
     private async void OnTakeoverClick(object sender, RoutedEventArgs e)
     {
@@ -310,10 +376,10 @@ public sealed partial class EmergencyAccessPage : Page
 
     private async Task ShowTakeoverDialogAsync(GrantedAccess item)
     {
-        var pwBox = new PasswordBox { PlaceholderText = "新主密码（为对方设置）", MinWidth = 320 };
+        var pwBox = new PasswordBox { Header = "新主密码（为对方设置）", MinWidth = 320 };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(pwBox, "TakeoverNewPasswordBox");
 
-        var confirmBox = new PasswordBox { PlaceholderText = "确认新主密码" };
+        var confirmBox = new PasswordBox { Header = "确认新主密码" };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(confirmBox, "TakeoverConfirmPasswordBox");
 
         var errorText = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
@@ -322,25 +388,36 @@ public sealed partial class EmergencyAccessPage : Page
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(new TextBlock
         {
-            Text = $"您即将重置 {item.Email} 的主密码，此操作不可逆。",
+            Text = $"您即将接管 {item.Email}。\n{AccessConsequences(EmergencyAccessType.Takeover)}\n原主密码将失效，原账户所有者需要新主密码才能重新登录。",
             TextWrapping = TextWrapping.Wrap,
         });
         panel.Children.Add(pwBox);
         panel.Children.Add(confirmBox);
+        var acknowledgedBox = new CheckBox
+        {
+            Content = new TextBlock { Text = "我已了解主密码、两步登录和组织成员资格将发生的变化。", TextWrapping = TextWrapping.Wrap },
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(acknowledgedBox, "TakeoverConsequencesCheckBox");
+        panel.Children.Add(acknowledgedBox);
         panel.Children.Add(errorText);
 
         var dialog = new ContentDialog
         {
             Title = "接管账户 — 重置主密码",
-            Content = panel,
+            Content = new ScrollViewer { Content = panel, MaxHeight = 460 },
             PrimaryButtonText = "确认接管",
             CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Primary,
+            DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
+            IsPrimaryButtonEnabled = false,
         };
+        void UpdateTakeoverState() => dialog.IsPrimaryButtonEnabled = acknowledgedBox.IsChecked == true
+            && !string.IsNullOrWhiteSpace(pwBox.Password) && pwBox.Password == confirmBox.Password;
+        acknowledgedBox.Checked += (_, _) => UpdateTakeoverState();
+        acknowledgedBox.Unchecked += (_, _) => UpdateTakeoverState();
+        pwBox.PasswordChanged += (_, _) => UpdateTakeoverState();
+        confirmBox.PasswordChanged += (_, _) => UpdateTakeoverState();
 
-        // 新主密码只存在于本方法的局部变量(pwBox/confirmBox)与 TakeoverAsync 的参数中,
-        // 绝不写入 ViewModel 的可观察属性,因此无论成功/失败/异常都不会有明文残留 VM 状态。
         try
         {
             while (true)
@@ -355,9 +432,10 @@ public sealed partial class EmergencyAccessPage : Page
                 if (dialogResult != ContentDialogResult.Primary)
                     return;
 
-                if (pwBox.Password != confirmBox.Password)
+                if (acknowledgedBox.IsChecked != true || string.IsNullOrWhiteSpace(pwBox.Password)
+                    || pwBox.Password != confirmBox.Password)
                 {
-                    errorText.Text = "两次输入的密码不一致";
+                    errorText.Text = "请确认后果，并输入两次相同的新主密码。";
                     errorText.Visibility = Visibility.Visible;
                     continue;
                 }

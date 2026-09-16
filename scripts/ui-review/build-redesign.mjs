@@ -1,0 +1,23 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { scenarios, coverage } from './redesign-catalog.mjs';
+import { renderFrame, redesignStyles } from './redesign-frame.mjs';
+import { renderGallery } from './redesign-gallery.mjs';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const out = path.join(root, 'docs/ui-review/fluent-redesign');
+const raw = JSON.parse(await fs.readFile(path.join(root, 'docs/ui-review/page-inventory.json'), 'utf8'));
+const inventory = raw.surfaces || raw.entries || raw;
+const ids = new Set(inventory.map(entry => entry.id));
+const sceneIds = new Set(scenarios.map(scene => scene.id));
+if (sceneIds.size !== scenarios.length) throw new Error('Duplicate scenario IDs');
+if (coverage.length !== ids.size || new Set(coverage.map(x => x.inventoryId)).size !== ids.size) throw new Error('Incomplete inventory mapping');
+for (const entry of coverage) if (!ids.has(entry.inventoryId) || !sceneIds.has(entry.scenarioId)) throw new Error('Invalid coverage reference');
+await fs.mkdir(path.join(out, 'frames'), {recursive:true});
+await fs.mkdir(path.join(out, 'renders'), {recursive:true});
+await fs.writeFile(path.join(out, 'prototype.css'), redesignStyles);
+for (const scene of scenarios) await fs.writeFile(path.join(out, 'frames', scene.id+'.html'), renderFrame(scene, scenarios));
+await fs.writeFile(path.join(out, 'index.html'), renderGallery({scenarios, coverage, inventory}));
+await fs.writeFile(path.join(out, 'design-manifest.json'), JSON.stringify({generatedAt:new Date().toISOString(),type:'design-proposal',implemented:false,frame:{width:1280,height:900},themes:['light','dark'],scenarioCount:scenarios.length,inventoryCount:inventory.length,scenarios,coverage},null,2));
+console.log(JSON.stringify({output:out,scenarios:scenarios.length,inventory:inventory.length},null,2));

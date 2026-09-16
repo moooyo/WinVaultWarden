@@ -1,6 +1,6 @@
 namespace App.Services;
 
-public sealed record SavedSearchView(string Name, string? NavTag, VaultFacets Facets, string Search, VaultSortKey Sort);
+public sealed record SavedSearchView(string Name, string? NavTag, VaultFacets Facets, string Search, VaultSortKey Sort, int TypeIndex = 0);
 
 // 可序列化 POCO(扁平 bool/int/string),经 AppJsonContext 落盘。
 public sealed class SavedSearchViewData
@@ -13,19 +13,20 @@ public sealed class SavedSearchViewData
     public bool FacetFavoriteOnly { get; set; }
     public string Search { get; set; } = string.Empty;
     public int Sort { get; set; }   // (int)VaultSortKey
+    public int TypeIndex { get; set; }
 
     public static SavedSearchViewData FromView(SavedSearchView v) => new()
     {
         Name = v.Name, NavTag = v.NavTag,
         FacetTotp = v.Facets.Totp, FacetAttachment = v.Facets.Attachment,
         FacetUri = v.Facets.Uri, FacetFavoriteOnly = v.Facets.FavoriteOnly,
-        Search = v.Search, Sort = (int)v.Sort,
+        Search = v.Search, Sort = (int)v.Sort, TypeIndex = v.TypeIndex,
     };
 
     public SavedSearchView ToView() => new(
         Name, NavTag,
         new VaultFacets(FacetTotp, FacetAttachment, FacetUri, FacetFavoriteOnly),
-        Search, (VaultSortKey)Sort);
+        Search, (VaultSortKey)Sort, TypeIndex is >= 0 and <= 8 ? TypeIndex : 0);
 }
 
 public static class SavedSearchOps

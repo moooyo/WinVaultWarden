@@ -1,0 +1,53 @@
+{
+  "generatedAt": "2026-09-16T05:37:30.056Z",
+  "scope": "Offline gallery checks only; this does not validate native-client behavior or scenario coverage. Source images were not modified.",
+  "status": "passed",
+  "browser": "Headless Microsoft Edge",
+  "captures": 25,
+  "decodedImages": 25,
+  "checkedResourceLinks": 27,
+  "failedImages": [],
+  "missingResources": [],
+  "javascriptErrors": [],
+  "networkRequests": [],
+  "filters": [
+    {
+      "theme": "all",
+      "expected": 25,
+      "visible": 25,
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "expected": 10,
+      "visible": 10,
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "expected": 15,
+      "visible": 15,
+      "passed": true
+    }
+  ],
+  "layouts": [
+    {
+      "viewport": "wide",
+      "viewportWidth": 1440,
+      "scrollWidth": 1440,
+      "columns": 3,
+      "cardsFit": true,
+      "filtersFit": true,
+      "passed": true
+    },
+    {
+      "viewport": "narrow",
+      "viewportWidth": 390,
+      "scrollWidth": 390,
+      "columns": 1,
+      "cardsFit": true,
+      "filtersFit": true,
+      "passed": true
+    }
+  ]
+}

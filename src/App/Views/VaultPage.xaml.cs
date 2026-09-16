@@ -24,6 +24,11 @@ public sealed partial class VaultPage : Page
     private CipherListItem? _pendingListFocusItem;
     private bool _restoreListFocus;
     private bool _isRebindingSelection;
+    private bool _subscriptionsAttached;
+    private bool _restoringWorkspacePosition;
+    private ScrollViewer? _listScrollViewer;
+    private bool _hasEnteredWorkspace;
+    private bool _syncingEditorTypeSelection;
 
     // 响应式布局阈值:>= 800 DIP 显示双栏(列表+详情);更窄时按是否有详情/编辑态在
     // NarrowList / NarrowDetail 之间切换,窄详情态显示"返回列表"入口。
@@ -34,10 +39,151 @@ public sealed partial class VaultPage : Page
         // 用完全限定名避免与命名空间 App.Services 冲突(App 类的静态属性 Services)。
         ViewModel = global::App.App.Services.GetRequiredService<VaultViewModel>();
         InitializeComponent();
+        NavigationCacheMode = NavigationCacheMode.Enabled;
+        AttachSubscriptions();
+        Loaded += OnWorkspaceLoaded;
+        Unloaded += OnWorkspaceUnloaded;
+        UpdateDetailTemplate();
+    }
+
+    private void AttachSubscriptions()
+    {
+        if (_subscriptionsAttached)
+            return;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         ViewModel.FoldersChanged += OnVaultFoldersChanged;
         ViewModel.SelectionRebindRequested += OnSelectionRebindRequested;
-        UpdateDetailTemplate();
+        _subscriptionsAttached = true;
+    }
+
+    private void OnWorkspaceLoaded(object sender, RoutedEventArgs e)
+    {
+        AttachSubscriptions();
+        ViewModel.RefreshEditorBindings(Bindings.Update);
+        _listScrollViewer = FindDescendant<ScrollViewer>(CipherList);
+        if (_listScrollViewer is not null)
+            _listScrollViewer.ViewChanged += OnListViewChanged;
+        QueueRestoreWorkspacePosition();
+    }
+
+    private void OnWorkspaceUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (_listScrollViewer is not null)
+            _listScrollViewer.ViewChanged -= OnListViewChanged;
+        _listScrollViewer = null;
+        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        ViewModel.FoldersChanged -= OnVaultFoldersChanged;
+        ViewModel.SelectionRebindRequested -= OnSelectionRebindRequested;
+        _subscriptionsAttached = false;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject parent) where T : DependencyObject
+    {
+        var count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent);
+        for (var index = 0; index < count; index++)
+        {
+            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, index);
+            if (child is T match)
+                return match;
+            if (FindDescendant<T>(child) is { } descendant)
+                return descendant;
+        }
+        return null;
+    }
+
+    private void OnListViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (!e.IsIntermediate && !_restoringWorkspacePosition && _currentLayoutState != "NarrowDetail")
+            RememberWorkspaceContext();
+    }
+
+    public void RememberWorkspaceContext()
+    {
+        if (_restoringWorkspacePosition || ViewModel.Filters.Count == 0)
+            return;
+        var focusedElement = XamlRoot is null ? null
+            : Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+        string? focusedItemId = ViewModel.WorkspaceContext.FocusedItemId;
+        var searchHadFocus = ViewModel.WorkspaceContext.SearchHadFocus;
+        for (var current = focusedElement; current is not null;
+             current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current))
+        {
+            if (current is FrameworkElement { DataContext: CipherListItem item })
+            {
+                focusedItemId = item.Id;
+                searchHadFocus = false;
+                break;
+            }
+        }
+        if (focusedElement is not null && IsDescendantOf(focusedElement, VaultSearchBox))
+            searchHadFocus = true;
+        ViewModel.RememberWorkspaceContext(
+            _currentLayoutState == "NarrowDetail"
+                ? ViewModel.WorkspaceContext.VerticalOffset
+                : _listScrollViewer?.VerticalOffset ?? ViewModel.WorkspaceContext.VerticalOffset,
+            focusedItemId,
+            searchHadFocus);
+    }
+
+    private void OnSearchGotFocus(object sender, RoutedEventArgs e) => RememberWorkspaceContext();
+
+    private void OnSearchAcceleratorInvoked(
+        Microsoft.UI.Xaml.Input.KeyboardAccelerator sender,
+        Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs e)
+    {
+        if (_currentLayoutState == "NarrowDetail")
+        {
+            if (ViewModel.IsEditing || !ViewModel.CanCancelEditor)
+                return;
+            ViewModel.ReturnToResults();
+        }
+        _ = VaultSearchBox.Focus(FocusState.Keyboard);
+        e.Handled = true;
+    }
+
+    private static bool IsDescendantOf(DependencyObject element, DependencyObject ancestor)
+    {
+        for (var current = element; current is not null;
+             current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, ancestor))
+                return true;
+        }
+        return false;
+    }
+
+    public void RestoreWorkspaceContext(string? tag = null)
+    {
+        ViewModel.RestoreWorkspaceContext(tag);
+        QueueRestoreWorkspacePosition();
+    }
+
+    private void QueueRestoreWorkspacePosition()
+    {
+        var context = ViewModel.WorkspaceContext;
+        var scope = ViewModel.SelectedFilterTag;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!IsLoaded || ViewModel.Filters.Count == 0 || scope != ViewModel.SelectedFilterTag)
+                return;
+            _restoringWorkspacePosition = true;
+            try
+            {
+                _listScrollViewer?.ChangeView(null, context.VerticalOffset, null, disableAnimation: true);
+                if (ViewModel.Detail is not null || ViewModel.IsEditing)
+                    return;
+                if (context.SearchHadFocus)
+                    _ = VaultSearchBox.Focus(FocusState.Programmatic);
+                else if (context.FocusedItemId is { } id
+                         && ViewModel.FilteredItems.FirstOrDefault(candidate => candidate.Id == id) is { } focusedItem
+                         && CipherList.ContainerFromItem(focusedItem) is Control container)
+                    _ = container.Focus(FocusState.Programmatic);
+            }
+            finally
+            {
+                _restoringWorkspacePosition = false;
+            }
+        });
     }
 
     private void OnVaultLayoutSizeChanged(object sender, SizeChangedEventArgs e) =>
@@ -71,8 +217,8 @@ public sealed partial class VaultPage : Page
 
         _pendingListFocusItem = ViewModel.SelectedItem;
         _restoreListFocus = true;
-        ViewModel.CancelEdit();
-        ViewModel.SelectedItem = null;
+        RememberWorkspaceContext();
+        ViewModel.ReturnToResults();
         UpdateVaultLayoutState();
     }
 
@@ -134,6 +280,12 @@ public sealed partial class VaultPage : Page
     // 此前 CipherList 只单向绑定 SelectedItem、无此接线,逐项勾选完全不被记录,批量操作全程禁用(R4)。
     private void OnCipherSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (!ViewModel.IsSelectionMode && !ViewModel.IsRebuildingItems && ViewModel.SelectedItem is { } selectedItem)
+        {
+            ViewModel.RememberWorkspaceContext(
+                _listScrollViewer?.VerticalOffset ?? 0, selectedItem.Id, searchHadFocus: false);
+            VaultDetailScroll.ChangeView(null, 0, null, disableAnimation: true);
+        }
         if (!ViewModel.IsSelectionMode
             || ViewModel.IsRebuildingItems
             || _isRebindingSelection)
@@ -293,6 +445,12 @@ public sealed partial class VaultPage : Page
         await ViewModel.UnlockDetailAsync(item.Id, PromptMasterPasswordAsync);
     }
 
+    private async void OnCopyProtectedPasswordClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedItem is { } item)
+            await ViewModel.CopyPasswordAsync(item.Id, PromptMasterPasswordAsync);
+    }
+
     private void OnRemoveCustomFieldClick(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is CustomFieldEditorDraft field)
@@ -360,9 +518,18 @@ public sealed partial class VaultPage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
-        if (e.Parameter is string tag)
-            ViewModel.SelectFilterByTag(tag);
+        AttachSubscriptions();
+        if (_hasEnteredWorkspace)
+            ViewModel.RefreshFromSnapshot();
+        _hasEnteredWorkspace = true;
+        RestoreWorkspaceContext(e.Parameter as string);
         UpdateVaultLayoutState();
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        RememberWorkspaceContext();
+        base.OnNavigatedFrom(e);
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -371,6 +538,28 @@ public sealed partial class VaultPage : Page
             UpdateDetailTemplate();
         if (e.PropertyName is nameof(VaultViewModel.Detail) or nameof(VaultViewModel.IsEditing))
             UpdateVaultLayoutState();
+        if (e.PropertyName == nameof(VaultViewModel.WorkspaceContext))
+        {
+            if (ViewModel.Filters.Count == 0)
+            {
+                _pendingListFocusItem = null;
+                _restoreListFocus = false;
+            }
+            QueueRestoreWorkspacePosition();
+        }
+    }
+
+    private void OnAddWebsiteClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.CanEditEditorDraft)
+            ViewModel.EditorDraft?.Login.Uris.Add(new LoginUriEditorDraft());
+    }
+
+    private void OnRemoveWebsiteClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.CanEditEditorDraft
+            && (sender as FrameworkElement)?.DataContext is LoginUriEditorDraft uri)
+            ViewModel.EditorDraft?.Login.Uris.Remove(uri);
     }
 
     private void OnAddLoginClick(object sender, RoutedEventArgs e) => BeginAdd(VaultItemKind.Login);
@@ -393,8 +582,15 @@ public sealed partial class VaultPage : Page
 
     private void BeginAdd(VaultItemKind kind)
     {
+        RememberWorkspaceContext();
         ViewModel.BeginAdd(kind);
         SyncEditorTypeSelection();
+        VaultDetailScroll.ChangeView(null, 0, null, disableAnimation: true);
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (IsLoaded && ViewModel.IsEditing)
+                _ = CipherEditorNameBox.Focus(FocusState.Programmatic);
+        });
     }
 
     private void OnCancelCipherEditorClick(object sender, RoutedEventArgs e) => ViewModel.CancelEdit();
@@ -444,7 +640,8 @@ public sealed partial class VaultPage : Page
 
     private void OnCipherEditorTypeChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!ViewModel.IsEditing || CipherEditorTypeBox.SelectedItem is not ComboBoxItem item)
+        if (_syncingEditorTypeSelection || !ViewModel.IsEditing
+            || CipherEditorTypeBox.SelectedItem is not ComboBoxItem item)
             return;
 
         if (item.Tag is string tag && Enum.TryParse(tag, out VaultItemKind kind))
@@ -458,16 +655,17 @@ public sealed partial class VaultPage : Page
         if (ViewModel.EditorDraft is null)
             return;
 
-        CipherEditorTypeBox.SelectedItem = null;
         var tag = ViewModel.EditorDraft.Type.ToString();
-        foreach (var item in CipherEditorTypeBox.Items.OfType<ComboBoxItem>())
+        var selected = CipherEditorTypeBox.Items.OfType<ComboBoxItem>()
+            .FirstOrDefault(item => item.Tag as string == tag);
+        if (ReferenceEquals(CipherEditorTypeBox.SelectedItem, selected))
+            return;
+        _syncingEditorTypeSelection = true;
+        try
         {
-            if (item.Tag as string == tag)
-            {
-                CipherEditorTypeBox.SelectedItem = item;
-                return;
-            }
+            CipherEditorTypeBox.SelectedItem = selected;
         }
+        finally { _syncingEditorTypeSelection = false; }
     }
 
     // 按 Detail 运行时类型从 Page.Resources 取对应 DataTemplate。
@@ -1120,6 +1318,7 @@ public sealed partial class VaultPage : Page
 
     private void OnClearFiltersClick(object sender, RoutedEventArgs e)
     {
+        ViewModel.SelectedTypeIndex = 0;
         ViewModel.FacetTotp = false;
         ViewModel.FacetAttachment = false;
         ViewModel.FacetUri = false;

@@ -5,87 +5,63 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:conv="using:App.Converters"
     Title="{x:Bind DialogTitle, Mode=OneTime}"
-    PrimaryButtonText="保存"
+    PrimaryButtonText="创建 Send"
     CloseButtonText="取消"
     PrimaryButtonClick="OnPrimaryButtonClick"
     DefaultButton="Primary">
-
     <ContentDialog.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
         <x:Double x:Key="ContentDialogMaxWidth">640</x:Double>
         <x:Double x:Key="ContentDialogMaxHeight">960</x:Double>
     </ContentDialog.Resources>
-
-    <StackPanel x:Name="SendEditorContent"
-                Spacing="18">
-            <InfoBar x:Name="SendEditorErrorInfoBar"
-                     Severity="Error"
-                     IsClosable="True"
+    <ScrollViewer x:Name="SendEditorScrollViewer"
+                  HorizontalScrollMode="Disabled"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalContentAlignment="Stretch">
+        <StackPanel x:Name="SendEditorContent" Spacing="18">
+            <InfoBar x:Name="SendEditorErrorInfoBar" Severity="Error" IsClosable="True"
+                     AutomationProperties.LiveSetting="Assertive"
                      AutomationProperties.AutomationId="SendEditorErrorInfoBar" />
-
             <Grid ColumnSpacing="16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <RadioButton x:Name="TextSendTypeButton"
-                             Grid.Column="0"
-                             Content="文本"
-                             GroupName="SendType"
+                <RadioButton x:Name="TextSendTypeButton" Content="文本" GroupName="SendType"
                              IsChecked="{x:Bind Draft.IsText, Mode=OneWay}"
-                             Checked="OnTextChecked" />
-                <RadioButton x:Name="FileSendTypeButton"
-                             Grid.Column="1"
-                             Content="文件"
-                             GroupName="SendType"
+                             IsEnabled="{x:Bind CanChangeType, Mode=OneTime}" Checked="OnTextChecked" />
+                <RadioButton x:Name="FileSendTypeButton" Grid.Column="1" Content="文件" GroupName="SendType"
                              IsChecked="{x:Bind Draft.IsFile, Mode=OneWay}"
-                             Checked="OnFileChecked" />
+                             IsEnabled="{x:Bind CanChangeType, Mode=OneTime}" Checked="OnFileChecked" />
             </Grid>
-
-            <StackPanel Spacing="12">
-                <TextBlock Text="Send 详细信息"
-                           Style="{StaticResource SectionHeaderTextBlockStyle}" />
-
-                <TextBox Header="Send 名称（必填）"
-                         HorizontalAlignment="Stretch"
-                         Text="{x:Bind Draft.Name, Mode=TwoWay}" />
-
-                <StackPanel Visibility="{x:Bind Draft.IsText, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                            Spacing="8">
-                    <TextBox Header="要分享的文本（必填）"
-                             HorizontalAlignment="Stretch"
-                             Text="{x:Bind Draft.Text, Mode=TwoWay}"
-                             AcceptsReturn="True"
-                             MinHeight="96"
-                             TextWrapping="Wrap" />
-                    <CheckBox IsChecked="{x:Bind Draft.HideTextByDefault, Mode=TwoWay}">
-                        <TextBlock Text="默认隐藏文本"
-                                   TextWrapping="Wrap" />
-                    </CheckBox>
-                </StackPanel>
-
-                <StackPanel Visibility="{x:Bind Draft.IsFile, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                            Spacing="8">
-                    <TextBlock Text="要分享的文件（必填）" />
-                    <Grid ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Button Content="选择文件"
-                                Click="OnChooseFileClick" />
-                        <TextBlock Grid.Column="1"
-                                   Text="{x:Bind Draft.FileName, Mode=OneWay}"
-                                   VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis"
+            <TextBox x:Name="SendNameTextBox" Header="Send 名称（必填）" HorizontalAlignment="Stretch"
+                     Text="{x:Bind Draft.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <StackPanel Visibility="{x:Bind Draft.IsText, Mode=OneWay, Converter={StaticResource BoolToVis}}" Spacing="8">
+                <TextBox Header="要分享的文本（必填）" HorizontalAlignment="Stretch"
+                         Text="{x:Bind Draft.Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="True" MinHeight="96" MaxHeight="220" TextWrapping="Wrap" />
+                <CheckBox IsChecked="{x:Bind Draft.HideTextByDefault, Mode=TwoWay}">
+                    <TextBlock Text="默认隐藏文本" TextWrapping="Wrap" />
+                </CheckBox>
+            </StackPanel>
+            <StackPanel Visibility="{x:Bind Draft.IsFile, Mode=OneWay, Converter={StaticResource BoolToVis}}" Spacing="8">
+                <TextBlock Text="要分享的文件（必填）" />
+                <Border Style="{StaticResource CardBorderStyle}" Padding="16">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="{x:Bind Draft.FileName, Mode=OneWay}" TextTrimming="CharacterEllipsis"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    </Grid>
-                    <TextBlock Text="文件最大为 500 MB。"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
-
-                <ComboBox Header="删除日期（必填）"
-                          HorizontalAlignment="Stretch"
+                        <Button Content="选择文件" Click="OnChooseFileClick" />
+                    </StackPanel>
+                </Border>
+                <TextBlock Text="文件最大为 500 MiB。" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <ComboBox Header="删除时间（必填）" HorizontalAlignment="Stretch"
                           SelectedItem="{x:Bind Draft.DeletionDateLabel, Mode=TwoWay}"
                           SelectionChanged="OnDeletionLabelChanged">
                     <x:String>1 天</x:String>
@@ -93,80 +69,67 @@
                     <x:String>30 天</x:String>
                     <x:String>自定义</x:String>
                 </ComboBox>
-
-                <CalendarDatePicker Header="自定义删除日期"
-                                    HorizontalAlignment="Stretch"
-                                    Date="{x:Bind Draft.DeletionDate, Mode=TwoWay}"
-                                    MinDate="{x:Bind CustomDeletionMinDate, Mode=OneTime}"
-                                    MaxDate="{x:Bind CustomDeletionMaxDate, Mode=OneTime}"
-                                    Visibility="{x:Bind ShowCustomDeletionPicker, Mode=OneTime, Converter={StaticResource BoolToVis}}" />
-
-                <TextBlock Text="此 Send 将在此日期后被永久删除。"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-
-                <ComboBox Header="谁可以查看"
-                          HorizontalAlignment="Stretch"
-                          SelectedItem="{x:Bind Draft.ViewerLabel, Mode=TwoWay}">
-                    <x:String>拥有链接的任何人</x:String>
-                </ComboBox>
-            </StackPanel>
-
-            <StackPanel Spacing="12">
-                <TextBlock Text="附加选项"
-                           Style="{StaticResource SectionHeaderTextBlockStyle}" />
-
-                <NumberBox Header="最大访问次数"
-                           HorizontalAlignment="Stretch"
-                           Value="{x:Bind MaxAccessCountValue, Mode=TwoWay}"
-                           Minimum="0"
-                           SpinButtonPlacementMode="Inline" />
-
-                <TextBlock Text="达到限额后，任何人无法查看此 Send。"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-
-                <ComboBox Header="过期时间（可选）"
-                          HorizontalAlignment="Stretch"
+                <ComboBox Grid.Column="1" Header="停止访问时间（可选）" HorizontalAlignment="Stretch"
                           SelectedItem="{x:Bind Draft.ExpirationDateLabel, Mode=OneWay}"
                           SelectionChanged="OnExpirationLabelChanged">
-                    <x:String>永不</x:String>
+                    <x:String>删除时</x:String>
                     <x:String>1 小时</x:String>
                     <x:String>1 天</x:String>
                     <x:String>7 天</x:String>
                     <x:String>自定义</x:String>
                 </ComboBox>
-
-                <StackPanel Spacing="4"
-                            Visibility="{x:Bind Draft.IsCustomExpiration, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <CalendarDatePicker Header="自定义过期日期"
-                                        HorizontalAlignment="Stretch"
-                                        Date="{x:Bind Draft.CustomExpirationDate, Mode=OneWay}"
-                                        DateChanged="OnCustomExpirationDateChanged" />
-                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                        <Run Text="本地时间：" />
-                        <Run Text="{x:Bind Draft.CustomExpirationDescription, Mode=OneWay}" />
-                    </TextBlock>
-                </StackPanel>
-
-                <PasswordBox Header="访问密码（可选）"
-                             HorizontalAlignment="Stretch"
-                             Password="{x:Bind Draft.Password, Mode=TwoWay}" />
-
-                <ToggleSwitch Header="停用此 Send"
-                              IsOn="{x:Bind Draft.Disabled, Mode=TwoWay}"
-                              OffContent="启用"
-                              OnContent="已停用" />
-
-                <CheckBox IsChecked="{x:Bind Draft.HideEmail, Mode=TwoWay}">
-                    <TextBlock Text="对接收者隐藏我的电子邮箱地址"
-                               TextWrapping="Wrap" />
-                </CheckBox>
-
-                <TextBox Header="私密备注"
-                         HorizontalAlignment="Stretch"
-                         Text="{x:Bind Draft.Notes, Mode=TwoWay}"
-                         AcceptsReturn="True"
-                         MinHeight="84"
-                         TextWrapping="Wrap" />
+            </Grid>
+            <CalendarDatePicker Header="自定义删除日期" HorizontalAlignment="Stretch"
+                                Date="{x:Bind Draft.DeletionDate, Mode=OneWay}"
+                                DateChanged="OnCustomDeletionDateChanged"
+                                MinDate="{x:Bind CustomDeletionMinDate, Mode=OneTime}"
+                                MaxDate="{x:Bind CustomDeletionMaxDate, Mode=OneTime}"
+                                Visibility="{x:Bind ShowCustomDeletionPicker, Mode=OneTime, Converter={StaticResource BoolToVis}}" />
+            <TextBlock Text="{x:Bind Draft.CustomDeletionDescription, Mode=OneWay}"
+                       Visibility="{x:Bind ShowCustomDeletionPicker, Mode=OneTime, Converter={StaticResource BoolToVis}}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <StackPanel Spacing="4" Visibility="{x:Bind Draft.IsCustomExpiration, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <CalendarDatePicker Header="自定义过期日期" HorizontalAlignment="Stretch"
+                                    Date="{x:Bind Draft.CustomExpirationDate, Mode=OneWay}"
+                                    DateChanged="OnCustomExpirationDateChanged" />
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                    <Run Text="本地时间：" />
+                    <Run Text="{x:Bind Draft.CustomExpirationDescription, Mode=OneWay}" />
+                </TextBlock>
             </StackPanel>
-    </StackPanel>
+            <TextBlock Text="删除会永久移除内容。提前停止访问会保留内容，但接收者无法再打开链接。"
+                       TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                <Expander.Header>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="访问限制与隐私" />
+                        <TextBlock Text="{x:Bind Draft.AccessPrivacySummary, Mode=OneWay}"
+                                   TextWrapping="Wrap" FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Expander.Header>
+                <StackPanel Spacing="12">
+                    <TextBlock Text="拥有链接的任何人均可访问；可设置密码或次数限制。"
+                               TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <NumberBox Header="最大访问次数" HorizontalAlignment="Stretch"
+                               Value="{x:Bind MaxAccessCountValue, Mode=TwoWay}"
+                               Minimum="0" Maximum="2147483647" SpinButtonPlacementMode="Inline" />
+                    <TextBlock Text="留空表示不限次数；达到限额后接收者无法查看。"
+                               TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <PasswordBox Header="访问密码（可选）" HorizontalAlignment="Stretch"
+                                 Password="{x:Bind Draft.Password, Mode=TwoWay}" />
+                    <TextBlock Text="编辑时留空会保留已有密码；替换受密码保护的文件时，请重新输入密码。"
+                               TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <ToggleSwitch Header="停用此 Send" IsOn="{x:Bind Draft.Disabled, Mode=TwoWay}"
+                                  OffContent="启用" OnContent="已停用" />
+                    <CheckBox IsChecked="{x:Bind Draft.HideEmail, Mode=TwoWay}">
+                        <TextBlock Text="对接收者隐藏我的电子邮箱地址" TextWrapping="Wrap" />
+                    </CheckBox>
+                    <TextBox Header="私密备注" HorizontalAlignment="Stretch"
+                             Text="{x:Bind Draft.Notes, Mode=TwoWay}" AcceptsReturn="True"
+                             MinHeight="84" MaxHeight="180" TextWrapping="Wrap" />
+                </StackPanel>
+            </Expander>
+        </StackPanel>
+    </ScrollViewer>
 </ContentDialog>

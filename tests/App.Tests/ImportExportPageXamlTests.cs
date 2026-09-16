@@ -90,6 +90,8 @@ public class ImportExportPageXamlTests
         {
             Assert.Contains("OperationMessage", infoBar.Attribute("Message")?.Value ?? string.Empty);
             Assert.NotNull(infoBar.Attribute("AutomationProperties.LiveSetting"));
+            var openBinding = infoBar.Attribute("IsOpen")!.Value.Split(',')[0];
+            Assert.StartsWith(openBinding, infoBar.Attribute("Visibility")?.Value);
         });
         Assert.Contains(statuses, e => (e.Attribute("IsOpen")?.Value ?? string.Empty).Contains("HasSucceededStatus"));
         Assert.Contains(statuses, e => (e.Attribute("IsOpen")?.Value ?? string.Empty).Contains("HasWarningStatus"));

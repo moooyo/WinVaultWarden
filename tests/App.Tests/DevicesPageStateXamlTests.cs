@@ -13,7 +13,7 @@ public class DevicesPageStateXamlTests
     {
         var document = LoadXaml();
         var panel = document
-            .Descendants(Xaml + "StackPanel")
+            .Descendants(Xaml + "Border")
             .Single(p => p.Attribute(X + "Name")?.Value == "DevicesEmptyPanel");
 
         Assert.Contains("ViewModel.HasNoDevices", panel.Attribute("Visibility")?.Value);
@@ -62,7 +62,8 @@ public class DevicesPageStateXamlTests
         var document = LoadXaml();
         var element = document.Descendants()
             .Single(node => node.Attribute(X + "Name")?.Value == name);
-        Assert.Contains(binding, element.Attribute("Visibility")?.Value);
+        var visibility = element.Attribute("Visibility")?.Value ?? element.Parent?.Attribute("Visibility")?.Value;
+        Assert.Contains(binding, visibility);
     }
 
     [Fact]
