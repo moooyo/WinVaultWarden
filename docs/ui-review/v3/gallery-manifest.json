@@ -1,0 +1,23 @@
+{
+  "sourceCommit": "47197b31341808d9a7c1be28d0fb326de21684b6",
+  "selectionBasis": "Final verification owner accepted the seven corrected native layouts. Earlier Generator and Report pages are supplemental only.",
+  "final": [
+    { "name": "release-final-vault-dark", "referenceScene": "vault-login-detail", "referenceWidth": 1280, "note": "Final Release AOT executable from production source 47197b31341808d9a7c1be28d0fb326de21684b6. Real isolated fixture vault, application icon and TOTP rendered. Capture is 1268 x 754; exact client size was not asserted." },
+    { "name": "release-final-unlock-dark", "referenceScene": "locked", "referenceWidth": 1280, "note": "Final Release AOT binary 14a8b656...; actual capture is 1268 x 754 and no exact client size is asserted. The 1280 reference is the nearest nominal comparison. Windows Hello is unavailable in the review environment, so master-password unlock is shown." },
+    { "name": "round14-1280-vault-wide-dark", "referenceScene": "vault-login-detail" },
+    { "name": "round14-760-vault-compact-dark", "referenceScene": "vault-login-detail" },
+    { "name": "round14-1280-settings-account-dark", "referenceScene": "settings-account" },
+    { "name": "round13-760-vault-pane-open-dark", "referenceScene": null, "note": "The expanded compact navigation overlay and New action were exercised natively." },
+    { "name": "round13-1280-send-editor-dark", "referenceScene": "send-file-editor", "note": "Send field alignment and complete toggle controls were accepted. This earlier capture predates the final wide-pane resize fix, demonstrated separately in round 14." },
+    { "name": "round13-760-send-editor-dark", "referenceScene": "send-file-editor" },
+    { "name": "round13-device-request-dark", "referenceScene": null, "note": "Independent real synthetic request window; dark-theme contrast, fingerprint gate and defer-on-close were reviewed. Locked/tray-hidden presentation is a documented capability difference." }
+  ],
+  "supplemental": [
+    { "name": "round12-1280-generator-light", "referenceScene": "generator" },
+    { "name": "round12-1280-generator-dark", "referenceScene": "generator" },
+    { "name": "round12-1024-generator-dark", "referenceScene": "generator" },
+    { "name": "round12-1280-report-light", "referenceScene": "report" },
+    { "name": "round12-1280-report-dark", "referenceScene": "report" },
+    { "name": "round12-1024-report-dark", "referenceScene": "report" }
+  ]
+}

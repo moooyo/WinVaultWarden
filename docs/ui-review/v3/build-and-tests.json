@@ -1,0 +1,71 @@
+{
+  "productionSourceCommit": "47197b31341808d9a7c1be28d0fb326de21684b6",
+  "branch": "codex/ui-v3-handoff",
+  "delivery": {
+    "architecture": "win-x64",
+    "executableSha256": "14a8b656ebb09fbeeba390d6fd04ae25766c4659c7b754cc378f5ded886bbf6c",
+    "configuration": "Release",
+    "bytes": 62909931,
+    "path": "artifacts/delivery/WinVaultWarden-ui-v3-win-x64.zip",
+    "sha256": "b8c58199102a12e376a37dc57a492c0ee124c51b642e4e473bdceb7186e75619",
+    "selfContained": true,
+    "signed": false,
+    "nativeAot": true
+  },
+  "builds": {
+    "debug": {
+      "log": "artifacts/ui-review/v3/build-debug-round14.log",
+      "note": "Review binary includes temporary sizing controls. The controls are absent from the production source and Release build.",
+      "errors": 0,
+      "success": true,
+      "warnings": 0
+    },
+    "release": {
+      "errors": 0,
+      "warnings": 49,
+      "log": "artifacts/ui-review/v3/publish-release-delivery.log",
+      "success": true,
+      "warningCodes": [
+        "IL3058"
+      ],
+      "note": "Reference assemblies lack AOT compatibility annotations. Warnings were not suppressed; runtime verification is separately recorded."
+    }
+  },
+  "tests": [
+    {
+      "log": "artifacts/ui-review/v3/App.Tests-final.log",
+      "name": "App.Tests",
+      "failed": 0,
+      "passed": 2198
+    },
+    {
+      "log": "artifacts/ui-review/v3/Vault.Tests-final.log",
+      "name": "Vault.Tests",
+      "failed": 0,
+      "passed": 1688
+    },
+    {
+      "log": "artifacts/ui-review/v3/Api.Tests-final.log",
+      "name": "Api.Tests",
+      "failed": 0,
+      "passed": 333
+    },
+    {
+      "log": "artifacts/ui-review/v3/Crypto.Tests-final.log",
+      "name": "Crypto.Tests",
+      "failed": 0,
+      "passed": 349
+    },
+    {
+      "log": "artifacts/ui-review/v3/BrowserNativeHost.Tests-final.log",
+      "name": "BrowserNativeHost.Tests",
+      "failed": 0,
+      "passed": 132
+    }
+  ],
+  "totalTestsPassed": 4700,
+  "totalTestsFailed": 0,
+  "nativeVerification": "native-results.json",
+  "packageVerification": "package-verification.json",
+  "testScopeNote": "Final automated test runs preceded the final presentation-only wide-pane and publish-content corrections. Those corrections were compiled and verified in Debug14 and the final Release executable; test counts do not imply every external or hardware flow was exercised."
+}

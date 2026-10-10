@@ -1,0 +1,173 @@
+{
+  "completedAt": "2026-10-10T07:50:47.038Z",
+  "status": "Passed for the explicitly recorded native scope",
+  "productionSourceCommit": "47197b31341808d9a7c1be28d0fb326de21684b6",
+  "finalExecutable": "artifacts/delivery/ui-v3-portable/App.exe",
+  "finalExecutableSha256": "14a8b656ebb09fbeeba390d6fd04ae25766c4659c7b754cc378f5ded886bbf6c",
+  "packaging": "Unsigned unpackaged win-x64 self-contained Native AOT with browser native host and six published PNG assets",
+  "environment": {
+    "host": "Local Windows desktop",
+    "authorization": "Explicit local build, test, and native UI authorization in the current user task",
+    "automation": "Computer Use @oai/sky",
+    "backend": "Dedicated synthetic Vaultwarden review fixture via loopback SSH tunnel",
+    "account": "review@winvaultwarden.example"
+  },
+  "verified": [
+    {
+      "area": "Responsive navigation",
+      "evidence": "Debug round14: 760x640 client compact navigation exposes hamburger and New action; returning to 1280x760 restores the full pane and New item button."
+    },
+    {
+      "area": "Settings centering",
+      "evidence": "Debug round14: account content is 680 epx wide and centered in the content area, starting near capture x=418; reference starts near x=416 including native frame differences."
+    },
+    {
+      "area": "Send editor",
+      "evidence": "Debug round13: actual file Send editor opens and cancels; both switches render completely at 1280 and 760 clients."
+    },
+    {
+      "area": "Independent device request",
+      "evidence": "Debug round13: a freshly seeded real synthetic request automatically opens an opaque dark native window; fingerprint confirmation is unchecked and Approve is disabled. The window was closed without approval or denial."
+    },
+    {
+      "area": "Native AOT functionality",
+      "evidence": "Release executable db3095d2e5106a2c43c24b6054ee5e4d0fce340d3c498fe43d8a419c9cffe3a5 loaded 12 real vault items and three Sends, opened the actual file Send inline editor, and returned to an empty locked authentication page."
+    },
+    {
+      "area": "Final published executable",
+      "evidence": "After the asset-only publish correction, executable 14a8b656ebb09fbeeba390d6fd04ae25766c4659c7b754cc378f5ded886bbf6c displays the blue application logo, authenticates the synthetic account, loads 12 vault items with masked password and live TOTP, and locks successfully. Final UI Automation state contains only the locked authentication page and empty password input with disabled primary action."
+    }
+  ],
+  "screenshots": [
+    {
+      "name": "round13-760-vault-pane-open-dark",
+      "file": "native/round13-760-vault-pane-open-dark.png",
+      "width": 763,
+      "height": 671,
+      "clientWidth": 760,
+      "clientHeight": 640,
+      "build": "round13",
+      "executableSha256": "37503ef028d2422eeea0d0f27717954ed07c6a6cc45cf18a418a43e5b2d6853e"
+    },
+    {
+      "name": "round13-1280-send-editor-dark",
+      "file": "native/round13-1280-send-editor-dark.png",
+      "width": 1283,
+      "height": 791,
+      "clientWidth": 1280,
+      "clientHeight": 760,
+      "build": "round13",
+      "executableSha256": "37503ef028d2422eeea0d0f27717954ed07c6a6cc45cf18a418a43e5b2d6853e"
+    },
+    {
+      "name": "round13-760-send-editor-dark",
+      "file": "native/round13-760-send-editor-dark.png",
+      "width": 763,
+      "height": 671,
+      "clientWidth": 760,
+      "clientHeight": 640,
+      "build": "round13",
+      "executableSha256": "37503ef028d2422eeea0d0f27717954ed07c6a6cc45cf18a418a43e5b2d6853e"
+    },
+    {
+      "name": "round13-device-request-dark",
+      "file": "native/round13-device-request-dark.png",
+      "width": 463,
+      "height": 423,
+      "clientWidth": null,
+      "clientHeight": null,
+      "build": "round13",
+      "executableSha256": "37503ef028d2422eeea0d0f27717954ed07c6a6cc45cf18a418a43e5b2d6853e"
+    },
+    {
+      "name": "round14-760-vault-compact-dark",
+      "file": "native/round14-760-vault-compact-dark.png",
+      "width": 763,
+      "height": 671,
+      "clientWidth": 760,
+      "clientHeight": 640,
+      "build": "round14",
+      "executableSha256": "b93a2589b150600cbc4d8e0a3353a00af34881622b523e7c2348ad0102b86fd9"
+    },
+    {
+      "name": "round14-1280-vault-wide-dark",
+      "file": "native/round14-1280-vault-wide-dark.png",
+      "width": 1283,
+      "height": 791,
+      "clientWidth": 1280,
+      "clientHeight": 760,
+      "build": "round14",
+      "executableSha256": "b93a2589b150600cbc4d8e0a3353a00af34881622b523e7c2348ad0102b86fd9"
+    },
+    {
+      "name": "round14-1280-settings-account-dark",
+      "file": "native/round14-1280-settings-account-dark.png",
+      "width": 1283,
+      "height": 791,
+      "clientWidth": 1280,
+      "clientHeight": 760,
+      "build": "round14",
+      "executableSha256": "b93a2589b150600cbc4d8e0a3353a00af34881622b523e7c2348ad0102b86fd9"
+    },
+    {
+      "name": "release-final-unlock-dark",
+      "file": "native/release-final-unlock-dark.png",
+      "width": 1268,
+      "height": 754,
+      "clientWidth": null,
+      "clientHeight": null,
+      "build": "release",
+      "executableSha256": "14a8b656ebb09fbeeba390d6fd04ae25766c4659c7b754cc378f5ded886bbf6c"
+    },
+    {
+      "name": "release-final-vault-dark",
+      "file": "native/release-final-vault-dark.png",
+      "width": 1268,
+      "height": 754,
+      "clientWidth": null,
+      "clientHeight": null,
+      "build": "release",
+      "executableSha256": "14a8b656ebb09fbeeba390d6fd04ae25766c4659c7b754cc378f5ded886bbf6c"
+    }
+  ],
+  "verificationOwnedTests": {
+    "app": {
+      "passed": 2198,
+      "failed": 0,
+      "skipped": 0,
+      "log": "artifacts/ui-review/v3/App.Tests-final.log"
+    },
+    "vault": {
+      "passed": 1688,
+      "failed": 0,
+      "skipped": 0,
+      "log": "artifacts/ui-review/v3/Vault.Tests-final.log"
+    },
+    "api": {
+      "passed": 333,
+      "failed": 0,
+      "skipped": 0,
+      "log": "artifacts/ui-review/v3/Api.Tests-final.log"
+    }
+  },
+  "notExercised": [
+    "Native SSO or two-step provider challenge completion",
+    "Windows Hello, PIN enrollment, hardware security keys, or system authentication dialogs",
+    "Destructive account, vault, Send, or device actions",
+    "Browser pairing or browser extension runtime integration",
+    "Every handoff page, empty/error state, and every requested window size in the final executable"
+  ],
+  "cleanup": {
+    "finalAppLocked": true,
+    "finalAppProcessStopped": 47704,
+    "ownedTunnelStopped": 42176,
+    "tunnelOwnership": "Verified ssh.exe and exact synthetic loopback forwarding endpoint before stopping",
+    "preferences": "No theme or application preference changes were made by the final verifier; an earlier review baseline was not reliably available and was not guessed.",
+    "secrets": "DPAPI ciphertext retained; plaintext was consumed only in memory through single-client CurrentUserOnly named pipes and input into the observed synthetic password control."
+  },
+  "notes": [
+    "Debug review binaries contain temporary sizing accelerators which are absent from the production source.",
+    "Release screenshots record actual Windows capture boundaries only; no 1280 client-size assertion is made for the 1268x754 final capture.",
+    "Earlier Release screenshots without the application logo are diagnostic evidence and must not be represented as the final package appearance."
+  ]
+}

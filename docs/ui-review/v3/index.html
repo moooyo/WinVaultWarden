@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>WinVaultWarden v3 · Native delivery review</title>
+<style>
+:root{font-family:"Segoe UI",system-ui,sans-serif;color:#1b1b1b;background:#f3f3f3;line-height:1.5;color-scheme:light dark;--surface:#fff;--line:#d8d8d8;--secondary:#555;--accent:#005fb8}*{box-sizing:border-box}body{margin:0}main{max-width:1840px;margin:auto;padding:40px 32px 64px}h1{font-size:28px;line-height:1.2;margin:0 0 12px;font-weight:600}p{max-width:1080px;margin:8px 0;color:var(--secondary)}a{color:var(--accent)}.intro{padding-bottom:24px;border-bottom:1px solid var(--line)}.links{display:flex;flex-wrap:wrap;gap:18px;margin-top:18px}.status{display:inline-block;border:1px solid var(--line);background:var(--surface);padding:6px 12px;border-radius:4px;margin:0 0 20px;font-size:13px}nav{display:flex;flex-wrap:wrap;align-items:end;gap:16px;padding:22px 0}label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--secondary)}select{font:inherit;font-size:14px;min-width:180px;height:34px;padding:0 10px;background:var(--surface);color:inherit;border:1px solid var(--line);border-radius:4px}article{background:var(--surface);border:1px solid var(--line);border-radius:8px;margin-bottom:28px;overflow:hidden}article header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line);gap:8px}h2{font-size:18px;margin:0;font-weight:600}article header span{color:var(--secondary);font-size:12px}.comparison{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line)}figure{margin:0;background:var(--surface);padding:14px}figcaption{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;font-size:13px}figcaption a{font-size:12px}img{display:block;width:100%;height:auto;border:1px solid var(--line)}.note{padding:0 20px 14px}.reference-note{padding:28px;background:var(--surface);color:var(--secondary)}details{margin-top:32px;border-top:1px solid var(--line);padding-top:20px}summary{cursor:pointer;font-weight:600}ul{columns:3;padding-left:20px}li{padding:4px;break-inside:avoid;font-size:13px}.empty{padding:40px;background:var(--surface);border:1px solid var(--line);border-radius:8px}article[hidden]{display:none}@media(max-width:900px){main{padding:24px 16px}.comparison{grid-template-columns:1fr}ul{columns:1}}@media(prefers-color-scheme:dark){:root{color:#fff;background:#202020;--surface:#282828;--line:#444;--secondary:#c8c8c8;--accent:#60cdff}}
+</style></head><body><main>
+<section class="intro"><span class="status">9 accepted native captures · 6 supplemental earlier captures</span><h1>WinVaultWarden v3 · Native delivery review</h1>
+<p>Compare the implemented WinUI application with the supplied v3 design. The native application uses an isolated synthetic review account; names, counts, timestamps, favicons and available server capabilities intentionally differ from the prototype’s sample data.</p>
+<p>Native captures include the Windows capture boundary; reference images crop the simulated frame. Their exact pixel dimensions can differ from the requested effective-pixel window size. Compare layout and behavior, not fixture content or decorative system shadows.</p>
+<div class="links"><a href="README.md">Delivery evidence</a><a href="design-differences.md">Capability decisions and differences</a><a href="review-checklist.md">Review ledger</a><a href="native/manifest.json">Native manifest</a><a href="reference/manifest.json">Reference manifest</a></div></section>
+<nav aria-label="Screenshot filters"><label>Page<select id="page"><option value="all">All pages</option><option value="vault-login-detail">Vault Login Detail</option><option value="locked">Locked</option><option value="settings-account">Settings Account</option><option value="round13-760-vault-pane-open-dark">Round13 760 Vault Pane Open Dark</option><option value="send-file-editor">Send File Editor</option><option value="round13-device-request-dark">Round13 Device Request Dark</option><option value="generator">Generator</option><option value="report">Report</option></select></label><label>Theme<select id="theme"><option value="all">Both themes</option><option value="light">Light</option><option value="dark">Dark</option></select></label><label>Window size<select id="width"><option value="all">All sizes</option><option value="760">760 epx reference</option><option value="1024">1024 epx reference</option><option value="1280">1280 epx reference</option></select></label><span id="count" aria-live="polite"></span></nav>
+<section id="captures">
+<article data-page="vault-login-detail" data-theme="dark" data-width="1280">
+ <header><h2>Release Final Vault Dark</h2><span>Release release · dark · capture 1268 × 754 px</span></header>
+ <div class="comparison">
+  <figure><figcaption><b>Native application</b><a href="native/release-final-vault-dark.png" target="_blank">Open full size ↗</a></figcaption><a href="native/release-final-vault-dark.png" target="_blank"><img src="native/release-final-vault-dark.png" loading="lazy" alt="Native release-final-vault-dark"></a></figure>
+  <figure><figcaption><b>Design reference</b><a href="reference/1280-dark-vault-login-detail.png" target="_blank">Open full size ↗</a></figcaption><a href="reference/1280-dark-vault-login-detail.png" target="_blank"><img src="reference/1280-dark-vault-login-detail.png" loading="lazy" alt="Prototype vault-login-detail"></a></figure>
+ </div>
+ <p class="note">Final Release AOT executable from production source 47197b31341808d9a7c1be28d0fb326de21684b6. Real isolated fixture vault, application icon and TOTP rendered. Capture is 1268 x 754; exact client size was not asserted.</p>
+</article>
+<article data-page="locked" data-theme="dark" data-width="1280">
+ <header><h2>Release Final Unlock Dark</h2><span>Release release · dark · capture 1268 × 754 px</span></header>
+ <div class="comparison">
+  <figure><figcaption><b>Native application</b><a href="native/release-final-unlock-dark.png" target="_blank">Open full size ↗</a></figcaption><a href="native/release-final-unlock-dark.png" target="_blank"><img src="native/release-final-unlock-dark.png" loading="lazy" alt="Native release-final-unlock-dark"></a></figure>
+  <figure><figcaption><b>Design reference</b><a href="reference/1280-dark-locked.png" target="_blank">Open full size ↗</a></figcaption><a href="reference/1280-dark-locked.png" target="_blank"><img src="reference/1280-dark-locked.png" loading="lazy" alt="Prototype locked"></a></figure>
+ </div>
+ <p class="note">Final Release AOT binary 14a8b656...; actual capture is 1268 x 754 and no exact client size is asserted. The 1280 reference is the nearest nominal comparison. Windows Hello is unavailable in the review environment, so master-password unlock is shown.</p>
+</article>
+<article data-page="vault-login-detail" data-theme="dark" data-width="1280">
+ <header><h2>1280 Vault Wide Dark</h2><span>Debug round14 · dark · capture 1283 × 791 px</span></header>
+ <div class="comparison">
+  <figure><figcaption><b>Native application</b><a href="native/round14-1280-vault-wide-dark.png" target="_blank">Open full size ↗</a></figcaption><a href="native/round14-1280-vault-wide-dark.png" target="_blank"><img src="native/round14-1280-vault-wide-dark.png" loading="lazy" alt="Native round14-1280-vault-wide-dark"></a></figure>
+  <figure><figcaption><b>Design reference</b><a href="reference/1280-dark-vault-login-detail.png" target="_blank">Open full size ↗</a></figcaption><a href="reference/1280-dark-vault-login-detail.png" target="_blank"><img src="reference/1280-dark-vault-login-detail.png" loading="lazy" alt="Prototype vault-login-detail"></a></figure>
+ </div>
+
+</article>
+<article data-page="vault-login-detail" data-theme="dark" data-width="760">
+ <header><h2>760 Vault Compact Dark</h2><span>Debug round14 · dark · capture 763 × 671 px</span></header>
+ <div class="comparison">
+  <figure><figcaption><b>Native application</b><a href="native/round14-760-vault-compact-dark.png" target="_blank">Open full size ↗</a></figcaption><a href="native/round14-760-vault-compact-dark.png" target="_blank"><img src="native/round14-760-vault-compact-dark.png" loading="lazy" alt="Native round14-760-vault-compact-dark"></a></figure>
+  <figure><figcaption><b>Design reference</b><a href="reference/760-dark-vault-login-detail.png" target="_blank">Open full size ↗</a></figcaption><a href="reference/760-dark-vault-login-detail.png" target="_blank"><img src="reference/760-dark-vault-login-detail.png" loading="lazy" alt="Prototype vault-login-detail"></a></figure>
+ </div>
+
+</article>
+<article data-page="settings-account" data-theme="dark" data-width="1280">
+ <header><h2>1280 Settings Account Dark</h2><span>Debug round14 · dark · capture 1283 × 791 px</span></header>
+ <div class="comparison">
+  <figure><figcaption><b>Native application</b><a href="native/round14-1280-settings-account-dark.png" target="_blank">Open full size ↗</a></figcaption><a href="native/round14-1280-settings-account-dark.png" target="_blank"><img src="native/round14-1280-settings-account-dark.png" loading="lazy" alt="Native round14-1280-settings-account-dark"></a></figure>
+  <figure><figcaption><b>Design reference</b><a href="reference/1280-dark-settings-account.png" target="_blank">Open full size ↗</a></figcaption><a href="reference/1280-dark-settings-account.png" target="_blank"><img src="reference/1280-dark-settings-account.png" loading="lazy" alt="Prototype settings-account"></a></figure>
+ </div>
+
+</article>
+<article data-page="round13-760-vault-pane-open-dark" data-theme="dark" data-width="760">
+ <header><h2>760 Vault Pane Open Dark</h2><span>Debug round13 · dark · capture 763 × 671 px</span></header>
+ <div class="comparison">
+  <figure><figcaption><b>Native application</b><a href="native/round13-760-vault-pane-open-dark.png" target="_blank">Open full size ↗</a></figcaption><a href="native/round13-760-vault-pane-open-dark.png" target="_blank"><img src="native/round13-760-vault-pane-open-dark.png" loading="lazy" alt="Native round13-760-vault-pane-open-dark"></a></figure>
+  <div class="reference-note">This state has no matching captured reference. Compare it against the handoff specification.</div>
+ </div>
+ <p class="note">The expanded compact navigation overlay and New action were exercised natively.</p>
+</article>
+<article data-page="send-file-editor" data-theme="dark" data-width="1280">
+ <header><h2>1280 Send Editor Dark</h2><span>Debug round13 · dark · capture 1283 × 791 px</span></header>
+ <div class="comparison">
+  <figure><figcaption><b>Native application</b><a href="native/round13-1280-send-editor-dark.png" target="_blank">Open full size ↗</a></figcaption><a href="native/round13-1280-send-editor-dark.png" target="_blank"><img src="native/round13-1280-send-editor-dark.png" loading="lazy" alt="Native round13-1280-send-editor-dark"></a></figure>
+  <figure><figcaption><b>Design reference</b><a href="reference/1280-dark-send-file-editor.png" target="_blank">Open full size ↗</a></figcaption><a href="reference/1280-dark-send-file-editor.png" target="_blank"><img src="reference/1280-dark-send-file-editor.png" loading="lazy" alt="Prototype send-file-editor"></a></figure>
+ </div>
+ <p class="note">Send field alignment and complete toggle controls were accepted. This earlier capture predates the final wide-pane resize fix, demonstrated separately in round 14.</p>
+</article>
+<article data-page="send-file-editor" data-theme="dark" data-width="760">
+ <header><h2>760 Send Editor Dark</h2><span>Debug round13 · dark · capture 763 × 671 px</span></header>
+ <div class="comparison">
+  <figure><figcaption><b>Native application</b><a href="native/round13-760-send-editor-dark.png" target="_blank">Open full size ↗</a></figcaption><a href="native/round13-760-send-editor-dark.png" target="_blank"><img src="native/round13-760-send-editor-dark.png" loading="lazy" alt="Native round13-760-send-editor-dark"></a></figure>
+  <figure><figcaption><b>Design reference</b><a href="reference/760-dark-send-file-editor.png" target="_blank">Open full size ↗</a></figcaption><a href="reference/760-dark-send-file-editor.png" target="_blank"><img src="reference/760-dark-send-file-editor.png" loading="lazy" alt="Prototype send-file-editor"></a></figure>
+ </div>
+
+</article>
+<article data-page="round13-device-request-dark" data-theme="dark" data-width="760">
+ <header><h2>Device Request Dark</h2><span>Debug round13 · dark · capture 463 × 423 px</span></header>
+ <div class="comparison">
+  <figure><figcaption><b>Native application</b><a href="native/round13-device-request-dark.png" target="_blank">Open full size ↗</a></figcaption><a href="native/round13-device-request-dark.png" target="_blank"><img src="native/round13-device-request-dark.png" loading="lazy" alt="Native round13-device-request-dark"></a></figure>
+  <div class="reference-note">This state has no matching captured reference. Compare it against the handoff specification.</div>
+ </div>
+ <p class="note">Independent real synthetic request window; dark-theme contrast, fingerprint gate and defer-on-close were reviewed. Locked/tray-hidden presentation is a documented capability difference.</p>
+</article></section>
+<section><h2>Supplemental earlier page evidence</h2><p>These reviewed Debug round-12 pages provide additional layout/theme coverage. They do not verify the final Release binary, subsequent shell fixes, or later service changes.</p>
+<article data-page="generator" data-theme="light" data-width="1280">
+ <header><h2>1280 Generator Light</h2><span>Supplemental, not final release · Debug round12 · light · capture 1283 × 791 px</span></header>
+ <div class="comparison">
+  <figure><figcaption><b>Native application</b><a href="native/round12-1280-generator-light.png" target="_blank">Open full size ↗</a></figcaption><a href="native/round12-1280-generator-light.png" target="_blank"><img src="native/round12-1280-generator-light.png" loading="lazy" alt="Native round12-1280-generator-light"></a></figure>
+  <figure><figcaption><b>Design reference</b><a href="reference/1280-light-generator.png" target="_blank">Open full size ↗</a></figcaption><a href="reference/1280-light-generator.png" target="_blank"><img src="reference/1280-light-generator.png" loading="lazy" alt="Prototype generator"></a></figure>
+ </div>
+
+</article>
+<article data-page="generator" data-theme="dark" data-width="1280">
+ <header><h2>1280 Generator Dark</h2><span>Supplemental, not final release · Debug round12 · dark · capture 1283 × 791 px</span></header>
+ <div class="comparison">
+  <figure><figcaption><b>Native application</b><a href="native/round12-1280-generator-dark.png" target="_blank">Open full size ↗</a></figcaption><a href="native/round12-1280-generator-dark.png" target="_blank"><img src="native/round12-1280-generator-dark.png" loading="lazy" alt="Native round12-1280-generator-dark"></a></figure>
+  <figure><figcaption><b>Design reference</b><a href="reference/1280-dark-generator.png" target="_blank">Open full size ↗</a></figcaption><a href="reference/1280-dark-generator.png" target="_blank"><img src="reference/1280-dark-generator.png" loading="lazy" alt="Prototype generator"></a></figure>
+ </div>
+
+</article>
+<article data-page="generator" data-theme="dark" data-width="1024">
+ <header><h2>1024 Generator Dark</h2><span>Supplemental, not final release · Debug round12 · dark · capture 1027 × 751 px</span></header>
+ <div class="comparison">
+  <figure><figcaption><b>Native application</b><a href="native/round12-1024-generator-dark.png" target="_blank">Open full size ↗</a></figcaption><a href="native/round12-1024-generator-dark.png" target="_blank"><img src="native/round12-1024-generator-dark.png" loading="lazy" alt="Native round12-1024-generator-dark"></a></figure>
+  <figure><figcaption><b>Design reference</b><a href="reference/1024-dark-generator.png" target="_blank">Open full size ↗</a></figcaption><a href="reference/1024-dark-generator.png" target="_blank"><img src="reference/1024-dark-generator.png" loading="lazy" alt="Prototype generator"></a></figure>
+ </div>
+
+</article>
+<article data-page="report" data-theme="light" data-width="1280">
+ <header><h2>1280 Report Light</h2><span>Supplemental, not final release · Debug round12 · light · capture 1283 × 791 px</span></header>
+ <div class="comparison">
+  <figure><figcaption><b>Native application</b><a href="native/round12-1280-report-light.png" target="_blank">Open full size ↗</a></figcaption><a href="native/round12-1280-report-light.png" target="_blank"><img src="native/round12-1280-report-light.png" loading="lazy" alt="Native round12-1280-report-light"></a></figure>
+  <figure><figcaption><b>Design reference</b><a href="reference/1280-light-report.png" target="_blank">Open full size ↗</a></figcaption><a href="reference/1280-light-report.png" target="_blank"><img src="reference/1280-light-report.png" loading="lazy" alt="Prototype report"></a></figure>
+ </div>
+
+</article>
+<article data-page="report" data-theme="dark" data-width="1280">
+ <header><h2>1280 Report Dark</h2><span>Supplemental, not final release · Debug round12 · dark · capture 1283 × 791 px</span></header>
+ <div class="comparison">
+  <figure><figcaption><b>Native application</b><a href="native/round12-1280-report-dark.png" target="_blank">Open full size ↗</a></figcaption><a href="native/round12-1280-report-dark.png" target="_blank"><img src="native/round12-1280-report-dark.png" loading="lazy" alt="Native round12-1280-report-dark"></a></figure>
+  <figure><figcaption><b>Design reference</b><a href="reference/1280-dark-report.png" target="_blank">Open full size ↗</a></figcaption><a href="reference/1280-dark-report.png" target="_blank"><img src="reference/1280-dark-report.png" loading="lazy" alt="Prototype report"></a></figure>
+ </div>
+
+</article>
+<article data-page="report" data-theme="dark" data-width="1024">
+ <header><h2>1024 Report Dark</h2><span>Supplemental, not final release · Debug round12 · dark · capture 1027 × 751 px</span></header>
+ <div class="comparison">
+  <figure><figcaption><b>Native application</b><a href="native/round12-1024-report-dark.png" target="_blank">Open full size ↗</a></figcaption><a href="native/round12-1024-report-dark.png" target="_blank"><img src="native/round12-1024-report-dark.png" loading="lazy" alt="Native round12-1024-report-dark"></a></figure>
+  <figure><figcaption><b>Design reference</b><a href="reference/1024-dark-report.png" target="_blank">Open full size ↗</a></figcaption><a href="reference/1024-dark-report.png" target="_blank"><img src="reference/1024-dark-report.png" loading="lazy" alt="Prototype report"></a></figure>
+ </div>
+
+</article></section>
+<details><summary>Historical diagnostic captures (34)</summary><p>These images document earlier defects and are not the final delivered appearance.</p><ul><li><a href="native/round12-1024-send-detail-dark.png" target="_blank">round12-1024-send-detail-dark.png</a></li><li><a href="native/round12-1024-send-editor-dark.png" target="_blank">round12-1024-send-editor-dark.png</a></li><li><a href="native/round12-1024-settings-security-dark.png" target="_blank">round12-1024-settings-security-dark.png</a></li><li><a href="native/round12-1280-settings-account-light.png" target="_blank">round12-1280-settings-account-light.png</a></li><li><a href="native/round12-1280-settings-security-dark.png" target="_blank">round12-1280-settings-security-dark.png</a></li><li><a href="native/round12-1280-settings-security-light.png" target="_blank">round12-1280-settings-security-light.png</a></li><li><a href="native/round12-1280-unlock-dark.png" target="_blank">round12-1280-unlock-dark.png</a></li><li><a href="native/round12-1280-vault-login-dark.png" target="_blank">round12-1280-vault-login-dark.png</a></li><li><a href="native/round12-1280-vault-login-light.png" target="_blank">round12-1280-vault-login-light.png</a></li><li><a href="native/round12-760-send-detail-dark.png" target="_blank">round12-760-send-detail-dark.png</a></li><li><a href="native/round12-760-send-editor-dark.png" target="_blank">round12-760-send-editor-dark.png</a></li><li><a href="native/round12-760-send-list-dark.png" target="_blank">round12-760-send-list-dark.png</a></li><li><a href="native/round12-760-vault-list-dark.png" target="_blank">round12-760-vault-list-dark.png</a></li><li><a href="native/round13-1280-settings-account-dark.png" target="_blank">round13-1280-settings-account-dark.png</a></li><li><a href="native/round13-1280-unlock-dark.png" target="_blank">round13-1280-unlock-dark.png</a></li><li><a href="native/round13-1280-vault-login-dark.png" target="_blank">round13-1280-vault-login-dark.png</a></li><li><a href="native/round13-760-vault-compact-dark.png" target="_blank">round13-760-vault-compact-dark.png</a></li><li><a href="native/round14-1280-vault-return-wide-dark.png" target="_blank">round14-1280-vault-return-wide-dark.png</a></li><li><a href="native/round7-device-request-light.png" target="_blank">round7-device-request-light.png</a></li><li><a href="native/round7-generator-copy-light.png" target="_blank">round7-generator-copy-light.png</a></li><li><a href="native/round7-generator-light.png" target="_blank">round7-generator-light.png</a></li><li><a href="native/round7-report-light.png" target="_blank">round7-report-light.png</a></li><li><a href="native/round7-send-list-light.png" target="_blank">round7-send-list-light.png</a></li><li><a href="native/round7-send-new-light.png" target="_blank">round7-send-new-light.png</a></li><li><a href="native/round7-settings-account-dark.png" target="_blank">round7-settings-account-dark.png</a></li><li><a href="native/round7-settings-account-light.png" target="_blank">round7-settings-account-light.png</a></li><li><a href="native/round7-unlock-light.png" target="_blank">round7-unlock-light.png</a></li><li><a href="native/round7-vault-light-empty-list.png" target="_blank">round7-vault-light-empty-list.png</a></li><li><a href="native/round9-device-request-dark.png" target="_blank">round9-device-request-dark.png</a></li><li><a href="native/round9-send-detail-dark.png" target="_blank">round9-send-detail-dark.png</a></li><li><a href="native/round9-send-editor-dark.png" target="_blank">round9-send-editor-dark.png</a></li><li><a href="native/round9-vault-copy-dark.png" target="_blank">round9-vault-copy-dark.png</a></li><li><a href="native/round9-vault-dark.png" target="_blank">round9-vault-dark.png</a></li><li><a href="native/round9-vault-login-dark.png" target="_blank">round9-vault-login-dark.png</a></li></ul></details>
+</main><script>
+const controls=['page','theme','width'].map(id=>document.getElementById(id));function filter(){let visible=0;for(const card of document.querySelectorAll('article')){const match=controls.every(control=>control.value==='all'||card.dataset[control.id]===control.value);card.hidden=!match;if(match)visible++}document.getElementById('count').textContent=visible+' captures'}controls.forEach(control=>control.addEventListener('change',filter));filter();
+</script></body></html>

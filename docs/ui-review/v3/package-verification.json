@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "entryCount": 311,
+  "executableSha256": "14a8b656ebb09fbeeba390d6fd04ae25766c4659c7b754cc378f5ded886bbf6c",
+  "archiveSha256": "b8c58199102a12e376a37dc57a492c0ee124c51b642e4e473bdceb7186e75619",
+  "sourceCommit": "47197b31341808d9a7c1be28d0fb326de21684b6",
+  "requiredEntries": [
+    "App.exe",
+    "App.pri",
+    "BrowserNativeHost.exe",
+    "Assets/Square44x44Logo.png",
+    "Assets/Square150x150Logo.png",
+    "README.md",
+    "BUILD.json",
+    "LICENSE.txt"
+  ],
+  "symbolsExcluded": true,
+  "secretArtifactsExcluded": true
+}

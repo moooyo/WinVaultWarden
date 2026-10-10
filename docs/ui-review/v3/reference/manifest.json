@@ -1,0 +1,918 @@
+{
+  "source": "D:/Code/design_handoff_winvaultwarden_v3/WinVaultWarden Prototype v3.dc.html",
+  "capturedAt": "2026-10-10T07:13:23.039Z",
+  "referenceOnly": true,
+  "errors": [],
+  "records": [
+    {
+      "width": 1280,
+      "theme": "light",
+      "scene": "vault",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-light-vault.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "scene": "generator",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-light-generator.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "scene": "report",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-light-report.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "scene": "settings-account",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-light-settings-account.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "scene": "settings-security",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-light-settings-security.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "scene": "send",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-light-send.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "scene": "send-file-detail",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-light-send-file-detail.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "scene": "send-file-editor",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-light-send-file-editor.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "scene": "send-text-detail",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-light-send-text-detail.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "scene": "send-text-editor",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-light-send-text-editor.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "scene": "vault-login-detail",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-light-vault-login-detail.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "scene": "vault-login-editor",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-light-vault-login-editor.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "scene": "locked",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-light-locked.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "scene": "login",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-light-login.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "scene": "register",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-light-register.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "scene": "vault",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-dark-vault.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "scene": "generator",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-dark-generator.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "scene": "report",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-dark-report.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "scene": "settings-account",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-dark-settings-account.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "scene": "settings-security",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-dark-settings-security.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "scene": "send",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-dark-send.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "scene": "send-file-detail",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-dark-send-file-detail.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "scene": "send-file-editor",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-dark-send-file-editor.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "scene": "send-text-detail",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-dark-send-text-detail.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "scene": "send-text-editor",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-dark-send-text-editor.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "scene": "vault-login-detail",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-dark-vault-login-detail.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "scene": "vault-login-editor",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-dark-vault-login-editor.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "scene": "locked",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-dark-locked.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "scene": "login",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-dark-login.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "scene": "register",
+      "bounds": {
+        "x": 24,
+        "y": 45,
+        "width": 1280,
+        "height": 760
+      },
+      "file": "1280-dark-register.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "scene": "vault",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-light-vault.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "scene": "generator",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-light-generator.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "scene": "report",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-light-report.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "scene": "settings-account",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-light-settings-account.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "scene": "settings-security",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-light-settings-security.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "scene": "send",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-light-send.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "scene": "send-file-detail",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-light-send-file-detail.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "scene": "send-file-editor",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-light-send-file-editor.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "scene": "vault-login-detail",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-light-vault-login-detail.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "scene": "vault-login-editor",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-light-vault-login-editor.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "scene": "vault",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-dark-vault.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "scene": "generator",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-dark-generator.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "scene": "report",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-dark-report.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "scene": "settings-account",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-dark-settings-account.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "scene": "settings-security",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-dark-settings-security.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "scene": "send",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-dark-send.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "scene": "send-file-detail",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-dark-send-file-detail.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "scene": "send-file-editor",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-dark-send-file-editor.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "scene": "vault-login-detail",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-dark-vault-login-detail.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "scene": "vault-login-editor",
+      "bounds": {
+        "x": 152,
+        "y": 65,
+        "width": 1024,
+        "height": 720
+      },
+      "file": "1024-dark-vault-login-editor.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "light",
+      "scene": "vault",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-light-vault.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "light",
+      "scene": "generator",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-light-generator.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "light",
+      "scene": "report",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-light-report.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "light",
+      "scene": "settings-account",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-light-settings-account.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "light",
+      "scene": "settings-security",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-light-settings-security.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "light",
+      "scene": "send",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-light-send.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "light",
+      "scene": "send-file-detail",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-light-send-file-detail.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "light",
+      "scene": "send-file-editor",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-light-send-file-editor.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "light",
+      "scene": "vault-login-detail",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-light-vault-login-detail.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "light",
+      "scene": "vault-login-editor",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-light-vault-login-editor.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "dark",
+      "scene": "vault",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-dark-vault.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "dark",
+      "scene": "generator",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-dark-generator.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "dark",
+      "scene": "report",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-dark-report.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "dark",
+      "scene": "settings-account",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-dark-settings-account.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "dark",
+      "scene": "settings-security",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-dark-settings-security.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "dark",
+      "scene": "send",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-dark-send.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "dark",
+      "scene": "send-file-detail",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-dark-send-file-detail.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "dark",
+      "scene": "send-file-editor",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-dark-send-file-editor.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "dark",
+      "scene": "vault-login-detail",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-dark-vault-login-detail.png",
+      "referenceOnly": true
+    },
+    {
+      "width": 760,
+      "theme": "dark",
+      "scene": "vault-login-editor",
+      "bounds": {
+        "x": 284,
+        "y": 105,
+        "width": 760,
+        "height": 640
+      },
+      "file": "760-dark-vault-login-editor.png",
+      "referenceOnly": true
+    }
+  ]
+}

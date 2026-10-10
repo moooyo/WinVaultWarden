@@ -1,0 +1,722 @@
+[
+  {
+    "name": "round9-vault-dark",
+    "file": "round9-vault-dark.png",
+    "width": 1268,
+    "height": 754,
+    "originX": 427,
+    "originY": 418,
+    "source": "Native WinUI window capture",
+    "build": "round9"
+  },
+  {
+    "name": "round9-vault-login-dark",
+    "file": "round9-vault-login-dark.png",
+    "width": 1268,
+    "height": 754,
+    "originX": 427,
+    "originY": 418,
+    "source": "Native WinUI window capture",
+    "build": "round9"
+  },
+  {
+    "name": "round9-vault-copy-dark",
+    "file": "round9-vault-copy-dark.png",
+    "width": 1268,
+    "height": 754,
+    "originX": 427,
+    "originY": 418,
+    "source": "Native WinUI window capture",
+    "build": "round9"
+  },
+  {
+    "name": "round9-send-detail-dark",
+    "file": "round9-send-detail-dark.png",
+    "width": 1268,
+    "height": 754,
+    "originX": 427,
+    "originY": 418,
+    "source": "Native WinUI window capture",
+    "build": "round9"
+  },
+  {
+    "name": "round9-send-editor-dark",
+    "file": "round9-send-editor-dark.png",
+    "width": 1268,
+    "height": 754,
+    "originX": 427,
+    "originY": 418,
+    "source": "Native WinUI window capture",
+    "build": "round9"
+  },
+  {
+    "name": "round12-1280-unlock-dark",
+    "file": "round12-1280-unlock-dark.png",
+    "width": 841,
+    "height": 501,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:02:48.981Z"
+  },
+  {
+    "name": "round12-1280-vault-login-dark",
+    "file": "round12-1280-vault-login-dark.png",
+    "width": 1283,
+    "height": 791,
+    "clientWidth": 1280,
+    "clientHeight": 760,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:04:30.649Z"
+  },
+  {
+    "name": "round12-1280-vault-login-light",
+    "file": "round12-1280-vault-login-light.png",
+    "width": 1283,
+    "height": 791,
+    "clientWidth": 1280,
+    "clientHeight": 760,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:05:37.113Z"
+  },
+  {
+    "name": "round12-1280-generator-light",
+    "file": "round12-1280-generator-light.png",
+    "width": 1283,
+    "height": 791,
+    "clientWidth": 1280,
+    "clientHeight": 760,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:05:54.848Z"
+  },
+  {
+    "name": "round12-1280-generator-dark",
+    "file": "round12-1280-generator-dark.png",
+    "width": 1283,
+    "height": 791,
+    "clientWidth": 1280,
+    "clientHeight": 760,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:06:30.186Z"
+  },
+  {
+    "name": "round12-1280-report-dark",
+    "file": "round12-1280-report-dark.png",
+    "width": 1283,
+    "height": 791,
+    "clientWidth": 1280,
+    "clientHeight": 760,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:06:46.104Z"
+  },
+  {
+    "name": "round12-1280-report-light",
+    "file": "round12-1280-report-light.png",
+    "width": 1283,
+    "height": 791,
+    "clientWidth": 1280,
+    "clientHeight": 760,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:07:15.047Z"
+  },
+  {
+    "name": "round12-1280-settings-account-light",
+    "file": "round12-1280-settings-account-light.png",
+    "width": 1283,
+    "height": 791,
+    "clientWidth": 1280,
+    "clientHeight": 760,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:07:29.675Z"
+  },
+  {
+    "name": "round12-1280-settings-security-light",
+    "file": "round12-1280-settings-security-light.png",
+    "width": 1283,
+    "height": 791,
+    "clientWidth": 1280,
+    "clientHeight": 760,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:07:59.935Z"
+  },
+  {
+    "name": "round12-1280-settings-security-dark",
+    "file": "round12-1280-settings-security-dark.png",
+    "width": 1283,
+    "height": 791,
+    "clientWidth": 1280,
+    "clientHeight": 760,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:08:13.383Z"
+  },
+  {
+    "name": "round12-1024-settings-security-dark",
+    "file": "round12-1024-settings-security-dark.png",
+    "width": 1027,
+    "height": 751,
+    "clientWidth": 1024,
+    "clientHeight": 720,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:08:33.394Z"
+  },
+  {
+    "name": "round12-1024-generator-dark",
+    "file": "round12-1024-generator-dark.png",
+    "width": 1027,
+    "height": 751,
+    "clientWidth": 1024,
+    "clientHeight": 720,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:08:49.475Z"
+  },
+  {
+    "name": "round12-1024-report-dark",
+    "file": "round12-1024-report-dark.png",
+    "width": 1027,
+    "height": 751,
+    "clientWidth": 1024,
+    "clientHeight": 720,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:09:19.615Z"
+  },
+  {
+    "name": "round12-1024-send-detail-dark",
+    "file": "round12-1024-send-detail-dark.png",
+    "width": 1027,
+    "height": 751,
+    "clientWidth": 1024,
+    "clientHeight": 720,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:09:30.736Z"
+  },
+  {
+    "name": "round12-1024-send-editor-dark",
+    "file": "round12-1024-send-editor-dark.png",
+    "width": 1027,
+    "height": 751,
+    "clientWidth": 1024,
+    "clientHeight": 720,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:09:52.372Z"
+  },
+  {
+    "name": "round12-760-send-editor-dark",
+    "file": "round12-760-send-editor-dark.png",
+    "width": 763,
+    "height": 671,
+    "clientWidth": 760,
+    "clientHeight": 640,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:10:38.660Z"
+  },
+  {
+    "name": "round12-760-send-detail-dark",
+    "file": "round12-760-send-detail-dark.png",
+    "width": 763,
+    "height": 671,
+    "clientWidth": 760,
+    "clientHeight": 640,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:10:50.049Z"
+  },
+  {
+    "name": "round12-760-send-list-dark",
+    "file": "round12-760-send-list-dark.png",
+    "width": 763,
+    "height": 671,
+    "clientWidth": 760,
+    "clientHeight": 640,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:11:28.299Z"
+  },
+  {
+    "name": "round12-760-vault-list-dark",
+    "file": "round12-760-vault-list-dark.png",
+    "width": 763,
+    "height": 671,
+    "clientWidth": 760,
+    "clientHeight": 640,
+    "originX": 123,
+    "originY": 114,
+    "source": "Native WinUI window capture",
+    "build": "round12",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "be5b7eb35683a92056e2c786f3d12f6bd174f4195ff3965dc816b0969ad8f960"
+    },
+    "capturedAt": "2026-10-10T07:11:40.973Z"
+  },
+  {
+    "name": "round13-1280-unlock-dark",
+    "file": "round13-1280-unlock-dark.png",
+    "width": 1268,
+    "height": 754,
+    "originX": 237,
+    "originY": 228,
+    "source": "Native WinUI window capture",
+    "build": "round13",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "37503ef028d2422eeea0d0f27717954ed07c6a6cc45cf18a418a43e5b2d6853e"
+    },
+    "capturedAt": "2026-10-10T07:17:46.747Z",
+    "notes": "Initial restored authentication window; measured capture boundary only. Filename does not establish a 1280 client size. Debug review binary contains temporary sizing accelerators; production source removed them."
+  },
+  {
+    "name": "round13-760-vault-compact-dark",
+    "file": "round13-760-vault-compact-dark.png",
+    "width": 763,
+    "height": 671,
+    "clientWidth": 760,
+    "clientHeight": 640,
+    "originX": 237,
+    "originY": 228,
+    "source": "Native WinUI window capture",
+    "build": "round13",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "37503ef028d2422eeea0d0f27717954ed07c6a6cc45cf18a418a43e5b2d6853e"
+    },
+    "capturedAt": "2026-10-10T07:30:49.044Z",
+    "notes": "Debug review binary contains temporary sizing accelerators; production source removed them."
+  },
+  {
+    "name": "round13-760-vault-pane-open-dark",
+    "file": "round13-760-vault-pane-open-dark.png",
+    "width": 763,
+    "height": 671,
+    "clientWidth": 760,
+    "clientHeight": 640,
+    "originX": 237,
+    "originY": 228,
+    "source": "Native WinUI window capture",
+    "build": "round13",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "37503ef028d2422eeea0d0f27717954ed07c6a6cc45cf18a418a43e5b2d6853e"
+    },
+    "capturedAt": "2026-10-10T07:31:03.680Z",
+    "notes": "Debug review binary contains temporary sizing accelerators; production source removed them."
+  },
+  {
+    "name": "round13-1280-vault-login-dark",
+    "file": "round13-1280-vault-login-dark.png",
+    "width": 1283,
+    "height": 791,
+    "clientWidth": 1280,
+    "clientHeight": 760,
+    "originX": 237,
+    "originY": 228,
+    "source": "Native WinUI window capture",
+    "build": "round13",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "37503ef028d2422eeea0d0f27717954ed07c6a6cc45cf18a418a43e5b2d6853e"
+    },
+    "capturedAt": "2026-10-10T07:31:21.469Z",
+    "notes": "Debug review binary contains temporary sizing accelerators; production source removed them."
+  },
+  {
+    "name": "round13-1280-settings-account-dark",
+    "file": "round13-1280-settings-account-dark.png",
+    "width": 1283,
+    "height": 791,
+    "clientWidth": 1280,
+    "clientHeight": 760,
+    "originX": 237,
+    "originY": 228,
+    "source": "Native WinUI window capture",
+    "build": "round13",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "37503ef028d2422eeea0d0f27717954ed07c6a6cc45cf18a418a43e5b2d6853e"
+    },
+    "capturedAt": "2026-10-10T07:31:48.858Z",
+    "notes": "Debug review binary contains temporary sizing accelerators; production source removed them."
+  },
+  {
+    "name": "round13-1280-send-editor-dark",
+    "file": "round13-1280-send-editor-dark.png",
+    "width": 1283,
+    "height": 791,
+    "clientWidth": 1280,
+    "clientHeight": 760,
+    "originX": 237,
+    "originY": 228,
+    "source": "Native WinUI window capture",
+    "build": "round13",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "37503ef028d2422eeea0d0f27717954ed07c6a6cc45cf18a418a43e5b2d6853e"
+    },
+    "capturedAt": "2026-10-10T07:32:27.444Z",
+    "notes": "Debug review binary contains temporary sizing accelerators; production source removed them."
+  },
+  {
+    "name": "round13-760-send-editor-dark",
+    "file": "round13-760-send-editor-dark.png",
+    "width": 763,
+    "height": 671,
+    "clientWidth": 760,
+    "clientHeight": 640,
+    "originX": 237,
+    "originY": 228,
+    "source": "Native WinUI window capture",
+    "build": "round13",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "37503ef028d2422eeea0d0f27717954ed07c6a6cc45cf18a418a43e5b2d6853e"
+    },
+    "capturedAt": "2026-10-10T07:32:40.379Z",
+    "notes": "Debug review binary contains temporary sizing accelerators; production source removed them."
+  },
+  {
+    "name": "round13-device-request-dark",
+    "file": "round13-device-request-dark.png",
+    "width": 463,
+    "height": 423,
+    "clientWidth": null,
+    "clientHeight": null,
+    "originX": 1573,
+    "originY": 723,
+    "source": "Native WinUI window capture",
+    "build": "round13",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "37503ef028d2422eeea0d0f27717954ed07c6a6cc45cf18a418a43e5b2d6853e"
+    },
+    "capturedAt": "2026-10-10T07:34:32.768Z",
+    "notes": "Debug review binary contains temporary sizing accelerators; production source removed them."
+  },
+  {
+    "name": "round14-760-vault-compact-dark",
+    "file": "round14-760-vault-compact-dark.png",
+    "width": 763,
+    "height": 671,
+    "clientWidth": 760,
+    "clientHeight": 640,
+    "originX": 427,
+    "originY": 418,
+    "source": "Native WinUI window capture",
+    "build": "round14",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "b93a2589b150600cbc4d8e0a3353a00af34881622b523e7c2348ad0102b86fd9"
+    },
+    "capturedAt": "2026-10-10T07:39:15.012Z"
+  },
+  {
+    "name": "round14-1280-vault-return-wide-dark",
+    "file": "round14-1280-vault-return-wide-dark.png",
+    "width": 1283,
+    "height": 791,
+    "clientWidth": 1280,
+    "clientHeight": 760,
+    "originX": 427,
+    "originY": 418,
+    "source": "Native WinUI window capture",
+    "build": "round14",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "b93a2589b150600cbc4d8e0a3353a00af34881622b523e7c2348ad0102b86fd9"
+    },
+    "capturedAt": "2026-10-10T07:39:28.277Z"
+  },
+  {
+    "name": "round14-1280-vault-wide-dark",
+    "file": "round14-1280-vault-wide-dark.png",
+    "width": 1283,
+    "height": 791,
+    "clientWidth": 1280,
+    "clientHeight": 760,
+    "originX": 427,
+    "originY": 418,
+    "source": "Native WinUI window capture",
+    "build": "round14",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "b93a2589b150600cbc4d8e0a3353a00af34881622b523e7c2348ad0102b86fd9"
+    },
+    "capturedAt": "2026-10-10T07:39:52.941Z"
+  },
+  {
+    "name": "round14-1280-settings-account-dark",
+    "file": "round14-1280-settings-account-dark.png",
+    "width": 1283,
+    "height": 791,
+    "clientWidth": 1280,
+    "clientHeight": 760,
+    "originX": 427,
+    "originY": 418,
+    "source": "Native WinUI window capture",
+    "build": "round14",
+    "binary": {
+      "configuration": "Debug",
+      "executable": "src/App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/App.exe",
+      "sha256": "b93a2589b150600cbc4d8e0a3353a00af34881622b523e7c2348ad0102b86fd9"
+    },
+    "capturedAt": "2026-10-10T07:40:16.642Z"
+  },
+  {
+    "name": "release-vault-login-dark",
+    "file": "release-vault-login-dark.png",
+    "width": 1268,
+    "height": 754,
+    "clientWidth": null,
+    "clientHeight": null,
+    "originX": 47,
+    "originY": 38,
+    "source": "Native WinUI window capture",
+    "build": "release",
+    "binary": {
+      "configuration": "Release",
+      "executable": "artifacts/delivery/ui-v3-portable/App.exe",
+      "sha256": "db3095d2e5106a2c43c24b6054ee5e4d0fce340d3c498fe43d8a419c9cffe3a5"
+    },
+    "capturedAt": "2026-10-10T07:42:09.556Z"
+  },
+  {
+    "name": "release-vault-clean-dark",
+    "file": "release-vault-clean-dark.png",
+    "width": 1268,
+    "height": 754,
+    "clientWidth": null,
+    "clientHeight": null,
+    "originX": 47,
+    "originY": 38,
+    "source": "Native WinUI window capture",
+    "build": "release",
+    "binary": {
+      "configuration": "Release",
+      "executable": "artifacts/delivery/ui-v3-portable/App.exe",
+      "sha256": "db3095d2e5106a2c43c24b6054ee5e4d0fce340d3c498fe43d8a419c9cffe3a5"
+    },
+    "capturedAt": "2026-10-10T07:43:11.956Z"
+  },
+  {
+    "name": "release-send-editor-dark",
+    "file": "release-send-editor-dark.png",
+    "width": 1268,
+    "height": 754,
+    "clientWidth": null,
+    "clientHeight": null,
+    "originX": 47,
+    "originY": 38,
+    "source": "Native WinUI window capture",
+    "build": "release",
+    "binary": {
+      "configuration": "Release",
+      "executable": "artifacts/delivery/ui-v3-portable/App.exe",
+      "sha256": "db3095d2e5106a2c43c24b6054ee5e4d0fce340d3c498fe43d8a419c9cffe3a5"
+    },
+    "capturedAt": "2026-10-10T07:43:48.893Z"
+  },
+  {
+    "name": "release-locked-dark",
+    "file": "release-locked-dark.png",
+    "width": 1268,
+    "height": 754,
+    "clientWidth": null,
+    "clientHeight": null,
+    "originX": 47,
+    "originY": 38,
+    "source": "Native WinUI window capture",
+    "build": "release",
+    "binary": {
+      "configuration": "Release",
+      "executable": "artifacts/delivery/ui-v3-portable/App.exe",
+      "sha256": "db3095d2e5106a2c43c24b6054ee5e4d0fce340d3c498fe43d8a419c9cffe3a5"
+    },
+    "capturedAt": "2026-10-10T07:44:14.960Z"
+  },
+  {
+    "name": "release-final-unlock-dark",
+    "file": "release-final-unlock-dark.png",
+    "width": 1268,
+    "height": 754,
+    "clientWidth": null,
+    "clientHeight": null,
+    "originX": 199,
+    "originY": 190,
+    "source": "Native WinUI window capture",
+    "build": "release",
+    "binary": {
+      "configuration": "Release",
+      "executable": "artifacts/delivery/ui-v3-portable/App.exe",
+      "sha256": "14a8b656ebb09fbeeba390d6fd04ae25766c4659c7b754cc378f5ded886bbf6c"
+    },
+    "capturedAt": "2026-10-10T07:48:51.804Z"
+  },
+  {
+    "name": "release-final-vault-dark",
+    "file": "release-final-vault-dark.png",
+    "width": 1268,
+    "height": 754,
+    "clientWidth": null,
+    "clientHeight": null,
+    "originX": 199,
+    "originY": 190,
+    "source": "Native WinUI window capture",
+    "build": "release",
+    "binary": {
+      "configuration": "Release",
+      "executable": "artifacts/delivery/ui-v3-portable/App.exe",
+      "sha256": "14a8b656ebb09fbeeba390d6fd04ae25766c4659c7b754cc378f5ded886bbf6c"
+    },
+    "capturedAt": "2026-10-10T07:49:52.152Z"
+  }
+]
