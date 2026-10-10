@@ -21,14 +21,14 @@ public class SettingsPageDangerZoneXamlTests
     public void DeleteAccountButton_IsEnabledAndWired()
     {
         var doc = Load();
-        var buttons = doc.Descendants().Where(e => e.Name.LocalName == "Button").ToList();
-        var deleteButton = buttons.FirstOrDefault(b =>
-            b.Descendants().Any(t => t.Name.LocalName == "TextBlock"
-                && (string?)t.Attribute("Text") == "删除账户"));
+        var deleteButton = doc.Descendants().SingleOrDefault(element =>
+            element.Name.LocalName == "Button"
+            && (string?)element.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "DeleteAccountButton");
 
         Assert.NotNull(deleteButton);
         Assert.NotEqual("False", (string?)deleteButton!.Attribute("IsEnabled"));
         Assert.Equal("DeleteAccountButton", (string?)deleteButton.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")));
+        Assert.Equal("删除账户…", (string?)deleteButton.Attribute("Content"));
         Assert.Equal("OnDeleteAccountClick", (string?)deleteButton.Attribute("Click"));
         Assert.Equal(
             "DeleteAccountButton",

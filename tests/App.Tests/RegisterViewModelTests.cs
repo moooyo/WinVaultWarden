@@ -490,6 +490,79 @@ public class RegisterViewModelTests
         Assert.Equal("Password1!", vm.MasterPassword);
     }
 
+    [Fact]
+    public async Task PasswordBreachCheck_FoundPassword_PreventsRegistration()
+    {
+        var (vm, service) = Build();
+        vm.Email = "user@example.com";
+        vm.MasterPassword = vm.ConfirmPassword = "LongPassword1!";
+        vm.ConfigurePasswordBreachCheck((password, _) =>
+        {
+            Assert.Equal("LongPassword1!", password);
+            return Task.FromResult(42);
+        });
+
+        await vm.RegisterAsync();
+
+        Assert.Equal(0, service.CallCount);
+        Assert.Contains("已知数据泄露", vm.OperationError);
+        Assert.Equal(RegisterFocusTarget.MasterPassword, vm.FocusTarget);
+        Assert.False(vm.IsBusy);
+        Assert.False(vm.Registered);
+    }
+
+    [Fact]
+    public async Task PasswordBreachCheck_NetworkFailure_DoesNotTreatFailureAsSafe()
+    {
+        var (vm, service) = Build();
+        vm.Email = "user@example.com";
+        vm.MasterPassword = vm.ConfirmPassword = "LongPassword1!";
+        vm.ConfigurePasswordBreachCheck((_, _) => Task.FromException<int>(new HttpRequestException()));
+
+        await vm.RegisterAsync();
+
+        Assert.Equal(0, service.CallCount);
+        Assert.Contains("无法完成密码泄露检查", vm.OperationError);
+        Assert.False(vm.Registered);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task PasswordBreachCheck_UserOptOut_DoesNotQueryChecker()
+    {
+        var (vm, service) = Build();
+        vm.Email = "user@example.com";
+        vm.MasterPassword = vm.ConfirmPassword = "LongPassword1!";
+        vm.ConfigurePasswordBreachCheck((_, _) => throw new InvalidOperationException("Unexpected query."));
+        vm.CheckPasswordBreaches = false;
+
+        await vm.RegisterAsync();
+
+        Assert.Equal(1, service.CallCount);
+        Assert.True(vm.Registered);
+    }
+
+    [Fact]
+    public async Task PasswordBreachCheck_ClearSensitiveBeforeLateSuccess_PreventsServerWrite()
+    {
+        var completion = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (vm, service) = Build();
+        vm.Email = "user@example.com";
+        vm.MasterPassword = vm.ConfirmPassword = "LongPassword1!";
+        vm.ConfigurePasswordBreachCheck((_, _) => completion.Task);
+
+        var registration = vm.RegisterAsync();
+        Assert.True(vm.IsBusy);
+        vm.ClearSensitive();
+        completion.SetResult(0);
+        await registration;
+
+        Assert.Equal(0, service.CallCount);
+        Assert.Empty(vm.MasterPassword);
+        Assert.False(vm.Registered);
+        Assert.False(vm.IsBusy);
+    }
+
     private static RegisterViewModel ValidVm(IRegisterUiService service) =>
         new(service)
         {

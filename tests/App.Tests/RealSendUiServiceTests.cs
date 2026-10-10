@@ -461,6 +461,32 @@ public class RealSendUiServiceTests
             write.LastTextDraft.ExpirationDate?.ToString("O"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UpdateSendAsync_ExplicitPasswordRemovalMapsToRemoveUnlessNewPasswordEntered(bool enterReplacement)
+    {
+        var write = new FakeSendWriteService();
+        var session = NewUnlockedSession(out var lease);
+        var service = new SendUiService(new FakeSendService(), write, new FakeSendAccessService(), session);
+        var draft = SendEditorDraft.CreateDefault(AppSendType.Text);
+        draft.OriginatingSession = lease;
+        draft.Name = "Protected Send";
+        draft.Text = "Share content";
+        draft.ExistingHasPassword = true;
+        draft.ExistingAuthType = SendAuthType.Password;
+        draft.ExistingRawAuthType = (int)SendAuthType.Password;
+        draft.RemovePassword = true;
+        if (enterReplacement) draft.Password = "replacement";
+
+        await service.UpdateSendAsync("protected-send", draft, null, CancellationToken.None);
+
+        if (enterReplacement)
+            Assert.Equal("replacement", Assert.IsType<SendPasswordChange.Set>(write.LastTextDraft!.PasswordChange).Password);
+        else
+            Assert.IsType<SendPasswordChange.Remove>(write.LastTextDraft!.PasswordChange);
+    }
+
     [Fact]
     public async Task UpdateSendAsync_FileDraft_WithNewSource_ReplacesExistingViaStream()
     {

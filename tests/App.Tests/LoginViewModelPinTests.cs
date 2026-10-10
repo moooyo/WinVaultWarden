@@ -165,6 +165,54 @@ public class LoginViewModelPinTests
         Assert.Equal("请输入 PIN。", vm.Status);
     }
 
+    [Fact]
+    public void UsePinUnlockCommand_ClearsMasterPasswordAndReturnsToPin()
+    {
+        var auth = new FakeAuthService();
+        var pin = new FakePinService { IsPinSet = true };
+        var vm = new LoginViewModel(auth, demoVault: null, pin: pin);
+        vm.PrepareUnlock("https://vault.example", "me@example.com");
+        vm.UseMasterPasswordCommand.Execute(null);
+        vm.MasterPassword = "pending-secret";
+
+        vm.UsePinUnlockCommand.Execute(null);
+
+        Assert.Equal(LoginStage.PinUnlock, vm.Stage);
+        Assert.Empty(vm.MasterPassword);
+        Assert.Empty(vm.Pin);
+        Assert.Equal(LoginFocusTarget.Pin, vm.FocusTarget);
+        Assert.Null(auth.UnlockPin);
+    }
+
+    [Fact]
+    public void UsePinUnlockCommand_WithoutConfiguredPin_DoesNotChangeStage()
+    {
+        var vm = new LoginViewModel(new FakeAuthService(), demoVault: null,
+            pin: new FakePinService { IsPinSet = false });
+        vm.PrepareUnlock("https://vault.example", "me@example.com");
+
+        Assert.False(vm.UsePinUnlockCommand.CanExecute(null));
+        vm.UsePinUnlockCommand.Execute(null);
+
+        Assert.Equal(LoginStage.Unlock, vm.Stage);
+    }
+
+    [Fact]
+    public void UnlockMethodSwitches_WhileBusy_DoNotDiscardActiveInput()
+    {
+        var vm = new LoginViewModel(new FakeAuthService(), demoVault: null,
+            pin: new FakePinService { IsPinSet = true });
+        vm.PrepareUnlock("https://vault.example", "me@example.com");
+        vm.Pin = "1234";
+        vm.IsBusy = true;
+
+        Assert.False(vm.UsePinUnlockCommand.CanExecute(null));
+        vm.UseMasterPasswordCommand.Execute(null);
+
+        Assert.Equal(LoginStage.PinUnlock, vm.Stage);
+        Assert.Equal("1234", vm.Pin);
+    }
+
     private sealed class FakeAuthService : IAuthService
     {
         private readonly Vault.VaultSession _attempts = new();

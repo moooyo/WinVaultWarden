@@ -82,51 +82,43 @@ public class SendPageStateXamlTests
             .Where(item => item.Attribute("Text")?.Value is "编辑" or "删除")
             .ToArray();
 
-        Assert.Equal(2, actions.Length);
+        Assert.Equal(4, actions.Length);
         Assert.All(actions, item =>
             Assert.Contains("CanModify", item.Attribute("IsEnabled")?.Value));
     }
 
     [Fact]
-    public void RowActions_KeepCopyVisibleAndReachableWithoutHover()
+    public void RowActions_ShowHoverCopyAndRetainKeyboardCopy()
     {
         var document = LoadXaml();
-        var actions = document.Descendants(Xaml + "StackPanel")
-            .Single(item => item.Attribute(X + "Name")?.Value == "RowActions");
-        var copy = actions.Descendants(Xaml + "Button")
+        var copy = document.Descendants(Xaml + "Button")
             .Single(item => item.Attribute("Click")?.Value == "OnCopyLinkClick");
-
-        Assert.Equal("1", actions.Attribute("Opacity")?.Value);
-        Assert.Equal("True", actions.Attribute("IsHitTestVisible")?.Value);
-        Assert.Contains(copy.Descendants(Xaml + "TextBlock"), item => item.Attribute("Text")?.Value == "复制链接");
-        Assert.Equal("36", copy.Attribute("MinHeight")?.Value);
-        Assert.DoesNotContain(document.Descendants(Xaml + "Grid"), item => item.Attribute("PointerExited") is not null);
+        Assert.Equal("复制链接", copy.Attribute("AutomationProperties.Name")?.Value);
+        Assert.Contains(document.Descendants(Xaml + "Grid"), item => item.Attribute("PointerEntered")?.Value == "OnRowPointerEntered");
+        Assert.Contains(document.Descendants(Xaml + "KeyboardAccelerator"), item =>
+            item.Attribute("Key")?.Value == "C" && item.Attribute("Modifiers")?.Value == "Control");
     }
     [Fact]
-    public void ReceivedText_IsSelectableInsideConstrainedScroller()
+    public void ReceivedText_IsSelectableInsideReceivedPageScroller()
     {
         var document = LoadXaml();
         var scroller = document
             .Descendants(Xaml + "ScrollViewer")
-            .Single(item => item.Attribute(X + "Name")?.Value == "ReceivedTextScrollViewer");
+            .Single(item => item.Attribute(X + "Name")?.Value == "ReceivePane");
         var text = scroller
             .Descendants(Xaml + "TextBlock")
-            .Single(item => item.Attribute(X + "Name")?.Value == "ReceivedTextBlock");
+            .Single(item => item.Attribute("Text")?.Value == "{x:Bind ViewModel.DisplayedReceivedText, Mode=OneWay}");
         var layout = document.Root!.Element(Xaml + "Grid")!;
         var contentRow = layout
             .Element(Xaml + "Grid.RowDefinitions")!
             .Elements(Xaml + "RowDefinition")
             .Last();
 
-        Assert.Equal("240", scroller.Attribute("MaxHeight")?.Value);
-        Assert.Equal("Auto", scroller.Attribute("VerticalScrollMode")?.Value);
-        Assert.Equal("Auto", scroller.Attribute("VerticalScrollBarVisibility")?.Value);
-        Assert.Contains("ViewModel.HasReceivedText", scroller.Attribute("Visibility")?.Value);
+        Assert.Equal("Disabled", scroller.Attribute("HorizontalScrollBarVisibility")?.Value);
         Assert.Equal("True", text.Attribute("IsTextSelectionEnabled")?.Value);
         Assert.Equal("Wrap", text.Attribute("TextWrapping")?.Value);
-        Assert.Contains("ViewModel.ReceivedText", text.Attribute("Text")?.Value);
+        Assert.Contains("ViewModel.DisplayedReceivedText", text.Attribute("Text")?.Value);
         Assert.Equal("*", contentRow.Attribute("Height")?.Value);
-        Assert.Equal("120", contentRow.Attribute("MinHeight")?.Value);
     }
 
     [Fact]

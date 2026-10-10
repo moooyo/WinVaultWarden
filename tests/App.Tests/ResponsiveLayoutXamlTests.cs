@@ -33,21 +33,24 @@ public sealed class ResponsiveLayoutXamlTests
         Assert.Contains("VaultWideThreshold = 800", source);
         Assert.Contains("previousState == \"NarrowList\" && state == \"NarrowDetail\"", source);
         Assert.Contains("VaultNarrowBackButton.Focus(FocusState.Programmatic)", source);
-        Assert.Contains("if (!ViewModel.CanCancelEditor)", source);
+        Assert.Contains("if (!await ConfirmLeaveEditorAsync())", source);
+        Assert.Contains("if (!ViewModel.CanCancelEditor || _confirmingLeave)", source);
+        Assert.Contains("if (!ViewModel.HasUnsavedEditorChanges)", source);
         Assert.Contains("CipherList.ContainerFromItem(item)", source);
         Assert.Contains("CipherList.Focus(FocusState.Programmatic)", source);
     }
 
     [Fact]
-    public void SendHasAdaptiveColumnsWithoutFixed180Or104()
+    public void SendHasAdaptiveListAndSingleColumnDetailWithBackNavigation()
     {
         var text = Read("SendPage.xaml");
-        Assert.Contains("WideColumns", text);
-        Assert.Contains("NarrowColumns", text);
-        Assert.Contains("Target=\"AccessColumn.Width\" Value=\"0\"", text);
-        Assert.Contains("Target=\"CompactAccessText.Visibility\" Value=\"Visible\"", text);
-        Assert.DoesNotContain("Width=\"180\"", text);
-        Assert.DoesNotContain("Width=\"104\"", text);
+        var source = ReadCodeBehind("SendPage.xaml.cs");
+        Assert.Contains("x:Name=\"SendListColumn\" Width=\"344\"", text);
+        Assert.Contains("x:Name=\"NarrowBackBar\" Height=\"44\"", text);
+        Assert.Contains("width < 800", source);
+        Assert.Contains("width >= 1680 ? 380 : width < 1000 ? 300 : 344", source);
+        Assert.Contains("OnBackToListClick", source);
+        Assert.Contains("if (!await CanNavigateAwayAsync()) return", source);
     }
 
     [Theory]
@@ -59,9 +62,12 @@ public sealed class ResponsiveLayoutXamlTests
         var panel = document.Descendants().Single(node =>
             node.Attributes().Any(attribute =>
                 attribute.Name.LocalName == "Name" && attribute.Value == name));
-        Assert.Equal("400", panel.Attribute("MaxWidth")?.Value);
+        Assert.Equal("360", panel.Attribute("MaxWidth")?.Value);
         Assert.Null(panel.Attribute("Width"));
         Assert.Equal("Stretch", panel.Attribute("HorizontalAlignment")?.Value);
+        Assert.Equal("Center", panel.Attribute("VerticalAlignment")?.Value);
+        if (file == "LoginPage.xaml")
+            Assert.Contains("LoginForm.MaxWidth = isLocked ? 320 : 360", ReadCodeBehind("LoginPage.xaml.cs"));
     }
 
     [Theory]

@@ -61,6 +61,7 @@ public sealed class AuthRequestUiService : IAuthRequestUiService
             r.PublicKey)
         {
             FingerprintPhrase = r.FingerprintPhrase,
+            CreatedAt = DateTimeOffset.TryParse(r.CreationDate, out var created) ? created : null,
         };
 
     private static string FormatCreatedLabel(string creationDate)

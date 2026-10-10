@@ -202,6 +202,184 @@ public class AccountServiceTests
         Assert.False(auth.LoggedOut);
     }
 
+    [Theory]
+    [MemberData(nameof(InvalidPasswordChanges))]
+    public async Task ChangePassword_InvalidInput_PreservesSessionWithoutSendingRequest(
+        string currentPassword,
+        string newPassword,
+        string? hint)
+    {
+        var (session, store, userKey, _) = BuildUnlockedSession();
+        var lease = session.CaptureLease();
+        Assert.True(store.TryLoad(out var persisted));
+        var api = new FakeAccountApiClient();
+        var auth = new FakeAuthService(session, store);
+        var service = BuildService(session, store, api, auth);
+
+        await Assert.ThrowsAsync<AccountOperationException>(() => service.ChangePasswordAsync(
+            currentPassword, newPassword, hint, TestContext.Current.CancellationToken));
+
+        Assert.Null(api.Password);
+        Assert.False(auth.LoggedOut);
+        Assert.True(session.IsUnlocked(lease));
+        Assert.False(userKey.IsDisposed);
+        Assert.True(store.TryLoad(out var unchanged));
+        Assert.Equal(persisted, unchanged);
+    }
+
+    public static TheoryData<string, string, string?> InvalidPasswordChanges => new()
+    {
+        { string.Empty, NewPassword, null },
+        { OldPassword, string.Empty, null },
+        { OldPassword, new string('a', 11), null },
+        { OldPassword, new string('a', 129), null },
+        { OldPassword, OldPassword, null },
+        { OldPassword, NewPassword, new string('h', 51) },
+        { OldPassword, NewPassword, $"Remember {NewPassword.ToUpperInvariant()}" },
+        { OldPassword, NewPassword, $"Previously {OldPassword.ToUpperInvariant()}" },
+    };
+
+    [Theory]
+    [InlineData(12)]
+    [InlineData(128)]
+    public async Task ChangePassword_WithoutOrganizationPolicy_AcceptsLengthBoundaries(int length)
+    {
+        var (session, store, _, _) = BuildUnlockedSession();
+        var api = new FakeAccountApiClient();
+        var service = BuildService(session, store, api, new FakeAuthService(session, store));
+
+        await service.ChangePasswordAsync(
+            OldPassword, new string('x', length), null, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(api.Password);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("   ", null)]
+    [InlineData("  a useful hint  ", "a useful hint")]
+    public async Task ChangePassword_NormalizesHintBeforeSending(string? hint, string? expectedHint)
+    {
+        var (session, store, _, _) = BuildUnlockedSession();
+        var api = new FakeAccountApiClient();
+        var service = BuildService(session, store, api, new FakeAuthService(session, store));
+
+        await service.ChangePasswordAsync(
+            OldPassword, NewPassword, hint, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(api.Password);
+        Assert.Equal(expectedHint, api.Password.MasterPasswordHint);
+    }
+
+    [Theory]
+    [InlineData("{\"minLength\":30}", NewPassword)]
+    [InlineData("{\"requireUpper\":true,\"enforceOnLogin\":false}", NewPassword)]
+    [InlineData("{\"requireLower\":true}", "QWERTY0987654!")]
+    [InlineData("{\"requireNumbers\":true}", "next-master-password")]
+    [InlineData("{\"requireSpecial\":true}", "next-master-password-2?")]
+    [InlineData("{\"minComplexity\":4}", "passwordpassword")]
+    [InlineData("{\"requireUpper\":\"true\"}", NewPassword)]
+    [InlineData("null", NewPassword)]
+    public async Task ChangePassword_OrganizationPolicyRejectsBeforeRequest(
+        string dataJson,
+        string newPassword)
+    {
+        var (session, store, userKey, _) = BuildUnlockedSession();
+        var lease = session.CaptureLease();
+        Assert.True(store.TryLoad(out var persisted));
+        SetMasterPasswordPolicies(session, dataJson);
+        var api = new FakeAccountApiClient();
+        var auth = new FakeAuthService(session, store);
+        var service = BuildService(session, store, api, auth);
+
+        await Assert.ThrowsAsync<AccountOperationException>(() => service.ChangePasswordAsync(
+            OldPassword, newPassword, null, TestContext.Current.CancellationToken));
+
+        Assert.Null(api.Password);
+        Assert.False(auth.LoggedOut);
+        Assert.True(session.IsUnlocked(lease));
+        Assert.False(userKey.IsDisposed);
+        Assert.True(store.TryLoad(out var unchanged));
+        Assert.Equal(persisted, unchanged);
+    }
+
+    [Fact]
+    public async Task ChangePassword_SatisfiesAllOrganizationPolicies_SendsRequest()
+    {
+        var (session, store, _, _) = BuildUnlockedSession();
+        SetMasterPasswordPolicies(
+            session,
+            """{"minLength":22,"requireUpper":true,"requireLower":true}""",
+            """{"minComplexity":4,"requireNumbers":true,"requireSpecial":true,"enforceOnLogin":false}""");
+        var api = new FakeAccountApiClient();
+        var auth = new FakeAuthService(session, store);
+        var service = BuildService(session, store, api, auth);
+
+        await service.ChangePasswordAsync(
+            OldPassword,
+            "Q7^kVm4!R9dP2@xL6nT8sW3zA5",
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(api.Password);
+        Assert.False(auth.LoggedOut);
+    }
+
+    [Fact]
+    public async Task ChangePassword_PolicyChangesBeforeSubmission_RejectsUsingLatestSnapshot()
+    {
+        var (session, store, _, _) = BuildUnlockedSession();
+        var api = new FakeAccountApiClient();
+        var cache = new VaultCacheService(new FakeCacheStore(), new VaultDecryptor(_crypto), session);
+        var provider = new PolicyUpdatingApiClientProvider(
+            api,
+            () => SetMasterPasswordPolicies(session, """{"minLength":128}"""));
+        var service = new AccountService(
+            _crypto, provider, session, store, new FakeAuthService(session, store), cache);
+
+        await Assert.ThrowsAsync<AccountOperationException>(() => service.ChangePasswordAsync(
+            OldPassword, NewPassword, null, TestContext.Current.CancellationToken));
+
+        Assert.Null(api.Password);
+    }
+
+    private static void SetMasterPasswordPolicies(VaultSession session, params string[] policyData)
+    {
+        var organizations = policyData.Select((_, index) => new VaultOrganizationPolicyContext(
+            $"organization-{index}",
+            Status: index % 2 == 0 ? 1 : 2,
+            Role: index % 2,
+            Enabled: true,
+            UsePolicies: true,
+            IsProviderUser: false)).ToArray();
+        var policies = policyData.Select((data, index) => new VaultOrganizationPolicy(
+            $"policy-{index}",
+            organizations[index].Id,
+            (int)OrganizationPolicyType.MasterPassword,
+            Enabled: true,
+            data)).ToArray();
+        Assert.True(session.SetSnapshot(new DecryptedVault(session.Account, [], [], 0, 0)
+        {
+            PolicyOrganizations = organizations,
+            Policies = policies,
+        }));
+    }
+
+    private sealed class PolicyUpdatingApiClientProvider(
+        IAccountApiClient api,
+        Action beforeSubmission) : IVaultApiClientProvider
+    {
+        public TClient GetAnonymous<TClient>(ServerOrigin origin)
+            where TClient : class, IAnonymousApiRole => throw new NotSupportedException();
+
+        public TClient GetAuthenticated<TClient>(VaultSessionLease lease)
+            where TClient : class, IAuthenticatedApiRole
+        {
+            beforeSubmission();
+            return (TClient)api;
+        }
+    }
+
     // ---- Test 3: ChangeKdf 低 iterations 客户端拒绝，不发 API ----
 
     [Theory]

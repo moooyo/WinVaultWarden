@@ -9,6 +9,7 @@ public static class AppPreferenceIndexPolicy
     public const int DefaultSessionTimeoutIndex = 3;
     public const int DefaultTimeoutActionIndex = 0;
     public const int DefaultClearClipboardIndex = 3;
+    public const int DefaultSensitiveActionVerificationIndex = 0;
 
     public static int NormalizeThemeIndex(int value) =>
         value is >= 0 and <= 2 ? value : DefaultThemeIndex;
@@ -22,6 +23,9 @@ public static class AppPreferenceIndexPolicy
     public static int NormalizeClearClipboardIndex(int value) =>
         value is >= 0 and <= 6 ? value : DefaultClearClipboardIndex;
 
+    public static int NormalizeSensitiveActionVerificationIndex(int value) =>
+        value is >= 0 and <= 1 ? value : DefaultSensitiveActionVerificationIndex;
+
     public static bool IsTransientNoSelection(int value) => value == NoSelectionIndex;
 
     public static bool Normalize(AppPreferencesData preferences)
@@ -32,15 +36,18 @@ public static class AppPreferenceIndexPolicy
         var sessionTimeoutIndex = NormalizeSessionTimeoutIndex(preferences.SessionTimeoutIndex);
         var timeoutActionIndex = NormalizeTimeoutActionIndex(preferences.TimeoutActionIndex);
         var clearClipboardIndex = NormalizeClearClipboardIndex(preferences.ClearClipboardIndex);
+        var verificationIndex = NormalizeSensitiveActionVerificationIndex(preferences.SensitiveActionVerificationIndex);
         var changed = themeIndex != preferences.ThemeIndex
             || sessionTimeoutIndex != preferences.SessionTimeoutIndex
             || timeoutActionIndex != preferences.TimeoutActionIndex
-            || clearClipboardIndex != preferences.ClearClipboardIndex;
+            || clearClipboardIndex != preferences.ClearClipboardIndex
+            || verificationIndex != preferences.SensitiveActionVerificationIndex;
 
         preferences.ThemeIndex = themeIndex;
         preferences.SessionTimeoutIndex = sessionTimeoutIndex;
         preferences.TimeoutActionIndex = timeoutActionIndex;
         preferences.ClearClipboardIndex = clearClipboardIndex;
+        preferences.SensitiveActionVerificationIndex = verificationIndex;
         return changed;
     }
 }
@@ -174,6 +181,11 @@ public static class AppPreferences
 
 public sealed class AppPreferencesData
 {
+    /// <summary>Remembers only the sign-in email and server, independently of saved credentials.</summary>
+    public bool RememberEmail { get; set; } = true;
+    public string RememberedLoginEmail { get; set; } = string.Empty;
+    public string RememberedLoginServerUrl { get; set; } = string.Empty;
+
     /// <summary>主题:0=跟随系统,1=浅色,2=深色。与设置页 ComboBox 索引一致。</summary>
     public int ThemeIndex { get; set; } = AppPreferenceIndexPolicy.DefaultThemeIndex;
 
@@ -192,6 +204,15 @@ public sealed class AppPreferencesData
     /// <summary>清空剪贴板 ComboBox 索引(0永不..6=5分)。默认 3=30秒。</summary>
     public int ClearClipboardIndex { get; set; } = AppPreferenceIndexPolicy.DefaultClearClipboardIndex;
 
+    /// <summary>0 verifies every reveal or edit; 1 permits a five-minute verification grace period.</summary>
+    public int SensitiveActionVerificationIndex { get; set; } = AppPreferenceIndexPolicy.DefaultSensitiveActionVerificationIndex;
+
+    /// <summary>Prevents copied vault content from entering clipboard history and cloud roaming.</summary>
+    public bool ExcludeClipboardHistory { get; set; } = true;
+
+    /// <summary>Minimizes the application after a successful copy operation.</summary>
+    public bool MinimizeOnCopy { get; set; }
+
     /// <summary>是否显示系统托盘图标。默认开。</summary>
     public bool ShowTrayIcon { get; set; } = true;
 
@@ -201,8 +222,8 @@ public sealed class AppPreferencesData
     /// <summary>关闭窗口时隐藏到托盘而非退出（仅当 ShowTrayIcon 为真才生效）。默认开。</summary>
     public bool CloseToTray { get; set; } = true;
 
-    /// <summary>允许捕获本应用窗口内容（截图/录屏/屏幕共享）。默认允许；关闭后对窗口设 WDA_EXCLUDEFROMCAPTURE 阻止捕获。</summary>
-    public bool AllowScreenshots { get; set; } = true;
+    /// <summary>Allows capture of application windows. Capture is excluded by default.</summary>
+    public bool AllowScreenshots { get; set; }
 
     /// <summary>允许浏览器扩展经命名管道桥接连接本应用（passkey）。默认关闭；仅开启时才启动桥接服务器。</summary>
     public bool AllowBrowserIntegration { get; set; }

@@ -25,6 +25,6 @@ public class VaultPageRecycleBinXamlTests
         Assert.Contains("ViewModel.CanEmptyRecycleBin", xaml);
         Assert.Contains("OnEmptyRecycleBinClick", xaml);
         Assert.Contains("ViewModel.IsTrashEmpty", xaml);
-        Assert.Contains("回收站为空", xaml);
+        Assert.Contains("回收站是空的", xaml);
     }
 }

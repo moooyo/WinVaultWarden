@@ -1,143 +1,108 @@
 <?xml version="1.0" encoding="utf-8"?>
-<UserControl
-    x:Class="App.Views.GeneratorWorkspace"
+<UserControl x:Class="App.Views.GeneratorWorkspace"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:converters="using:App.Converters"
-    xmlns:tk="using:CommunityToolkit.WinUI.Controls">
+    xmlns:local="using:App.Views" xmlns:tk="using:CommunityToolkit.WinUI.Controls">
     <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <Style x:Key="OptionRow" TargetType="Grid">
+            <Setter Property="MinHeight" Value="56" /><Setter Property="ColumnSpacing" Value="16" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" /><Setter Property="BorderBrush" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
+            <Setter Property="Padding" Value="0,8" />
+        </Style>
+        <Style x:Key="CharacterToggle" TargetType="ToggleButton">
+            <Setter Property="MinWidth" Value="56" /><Setter Property="Height" Value="32" /><Setter Property="Padding" Value="12,0" />
+            <Setter Property="FontFamily" Value="{StaticResource MonospaceFontFamily}" /><Setter Property="FontSize" Value="13" /><Setter Property="CornerRadius" Value="4" />
+        </Style>
     </UserControl.Resources>
-    <StackPanel Spacing="16" HorizontalAlignment="Stretch">
-        <RadioButtons x:Name="GeneratorModes" MaxColumns="3" Header="生成类型"
-                      AutomationProperties.AutomationId="GeneratorModeSelector"
-                      SelectedIndex="{x:Bind ViewModel.ModeIndex, Mode=TwoWay}">
-            <RadioButton Content="密码" IsEnabled="{x:Bind ViewModel.CanUsePasswordMode, Mode=OneWay}" />
-            <RadioButton Content="密码短语" IsEnabled="{x:Bind ViewModel.CanUsePassphraseMode, Mode=OneWay}" />
-            <RadioButton Content="用户名" />
-        </RadioButtons>
-        <InfoBar AutomationProperties.AutomationId="GeneratorPolicyNotice"
-                 IsOpen="{x:Bind ViewModel.HasGeneratorPolicyNotice, Mode=OneWay}" IsClosable="False" Severity="Informational"
-                 Message="{x:Bind ViewModel.GeneratorPolicyNotice, Mode=OneWay}" />
-        <Border Style="{StaticResource CardBorderStyle}" Padding="20">
-            <StackPanel Spacing="16">
-                <TextBlock Text="{x:Bind ViewModel.GeneratedValueLabel, Mode=OneWay}" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
-                <TextBlock x:Name="GeneratedValueText" Text="{x:Bind ViewModel.GeneratedPassword, Mode=OneWay}" AutomationProperties.AutomationId="GeneratedCredentialValue"
-                           FontFamily="{StaticResource MonospaceFontFamily}" FontSize="24" TextWrapping="Wrap" MinHeight="38" />
-                <TextBlock Text="{x:Bind ViewModel.GeneratedValueSummary, Mode=OneWay}" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
-                <StackPanel Spacing="6" Visibility="{x:Bind ViewModel.ShowStrength, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <ProgressBar Minimum="0" Maximum="1" Value="{x:Bind ViewModel.StrengthFraction, Mode=OneWay}" AutomationProperties.Name="生成结果强度" />
-                    <TextBlock Text="{x:Bind ViewModel.StrengthLabel, Mode=OneWay}" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
-                </StackPanel>
-            </StackPanel>
-        </Border>
-        <Grid ColumnSpacing="8" HorizontalAlignment="Right">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <Button Command="{x:Bind ViewModel.RegenerateCommand}" IsEnabled="{x:Bind ViewModel.CanGenerate, Mode=OneWay}" AutomationProperties.AutomationId="GeneratorRegenerateButton">
-                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE895;" FontSize="14" /><TextBlock Text="重新生成" /></StackPanel>
-            </Button>
-            <Button Grid.Column="1" Command="{x:Bind ViewModel.CopyCommand}" Style="{StaticResource AccentButtonStyle}"
-                    IsEnabled="{x:Bind ViewModel.CanCopy, Mode=OneWay}" AutomationProperties.AutomationId="GeneratorCopyButton">
-                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE8C8;" FontSize="14" /><TextBlock Text="{x:Bind ViewModel.CopyLabel, Mode=OneWay}" /></StackPanel>
-            </Button>
+    <StackPanel x:Name="WorkspaceLayout" HorizontalAlignment="Stretch" SizeChanged="OnWorkspaceSizeChanged">
+        <Grid Visibility="Collapsed" AutomationProperties.AccessibilityView="Raw">
+            <TextBlock x:Name="PrimaryBrushSource" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+            <TextBlock x:Name="TertiaryBrushSource" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+            <TextBlock x:Name="AccentBrushSource" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+            <TextBlock x:Name="CautionBrushSource" Foreground="{ThemeResource SystemFillColorCautionBrush}" />
+            <TextBlock x:Name="CriticalBrushSource" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+            <TextBlock x:Name="SuccessBrushSource" Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
+            <TextBlock x:Name="DividerBrushSource" Foreground="{ThemeResource DividerStrokeColorDefaultBrush}" />
         </Grid>
-        <InfoBar x:Name="CopyFeedbackBar" IsOpen="{x:Bind ViewModel.HasCopyFeedback, Mode=OneWay}" Message="{x:Bind ViewModel.CopyFeedback, Mode=OneWay}"
-                 IsClosable="False" AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="GeneratorCopyFeedback" />
-        <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.IsPasswordMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <TextBlock Text="密码选项" Style="{StaticResource SectionHeaderTextBlockStyle}" />
-            <tk:SettingsCard Header="长度" Description="根据网站要求选择，最长 128 个字符。" HorizontalContentAlignment="Stretch">
-                <Grid ColumnSpacing="12" MinWidth="180">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="96" /></Grid.ColumnDefinitions>
-                    <Slider Minimum="{x:Bind ViewModel.MinimumPasswordLength, Mode=OneWay}" Maximum="128" Value="{x:Bind ViewModel.LengthValue, Mode=TwoWay}" StepFrequency="1"
-                            AutomationProperties.Name="密码长度滑块" AutomationProperties.AutomationId="PasswordLengthSlider" />
-                    <NumberBox Grid.Column="1" Minimum="{x:Bind ViewModel.MinimumPasswordLength, Mode=OneWay}" Maximum="128"
-                               Value="{x:Bind ViewModel.LengthValue, Mode=TwoWay}" SpinButtonPlacementMode="Compact"
-                               AutomationProperties.Name="密码长度数值" AutomationProperties.AutomationId="PasswordLengthNumberBox" />
+        <TextBlock Text="{x:Bind ViewModel.PageTitle, Mode=OneWay}" FontFamily="{StaticResource WardenDisplayFontFamily}" FontSize="28" LineHeight="36" FontWeight="SemiBold" />
+        <TextBlock Text="{x:Bind ViewModel.PageDescription, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0" />
+        <RadioButtons x:Name="GeneratorModes" MaxColumns="3" Header="生成类型" Margin="0,16,0,0" Visibility="Collapsed" AutomationProperties.AutomationId="GeneratorModeSelector" SelectedIndex="{x:Bind ViewModel.ModeIndex, Mode=TwoWay}">
+            <RadioButton Content="随机密码" IsEnabled="{x:Bind ViewModel.CanUsePasswordMode, Mode=OneWay}" /><RadioButton Content="密码短语" IsEnabled="{x:Bind ViewModel.CanUsePassphraseMode, Mode=OneWay}" /><RadioButton Content="用户名" />
+        </RadioButtons>
+        <InfoBar Margin="0,16,0,0" AutomationProperties.AutomationId="GeneratorPolicyNotice" Visibility="{x:Bind ViewModel.HasGeneratorPolicyNotice, Mode=OneWay, Converter={StaticResource BoolToVis}}" IsOpen="{x:Bind ViewModel.HasGeneratorPolicyNotice, Mode=OneWay}" IsClosable="False" Severity="Informational" Message="{x:Bind ViewModel.GeneratorPolicyNotice, Mode=OneWay}" />
+        <Border BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" Margin="0,28,0,0" Padding="0,28,0,14">
+            <TextBlock x:Name="GeneratedValueText" AutomationProperties.AutomationId="GeneratedCredentialValue" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="32" LineHeight="42" CharacterSpacing="20" TextWrapping="Wrap" MinHeight="42" IsTextSelectionEnabled="False" />
+        </Border>
+        <Grid x:Name="StrengthActions" Padding="0,0,0,32" ColumnSpacing="16" RowSpacing="12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+            <StackPanel x:Name="StrengthPanel" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Visibility="{x:Bind ViewModel.ShowStrength, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <Grid Width="136" Height="4" ColumnSpacing="4" AutomationProperties.Name="生成结果强度"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                    <Border x:Name="StrengthSegment1" CornerRadius="2" /><Border x:Name="StrengthSegment2" Grid.Column="1" CornerRadius="2" /><Border x:Name="StrengthSegment3" Grid.Column="2" CornerRadius="2" /><Border x:Name="StrengthSegment4" Grid.Column="3" CornerRadius="2" />
                 </Grid>
-            </tk:SettingsCard>
-            <tk:SettingsCard Header="包含字符" Description="选择网站允许的字符。" HorizontalContentAlignment="Stretch">
-                <Grid ColumnSpacing="16" RowSpacing="4">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                    <CheckBox Content="A–Z" IsChecked="{x:Bind ViewModel.IncludeUppercase, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.CanToggleUppercase, Mode=OneWay}"
-                              AutomationProperties.Name="包含大写字母" AutomationProperties.AutomationId="IncludeUppercaseCheckBox" />
-                    <CheckBox Grid.Column="1" Content="a–z" IsChecked="{x:Bind ViewModel.IncludeLowercase, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.CanToggleLowercase, Mode=OneWay}"
-                              AutomationProperties.Name="包含小写字母" AutomationProperties.AutomationId="IncludeLowercaseCheckBox" />
-                    <CheckBox Grid.Row="1" Content="0–9" IsChecked="{x:Bind ViewModel.IncludeNumbers, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.CanToggleNumbers, Mode=OneWay}"
-                              AutomationProperties.Name="包含数字" AutomationProperties.AutomationId="IncludeNumbersCheckBox" />
-                    <CheckBox Grid.Row="1" Grid.Column="1" Content="!@#$" IsChecked="{x:Bind ViewModel.IncludeSpecial, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.CanToggleSpecial, Mode=OneWay}"
-                              AutomationProperties.Name="包含特殊字符" AutomationProperties.AutomationId="IncludeSpecialCheckBox" />
+                <TextBlock x:Name="StrengthText" Text="{x:Bind ViewModel.StrengthLabel, Mode=OneWay}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="{x:Bind ViewModel.EntropyLabel, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel x:Name="ActionButtons" Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button Click="OnRegenerateClick" IsEnabled="{x:Bind ViewModel.CanGenerate, Mode=OneWay}" Width="32" Height="32" Padding="0" Style="{StaticResource SubtleButtonStyle}" ToolTipService.ToolTip="重新生成" AutomationProperties.Name="重新生成" AutomationProperties.AutomationId="GeneratorRegenerateButton"><FontIcon Glyph="&#xE72C;" FontSize="16" /></Button>
+                <Button x:Name="NewLoginButton" Click="OnNewLoginClick" IsEnabled="{x:Bind ViewModel.CanCopy, Mode=OneWay}" Height="32" Padding="12,0" AutomationProperties.AutomationId="GeneratorNewLoginButton"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE710;" FontSize="16" /><TextBlock Text="用于新登录" /></StackPanel></Button>
+                <Button Command="{x:Bind ViewModel.CopyCommand}" Style="{StaticResource AccentButtonStyle}" IsEnabled="{x:Bind ViewModel.CanCopy, Mode=OneWay}" Height="32" Padding="16,0" AutomationProperties.AutomationId="GeneratorCopyButton"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon x:Name="CopyIcon" Glyph="&#xE8C8;" FontSize="16" /><TextBlock Text="{x:Bind ViewModel.CopyLabel, Mode=OneWay}" /></StackPanel></Button>
+            </StackPanel>
+        </Grid>
+        <InfoBar x:Name="CopyFeedbackBar" IsOpen="{x:Bind ViewModel.CopyFailed, Mode=OneWay}" Message="{x:Bind ViewModel.CopyFeedback, Mode=OneWay}" IsClosable="False" AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="GeneratorCopyFeedback" />
+        <StackPanel BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" Visibility="{x:Bind ViewModel.IsPasswordMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <Grid Style="{StaticResource OptionRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBlock Text="长度" VerticalAlignment="Center" />
+                <Grid Grid.Column="1" ColumnSpacing="14" VerticalAlignment="Center"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="24" /></Grid.ColumnDefinitions>
+                    <Slider x:Name="LengthSlider" Width="280" Minimum="{x:Bind ViewModel.MinimumPasswordLength, Mode=OneWay}" Maximum="{x:Bind ViewModel.PasswordSliderMaximum, Mode=OneWay}" Value="{x:Bind ViewModel.LengthValue, Mode=TwoWay}" StepFrequency="1" AutomationProperties.Name="密码长度滑块" AutomationProperties.AutomationId="PasswordLengthSlider" />
+                    <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.Length, Mode=OneWay}" FontFamily="{StaticResource MonospaceFontFamily}" TextAlignment="Right" VerticalAlignment="Center" />
                 </Grid>
-            </tk:SettingsCard>
-            <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" AutomationProperties.AutomationId="GeneratorAdvancedOptions">
-                <Expander.Header><StackPanel Spacing="4"><TextBlock Text="高级选项" /><TextBlock Text="{x:Bind ViewModel.AdvancedOptionsSummary, Mode=OneWay}" Style="{StaticResource CaptionSecondaryTextBlockStyle}" /></StackPanel></Expander.Header>
-                <StackPanel Spacing="4">
-                    <tk:SettingsCard Header="最少数字个数">
-                        <NumberBox Width="96" Minimum="{x:Bind ViewModel.PolicyMinimumNumbers, Mode=OneWay}" Maximum="128" SpinButtonPlacementMode="Compact"
-                                   Value="{x:Bind ViewModel.MinNumbersValue, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.IncludeNumbers, Mode=OneWay}"
-                                   AutomationProperties.Name="最少数字个数" AutomationProperties.AutomationId="MinNumbersNumberBox" />
-                    </tk:SettingsCard>
-                    <tk:SettingsCard Header="最少特殊字符个数">
-                        <NumberBox Width="96" Minimum="{x:Bind ViewModel.PolicyMinimumSpecial, Mode=OneWay}" Maximum="128" SpinButtonPlacementMode="Compact"
-                                   Value="{x:Bind ViewModel.MinSpecialValue, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.IncludeSpecial, Mode=OneWay}"
-                                   AutomationProperties.Name="最少特殊字符个数" AutomationProperties.AutomationId="MinSpecialNumberBox" />
-                    </tk:SettingsCard>
-                    <tk:SettingsCard Header="避免易混淆字符" Description="排除 0、O、1、l 等外观相近的字符。">
-                        <ToggleSwitch IsOn="{x:Bind ViewModel.AvoidAmbiguous, Mode=TwoWay}" AutomationProperties.Name="避免易混淆字符" />
-                    </tk:SettingsCard>
+            </Grid>
+            <Grid Style="{StaticResource OptionRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center" Spacing="2"><TextBlock Text="字符" /><TextBlock Text="至少保留一类" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <ToggleButton Content="A–Z" IsChecked="{x:Bind ViewModel.IncludeUppercase, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.CanToggleUppercase, Mode=OneWay}" Style="{StaticResource CharacterToggle}" AutomationProperties.Name="包含大写字母" AutomationProperties.AutomationId="IncludeUppercaseCheckBox" />
+                    <ToggleButton Content="a–z" IsChecked="{x:Bind ViewModel.IncludeLowercase, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.CanToggleLowercase, Mode=OneWay}" Style="{StaticResource CharacterToggle}" AutomationProperties.Name="包含小写字母" AutomationProperties.AutomationId="IncludeLowercaseCheckBox" />
+                    <ToggleButton Content="0–9" IsChecked="{x:Bind ViewModel.IncludeNumbers, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.CanToggleNumbers, Mode=OneWay}" Style="{StaticResource CharacterToggle}" AutomationProperties.Name="包含数字" AutomationProperties.AutomationId="IncludeNumbersCheckBox" />
+                    <ToggleButton Content="!@#$" IsChecked="{x:Bind ViewModel.IncludeSpecial, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.CanToggleSpecial, Mode=OneWay}" Style="{StaticResource CharacterToggle}" AutomationProperties.Name="包含特殊字符" AutomationProperties.AutomationId="IncludeSpecialCheckBox" />
                 </StackPanel>
-            </Expander>
+            </Grid>
+            <Grid Style="{StaticResource OptionRow}" Tapped="OnAvoidAmbiguousRowTapped"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center" Spacing="2"><TextBlock Text="避免易混淆字符" /><TextBlock Text="不使用 0 O 1 l I" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center"><TextBlock Text="{x:Bind local:GeneratorWorkspace.StateLabel(ViewModel.AvoidAmbiguous), Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" /><ToggleSwitch MinWidth="0" Width="40" IsOn="{x:Bind ViewModel.AvoidAmbiguous, Mode=TwoWay}" OnContent="" OffContent="" VerticalAlignment="Center" AutomationProperties.Name="避免易混淆字符" /></StackPanel>
+            </Grid>
         </StackPanel>
-        <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.IsPassphraseMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <TextBlock Text="密码短语选项" Style="{StaticResource SectionHeaderTextBlockStyle}" />
-            <tk:SettingsCard Header="单词数" Description="更多单词可以增加长度与随机性。">
-                <NumberBox Width="96" Minimum="{x:Bind ViewModel.MinimumPassphraseWordCount, Mode=OneWay}" Maximum="20" SpinButtonPlacementMode="Compact"
-                           Value="{x:Bind ViewModel.PassphraseWordCountValue, Mode=TwoWay}" AutomationProperties.Name="单词数" AutomationProperties.AutomationId="PassphraseWordCountNumberBox" />
-            </tk:SettingsCard>
-            <tk:SettingsCard Header="单词分隔符" Description="留空时使用连字符（-）。">
-                <TextBox Width="120" Text="{x:Bind ViewModel.PassphraseSeparator, Mode=TwoWay}" AutomationProperties.Name="单词分隔符" AutomationProperties.AutomationId="PassphraseSeparatorTextBox" />
-            </tk:SettingsCard>
-            <tk:SettingsCard Header="首字母大写">
-                <ToggleSwitch IsOn="{x:Bind ViewModel.PassphraseCapitalize, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.CanTogglePassphraseCapitalize, Mode=OneWay}"
-                              AutomationProperties.Name="密码短语首字母大写" AutomationProperties.AutomationId="PassphraseCapitalizeToggle" />
-            </tk:SettingsCard>
-            <tk:SettingsCard Header="包含数字">
-                <ToggleSwitch IsOn="{x:Bind ViewModel.PassphraseIncludeNumber, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.CanTogglePassphraseIncludeNumber, Mode=OneWay}"
-                              AutomationProperties.Name="密码短语包含数字" AutomationProperties.AutomationId="PassphraseIncludeNumberToggle" />
-            </tk:SettingsCard>
+        <StackPanel BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" Visibility="{x:Bind ViewModel.IsPassphraseMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <Grid Style="{StaticResource OptionRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBlock Text="单词数" VerticalAlignment="Center" />
+                <Grid Grid.Column="1" ColumnSpacing="14" VerticalAlignment="Center"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="24" /></Grid.ColumnDefinitions>
+                    <Slider x:Name="WordsSlider" Width="280" Minimum="{x:Bind ViewModel.MinimumPassphraseWordCount, Mode=OneWay}" Maximum="{x:Bind ViewModel.PassphraseSliderMaximum, Mode=OneWay}" Value="{x:Bind ViewModel.PassphraseWordCountValue, Mode=TwoWay}" StepFrequency="1" AutomationProperties.Name="单词数" AutomationProperties.AutomationId="PassphraseWordCountNumberBox" />
+                    <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.PassphraseWordCount, Mode=OneWay}" FontFamily="{StaticResource MonospaceFontFamily}" TextAlignment="Right" VerticalAlignment="Center" />
+                </Grid>
+            </Grid>
+            <Grid Style="{StaticResource OptionRow}"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="分隔符" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <ToggleButton x:Name="SeparatorDash" Content="-" Tag="-" MinWidth="40" Height="30" Padding="10,0" Click="OnSeparatorClick" AutomationProperties.Name="连字符分隔符" /><ToggleButton x:Name="SeparatorDot" Content="." Tag="." MinWidth="40" Height="30" Padding="10,0" Click="OnSeparatorClick" AutomationProperties.Name="句点分隔符" /><ToggleButton x:Name="SeparatorUnderscore" Content="_" Tag="_" MinWidth="40" Height="30" Padding="10,0" Click="OnSeparatorClick" AutomationProperties.Name="下划线分隔符" /><ToggleButton x:Name="SeparatorSpace" Content="空格" Tag=" " MinWidth="40" Height="30" Padding="10,0" Click="OnSeparatorClick" AutomationProperties.Name="空格分隔符" />
+                </StackPanel>
+            </Grid>
+            <Grid Style="{StaticResource OptionRow}" Tapped="OnCapitalizeRowTapped"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel VerticalAlignment="Center" Spacing="2"><TextBlock Text="首字母大写" /><TextBlock Text="Otter-Copper" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel><StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center"><TextBlock Text="{x:Bind local:GeneratorWorkspace.StateLabel(ViewModel.PassphraseCapitalize), Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" /><ToggleSwitch MinWidth="0" Width="40" IsOn="{x:Bind ViewModel.PassphraseCapitalize, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.CanTogglePassphraseCapitalize, Mode=OneWay}" OnContent="" OffContent="" VerticalAlignment="Center" AutomationProperties.Name="密码短语首字母大写" AutomationProperties.AutomationId="PassphraseCapitalizeToggle" /></StackPanel></Grid>
+            <Grid Style="{StaticResource OptionRow}" Tapped="OnIncludeNumberRowTapped"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel VerticalAlignment="Center" Spacing="2"><TextBlock Text="包含数字" /><TextBlock Text="在随机一个单词后加一位数字" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel><StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center"><TextBlock Text="{x:Bind local:GeneratorWorkspace.StateLabel(ViewModel.PassphraseIncludeNumber), Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" /><ToggleSwitch MinWidth="0" Width="40" IsOn="{x:Bind ViewModel.PassphraseIncludeNumber, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.CanTogglePassphraseIncludeNumber, Mode=OneWay}" OnContent="" OffContent="" VerticalAlignment="Center" AutomationProperties.Name="密码短语包含数字" AutomationProperties.AutomationId="PassphraseIncludeNumberToggle" /></StackPanel></Grid>
         </StackPanel>
         <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.IsUsernameMode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <TextBlock Text="用户名选项" Style="{StaticResource SectionHeaderTextBlockStyle}" />
-            <tk:SettingsCard Header="类型" HorizontalContentAlignment="Stretch">
-                <ComboBox HorizontalAlignment="Stretch" MinWidth="0" SelectedIndex="{x:Bind ViewModel.UsernameTypeIndex, Mode=TwoWay}"
-                          AutomationProperties.Name="用户名类型" AutomationProperties.AutomationId="UsernameTypeComboBox">
-                    <ComboBoxItem Content="随机单词" /><ComboBoxItem Content="加号邮箱" /><ComboBoxItem Content="全域邮箱" />
-                </ComboBox>
-            </tk:SettingsCard>
-            <tk:SettingsCard Header="首字母大写" Visibility="{x:Bind ViewModel.ShowUsernameWordOptions, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <ToggleSwitch IsOn="{x:Bind ViewModel.UsernameCapitalize, Mode=TwoWay}" AutomationProperties.Name="用户名首字母大写" AutomationProperties.AutomationId="UsernameCapitalizeToggle" />
-            </tk:SettingsCard>
-            <tk:SettingsCard Header="包含 4 位数字" Visibility="{x:Bind ViewModel.ShowUsernameWordOptions, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <ToggleSwitch IsOn="{x:Bind ViewModel.UsernameIncludeNumber, Mode=TwoWay}" AutomationProperties.Name="用户名包含 4 位数字" AutomationProperties.AutomationId="UsernameIncludeNumberToggle" />
-            </tk:SettingsCard>
-            <tk:SettingsCard Header="邮箱地址" Description="请先确认邮箱服务支持加号地址。" HorizontalContentAlignment="Stretch"
-                             Visibility="{x:Bind ViewModel.ShowUsernameEmail, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <TextBox x:Name="UsernameEmailInput" HorizontalAlignment="Stretch" MinWidth="0" PlaceholderText="name@example.com"
-                         Text="{x:Bind ViewModel.UsernameEmail, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         AutomationProperties.Name="加号邮箱地址" AutomationProperties.AutomationId="UsernameEmailTextBox" />
-            </tk:SettingsCard>
-            <tk:SettingsCard Header="域名" Description="需要已配置全域收件的邮箱域名。" HorizontalContentAlignment="Stretch"
-                             Visibility="{x:Bind ViewModel.ShowUsernameDomain, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <TextBox x:Name="UsernameDomainInput" HorizontalAlignment="Stretch" MinWidth="0" PlaceholderText="example.com"
-                         Text="{x:Bind ViewModel.UsernameDomain, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         AutomationProperties.Name="全域邮箱域名" AutomationProperties.AutomationId="UsernameDomainTextBox" />
-            </tk:SettingsCard>
+            <tk:SettingsCard Header="类型"><ComboBox SelectedIndex="{x:Bind ViewModel.UsernameTypeIndex, Mode=TwoWay}" MinWidth="180" AutomationProperties.Name="用户名类型" AutomationProperties.AutomationId="UsernameTypeComboBox"><ComboBoxItem Content="随机单词" /><ComboBoxItem Content="加号邮箱" /><ComboBoxItem Content="全域邮箱" /></ComboBox></tk:SettingsCard>
+            <tk:SettingsCard Header="首字母大写" Visibility="{x:Bind ViewModel.ShowUsernameWordOptions, Mode=OneWay, Converter={StaticResource BoolToVis}}"><ToggleSwitch IsOn="{x:Bind ViewModel.UsernameCapitalize, Mode=TwoWay}" AutomationProperties.Name="用户名首字母大写" AutomationProperties.AutomationId="UsernameCapitalizeToggle" /></tk:SettingsCard>
+            <tk:SettingsCard Header="包含 4 位数字" Visibility="{x:Bind ViewModel.ShowUsernameWordOptions, Mode=OneWay, Converter={StaticResource BoolToVis}}"><ToggleSwitch IsOn="{x:Bind ViewModel.UsernameIncludeNumber, Mode=TwoWay}" AutomationProperties.Name="用户名包含 4 位数字" AutomationProperties.AutomationId="UsernameIncludeNumberToggle" /></tk:SettingsCard>
+            <tk:SettingsCard Header="邮箱地址" Visibility="{x:Bind ViewModel.ShowUsernameEmail, Mode=OneWay, Converter={StaticResource BoolToVis}}"><TextBox Width="240" Text="{x:Bind ViewModel.UsernameEmail, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="name@example.com" AutomationProperties.Name="加号邮箱地址" AutomationProperties.AutomationId="UsernameEmailTextBox" /></tk:SettingsCard>
+            <tk:SettingsCard Header="域名" Visibility="{x:Bind ViewModel.ShowUsernameDomain, Mode=OneWay, Converter={StaticResource BoolToVis}}"><TextBox Width="240" Text="{x:Bind ViewModel.UsernameDomain, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="example.com" AutomationProperties.Name="全域邮箱域名" AutomationProperties.AutomationId="UsernameDomainTextBox" /></tk:SettingsCard>
         </StackPanel>
-        <tk:SettingsCard Header="生成器历史记录" Description="{x:Bind ViewModel.HistorySummary, Mode=OneWay}"
-                         IsClickEnabled="True" Click="OnHistoryClick" AutomationProperties.AutomationId="GeneratorHistoryCard">
-            <tk:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE81C;" /></tk:SettingsCard.HeaderIcon>
-            <tk:SettingsCard.ActionIcon><FontIcon Glyph="&#xE76C;" /></tk:SettingsCard.ActionIcon>
-        </tk:SettingsCard>
-        <TextBlock Text="仅保留最近 20 项成功复制的内容，保险库锁定后立即清除。" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+        <Expander Header="高级选项" Margin="0,20,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Visibility="{x:Bind ViewModel.IsPasswordMode, Mode=OneWay, Converter={StaticResource BoolToVis}}" AutomationProperties.AutomationId="GeneratorAdvancedOptions">
+            <StackPanel Spacing="8">
+                <tk:SettingsCard Header="长度（扩展范围）"><NumberBox Width="100" Minimum="{x:Bind ViewModel.MinimumPasswordLength, Mode=OneWay}" Maximum="128" Value="{x:Bind ViewModel.LengthValue, Mode=TwoWay}" SpinButtonPlacementMode="Compact" AutomationProperties.Name="密码长度数值" AutomationProperties.AutomationId="PasswordLengthNumberBox" /></tk:SettingsCard>
+                <tk:SettingsCard Header="最少数字个数"><NumberBox Width="100" Minimum="{x:Bind ViewModel.PolicyMinimumNumbers, Mode=OneWay}" Maximum="128" Value="{x:Bind ViewModel.MinNumbersValue, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.IncludeNumbers, Mode=OneWay}" SpinButtonPlacementMode="Compact" AutomationProperties.Name="最少数字个数" AutomationProperties.AutomationId="MinNumbersNumberBox" /></tk:SettingsCard>
+                <tk:SettingsCard Header="最少特殊字符个数"><NumberBox Width="100" Minimum="{x:Bind ViewModel.PolicyMinimumSpecial, Mode=OneWay}" Maximum="128" Value="{x:Bind ViewModel.MinSpecialValue, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.IncludeSpecial, Mode=OneWay}" SpinButtonPlacementMode="Compact" AutomationProperties.Name="最少特殊字符个数" AutomationProperties.AutomationId="MinSpecialNumberBox" /></tk:SettingsCard>
+            </StackPanel>
+        </Expander>
+        <Button x:Name="HistoryButton" Content="最近复制" Click="OnHistoryClick" HorizontalAlignment="Left" Margin="0,16,0,0" Style="{StaticResource SubtleButtonStyle}" Visibility="Collapsed" />
     </StackPanel>
 </UserControl>

@@ -13,7 +13,7 @@ public class PwnedPasswordsClientTests
     {
         HttpRequestMessage? captured = null;
         var handler = new StubHandler(req => { captured = req; return
-            "0000000000000000000000000000000000A:5\r\n1E4C9B93F3F0682250B6CF8331B7EE68FD8:12345\r\n"; });
+            new string('0', 34) + "A:5\r\n1E4C9B93F3F0682250B6CF8331B7EE68FD8:12345\r\n"; });
         var client = new PwnedPasswordsClient(new HttpClient(handler));
 
         var count = await client.GetBreachCountAsync("password", TestContext.Current.CancellationToken);
@@ -28,7 +28,7 @@ public class PwnedPasswordsClientTests
     [Fact]
     public async Task GetBreachCount_NoSuffixMatch_ReturnsZero()
     {
-        var handler = new StubHandler(_ => "ABCDEF0000000000000000000000000000000:7\r\n");
+        var handler = new StubHandler(_ => "ABCDEF" + new string('0', 29) + ":7\r\n");
         var client = new PwnedPasswordsClient(new HttpClient(handler));
         Assert.Equal(0, await client.GetBreachCountAsync("password", TestContext.Current.CancellationToken));
     }
@@ -61,6 +61,67 @@ public class PwnedPasswordsClientTests
         // suffix 命中,但计数不是合法整数 → 绝不能悄悄返回 0。
         var handler = new StubHandler(_ => "1E4C9B93F3F0682250B6CF8331B7EE68FD8:not-a-number\r\n");
         var client = new PwnedPasswordsClient(new HttpClient(handler));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            client.GetBreachCountAsync("password", TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" \r\n\t\n")]
+    [InlineData("<html>Service unavailable</html>")]
+    [InlineData("ABCDEF:7")]
+    [InlineData("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ:7")]
+    [InlineData("1E4C9B93F3F0682250B6CF8331B7EE68FD8:-1")]
+    [InlineData("1E4C9B93F3F0682250B6CF8331B7EE68FD8:2147483648")]
+    [InlineData("1E4C9B93F3F0682250B6CF8331B7EE68FD8:0:7")]
+    public async Task GetBreachCount_EmptyOrMalformedSuccessBody_ThrowsWithoutSensitiveDetails(string body)
+    {
+        var client = new PwnedPasswordsClient(new HttpClient(new StubHandler(_ => body)));
+
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            client.GetBreachCountAsync("password", TestContext.Current.CancellationToken));
+
+        Assert.DoesNotContain("password", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("1E4C9B93", error.Message, StringComparison.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(body))
+            Assert.DoesNotContain(body, error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetBreachCount_ZeroCountPaddingAndNoMatch_ReturnsZero()
+    {
+        var body = new string('A', 35) + ":0\r\n" + new string('B', 35) + ":17\r\n";
+        var client = new PwnedPasswordsClient(new HttpClient(new StubHandler(_ => body)));
+
+        Assert.Equal(0, await client.GetBreachCountAsync("password", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetBreachCount_MatchingZeroCountAndLowercaseSuffix_ReturnsZero()
+    {
+        var client = new PwnedPasswordsClient(new HttpClient(new StubHandler(_ =>
+            "1e4c9b93f3f0682250b6cf8331b7ee68fd8:0\r\n")));
+
+        Assert.Equal(0, await client.GetBreachCountAsync("password", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetBreachCount_ValidRecordThenMalformedRecord_DoesNotReturnAnUncheckedCount()
+    {
+        var client = new PwnedPasswordsClient(new HttpClient(new StubHandler(_ =>
+            "1E4C9B93F3F0682250B6CF8331B7EE68FD8:1\r\ninvalid\r\n")));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            client.GetBreachCountAsync("password", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetBreachCount_DuplicateMatchingSuffix_CannotOverwriteExposureWithZero()
+    {
+        var suffix = "1E4C9B93F3F0682250B6CF8331B7EE68FD8";
+        var client = new PwnedPasswordsClient(new HttpClient(new StubHandler(_ =>
+            $"{suffix}:9\r\n{suffix}:0\r\n")));
 
         await Assert.ThrowsAsync<InvalidDataException>(() =>
             client.GetBreachCountAsync("password", TestContext.Current.CancellationToken));

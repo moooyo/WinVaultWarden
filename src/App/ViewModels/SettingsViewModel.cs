@@ -26,6 +26,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IDeviceTrustService? _deviceTrust;
     private readonly IWebAuthnTwoFactorRegistrationService? _webAuthnRegistration;
     private readonly IAccountDeletionService? _accountDeletion;
+    private readonly Func<bool>? _supportsLocalUnlock;
 
     // 是否支持浏览器集成：仅便携版(unpackaged)为 true；MSIX 打包时 DI 传 false。
     // 默认 true 使无参构造器（设计时 / 无注入测试）保持便携版语义。
@@ -220,7 +221,7 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    public partial bool MinimizeOnCopy { get; set; }
+    public partial bool MinimizeOnCopy { get; set; } = AppPreferences.Current.MinimizeOnCopy;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanConfigureTrayBehavior))]
@@ -363,6 +364,23 @@ public partial class SettingsViewModel : ObservableObject
     {
         AppPreferences.Current.CloseToTray = value;
         AppPreferences.Save();
+        OnPropertyChanged(nameof(SelectedCloseBehaviorIndex));
+    }
+
+    public int SelectedCloseBehaviorIndex
+    {
+        get => CloseToTray ? 0 : 1;
+        set
+        {
+            if (value is 0 or 1)
+                CloseToTray = value == 0;
+        }
+    }
+
+    partial void OnMinimizeOnCopyChanged(bool value)
+    {
+        AppPreferences.Current.MinimizeOnCopy = value;
+        AppPreferences.Save();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -402,15 +420,20 @@ public partial class SettingsViewModel : ObservableObject
         _webAuthnRegistration = webAuthnRegistration;
     }
 
-    public SettingsViewModel(IPinService pin) => _pin = pin;
+    public SettingsViewModel(IPinService pin, Func<bool>? supportsLocalUnlock = null)
+    {
+        _pin = pin;
+        _supportsLocalUnlock = supportsLocalUnlock;
+    }
 
     internal SettingsViewModel(IVaultService vault) => _vault = vault;
 
     // 供 Windows Hello 相关测试直接注入两个协作者，无需 accountUi/twoFactorUi/pin 假件。
-    public SettingsViewModel(IWindowsHelloAuthenticator hello, IHelloUnlockService helloUnlock)
+    public SettingsViewModel(IWindowsHelloAuthenticator hello, IHelloUnlockService helloUnlock, Func<bool>? supportsLocalUnlock = null)
     {
         _hello = hello;
         _helloUnlock = helloUnlock;
+        _supportsLocalUnlock = supportsLocalUnlock;
     }
 
     public SettingsViewModel(
@@ -424,7 +447,8 @@ public partial class SettingsViewModel : ObservableObject
         IVaultService? vault = null,
         IDeviceTrustService? deviceTrust = null,
         IWebAuthnTwoFactorRegistrationService? webAuthnRegistration = null,
-        IAccountDeletionService? accountDeletion = null)
+        IAccountDeletionService? accountDeletion = null,
+        Func<bool>? supportsLocalUnlock = null)
     {
         _accountUi = accountUi;
         _twoFactorUi = twoFactorUi;
@@ -436,6 +460,7 @@ public partial class SettingsViewModel : ObservableObject
         _deviceTrust = deviceTrust;
         _webAuthnRegistration = webAuthnRegistration;
         _accountDeletion = accountDeletion;
+        _supportsLocalUnlock = supportsLocalUnlock;
         ApplyBrowserIntegrationGate(browserIntegrationSupported);
     }
 
@@ -452,9 +477,15 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
+    private string? _updatedAccountName;
+    public string AccountName => _updatedAccountName ?? _accountUi?.GetAccount().Name ?? string.Empty;
+    public string AccountDisplayName => string.IsNullOrWhiteSpace(AccountName) ? AccountEmail : AccountName;
+    public string AccountNameDescription => string.IsNullOrWhiteSpace(AccountName) ? "尚未设置名称" : AccountName;
     public string AccountEmail => _accountUi?.GetAccount().Email ?? string.Empty;
     public string AccountServer => _accountUi?.GetAccount().ServerUrl ?? string.Empty;
-    public string AccountInitial => _accountUi?.GetAccount().Initial ?? string.Empty;
+    public string AccountInitial => !string.IsNullOrWhiteSpace(_updatedAccountName)
+        ? _updatedAccountName.Trim()[0].ToString().ToUpperInvariant()
+        : _accountUi?.GetAccount().Initial ?? string.Empty;
     public string KdfSummary => _accountUi?.GetAccount().KdfSummary ?? string.Empty;
 
     public bool CanRegisterWebAuthn => _webAuthnRegistration?.IsSupported == true;
@@ -490,21 +521,27 @@ public partial class SettingsViewModel : ObservableObject
     // ── PIN 解锁 ─────────────────────────────────────────────────────────────
 
     public bool IsPinSet => _pin?.IsPinSet ?? false;
-    public bool CanUsePinUnlock => _vault is null || !VaultPolicyEvaluator.IsEnabledForUser(
+    public bool SupportsLocalUnlock => _supportsLocalUnlock?.Invoke() ?? true;
+    private bool IsPinAllowedByPolicy => _vault is null || !VaultPolicyEvaluator.IsEnabledForUser(
         _vault.Snapshot,
         Core.Enums.OrganizationPolicyType.RemoveUnlockWithPin);
+    public bool CanUsePinUnlock => SupportsLocalUnlock && IsPinAllowedByPolicy;
 
-    public string PinUnlockDescription => !CanUsePinUnlock
-        ? "组织策略不允许使用 PIN 解锁。"
-        : "使用独立 PIN 解锁此设备上已保存的保险库。";
+    public string PinUnlockDescription => !SupportsLocalUnlock
+        ? "此账户使用 V2 加密，当前版本暂不支持 PIN 解锁"
+        : !IsPinAllowedByPolicy ? "组织策略不允许使用 PIN 解锁。"
+        : "PIN 只保存在这台设备上，连续输错 5 次会清除 PIN 并需要主密码";
 
     public void ApplyPolicyRestrictions()
     {
         ApplyTimeoutPolicyRestrictions();
-        if (!CanUsePinUnlock && IsPinSet)
+        if (!IsPinAllowedByPolicy && IsPinSet)
             ClearPin();
         OnPropertyChanged(nameof(CanUsePinUnlock));
         OnPropertyChanged(nameof(PinUnlockDescription));
+        OnPropertyChanged(nameof(SupportsLocalUnlock));
+        OnPropertyChanged(nameof(CanToggleWindowsHello));
+        OnPropertyChanged(nameof(WindowsHelloDescription));
     }
 
     private void ApplyTimeoutPolicyRestrictions()
@@ -562,8 +599,19 @@ public partial class SettingsViewModel : ObservableObject
             : $"{hours} 小时 {remainingMinutes} 分钟";
     }
 
-    public void SetPin(string pin) => _pin?.SetPin(pin);
-    public void ClearPin() => _pin?.ClearPin();
+    public void SetPin(string pin)
+    {
+        if (!CanUsePinUnlock)
+            throw new InvalidOperationException(PinUnlockDescription);
+        _pin?.SetPin(pin);
+        OnPropertyChanged(nameof(IsPinSet));
+    }
+
+    public void ClearPin()
+    {
+        _pin?.ClearPin();
+        OnPropertyChanged(nameof(IsPinSet));
+    }
 
     // ── Windows Hello 解锁 ───────────────────────────────────────────────────
 
@@ -573,10 +621,12 @@ public partial class SettingsViewModel : ObservableObject
     public partial bool IsWindowsHelloAvailable { get; set; }
 
     public bool IsWindowsHelloEnabled => _helloUnlock?.IsHelloSet ?? false;
-    public bool CanToggleWindowsHello => IsWindowsHelloAvailable || IsWindowsHelloEnabled;
+    public bool CanToggleWindowsHello => SupportsLocalUnlock && IsWindowsHelloAvailable || IsWindowsHelloEnabled;
 
-    public string WindowsHelloDescription => IsWindowsHelloAvailable
-        ? "使用 Windows Hello 验证身份并解锁此设备上的保险库。"
+    public string WindowsHelloDescription => !SupportsLocalUnlock
+        ? "此账户使用 V2 加密，当前版本暂不支持 Windows Hello 解锁"
+        : IsWindowsHelloAvailable
+        ? "用面部、指纹或 PIN 代替主密码"
         : IsWindowsHelloEnabled
             ? "Windows Hello 当前不可用，仍可关闭已保存的解锁设置。"
             : "请先在 Windows 设置中配置 Windows Hello。";
@@ -585,21 +635,44 @@ public partial class SettingsViewModel : ObservableObject
         => IsWindowsHelloAvailable = _hello is not null && await _hello.IsAvailableAsync();
 
     // 启用:生成 32 字节随机挑战 → Hello 创建密钥并签名 → SetHello。取消/失败返回 false(开关回弹)。
-    public async Task<bool> EnableWindowsHelloAsync()
+    public async Task<bool> EnableWindowsHelloAsync(Func<Action, bool>? protectedCommit = null, CancellationToken ct = default)
     {
-        if (_hello is null || _helloUnlock is null)
+        if (_hello is null || _helloUnlock is null || !SupportsLocalUnlock)
             return false;
 
         var challenge = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
-        var signature = await _hello.CreateProtectorAsync(challenge);
-        if (signature is null)
+        byte[]? signature = null;
+        try
+        {
+            signature = await _hello.CreateProtectorAsync(challenge, ct);
+            if (signature is null || ct.IsCancellationRequested || !SupportsLocalUnlock)
+                return false;
+            if (protectedCommit is not null)
+            {
+                if (!protectedCommit(() => _helloUnlock.SetHello(signature, challenge)))
+                    return false;
+            }
+            else
+                _helloUnlock.SetHello(signature, challenge);
+            OnPropertyChanged(nameof(IsWindowsHelloEnabled));
+            OnPropertyChanged(nameof(CanToggleWindowsHello));
+            OnPropertyChanged(nameof(WindowsHelloDescription));
+            return true;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
             return false;
-
-        _helloUnlock.SetHello(signature, challenge);
-        OnPropertyChanged(nameof(IsWindowsHelloEnabled));
-        OnPropertyChanged(nameof(CanToggleWindowsHello));
-        OnPropertyChanged(nameof(WindowsHelloDescription));
-        return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(challenge);
+            if (signature is not null)
+                System.Security.Cryptography.CryptographicOperations.ZeroMemory(signature);
+        }
     }
 
     public void DisableWindowsHello()
@@ -736,7 +809,13 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    public async Task<UiOperationResult> RenameAsync(string name, CancellationToken ct = default)
+    [ObservableProperty]
+    public partial bool ProfileRefreshPending { get; set; }
+
+    public async Task<UiOperationResult> RenameAsync(
+        string name,
+        CancellationToken ct = default,
+        Func<CancellationToken, Task>? refresh = null)
     {
         if (_accountUi is null)
         {
@@ -748,9 +827,27 @@ public partial class SettingsViewModel : ObservableObject
 
         IsBusy = true;
         OperationError = string.Empty;
+        ProfileRefreshPending = false;
         try
         {
             await _accountUi.RenameAsync(name, ct);
+            _updatedAccountName = name.Trim();
+            OnPropertyChanged(nameof(AccountName));
+            OnPropertyChanged(nameof(AccountDisplayName));
+            OnPropertyChanged(nameof(AccountNameDescription));
+            OnPropertyChanged(nameof(AccountInitial));
+            if (refresh is not null)
+            {
+                try
+                {
+                    await refresh(ct);
+                }
+                catch (Exception)
+                {
+                    // The profile update is already confirmed; a refresh failure cannot undo it.
+                    ProfileRefreshPending = true;
+                }
+            }
             return UiOperationResult.Success();
         }
         catch (OperationCanceledException ex)

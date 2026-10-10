@@ -1,3 +1,5 @@
+using System.ComponentModel;
+
 namespace App.ViewModels.Models;
 
 /// <summary>
@@ -13,8 +15,31 @@ public sealed record AuthRequestItem(
     string DeviceTypeName,
     string IpAddress,
     string CreatedLabel,
-    string PublicKey)
+    string PublicKey) : INotifyPropertyChanged
 {
     /// <summary>Bitwarden 指纹短语(5 词以 '-' 连接),审批前供用户与请求设备核对。</summary>
     public string FingerprintPhrase { get; init; } = "";
+
+    /// <summary>The authoritative server creation time; missing values cannot be approved.</summary>
+    public DateTimeOffset? CreatedAt { get; init; }
+
+    public DateTimeOffset? ExpiresAt => CreatedAt?.ToUniversalTime() is { } created
+        && created <= DateTimeOffset.MaxValue.AddMinutes(-15)
+        ? created.AddMinutes(15) : null;
+
+    public string ExpirationLabel
+    {
+        get
+        {
+            if (ExpiresAt is not { } expiry)
+                return "无法确认过期时间";
+            var seconds = (long)Math.Ceiling((expiry - DateTimeOffset.UtcNow).TotalSeconds);
+            return seconds > 0 ? $"{seconds / 60}:{seconds % 60:00} 后过期" : "已过期";
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public void RefreshExpiration() =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ExpirationLabel)));
 }

@@ -43,11 +43,15 @@ public sealed partial class SendEditorDraft : ObservableObject
     [NotifyPropertyChangedFor(nameof(AccessPrivacySummary))]
     public partial string Password { get; set; } = string.Empty;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AccessPrivacySummary))]
+    public partial bool RemovePassword { get; set; }
+
     public string AccessPrivacySummary
     {
         get
         {
-            var protection = ExistingHasPassword || !string.IsNullOrEmpty(Password)
+            var protection = (ExistingHasPassword && !RemovePassword) || !string.IsNullOrEmpty(Password)
                 ? "需要访问密码" : "拥有链接的任何人";
             var limit = MaxAccessCount is { } count ? $" · 最多 {count} 次访问" : string.Empty;
             return $"{(Disabled ? "已停用 · " : string.Empty)}{protection}{limit}";
@@ -116,6 +120,7 @@ public sealed partial class SendEditorDraft : ObservableObject
     {
         Text = string.Empty;
         Password = string.Empty;
+        RemovePassword = false;
         Notes = string.Empty;
         ReplacementFile = null;
         WrappedKey = null;

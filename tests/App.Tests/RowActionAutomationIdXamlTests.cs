@@ -37,7 +37,7 @@ public class RowActionAutomationIdXamlTests
     {
         var ids = AutomationIds(Load("SendPage.xaml"));
         Assert.Contains("SendRowCopyLinkButton", ids);
-        Assert.Contains("SendRowMoreButton", ids);
+        Assert.Contains("SendDetailMoreButton", ids);
     }
 
     [Theory]

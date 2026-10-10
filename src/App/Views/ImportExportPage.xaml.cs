@@ -24,21 +24,44 @@ public sealed partial class ImportExportPage : Page
 
     private readonly VaultSession _session;
     private readonly IAppLifecycleCoordinator _lifecycle;
+    private ImportFormat _lastImportFormat;
 
     public ImportExportPage()
     {
         ViewModel = global::App.App.Services.GetRequiredService<ImportExportViewModel>();
         _session = global::App.App.Services.GetRequiredService<VaultSession>();
         _lifecycle = global::App.App.Services.GetRequiredService<IAppLifecycleCoordinator>();
+        _lastImportFormat = ViewModel.SelectedImportFormat;
         InitializeComponent();
     }
 
-    private void OnTransferCardsSizeChanged(object sender, SizeChangedEventArgs e)
+    public static string FormatImportFile(string content, string fileLabel) =>
+        string.IsNullOrEmpty(content) ? "还没有选择文件" : fileLabel;
+
+    public static string FormatChooseFileButton(string content) =>
+        string.IsNullOrEmpty(content) ? "选择文件…" : "更换…";
+
+    public static string FormatImportHint(string content) =>
+        string.IsNullOrEmpty(content) ? "先选择要导入的文件" : string.Empty;
+
+    public static string FormatImportButton(ImportExportOperationKind? operation) =>
+        operation == ImportExportOperationKind.Import ? "正在导入…" : "导入";
+
+    public static string FormatExportButton(ImportExportOperationKind? operation) =>
+        operation == ImportExportOperationKind.Export ? "正在导出…" : "导出…";
+
+    private void OnImportFormatSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        var sideBySide = e.NewSize.Width >= 840;
-        ExportCardColumn.Width = sideBySide ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-        Grid.SetColumn(ExportCard, sideBySide ? 1 : 0);
-        Grid.SetRow(ExportCard, sideBySide ? 0 : 1);
+        if (sender is not ComboBox { SelectedIndex: >= 0 } combo)
+            return;
+
+        var format = (ImportFormat)combo.SelectedIndex;
+        if (format == _lastImportFormat || !ViewModel.CanOperate)
+            return;
+
+        _lastImportFormat = format;
+        ViewModel.ImportContent = string.Empty;
+        ViewModel.ClearPreview();
     }
 
     private async void OnExportClick(object sender, RoutedEventArgs e)
@@ -57,6 +80,7 @@ public sealed partial class ImportExportPage : Page
 
             var passwordBox = new PasswordBox
             {
+                Header = "主密码",
                 PlaceholderText = "当前主密码",
                 HorizontalAlignment = HorizontalAlignment.Stretch,
             };
@@ -78,12 +102,12 @@ public sealed partial class ImportExportPage : Page
 
             var panel = new StackPanel
             {
-                Spacing = 8,
+                Spacing = 16,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
             };
             panel.Children.Add(new TextBlock
             {
-                Text = "请输入当前主密码以确认导出",
+                Text = "文件不加密，请妥善保管，用完尽快删除。导出前需要验证主密码。",
                 TextWrapping = TextWrapping.Wrap,
             });
             panel.Children.Add(passwordBox);
@@ -91,12 +115,18 @@ public sealed partial class ImportExportPage : Page
 
             var dialog = new ContentDialog
             {
-                Title = "确认导出",
+                Title = "导出密码库",
                 Content = panel,
-                PrimaryButtonText = "确认",
+                PrimaryButtonText = "导出",
                 CloseButtonText = "取消",
                 DefaultButton = ContentDialogButton.Primary,
                 XamlRoot = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot,
+                IsPrimaryButtonEnabled = false,
+            };
+            passwordBox.PasswordChanged += (_, _) =>
+            {
+                errorText.Visibility = Visibility.Collapsed;
+                dialog.IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(passwordBox.Password);
             };
 
             try
@@ -138,7 +168,7 @@ public sealed partial class ImportExportPage : Page
                 var exportText = ViewModel.ExportToText(format);
                 var picker = new Windows.Storage.Pickers.FileSavePicker
                 {
-                    SuggestedFileName = "bitwarden_export",
+                    SuggestedFileName = $"bitwarden_export_{DateTime.Now:yyyyMMddHHmm}",
                 };
                 switch (format)
                 {
@@ -204,7 +234,7 @@ public sealed partial class ImportExportPage : Page
 
                 if (!TryPublish(
                     sessionLease,
-                    () => operation.Complete(UiOperationStatus.Succeeded, "导出成功。")))
+                    () => operation.Complete(UiOperationStatus.Succeeded, $"已导出到“{file.Name}”。")))
                 {
                     operation.Complete(UiOperationStatus.Cancelled);
                 }
@@ -260,8 +290,7 @@ public sealed partial class ImportExportPage : Page
             try
             {
                 var picker = new Windows.Storage.Pickers.FileOpenPicker();
-                picker.FileTypeFilter.Add(".json");
-                picker.FileTypeFilter.Add(".csv");
+                picker.FileTypeFilter.Add(operation.ImportFormat == ImportFormat.Json ? ".json" : ".csv");
 
                 var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
                 WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);

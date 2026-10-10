@@ -20,17 +20,24 @@ public class SecurityHygieneSourceTests
         throw new FileNotFoundException(string.Join('/', relativeParts));
     }
 
-    // ── S3: FieldRow 值变更时复位揭示态 ──────────────────────────────────────
+    // S3: Changing the value or visual context invalidates revealed secrets.
 
     [Fact]
     public void FieldRow_ValueChange_RemasksRevealedSecret()
     {
         var src = ReadSource("src", "App", "Controls", "FieldRow.xaml.cs");
 
-        // Value 变更回调不再只 Render,而是经 OnValueChanged 复位已揭示的机密。
-        Assert.Contains("OnValueChanged()", src);
-        Assert.Contains("if (IsSecret && _revealed)", src);
-        Assert.Contains("SetRevealed(false)", src);
+        Assert.Contains("nameof(Value), typeof(string), typeof(FieldRow)", src);
+        Assert.Contains("(d, _) => ((FieldRow)d).ResetField()", src);
+        Assert.Contains("DataContextChanged += (_, _) => ResetField()", src);
+        var resetStart = src.IndexOf("private void ResetField()", StringComparison.Ordinal);
+        var resetEnd = src.IndexOf("private void Render()", resetStart, StringComparison.Ordinal);
+        Assert.True(resetStart >= 0 && resetEnd > resetStart);
+        var reset = src[resetStart..resetEnd];
+        Assert.Contains("_viewVersion++", reset);
+        Assert.Contains("_operationCancellation?.Cancel()", reset);
+        Assert.Contains("_revealed = false", reset);
+        Assert.Contains("ClearFeedback()", reset);
     }
 
     // ── S2: 关闭到托盘前先锁定(经生命周期协调器 Lock intent) ───────────────
@@ -80,33 +87,57 @@ public class SecurityHygieneSourceTests
         Assert.Contains("public async Task StopAsync()", bridge); // 可停止/可重启
     }
 
-    // ── S9: TOTP 字段显示计算出的验证码,不直显/复制原始种子 ────────────────
+    // S9: Render and copy generated codes, never the TOTP seed.
 
     [Fact]
     public void TotpField_ShowsComputedCode_NotRawSecret()
     {
         var totp = ReadSource("src", "App", "Controls", "TotpField.xaml.cs");
         Assert.Contains("TotpGenerator.TryGenerate", totp);
-        Assert.Contains("_currentCode", totp);        // 复制的是计算出的码
-        Assert.DoesNotContain("SetSecretText(value)", totp); // 不再复制原始 Code/种子
+        Assert.Contains("_currentCode", totp);
+        Assert.Contains("clipboard.SetSecretText(code)", totp);
+        Assert.DoesNotContain("SetSecretText(Secret)", totp);
+        Assert.DoesNotContain("CodeText.Text = Secret", totp);
+        Assert.Contains("_currentCode = null", totp);
 
         var page = ReadSource("src", "App", "Views", "VaultPage.xaml");
-        Assert.Contains("TotpField Secret=", page);   // 绑定改为 Secret(输入种子),非 Code
+        Assert.Contains("controls:CopyStrip", page);
+        var copyStrip = ReadSource("src", "App", "Controls", "CopyStrip.xaml.cs");
+        Assert.Contains("new TotpField { IsCompact = true, IsReadOnly = true }", copyStrip);
+        Assert.Contains("cell.Totp.Secret = value ?? string.Empty", copyStrip);
+        Assert.Contains("clipboard.SetSecretText(code)", copyStrip);
+        Assert.Contains("Crypto.TotpGenerator.TryGenerate(value", copyStrip);
     }
 
-    // ── Task 4: 条目级重提示门禁提升到详情层,FieldRow 不再自持主密码门禁 ──────────
+    // The page owns item reprompt; each field reveal also verifies the current user.
 
     [Fact]
-    public void FieldRow_NoLongerOwnsRepromptGate()
+    public void FieldRow_VerifiesRevealAndKeepsItemRepromptAtThePageBoundary()
     {
         var src = ReadSource("src", "App", "Controls", "FieldRow.xaml.cs");
-        // 揭示/复制不再自持门禁;条目级门禁在详情层完成,FieldRow 只渲染已授权的 Value。
         Assert.DoesNotContain("PassesRepromptAsync", src);
         Assert.DoesNotContain("IMasterPasswordReprompt", src);
         Assert.DoesNotContain("RepromptRequired", src);
+        Assert.Contains("ISensitiveActionVerificationService", src);
+        var revealStart = src.IndexOf("private async void OnReveal", StringComparison.Ordinal);
+        var revealEnd = src.IndexOf("internal static async Task<bool> VerifyRevealAsync", revealStart, StringComparison.Ordinal);
+        Assert.True(revealStart >= 0 && revealEnd > revealStart);
+        var reveal = src[revealStart..revealEnd];
+        Assert.Equal(2, reveal.Split("AuthorizeCurrentItemAsync(version, value, operationToken)", StringSplitOptions.None).Length - 1);
+        var verification = reveal.IndexOf("await VerifyRevealAsync(this, Label, itemName, operationToken)", StringComparison.Ordinal);
+        var authorizationAfterVerification = reveal.IndexOf("AuthorizeCurrentItemAsync", verification, StringComparison.Ordinal);
+        var sensitiveWrite = reveal.IndexOf("_revealed = true", StringComparison.Ordinal);
+        Assert.True(verification >= 0 && authorizationAfterVerification > verification && sensitiveWrite > authorizationAfterVerification);
+        Assert.Contains("lifecycle?.TryRunSensitive", reveal);
+        Assert.Contains("if (!IsCurrentOperation(version, value, operationToken)) return false", reveal);
+        Assert.Contains("!ct.IsCancellationRequested && IsLoaded && version == _viewVersion", src);
+        Assert.Contains("string.Equals(Value, value, StringComparison.Ordinal)", src);
+        Assert.Contains("var authorize = AuthorizeItemAsync", src);
 
-        // VaultPage 不再有 per-field 的 RepromptRequired 绑定(脱敏在投影层完成)。
         var page = ReadSource("src", "App", "Views", "VaultPage.xaml");
         Assert.DoesNotContain("RepromptRequired", page);
+        var pageSource = ReadSource("src", "App", "Views", "VaultPage.xaml.cs");
+        Assert.Contains("field.AuthorizeItemAsync =", pageSource);
+        Assert.Contains("AuthorizeFieldCopyAsync", pageSource);
     }
 }

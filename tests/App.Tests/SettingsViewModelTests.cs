@@ -1305,6 +1305,92 @@ public class SettingsViewModelTests : AppPreferencesTestBase
         Assert.Equal("Alice", svc.LastName);
     }
 
+    [Fact]
+    public async Task Rename_Success_RefreshesConfirmedNameWithCallerToken()
+    {
+        var (vm, service) = Build();
+        using var cancellation = new CancellationTokenSource();
+        var refreshCalls = 0;
+        CancellationToken? refreshToken = null;
+        string? nameAtRefresh = null;
+        string? serviceNameAtRefresh = null;
+
+        var result = await vm.RenameAsync("Alice", cancellation.Token, refresh: token =>
+        {
+            refreshCalls++;
+            refreshToken = token;
+            nameAtRefresh = vm.AccountName;
+            serviceNameAtRefresh = service.LastName;
+            return Task.CompletedTask;
+        });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, refreshCalls);
+        Assert.Equal(cancellation.Token, refreshToken);
+        Assert.Equal("Alice", nameAtRefresh);
+        Assert.Equal("Alice", serviceNameAtRefresh);
+        Assert.Equal("Alice", vm.AccountName);
+        Assert.Equal(string.Empty, vm.OperationError);
+        Assert.False(vm.ProfileRefreshPending);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Rename_RefreshFailure_PreservesConfirmedSuccessAndMarksRefreshPending(bool cancelRefresh)
+    {
+        var (vm, service) = Build();
+        using var cancellation = new CancellationTokenSource();
+        var changedProperties = new List<string?>();
+        vm.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+        vm.OperationError = "stale";
+        var refreshCalls = 0;
+
+        var result = await vm.RenameAsync("Alice", cancellation.Token, refresh: token =>
+        {
+            refreshCalls++;
+            if (cancelRefresh)
+            {
+                cancellation.Cancel();
+                return Task.FromCanceled(token);
+            }
+
+            return Task.FromException(new InvalidOperationException("Refresh failed."));
+        });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, refreshCalls);
+        Assert.Equal("Alice", service.LastName);
+        Assert.Equal("Alice", vm.AccountName);
+        Assert.Equal(string.Empty, vm.OperationError);
+        Assert.True(vm.ProfileRefreshPending);
+        Assert.Contains(nameof(SettingsViewModel.ProfileRefreshPending), changedProperties);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task Rename_ServiceFailure_DoesNotRefreshOrReplaceDisplayedName()
+    {
+        var (vm, service) = Build(throwOnRename: true);
+        var originalName = vm.AccountName;
+        var refreshCalled = false;
+
+        var result = await vm.RenameAsync("Alice", refresh: _ =>
+        {
+            refreshCalled = true;
+            return Task.CompletedTask;
+        });
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.False(refreshCalled);
+        Assert.Null(service.LastName);
+        Assert.Equal(originalName, vm.AccountName);
+        Assert.False(string.IsNullOrWhiteSpace(vm.OperationError));
+        Assert.False(vm.ProfileRefreshPending);
+        Assert.False(vm.IsBusy);
+    }
+
     // -----------------------------------------------------------------------
     // Rename: 服务抛出时写 OperationError
     // -----------------------------------------------------------------------

@@ -120,6 +120,17 @@ public sealed class AuthService : IAuthService
     private IIdentityApiClient Identity(ServerEndpoints endpoints) =>
         _clients.GetAnonymous<IIdentityApiClient>(endpoints);
 
+    public Task RequestPasswordHintAsync(
+        string serverUrl,
+        string email,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+        ct.ThrowIfCancellationRequested();
+        return Identity(ServerEndpoints.FromWebVault(serverUrl))
+            .RequestPasswordHintAsync(email.Trim(), ct);
+    }
+
     public AuthenticationAttemptLease BeginAuthenticationAttempt()
     {
         lock (_authenticationTransitionGate)

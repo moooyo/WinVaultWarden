@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="App.Views.DeviceApprovalWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="WinVaultWarden · 登录请求">
+    <Grid x:Name="Root" Language="zh-CN" Background="{ThemeResource WardenLayerBrush}" KeyDown="OnKeyDown">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid x:Name="RequestTitleBar" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" Padding="12,0,46,0">
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <FontIcon Glyph="&#xE72E;" FontSize="14" />
+                <TextBlock Text="WinVaultWarden · 登录请求" FontSize="12" VerticalAlignment="Center" />
+            </StackPanel>
+        </Grid>
+        <ScrollViewer Grid.Row="1" Background="{ThemeResource WardenLayerBrush}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="RequestBody" Background="{ThemeResource WardenLayerBrush}" Spacing="16" Padding="24,20">
+                <Grid ColumnSpacing="14">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <Border Width="40" Height="40" CornerRadius="8" Background="{ThemeResource WardenTileBrush}" VerticalAlignment="Top">
+                        <FontIcon Glyph="&#xE8EA;" FontSize="20" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Spacing="4">
+                        <TextBlock x:Name="RequestHeading" FontFamily="{StaticResource WardenDisplayFontFamily}" FontSize="20" LineHeight="28" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock x:Name="RequestSubtitle" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Grid>
+                <Border BorderThickness="0,1" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" Padding="0,14,0,16">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="指纹短语" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="Fingerprint" FontFamily="Cascadia Mono, Consolas" FontSize="18" LineHeight="26" FontWeight="SemiBold" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.AutomationId="DeviceApprovalFingerprint" />
+                        <TextBlock Text="对方设备上会显示同样的短语，完全一致才批准。如果不是你本人在登录，请拒绝，并尽快修改主密码。" FontSize="12" LineHeight="18" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+                <CheckBox x:Name="FingerprintReviewed" Checked="OnFingerprintReviewed" Unchecked="OnFingerprintReviewed" AutomationProperties.AutomationId="DeviceApprovalFingerprintReviewed">
+                    <TextBlock Text="我已在请求设备上核对，指纹短语完全一致。" TextWrapping="Wrap" FontSize="12" />
+                </CheckBox>
+                <TextBlock x:Name="LockedNotice" Text="密码库已锁定。批准前需要先用 Windows Hello 解锁。" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" FontSize="12" Visibility="Collapsed" />
+                <TextBlock x:Name="ExpiryNotice" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Typography.NumeralAlignment="Tabular" TextWrapping="Wrap" />
+                <InfoBar x:Name="FailureNotice" IsOpen="False" IsClosable="False" Severity="Error" Visibility="Collapsed" />
+            </StackPanel>
+        </ScrollViewer>
+        <Border x:Name="RequestFooter" Grid.Row="2" Padding="24,20" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <Button x:Name="DenyButton" Content="拒绝" Click="OnDenyClick" HorizontalAlignment="Stretch" Height="32" AutomationProperties.AutomationId="DeviceApprovalDeny" />
+                <Button x:Name="ApproveButton" Grid.Column="1" Content="批准登录" Click="OnApproveClick" HorizontalAlignment="Stretch" Height="32" IsEnabled="False" Style="{StaticResource AccentButtonStyle}" AutomationProperties.AutomationId="DeviceApprovalApprove" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

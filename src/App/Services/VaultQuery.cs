@@ -2,7 +2,7 @@ using App.ViewModels.Models;
 
 namespace App.Services;
 
-public enum VaultSortKey { NameAsc, NameDesc, RevisionDesc, CreationDesc }
+public enum VaultSortKey { NameAsc, NameDesc, RevisionDesc, CreationDesc, RecentUse }
 
 public sealed record VaultFacets(bool Totp, bool Attachment, bool Uri, bool FavoriteOnly)
 {
@@ -34,6 +34,7 @@ public static class VaultQuery
             VaultSortKey.NameDesc     => q.OrderByDescending(i => i.Name, StringComparer.CurrentCulture).ThenBy(i => i.Id, StringComparer.Ordinal).ToList(),
             VaultSortKey.RevisionDesc => q.OrderByDescending(i => i.RevisionDate).ThenBy(i => i.Id, StringComparer.Ordinal).ToList(),
             VaultSortKey.CreationDesc => q.OrderByDescending(i => i.CreationDate).ThenBy(i => i.Id, StringComparer.Ordinal).ToList(),
+            VaultSortKey.RecentUse    => q.OrderByDescending(i => i.LastUsedAt).ThenBy(i => i.Name, StringComparer.CurrentCulture).ThenBy(i => i.Id, StringComparer.Ordinal).ToList(),
             _ => q.ToList(),
         };
     }

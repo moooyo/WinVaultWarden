@@ -8,7 +8,7 @@ public class TotpFieldXamlTests
     private static readonly XNamespace X = "http://schemas.microsoft.com/winfx/2006/xaml";
 
     [Fact]
-    public void TotpField_CountdownIsPlacedWithCopyAction()
+    public void TotpField_CountdownStaysWithGeneratedCodeAndCopyHasItsOwnColumn()
     {
         var document = LoadTotpFieldXaml();
         var codeText = RequireByName(document, "CodeText");
@@ -16,13 +16,16 @@ public class TotpFieldXamlTests
         var secondsText = RequireByName(document, "SecondsText");
         var copyButton = RequireByName(document, "CopyButton");
 
-        Assert.Null(codeText.Parent?.Attribute("Grid.Column"));
-        Assert.Equal("1", ring.Parent?.Attribute("Grid.Column")?.Value);
+        var countdown = RequireByName(document, "CountdownPanel");
+        Assert.Same(codeText.Parent, countdown.Parent);
+        Assert.Same(countdown, ring.Parent);
         Assert.Same(ring.Parent, secondsText.Parent);
-        Assert.Same(secondsText.Parent, copyButton.Parent);
+        Assert.Equal("1", codeText.Parent?.Parent?.Attribute("Grid.Column")?.Value);
+        Assert.Equal("2", copyButton.Attribute("Grid.Column")?.Value);
+        Assert.Equal("False", ring.Attribute("IsIndeterminate")?.Value);
 
-        var siblings = secondsText.Parent!.Elements().ToArray();
-        Assert.True(Array.IndexOf(siblings, secondsText) < Array.IndexOf(siblings, copyButton));
+        var siblings = codeText.Parent!.Elements().ToArray();
+        Assert.True(Array.IndexOf(siblings, codeText) < Array.IndexOf(siblings, countdown));
     }
 
     [Fact]

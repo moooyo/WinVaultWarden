@@ -22,7 +22,7 @@ public sealed class AppProjectConfigurationTests
                 (string?)element.Attribute("Include")
                 == "Microsoft.Windows.SDK.BuildTools");
 
-        Assert.Equal("2.2.0", (string?)windowsAppSdk.Attribute("Version"));
+        Assert.Equal("2.5.1", (string?)windowsAppSdk.Attribute("Version"));
         Assert.Equal("10.0.26100.4654", (string?)windowsSdkBuildTools.Attribute("Version"));
     }
 

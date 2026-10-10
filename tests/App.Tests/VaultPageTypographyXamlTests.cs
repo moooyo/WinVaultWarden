@@ -22,12 +22,22 @@ public class VaultPageTypographyXamlTests
             && e.Attribute("Text")?.Value == text);
 
     [Fact]
-    public void OptionalSectionsHaveNamedNativeHeaders()
+    public void OptionalSectionsUseFlatRowsAndHideEmptyGroups()
     {
         var doc = Load();
-        Assert.Contains(doc.Descendants(), element => element.Name.LocalName == "DetailCard"
-            && element.Attribute("Title")?.Value == "备注");
-        Assert.Contains(doc.Descendants(), element => element.Name.LocalName == "Expander"
+        Assert.Contains(doc.Descendants(), element => element.Name.LocalName == "FieldRow"
+            && element.Attribute("Label")?.Value == "备注"
+            && element.Attribute("IsMultiline")?.Value == "True"
+            && element.Attribute("Value")?.Value?.Contains("ViewModel.Detail.Notes") == true);
+        foreach (var property in new[] { "HasAttachments", "HasCustomFields" })
+        {
+            var section = doc.Descendants().Single(element => element.Name.LocalName == "Border"
+                && element.Attribute("Visibility")?.Value?.Contains($"Detail.{property}") == true);
+            Assert.Equal("0,1,0,0", section.Attribute("BorderThickness")?.Value);
+            Assert.Contains(section.Descendants(), element => element.Name.LocalName == "ItemsControl");
+            Assert.DoesNotContain(section.Descendants(), element => element.Name.LocalName == "Expander");
+        }
+        Assert.DoesNotContain(doc.Descendants(), element => element.Name.LocalName == "Expander"
             && element.Attribute("Header")?.Value == "项目历史");
     }
 

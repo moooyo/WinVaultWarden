@@ -35,6 +35,9 @@ internal static unsafe partial class NativeMethods
     // ── 图标 ────────────────────────────────────────────────────────────
     public const int IDI_APPLICATION = 32512;
 
+    [LibraryImport("user32.dll")]
+    public static partial uint GetDpiForWindow(IntPtr hwnd);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT
     {

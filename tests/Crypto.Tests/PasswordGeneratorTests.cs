@@ -6,7 +6,7 @@ namespace Crypto.Tests;
 [Trait("Category", "Crypto")]
 public class PasswordGeneratorTests
 {
-    private const string AmbiguousCharacters = "IOlo01";
+    private const string AmbiguousCharacters = "IOl01";
     private const string SpecialCharacters = "!@#$%^&*";
 
     [Fact]
@@ -158,8 +158,10 @@ public class PasswordGeneratorTests
 
         var words = passphrase.Split('.');
         Assert.Equal(4, words.Length);
-        Assert.All(words.Take(3), word => Assert.True(char.IsUpper(word[0])));
-        Assert.Contains(words[3], char.IsDigit);
+        Assert.All(words, word => Assert.True(char.IsUpper(word[0])));
+        Assert.Single(words.Where(word => word.Any(char.IsDigit)));
+        Assert.Single(passphrase.Where(char.IsDigit));
+        Assert.True(char.IsDigit(words.Single(word => word.Any(char.IsDigit))[^1]));
     }
 
     [Fact]

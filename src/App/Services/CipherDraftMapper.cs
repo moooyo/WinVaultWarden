@@ -269,7 +269,9 @@ public static class CipherDraftMapper
             NullIfBlank(login.Totp),
             uris)
         {
-            PasswordRevisionDate = original?.PasswordRevisionDate,
+            PasswordRevisionDate = string.Equals(original?.Password, NullIfBlank(login.Password), StringComparison.Ordinal)
+                ? original?.PasswordRevisionDate
+                : DateTimeOffset.UtcNow,
             AutofillOnPageLoad = original?.AutofillOnPageLoad,
             Fido2Credentials = original?.Fido2Credentials ?? Array.Empty<CipherFido2Credential>(),
         };

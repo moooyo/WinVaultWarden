@@ -93,6 +93,9 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     private readonly AccountDeletionRecoveryHost? _accountDeletionRecoveryHost;
     private readonly ILocalDataResetService? _localDataReset;
     private readonly IAppLifecycleCoordinator? _lifecycle;
+    private long _passwordHintGeneration;
+    private CancellationTokenSource? _passwordHintCancellation;
+    private bool _isPasswordHintRequestActive;
     private bool _usesKeyConnector;
     private bool _usesTrustedDeviceSso;
     private Action<VaultSessionLease>? _onSuccess;
@@ -244,6 +247,12 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     [NotifyPropertyChangedFor(nameof(ShowCancelSso))]
     [NotifyCanExecuteChangedFor(nameof(CancelSsoCommand))]
     public partial bool IsSsoPending { get; set; }
+
+    [ObservableProperty]
+    public partial string SsoOrganizationIdentifier { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsSsoBrowserOpened { get; set; }
 
     [ObservableProperty]
     public partial LoginStage Stage { get; set; } = LoginStage.Account;
@@ -478,17 +487,28 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     public bool ShowHelloUnlock => (ShowUnlockPanel || IsPinUnlockStage)
         && (_helloUnlock?.IsHelloSet ?? false) && IsWindowsHelloAvailable;
 
+    public bool IsPinUnlockAvailable => (ShowUnlockPanel || IsPinUnlockStage)
+        && (_pin?.IsPinSet ?? false);
+
+    public bool CanUsePinUnlock => IsPinUnlockAvailable && !IsBusy;
+
     public string AlternativeUnlockText => _usesTrustedDeviceSso
-        ? "用企业 SSO 解锁"
+        ? "改用企业 SSO"
         : _usesKeyConnector
-            ? "用 Key Connector 解锁"
-            : "用主密码解锁";
+            ? "改用 Key Connector"
+            : "改用主密码";
 
     public bool ShowResendEmailCode => IsTwoFactorStage
         && !IsRecoveryCodeMode
         && ResolveSelectedTwoFactorProvider() == EmailTwoFactorProvider;
 
     public bool CanResendEmailCode => ShowResendEmailCode && !IsBusy;
+
+    public IReadOnlyList<TwoFactorProviderOption> AvailableTwoFactorProviderOptions =>
+        _twoFactorProviders.Where(IsSupportedTwoFactorProvider)
+            .Select(provider => new TwoFactorProviderOption(provider, ProviderDisplayName(provider)))
+            .Append(new TwoFactorProviderOption(RecoveryCodeProvider, "恢复代码"))
+            .DistinctBy(option => option.Type).ToArray();
 
     public bool ShowTwoFactorProviderPicker => !IsRecoveryCodeMode && TwoFactorProviderOptions.Count > 1;
 
@@ -649,13 +669,18 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     public bool CanUseSso => _ssoAuthorization is not null && IsAccountStage && !IsBusy;
 
+    public bool CanRequestPasswordHint => IsPasswordStage && !IsBusy;
+
+    public string PasswordHintButtonText => _isPasswordHintRequestActive
+        ? "正在获取提示…" : "获取主密码提示";
+
     public bool ShowCancelSso => IsSsoPending;
 
     public bool HasStatus => !string.IsNullOrWhiteSpace(Status);
 
     public bool ShowCustomServerUrl => IsAccountStage && SelectedServerOptionIndex == 2;
 
-    public string PrimaryButtonText => IsBusy
+    public string PrimaryButtonText => _isPasswordHintRequestActive ? "登录" : IsBusy
         ? Stage switch
         {
             LoginStage.Password => "正在登录",
@@ -700,16 +725,14 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     public string FormTitle => Stage switch
     {
         LoginStage.Password => "输入主密码",
-        LoginStage.LoginWithDevice => "使用设备登录",
+        LoginStage.LoginWithDevice => "在其他设备上批准",
         LoginStage.DeviceVerification => "验证新设备",
         LoginStage.PasswordChangeRequired => "必须更新主密码",
         LoginStage.TwoFactor => IsRecoveryCodeMode
-            ? "使用恢复代码"
-            : IsWebAuthnMode
-                ? "安全密钥验证"
-                : IsDuoMode ? "Duo 两步验证" : "两步验证",
-        LoginStage.Unlock => "解锁保险库",
-        LoginStage.PinUnlock => "用 PIN 解锁",
+            ? "两步登录 · 恢复代码"
+            : $"两步登录 · {ProviderDisplayName(ResolveSelectedTwoFactorProvider())}",
+        LoginStage.Unlock => "密码库已锁定",
+        LoginStage.PinUnlock => "密码库已锁定",
         LoginStage.KeyConnectorUnlock => "通过 Key Connector 解锁",
         LoginStage.TrustedDeviceSso => "可信设备登录",
         LoginStage.TrustedDeviceApproval => "批准此设备",
@@ -720,21 +743,26 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     public string FormSubtitle => Stage switch
     {
-        LoginStage.Password => "输入此账户的主密码以继续。",
+        LoginStage.Password => $"{AccountSummary} · {ServerHost}",
         LoginStage.LoginWithDevice => "在已登录的设备上核对指纹并批准请求。",
         LoginStage.DeviceVerification => "验证此设备后继续登录。",
         LoginStage.PasswordChangeRequired => "满足账户要求后继续使用保险库。",
         LoginStage.TwoFactor => IsRecoveryCodeMode
-            ? "使用账户的恢复代码完成身份验证。"
-            : "完成此账户要求的附加验证。",
-        LoginStage.Unlock => "解锁此设备上已保存的保险库。",
-        LoginStage.PinUnlock => "输入此设备的 PIN。",
+            ? "登录后两步登录会全部关闭，需要重新设置"
+            : IsWebAuthnMode
+                ? "插入安全密钥，或者用 Windows Hello 验证"
+                : IsDuoMode
+                    ? "在浏览器中完成 Duo 验证"
+                    : ResolveSelectedTwoFactorProvider() == EmailTwoFactorProvider
+                        ? "输入发送到邮箱中的验证码"
+                        : "打开身份验证器应用，输入验证码",
+        LoginStage.Unlock or LoginStage.PinUnlock => $"{AccountDisplayName} · {ServerHost}",
         LoginStage.KeyConnectorUnlock => "连接组织的 Key Connector 以解锁。",
         LoginStage.TrustedDeviceSso => "重新完成企业身份验证以解锁。",
         LoginStage.TrustedDeviceApproval => "核对指纹短语后批准此设备。",
         LoginStage.TdeV2JitProvisioning => "完成企业账户的首次加密设置。",
         LoginStage.AccountDeletionRecovery => "先确认删除状态并完成本地恢复。",
-        _ => "连接到你的 Bitwarden / Vaultwarden 保险库",
+        _ => "使用 Bitwarden 或 Vaultwarden 账户",
     };
 
     public string StepText => Stage switch
@@ -759,6 +787,12 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     public string AccountSummary => string.IsNullOrWhiteSpace(Email) ? "邮箱地址" : Email.Trim();
 
     public string ServerSummary => FormatServerSummary(ResolveServerUrl());
+
+    private string ServerHost => Uri.TryCreate(ResolveServerUrl(), UriKind.Absolute, out var uri)
+        ? uri.Host
+        : ServerSummary;
+
+    private string AccountDisplayName => AccountSummary.Split('@')[0];
 
     public string AccountInitial
     {
@@ -787,6 +821,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     public void Deactivate()
     {
+        InvalidatePasswordHintRequest();
         _onSuccess = null;
         _tryAcceptSuccess = null;
         LoginCommand.Cancel();
@@ -1338,6 +1373,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     public void PrepareUnlock(string serverUrl, string email)
     {
+        InvalidatePasswordHintRequest();
         ClearAccountDeletionRecovery();
         ClearRequiredPasswordChange();
         ClearTrustedDeviceApproval();
@@ -1374,6 +1410,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     public void PrepareAccount(string serverUrl, string email)
     {
+        InvalidatePasswordHintRequest();
         ClearAccountDeletionRecovery();
         ClearRequiredPasswordChange();
         ClearTrustedDeviceApproval();
@@ -1578,29 +1615,39 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         }
     }
 
-    [RelayCommand]
-    private async Task LoginWithSsoAsync(CancellationToken ct)
+    public bool PrepareSsoSignIn()
     {
         if (IsBusy || _ssoAuthorization is null)
-            return;
-
+            return false;
         ClearStatus();
         var serverUrl = ResolveServerUrl();
         if (!IsValidServerUrl(serverUrl))
         {
             SetStatus("请输入有效的服务器地址。", LoginStatusKind.Error);
             RequestFocus(LoginFocusTarget.ServerUrl);
-            return;
+            return false;
         }
         if (string.IsNullOrWhiteSpace(Email))
         {
             SetStatus("请输入邮箱地址。", LoginStatusKind.Error);
             RequestFocus(LoginFocusTarget.Email);
-            return;
+            return false;
         }
 
         ServerUrl = serverUrl;
         Email = Email.Trim();
+        return true;
+    }
+
+    [RelayCommand]
+    private async Task LoginWithSsoAsync(CancellationToken ct)
+    {
+        if (IsBusy || _ssoAuthorization is null)
+            return;
+
+        if (!PrepareSsoSignIn())
+            return;
+        var serverUrl = ServerUrl;
         var attempt = BeginAuthenticationAttempt();
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _ssoCancellation = cancellation;
@@ -1608,12 +1655,20 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         {
             IsBusy = true;
             IsSsoPending = true;
+            IsSsoBrowserOpened = false;
             SetStatus("请在浏览器中完成企业 SSO 登录。", LoginStatusKind.Info);
 
             var endpoints = ServerEndpoints.FromWebVault(serverUrl);
+            var browserOpened = new Progress<bool>(opened =>
+            {
+                if (ReferenceEquals(_ssoCancellation, cancellation) && !cancellation.IsCancellationRequested)
+                    IsSsoBrowserOpened = opened;
+            });
             var authorization = await _ssoAuthorization.AuthorizeAsync(
                 endpoints,
                 Email,
+                SsoOrganizationIdentifier,
+                browserOpened,
                 cancellation.Token);
             SetStatus("正在完成 SSO 登录…", LoginStatusKind.Info);
             var result = await _auth.LoginWithSsoAsync(
@@ -1650,7 +1705,26 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 _ssoCancellation = null;
             cancellation.Dispose();
             IsSsoPending = false;
+            IsSsoBrowserOpened = false;
             IsBusy = false;
+        }
+    }
+
+    public async Task ReopenSsoBrowserAsync()
+    {
+        if (!IsSsoPending || !IsSsoBrowserOpened || _ssoAuthorization is null || _ssoCancellation is not { } cancellation)
+            return;
+        try
+        {
+            if (!await _ssoAuthorization.ReopenPendingBrowserAsync(cancellation.Token)
+                && ReferenceEquals(_ssoCancellation, cancellation) && !cancellation.IsCancellationRequested)
+                SetStatus("无法重新打开浏览器，请切换到已有登录页面或取消后重试。", LoginStatusKind.Error);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is SsoAuthorizationException or InvalidOperationException)
+        {
+            if (ReferenceEquals(_ssoCancellation, cancellation))
+                SetStatus("无法重新打开浏览器，请切换到已有登录页面或取消后重试。", LoginStatusKind.Error);
         }
     }
 
@@ -2832,9 +2906,114 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         NotifyTwoFactorModeProperties();
     }
 
+    [RelayCommand(CanExecute = nameof(CanRequestPasswordHint))]
+    private async Task RequestPasswordHintAsync(CancellationToken ct)
+    {
+        if (!CanRequestPasswordHint)
+            return;
+        var generation = ++_passwordHintGeneration;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _passwordHintCancellation = cancellation;
+        var operationToken = cancellation.Token;
+        var serverUrl = ResolveServerUrl();
+        var email = Email.Trim();
+        _isPasswordHintRequestActive = true;
+        IsBusy = true;
+        ClearStatus();
+
+        bool IsCurrent() => generation == _passwordHintGeneration && !operationToken.IsCancellationRequested
+            && IsPasswordStage && string.Equals(Email.Trim(), email, StringComparison.Ordinal)
+            && string.Equals(ResolveServerUrl(), serverUrl, StringComparison.Ordinal);
+
+        try
+        {
+            await _auth.RequestPasswordHintAsync(serverUrl, email, operationToken);
+            if (IsCurrent())
+                SetStatus("请求已提交。如果此账户设置了主密码提示，请检查邮箱。", LoginStatusKind.Info);
+        }
+        catch (OperationCanceledException) when (operationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex, operationToken))
+        {
+            if (IsCurrent())
+                SetStatus("获取主密码提示超时，请稍后重试。", LoginStatusKind.Error);
+        }
+        catch (VaultApiException ex)
+        {
+            if (!IsCurrent())
+                return;
+            const string hintPrefix = "Your password hint is: ";
+            var message = ex.ServerMessage ?? string.Empty;
+            if (message.StartsWith(hintPrefix, StringComparison.Ordinal))
+                SetStatus($"主密码提示：{message[hintPrefix.Length..]}", LoginStatusKind.Info);
+            else if (message == "Sorry, you have no password hint...")
+                SetStatus("此账户没有可用的主密码提示。", LoginStatusKind.Info);
+            else if (message == "This server is not configured to provide password hints.")
+                SetStatus("此服务器未启用主密码提示。", LoginStatusKind.Error);
+            else if (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                SetStatus("请求过于频繁，请稍后再试。", LoginStatusKind.Error);
+            else
+                SetStatus(string.IsNullOrWhiteSpace(message) ? "服务器未能提供主密码提示。" : $"服务器返回：{message}", LoginStatusKind.Error);
+        }
+        catch (NotSupportedException)
+        {
+            if (IsCurrent())
+                SetStatus("当前服务器连接不支持主密码提示。", LoginStatusKind.Error);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            if (IsCurrent())
+                SetStatus("无法获取主密码提示，请检查连接后重试。", LoginStatusKind.Error);
+        }
+        finally
+        {
+            if (ReferenceEquals(_passwordHintCancellation, cancellation))
+                _passwordHintCancellation = null;
+            if (generation == _passwordHintGeneration)
+            {
+                _isPasswordHintRequestActive = false;
+                IsBusy = false;
+            }
+        }
+    }
+
+    private void InvalidatePasswordHintRequest()
+    {
+        _passwordHintGeneration++;
+        var cancellation = _passwordHintCancellation;
+        _passwordHintCancellation = null;
+        try { cancellation?.Cancel(); }
+        catch (ObjectDisposedException) { }
+        RequestPasswordHintCommand.Cancel();
+        if (Status.StartsWith("主密码提示：", StringComparison.Ordinal))
+            ClearStatus();
+        if (_isPasswordHintRequestActive)
+        {
+            _isPasswordHintRequestActive = false;
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanUsePinUnlock))]
+    private void UsePinUnlock()
+    {
+        if (!CanUsePinUnlock)
+            return;
+
+        MasterPassword = string.Empty;
+        Pin = string.Empty;
+        ClearStatus();
+        Stage = LoginStage.PinUnlock;
+        RequestFocus(LoginFocusTarget.Pin);
+    }
+
     [RelayCommand]
     private void UseMasterPassword()
     {
+        if (IsBusy)
+            return;
+
         Stage = ResolveNonPinUnlockStage();
         Pin = string.Empty;
         SetStatus(
@@ -2903,6 +3082,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     // 锁屏/登出时清空登录页所有机密输入:主密码、PIN、2FA 验证码与其可选项。幂等。
     public void ClearSensitive()
     {
+        InvalidatePasswordHintRequest();
         ClearTrustedDeviceApproval();
         ClearTdeV2JitProvisioning();
         ClearRequiredPasswordChange();
@@ -3775,12 +3955,18 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(ShowApprovalMethodPicker));
         OnPropertyChanged(nameof(ShowSavedAccounts));
         OnPropertyChanged(nameof(ShowHelloUnlock));
+        OnPropertyChanged(nameof(IsPinUnlockAvailable));
+        OnPropertyChanged(nameof(CanUsePinUnlock));
+        UsePinUnlockCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanEditServer));
         OnPropertyChanged(nameof(CanGoBack));
         OnPropertyChanged(nameof(CanResendNewDeviceCode));
         OnPropertyChanged(nameof(CanUsePrimaryAction));
         OnPropertyChanged(nameof(CanUseDemoVault));
         OnPropertyChanged(nameof(CanUseSso));
+        OnPropertyChanged(nameof(CanRequestPasswordHint));
+        OnPropertyChanged(nameof(PasswordHintButtonText));
+        RequestPasswordHintCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(ShowCustomServerUrl));
         OnPropertyChanged(nameof(PrimaryButtonText));
         OnPropertyChanged(nameof(FormTitle));
@@ -3832,6 +4018,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(ShowTwoFactorCodeInput));
         OnPropertyChanged(nameof(PrimaryButtonText));
         OnPropertyChanged(nameof(FormTitle));
+        OnPropertyChanged(nameof(FormSubtitle));
         ResendEmailCodeCommand.NotifyCanExecuteChanged();
     }
 }

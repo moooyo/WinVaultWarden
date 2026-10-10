@@ -29,6 +29,7 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
     private const string BitwardenEuUrl = "https://vault.bitwarden.eu";
 
     private readonly IRegisterUiService? _registerUi;
+    private Func<string, CancellationToken, Task<int>>? _passwordBreachCheck;
     private readonly object _registrationStateLock = new();
     private CancellationTokenSource? _activeRegistrationCancellation;
     private long _registrationGeneration;
@@ -58,6 +59,9 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
 
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
+
+    [ObservableProperty]
+    public partial bool CheckPasswordBreaches { get; set; }
 
     // 页面据 FocusRequestId 单调递增触发一次编程式焦点。
     [ObservableProperty]
@@ -112,6 +116,18 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
     public RegisterViewModel(IRegisterUiService registerUi)
     {
         _registerUi = registerUi;
+    }
+
+    public void ConfigurePasswordBreachCheck(Func<string, CancellationToken, Task<int>> check)
+    {
+        ArgumentNullException.ThrowIfNull(check);
+        lock (_registrationStateLock)
+        {
+            if (IsBusy)
+                throw new InvalidOperationException("Cannot change password checks during registration.");
+            _passwordBreachCheck = check;
+            CheckPasswordBreaches = true;
+        }
     }
 
     // 锁屏/登出时清空注册页机密输入:主密码、确认密码与提示。幂等。
@@ -200,6 +216,8 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
         string password;
         string confirmPassword;
         string? passwordHint;
+        bool checkPasswordBreaches;
+        Func<string, CancellationToken, Task<int>>? passwordBreachCheck;
         lock (_registrationStateLock)
         {
             if (IsBusy || !IsEditing)
@@ -225,11 +243,49 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
             password = MasterPassword;
             confirmPassword = ConfirmPassword;
             passwordHint = MasterPasswordHint;
+            checkPasswordBreaches = CheckPasswordBreaches;
+            passwordBreachCheck = _passwordBreachCheck;
         }
         CancelDetached(previousCancellation);
 
         try
         {
+            if (checkPasswordBreaches)
+            {
+                try
+                {
+                    if (passwordBreachCheck is null)
+                        throw new InvalidOperationException("The password breach checker is unavailable.");
+
+                    var breaches = await passwordBreachCheck(password, operationCancellation.Token);
+                    if (breaches < 0)
+                        throw new InvalidDataException("The password breach checker returned an invalid count.");
+                    if (breaches > 0)
+                    {
+                        TryUpdateCurrentOperation(operationGeneration, operationCancellation, allowCancellation: false, () =>
+                        {
+                            OperationError = "这个密码出现在已知数据泄露中，换一个吧";
+                            RequestFocus(RegisterFocusTarget.MasterPassword);
+                        });
+                        return;
+                    }
+                }
+                catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or InvalidOperationException)
+                {
+                    TryUpdateCurrentOperation(operationGeneration, operationCancellation, allowCancellation: false, () =>
+                    {
+                        OperationError = "无法完成密码泄露检查。请重试，或取消勾选后创建账户。";
+                        RequestFocus(RegisterFocusTarget.MasterPassword);
+                    });
+                    return;
+                }
+            }
+
+            lock (_registrationStateLock)
+            {
+                if (!IsCurrentOperation(operationGeneration, operationCancellation, allowCancellation: false))
+                    return;
+            }
             var outcome = await _registerUi.RegisterAsync(
                 serverUrl,
                 email,

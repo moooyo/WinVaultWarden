@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Xml.Linq;
 using Xunit;
 
@@ -5,6 +6,8 @@ namespace App.Tests;
 
 public class LoginPageTypographyXamlTests
 {
+    private static readonly XNamespace X = "http://schemas.microsoft.com/winfx/2006/xaml";
+
     private static XDocument Load()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -17,42 +20,47 @@ public class LoginPageTypographyXamlTests
         throw new FileNotFoundException("LoginPage.xaml not found.");
     }
 
-    private static XElement ByBind(XDocument doc, string bind) =>
-        doc.Descendants().First(e => e.Name.LocalName == "TextBlock"
-            && e.Attribute("Text")?.Value == "{x:Bind " + bind + ", Mode=OneWay}");
+    private static XElement Named(XDocument document, string name) =>
+        document.Descendants().Single(element => element.Attribute(X + "Name")?.Value == name);
 
     [Fact]
-    public void FormTitle_UsesTitleTextBlockStyle()
+    public void FormTitle_UsesCenteredV3DisplayTypography()
     {
-        var doc = Load();
-        var title = ByBind(doc, "ViewModel.FormTitle");
-        Assert.Equal("{ThemeResource TitleTextBlockStyle}", title.Attribute("Style")?.Value);
-        Assert.Null(title.Attribute("FontSize"));
+        var title = Named(Load(), "LoginTitle");
+        Assert.Contains("ViewModel.FormTitle", title.Attribute("Text")?.Value);
+        Assert.Equal("20", title.Attribute("FontSize")?.Value);
+        Assert.Equal("28", title.Attribute("LineHeight")?.Value);
+        Assert.Equal("SemiBold", title.Attribute("FontWeight")?.Value);
+        Assert.Equal("Center", title.Attribute("TextAlignment")?.Value);
+        Assert.Equal("Level1", title.Attribute("AutomationProperties.HeadingLevel")?.Value);
     }
 
     [Fact]
-    public void StepTextAndServerSummary_UseCaptionSecondaryStyle()
+    public void Form_UsesV3ColumnAndDistinctLockAvatar()
     {
-        var doc = Load();
-        foreach (var bind in new[] { "ViewModel.StepText", "ViewModel.ServerSummary" })
-        {
-            var tbs = doc.Descendants().Where(e => e.Name.LocalName == "TextBlock"
-                && e.Attribute("Text")?.Value == "{x:Bind " + bind + ", Mode=OneWay}").ToList();
-            Assert.NotEmpty(tbs);
-            Assert.All(tbs, tb =>
-            {
-                Assert.Equal("{StaticResource CaptionSecondaryTextBlockStyle}", tb.Attribute("Style")?.Value);
-                Assert.Null(tb.Attribute("FontSize"));
-                Assert.Null(tb.Attribute("Foreground"));
-            });
-        }
+        var document = Load();
+        var form = Named(document, "LoginForm");
+        var icon = Named(document, "LoginAppIcon");
+        var avatar = Named(document, "LoginAvatar");
+        Assert.Equal("360", form.Attribute("MaxWidth")?.Value);
+        Assert.Equal("Center", form.Attribute("VerticalAlignment")?.Value);
+        Assert.Equal("48", icon.Attribute("Width")?.Value);
+        Assert.Equal("10", icon.Attribute("CornerRadius")?.Value);
+        Assert.Equal("64", avatar.Attribute("Width")?.Value);
+        Assert.Equal("32", avatar.Attribute("CornerRadius")?.Value);
+        Assert.Equal("Auto", Named(document, "LoginScrollViewer").Attribute("VerticalScrollBarVisibility")?.Value);
     }
 
     [Fact]
-    public void NoThirteenOrElevenPxText_Remains()
+    public void FormSubtitle_UsesV3BodyTextAndNoTextFallsBelowTwelveDip()
     {
-        var doc = Load();
-        Assert.DoesNotContain(doc.Descendants(),
-            e => e.Attribute("FontSize")?.Value is "13" or "11");
+        var document = Load();
+        var subtitle = Named(document, "LoginSubtitle");
+        Assert.Contains("ViewModel.FormSubtitle", subtitle.Attribute("Text")?.Value);
+        Assert.Equal("13", subtitle.Attribute("FontSize")?.Value);
+        Assert.Equal("Center", subtitle.Attribute("TextAlignment")?.Value);
+        Assert.DoesNotContain(document.Descendants(), element =>
+            double.TryParse(element.Attribute("FontSize")?.Value, NumberStyles.Float,
+                CultureInfo.InvariantCulture, out var size) && size < 12);
     }
 }

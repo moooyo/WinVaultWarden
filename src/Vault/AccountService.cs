@@ -5,7 +5,9 @@ using Core.Abstractions;
 using Core.Enums;
 using Core.Models;
 using Core.Services;
+using Core.Session;
 using Crypto;
+using Crypto.PasswordStrength;
 
 namespace Vault;
 
@@ -17,6 +19,11 @@ namespace Vault;
 public sealed class AccountService : IAccountService
 {
     private const int MaxNameLength = 50;
+    private const int MaximumPasswordHintLength = 50;
+    private static readonly Lazy<MasterPasswordPolicyEvaluator> DefaultPasswordPolicyEvaluator =
+        new(() => new MasterPasswordPolicyEvaluator(
+            new PasswordStrengthEvaluator(
+                new Omnimatch(new DictionaryMatcher(FrequencyDictionaries.Load())))));
 
     private readonly CryptoService _crypto;
     private readonly IVaultApiClientProvider _clients;
@@ -24,6 +31,7 @@ public sealed class AccountService : IAccountService
     private readonly ITokenStore _tokenStore;
     private readonly IAuthService _auth;
     private readonly VaultCacheService _cache;
+    private readonly MasterPasswordPolicyEvaluator _passwordPolicyEvaluator;
 
     public AccountService(
         CryptoService crypto,
@@ -31,7 +39,8 @@ public sealed class AccountService : IAccountService
         VaultSession session,
         ITokenStore tokenStore,
         IAuthService auth,
-        VaultCacheService cache)
+        VaultCacheService cache,
+        MasterPasswordPolicyEvaluator? passwordPolicyEvaluator = null)
     {
         _crypto = crypto;
         _clients = clients;
@@ -39,6 +48,7 @@ public sealed class AccountService : IAccountService
         _tokenStore = tokenStore;
         _auth = auth;
         _cache = cache;
+        _passwordPolicyEvaluator = passwordPolicyEvaluator ?? DefaultPasswordPolicyEvaluator.Value;
     }
 
     // -----------------------------------------------------------------------
@@ -77,6 +87,8 @@ public sealed class AccountService : IAccountService
         string? hint,
         CancellationToken ct = default)
     {
+        var normalizedHint = ValidateNewPassword(currentPassword, newPassword, hint);
+        ct.ThrowIfCancellationRequested();
         var lease = _session.CaptureLease();
         if (!_session.TryCopyUserKey(lease, out var copiedKey) || copiedKey is null)
             throw new AccountOperationException("操作需要已解锁的 Vault，请先解锁后重试。");
@@ -85,6 +97,9 @@ public sealed class AccountService : IAccountService
         if (!_tokenStore.TryLoad(out var persisted)
             || !_session.IsCurrent(lease, persisted))
             throw new AccountOperationException("持久化会话与当前账户不匹配。");
+
+        var evidence = _passwordPolicyEvaluator.CaptureEvidence(newPassword);
+        ValidateOrganizationPasswordPolicy(lease, evidence);
 
         // 验证旧密码：派生旧 masterKey 后尝试解密 UserKey，不匹配则抛异常
         // oldMasterKey 在 finally 中无条件清零，catch 只负责把密码错误的异常转为业务异常
@@ -137,6 +152,7 @@ public sealed class AccountService : IAccountService
         _session.ThrowIfExpired(lease);
         var api = _clients.GetAuthenticated<IAccountApiClient>(lease);
         _session.ThrowIfExpired(lease);
+        ValidateOrganizationPasswordPolicy(lease, evidence);
         var kdf = new KdfParams(
             Kdf: (int)persisted.KdfType,
             KdfIterations: persisted.KdfIterations,
@@ -145,7 +161,7 @@ public sealed class AccountService : IAccountService
         await api.ChangePasswordAsync(new ChangePasswordRequest(
             MasterPasswordHash: oldHash,
             NewMasterPasswordHash: newHash,
-            MasterPasswordHint: hint,
+            MasterPasswordHint: normalizedHint,
             Key: wrappedKey,
             AuthenticationData: new AuthData(
                 Salt: persisted.EffectiveMasterPasswordSalt,
@@ -328,5 +344,62 @@ public sealed class AccountService : IAccountService
         using var stretchedKey = _crypto.StretchMasterKey(masterKey);
         var encString = EncString.Parse(protectedUserKey);
         using var userKey = _crypto.DecryptUserKey(stretchedKey, encString); // throws CryptographicException if wrong
+    }
+
+    private static string? ValidateNewPassword(
+        string currentPassword,
+        string newPassword,
+        string? hint)
+    {
+        if (string.IsNullOrEmpty(currentPassword))
+            throw new AccountOperationException("请输入当前主密码。");
+        if (string.IsNullOrEmpty(newPassword)
+            || newPassword.Length is < MasterPasswordPolicyRequirements.MinimumLength
+                or > MasterPasswordPolicyRequirements.MaximumLength)
+        {
+            throw new AccountOperationException(
+                $"新主密码长度必须为 {MasterPasswordPolicyRequirements.MinimumLength} 到 "
+                + $"{MasterPasswordPolicyRequirements.MaximumLength} 个字符。");
+        }
+        if (string.Equals(currentPassword, newPassword, StringComparison.Ordinal))
+            throw new AccountOperationException("新主密码不能与当前主密码相同。");
+
+        var normalizedHint = string.IsNullOrWhiteSpace(hint) ? null : hint.Trim();
+        if (normalizedHint is { Length: > MaximumPasswordHintLength }
+            || normalizedHint?.Contains(newPassword, StringComparison.OrdinalIgnoreCase) == true
+            || normalizedHint?.Contains(currentPassword, StringComparison.OrdinalIgnoreCase) == true)
+        {
+            throw new AccountOperationException(
+                "密码提示最多 50 个字符，且不能包含当前主密码或新主密码。");
+        }
+
+        return normalizedHint;
+    }
+
+    private void ValidateOrganizationPasswordPolicy(
+        VaultSessionLease lease,
+        MasterPasswordEvidence evidence)
+    {
+        if (!_session.TryRunIfUnlocked(lease, () =>
+            {
+                MasterPasswordPolicyRequirements? requirements;
+                try
+                {
+                    requirements = MasterPasswordPolicyResolver.Resolve(_session);
+                }
+                catch (OrganizationPolicyException)
+                {
+                    throw new AccountOperationException("组织主密码策略数据无效，请同步密码库后重试。");
+                }
+
+                if (!_passwordPolicyEvaluator.Evaluate(requirements, evidence))
+                {
+                    throw new AccountOperationException(
+                        "新主密码不符合组织的主密码策略。");
+                }
+            }))
+        {
+            throw new OperationCanceledException("Vault session lease expired.", lease.CancellationToken);
+        }
     }
 }

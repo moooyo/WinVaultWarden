@@ -12,394 +12,188 @@
             <Setter Property="BorderBrush" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="0,0,0,1" />
             <Setter Property="CornerRadius" Value="0" />
-            <Setter Property="Padding" Value="20,16" />
+            <Setter Property="IsActionIconVisible" Value="False" />
+            <Setter Property="Padding" Value="0,8" />
+            <Setter Property="MinHeight" Value="64" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style x:Key="CompactSettingsRowStyle" TargetType="tk:SettingsCard" BasedOn="{StaticResource SettingsRowStyle}">
+            <Setter Property="MinHeight" Value="52" />
+        </Style>
+        <Style x:Key="SettingsGroupTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="AutomationProperties.HeadingLevel" Value="Level2" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+        <Style x:Key="SettingsButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="14,0" />
+        </Style>
+        <Style x:Key="SettingsSwitchStyle" TargetType="ToggleSwitch">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="OnContent" Value="" />
+            <Setter Property="OffContent" Value="" />
         </Style>
     </Page.Resources>
-    <Grid x:Name="SettingsSurface" Padding="{StaticResource PageContentPadding}" RowSpacing="24"
-        Background="{ThemeResource LayerFillColorDefaultBrush}">
-        <VisualStateManager.VisualStateGroups>
-            <VisualStateGroup>
-                <VisualState x:Name="WideSettings">
-                    <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="1060" />
-                    </VisualState.StateTriggers>
-                </VisualState>
-                <VisualState x:Name="CompactSettings">
-                    <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="0" />
-                    </VisualState.StateTriggers>
-                    <VisualState.Setters>
-                        <Setter Target="SettingsNavigationColumn.Width" Value="0" />
-                        <Setter Target="SettingsSectionNavigation.Visibility" Value="Collapsed" />
-                        <Setter Target="SettingsSectionPicker.Visibility" Value="Visible" />
-                        <Setter Target="SettingsBody.ColumnSpacing" Value="0" />
-                        <Setter Target="SettingsSurface.Padding" Value="16" />
-                    </VisualState.Setters>
-                </VisualState>
-            </VisualStateGroup>
-        </VisualStateManager.VisualStateGroups>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-        <StackPanel Spacing="8">
-            <TextBlock Text="设置" Style="{ThemeResource TitleTextBlockStyle}"
-                AutomationProperties.HeadingLevel="Level1" />
-            <TextBlock Text="账户保护、个人资料与此设备的使用偏好。"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-            <ComboBox x:Name="SettingsSectionPicker" Margin="0,8,0,0"
-                MinWidth="0" HorizontalAlignment="Stretch" Visibility="Collapsed"
-                AutomationProperties.Name="设置分组"
-                SelectedIndex="{x:Bind ViewModel.SelectedSectionIndex, Mode=TwoWay}">
-                <ComboBoxItem Content="安全" />
-                <ComboBoxItem Content="账户" />
-                <ComboBoxItem Content="偏好设置" />
-                <ComboBoxItem Content="关于" />
-            </ComboBox>
-        </StackPanel>
-        <Grid x:Name="SettingsBody" Grid.Row="1" ColumnSpacing="28">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="SettingsNavigationColumn" Width="160" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <ListView x:Name="SettingsSectionNavigation" VerticalAlignment="Top"
-                SelectionMode="Single" IsItemClickEnabled="False"
-                AutomationProperties.Name="设置分组"
-                SelectedIndex="{x:Bind ViewModel.SelectedSectionIndex, Mode=TwoWay}">
-                <ListViewItem Content="安全" />
-                <ListViewItem Content="账户" />
-                <ListViewItem Content="偏好设置" />
-                <ListViewItem Content="关于" />
-            </ListView>
-            <ScrollViewer x:Name="SettingsScrollViewer" Grid.Column="1"
-                HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
-                VerticalScrollBarVisibility="Auto" Padding="0,0,4,24">
-                <StackPanel Spacing="24" MaxWidth="1000" HorizontalAlignment="Stretch">
-                    <InfoBar IsOpen="{x:Bind ViewModel.HasOperationError, Mode=OneWay}"
-                        IsClosable="False" Severity="Error" AutomationProperties.LiveSetting="Polite"
-                        Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" />
-                    <InfoBar x:Name="SettingsFeedbackInfoBar" IsOpen="False" IsClosable="True"
-                        AutomationProperties.LiveSetting="Polite" />
-                    <StackPanel x:Name="SecuritySettingsSection" Spacing="12"
-                        Visibility="{x:Bind ViewModel.IsSecuritySection, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Text="安全"
-                            Style="{StaticResource SectionHeaderTextBlockStyle}"
-                            AutomationProperties.HeadingLevel="Level2" />
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1" CornerRadius="8">
-                            <StackPanel Spacing="0">
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="会话超时" Description="此设备不活动多久后执行超时动作。">
-                                    <StackPanel Spacing="8">
-                                        <ComboBox MinWidth="0"
-                                            HorizontalAlignment="Stretch"
-                                            AutomationProperties.Name="会话超时"
-                                            SelectedIndex="{x:Bind ViewModel.SelectedSessionTimeoutIndex, Mode=TwoWay}">
-                                            <ComboBoxItem Content="重启时"
-                                                IsEnabled="{x:Bind ViewModel.CanSelectRestartTimeout, Mode=OneWay}" />
-                                            <ComboBoxItem Content="1 分钟"
-                                                IsEnabled="{x:Bind ViewModel.CanSelectOneMinuteTimeout, Mode=OneWay}" />
-                                            <ComboBoxItem Content="5 分钟"
-                                                IsEnabled="{x:Bind ViewModel.CanSelectFiveMinuteTimeout, Mode=OneWay}" />
-                                            <ComboBoxItem Content="15 分钟"
-                                                IsEnabled="{x:Bind ViewModel.CanSelectFifteenMinuteTimeout, Mode=OneWay}" />
-                                            <ComboBoxItem Content="30 分钟"
-                                                IsEnabled="{x:Bind ViewModel.CanSelectThirtyMinuteTimeout, Mode=OneWay}" />
-                                            <ComboBoxItem Content="1 小时"
-                                                IsEnabled="{x:Bind ViewModel.CanSelectOneHourTimeout, Mode=OneWay}" />
-                                            <ComboBoxItem Content="4 小时"
-                                                IsEnabled="{x:Bind ViewModel.CanSelectFourHourTimeout, Mode=OneWay}" />
-                                            <ComboBoxItem Content="永不"
-                                                IsEnabled="{x:Bind ViewModel.CanSelectNeverTimeout, Mode=OneWay}" />
-                                            <ComboBoxItem Content="系统锁定时"
-                                                IsEnabled="{x:Bind ViewModel.CanSelectSystemLockTimeout, Mode=OneWay}" />
-                                            <ComboBoxItem Content="{x:Bind ViewModel.PolicySpecificTimeoutOptionText, Mode=OneWay}"
-                                                IsEnabled="False"
-                                                Visibility="{x:Bind ViewModel.HasPolicySpecificTimeoutOption, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+    <Grid x:Name="SettingsSurface" Background="{ThemeResource LayerFillColorDefaultBrush}">
+        <ScrollViewer x:Name="SettingsScrollViewer" HorizontalContentAlignment="Stretch" HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled">
+            <Grid Padding="40,40,40,48" HorizontalAlignment="Stretch">
+            <Border MaxWidth="680" HorizontalAlignment="Stretch">
+                <StackPanel>
+                    <TextBlock AutomationProperties.HeadingLevel="Level1" x:Name="SectionTitle" Text="账户" FontFamily="{StaticResource WardenDisplayFontFamily}" FontSize="28" LineHeight="36" FontWeight="SemiBold" />
+                    <InfoBar Visibility="{x:Bind ViewModel.HasOperationError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" IsOpen="{x:Bind ViewModel.HasOperationError, Mode=OneWay}" IsClosable="False" Severity="Error" Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" Margin="0,12,0,0" />
+                    <StackPanel x:Name="AccountSettingsSection">
+                        <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1" Padding="0,20" Margin="0,24,0,28">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="56" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Border Width="56" Height="56" CornerRadius="28" Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Center">
+                                    <TextBlock Text="{x:Bind ViewModel.AccountInitial, Mode=OneWay}" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="{x:Bind ViewModel.AccountDisplayName, Mode=OneWay}" FontFamily="{StaticResource WardenDisplayFontFamily}" FontSize="20" LineHeight="28" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{x:Bind ViewModel.AccountEmail, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{x:Bind ViewModel.AccountServer, Mode=OneWay}" FontSize="12" LineHeight="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <StackPanel Margin="0,0,0,32">
+                            <TextBlock Text="账户信息" Style="{StaticResource SettingsGroupTitleStyle}" />
+                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+                                <StackPanel>
+                                    <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="名称" Description="{x:Bind ViewModel.AccountNameDescription, Mode=OneWay}"><Button AutomationProperties.AutomationId="EditProfileButton" Content="编辑…" Style="{StaticResource SettingsButtonStyle}" Click="OnEditProfileClick" /></tk:SettingsCard>
+                                    <tk:SettingsCard Style="{StaticResource CompactSettingsRowStyle}" Header="邮箱"><TextBlock Text="{x:Bind ViewModel.AccountEmail, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" /></tk:SettingsCard>
+                                    <tk:SettingsCard Style="{StaticResource CompactSettingsRowStyle}" Header="服务器"><TextBlock Text="{x:Bind ViewModel.AccountServer, Mode=OneWay}" FontFamily="Cascadia Code, Consolas" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" /></tk:SettingsCard>
+                                    <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="加密方式" Description="{x:Bind ViewModel.KdfDescription, Mode=OneWay}"><Button AutomationProperties.AutomationId="ChangeKdfCard" Content="更改…" Style="{StaticResource SettingsButtonStyle}" Click="OnChangeKdfCardClick" /></tk:SettingsCard>
+                                    <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="主密码" Description="修改后，其他设备都需要重新登录"><Button AutomationProperties.AutomationId="ChangePasswordCard" Content="更改…" Style="{StaticResource SettingsButtonStyle}" Click="OnChangePasswordCardClick" /></tk:SettingsCard>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                        <StackPanel Margin="0,0,0,32">
+                            <TextBlock Text="登录" Style="{StaticResource SettingsGroupTitleStyle}" />
+                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="退出登录" Description="清除本机缓存的密码库，下次需要联网登录"><Button Content="退出登录" Style="{StaticResource SettingsButtonStyle}" Click="OnLogoutClick" /></tk:SettingsCard></Border>
+                        </StackPanel>
+                        <StackPanel x:Name="DangerSettingsSection" Margin="0,0,0,32">
+                            <TextBlock Text="危险操作" Style="{StaticResource SettingsGroupTitleStyle}" />
+                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="删除账户" Description="永久删除账户和密码库里的全部数据，无法恢复"><Button x:Name="DeleteAccountButton" AutomationProperties.AutomationId="DeleteAccountButton" Content="删除账户…" Style="{StaticResource SettingsButtonStyle}" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Click="OnDeleteAccountClick" /></tk:SettingsCard></Border>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel x:Name="SecuritySettingsSection" Visibility="Collapsed" Margin="0,28,0,0">
+                        <StackPanel Margin="0,0,0,32">
+                            <TextBlock Text="解锁" Style="{StaticResource SettingsGroupTitleStyle}" />
+                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+                                <StackPanel>
+                                    <tk:SettingsCard x:Name="HelloCard" Style="{StaticResource SettingsRowStyle}" Header="使用 Windows Hello 解锁" Description="{x:Bind ViewModel.WindowsHelloDescription, Mode=OneWay}" IsClickEnabled="True" Click="OnToggleSettingClick"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{x:Bind ToggleState(HelloToggle.IsOn), Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch x:Name="HelloToggle" Style="{StaticResource SettingsSwitchStyle}" AutomationProperties.Name="使用 Windows Hello 解锁" IsEnabled="{x:Bind ViewModel.CanToggleWindowsHello, Mode=OneWay}" Toggled="OnHelloToggleToggled" /></StackPanel></tk:SettingsCard>
+                                    <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="使用 PIN 解锁" Description="{x:Bind ViewModel.PinUnlockDescription, Mode=OneWay}" IsClickEnabled="True" Click="OnToggleSettingClick"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{x:Bind ToggleState(PinToggle.IsOn), Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch x:Name="PinToggle" Style="{StaticResource SettingsSwitchStyle}" AutomationProperties.Name="使用 PIN 解锁" IsEnabled="{x:Bind ViewModel.CanUsePinUnlock, Mode=OneWay}" Toggled="OnPinToggleToggled" /></StackPanel></tk:SettingsCard>
+                                    <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="重启后先用主密码解锁" Description="当前版本的 PIN 可在重启后直接解锁，暂不支持此选项" Visibility="{x:Bind ViewModel.IsPinSet, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="关" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch IsOn="False" IsEnabled="False" Style="{StaticResource SettingsSwitchStyle}" AutomationProperties.Name="重启后先用主密码解锁，尚未提供" /></StackPanel></tk:SettingsCard>
+                                    <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="PIN" Description="已设置" Visibility="{x:Bind ViewModel.IsPinSet, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"><Button Content="更改…" Style="{StaticResource SettingsButtonStyle}" Click="OnChangePinClick" /></tk:SettingsCard>
+                                    <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="自动锁定" Description="闲置这么久之后锁定密码库">
+                                        <ComboBox MinWidth="180" AutomationProperties.Name="自动锁定" SelectedIndex="{x:Bind ViewModel.SelectedSessionTimeoutIndex, Mode=TwoWay}">
+                                            <ComboBoxItem Content="应用重启时" IsEnabled="{x:Bind ViewModel.CanSelectRestartTimeout, Mode=OneWay}" />
+                                            <ComboBoxItem Content="1 分钟" IsEnabled="{x:Bind ViewModel.CanSelectOneMinuteTimeout, Mode=OneWay}" />
+                                            <ComboBoxItem Content="5 分钟" IsEnabled="{x:Bind ViewModel.CanSelectFiveMinuteTimeout, Mode=OneWay}" />
+                                            <ComboBoxItem Content="15 分钟" IsEnabled="{x:Bind ViewModel.CanSelectFifteenMinuteTimeout, Mode=OneWay}" />
+                                            <ComboBoxItem Content="30 分钟" IsEnabled="{x:Bind ViewModel.CanSelectThirtyMinuteTimeout, Mode=OneWay}" />
+                                            <ComboBoxItem Content="1 小时" IsEnabled="{x:Bind ViewModel.CanSelectOneHourTimeout, Mode=OneWay}" />
+                                            <ComboBoxItem Content="4 小时" IsEnabled="{x:Bind ViewModel.CanSelectFourHourTimeout, Mode=OneWay}" />
+                                            <ComboBoxItem Content="从不" IsEnabled="{x:Bind ViewModel.CanSelectNeverTimeout, Mode=OneWay}" />
+                                            <ComboBoxItem Content="系统锁定时" IsEnabled="{x:Bind ViewModel.CanSelectSystemLockTimeout, Mode=OneWay}" />
+                                            <ComboBoxItem Content="{x:Bind ViewModel.PolicySpecificTimeoutOptionText, Mode=OneWay}" Visibility="{x:Bind ViewModel.HasPolicySpecificTimeoutOption, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                                         </ComboBox>
-                                        <TextBlock Text="{x:Bind ViewModel.MaximumVaultTimeoutPolicyHint, Mode=OneWay}"
-                                            TextWrapping="Wrap"
-                                            Style="{ThemeResource CaptionTextBlockStyle}"
-                                            Visibility="{x:Bind ViewModel.HasMaximumVaultTimeoutPolicy, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                    </StackPanel>
-                                </tk:SettingsCard>
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="超时动作" Description="锁定保留已保存账户；登出后需要重新登录。">
-                                    <ComboBox MinWidth="0"
-                                        HorizontalAlignment="Stretch"
-                                        AutomationProperties.Name="超时动作"
-                                        IsEnabled="{x:Bind ViewModel.CanSelectTimeoutAction, Mode=OneWay}"
-                                        SelectedIndex="{x:Bind ViewModel.SelectedTimeoutActionIndex, Mode=TwoWay}">
-                                        <ComboBoxItem Content="锁定" />
-                                        <ComboBoxItem Content="登出" />
-                                    </ComboBox>
-                                </tk:SettingsCard>
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="PIN 解锁" Description="{x:Bind ViewModel.PinUnlockDescription, Mode=OneWay}">
-                                    <ToggleSwitch x:Name="PinToggle"
-                                        AutomationProperties.AutomationId="PinToggle"
-                                        AutomationProperties.Name="PIN 解锁"
-                                        IsEnabled="{x:Bind ViewModel.CanUsePinUnlock, Mode=OneWay}"
-                                        Toggled="OnPinToggleToggled" />
-                                </tk:SettingsCard>
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" x:Name="HelloCard" Header="Windows Hello 解锁" Description="{x:Bind ViewModel.WindowsHelloDescription, Mode=OneWay}">
-                                    <ToggleSwitch x:Name="HelloToggle"
-                                        AutomationProperties.AutomationId="HelloToggle"
-                                        AutomationProperties.Name="Windows Hello 解锁"
-                                        IsEnabled="{x:Bind ViewModel.CanToggleWindowsHello, Mode=OneWay}"
-                                        Toggled="OnHelloToggleToggled" />
-                                </tk:SettingsCard>
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="可信设备加密"
-                                    Description="{x:Bind ViewModel.TrustedDeviceStatus, Mode=OneWay}"
-                                    Visibility="{x:Bind ViewModel.ShowTrustedDeviceSettings, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <Button x:Name="TrustCurrentDeviceButton"
-                                        AutomationProperties.AutomationId="TrustCurrentDeviceButton"
-                                        Content="{x:Bind ViewModel.TrustedDeviceActionText, Mode=OneWay}"
-                                        IsEnabled="{x:Bind ViewModel.CanTrustCurrentDevice, Mode=OneWay}"
-                                        Click="OnTrustCurrentDeviceClick" />
-                                </tk:SettingsCard>
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="双重验证"
-                                    Description="管理两步验证方式（TOTP、邮箱验证码、安全密钥）"
-                                    IsClickEnabled="True"
-                                    AutomationProperties.AutomationId="TwoFactorCard"
-                                    Click="OnTwoFactorCardClick">
-                                </tk:SettingsCard>
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="紧急访问"
-                                    Description="管理紧急联系人与受托访问权限"
-                                    IsClickEnabled="True"
-                                    AutomationProperties.AutomationId="EmergencyAccessCard"
-                                    Click="OnEmergencyAccessCardClick">
-                                </tk:SettingsCard>
-                            </StackPanel>
-                        </Border>
+                                    </tk:SettingsCard>
+                                    <TextBlock Text="{x:Bind ViewModel.MaximumVaultTimeoutPolicyHint, Mode=OneWay}" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind ViewModel.HasMaximumVaultTimeoutPolicy, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    <tk:SettingsCard Style="{StaticResource CompactSettingsRowStyle}" Header="锁定时"><ComboBox MinWidth="180" AutomationProperties.Name="锁定时" IsEnabled="{x:Bind ViewModel.CanSelectTimeoutAction, Mode=OneWay}" SelectedIndex="{x:Bind ViewModel.SelectedTimeoutActionIndex, Mode=TwoWay}"><ComboBoxItem Content="锁定密码库" /><ComboBoxItem Content="退出登录" /></ComboBox></tk:SettingsCard>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                        <StackPanel Margin="0,0,0,32">
+                            <TextBlock Text="账户安全" Style="{StaticResource SettingsGroupTitleStyle}" />
+                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><StackPanel>
+                                <tk:SettingsCard x:Name="TwoFactorSummaryCard" Style="{StaticResource SettingsRowStyle}" Header="两步登录" Description="管理身份验证器应用、电子邮件和安全密钥"><Button AutomationProperties.AutomationId="TwoFactorCard" Content="管理…" Style="{StaticResource SettingsButtonStyle}" Click="OnTwoFactorCardClick" /></tk:SettingsCard>
+                                <tk:SettingsCard x:Name="EmergencySummaryCard" Style="{StaticResource SettingsRowStyle}" Header="紧急访问" Description="指定信任的人，在紧急情况下访问你的密码库"><Button Content="管理…" Style="{StaticResource SettingsButtonStyle}" Click="OnEmergencyAccessCardClick" /></tk:SettingsCard>
+                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="可信设备加密" Description="{x:Bind ViewModel.TrustedDeviceStatus, Mode=OneWay}" Visibility="{x:Bind ViewModel.ShowTrustedDeviceSettings, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"><Button x:Name="TrustCurrentDeviceButton" Content="{x:Bind ViewModel.TrustedDeviceActionText, Mode=OneWay}" IsEnabled="{x:Bind ViewModel.CanTrustCurrentDevice, Mode=OneWay}" Style="{StaticResource SettingsButtonStyle}" Click="OnTrustCurrentDeviceClick" /></tk:SettingsCard>
+                            </StackPanel></Border>
+                        </StackPanel>
+                        <StackPanel Margin="0,0,0,32">
+                            <TextBlock Text="敏感操作" Style="{StaticResource SettingsGroupTitleStyle}" />
+                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="显示或编辑密码前" Description="用 Windows Hello 确认是你本人"><ComboBox MinWidth="180" AutomationProperties.Name="显示或编辑密码前" SelectedIndex="{x:Bind ViewModel.SelectedSensitiveActionVerificationIndex, Mode=TwoWay}"><ComboBoxItem Content="每次都验证" /><ComboBoxItem Content="验证后 5 分钟内免验证" /></ComboBox></tk:SettingsCard></Border>
+                        </StackPanel>
+                        <StackPanel x:Name="PrivacySettingsSection" Margin="0,0,0,32">
+                            <TextBlock Text="剪贴板" Style="{StaticResource SettingsGroupTitleStyle}" />
+                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><StackPanel>
+                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="自动清除剪贴板" Description="复制密码、验证码后到时清空"><ComboBox MinWidth="180" AutomationProperties.Name="自动清除剪贴板" SelectedIndex="{x:Bind ViewModel.SelectedClearClipboardIndex, Mode=TwoWay}"><ComboBoxItem Content="从不" /><ComboBoxItem Content="10 秒后" /><ComboBoxItem Content="20 秒后" /><ComboBoxItem Content="30 秒后" /><ComboBoxItem Content="1 分钟后" /><ComboBoxItem Content="2 分钟后" /><ComboBoxItem Content="5 分钟后" /></ComboBox></tk:SettingsCard>
+                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="不进入剪贴板历史" Description="复制的内容不会出现在 Win + V 和云剪贴板里" IsClickEnabled="True" Click="OnToggleSettingClick"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{x:Bind ToggleState(ViewModel.ExcludeClipboardHistory), Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch Style="{StaticResource SettingsSwitchStyle}" IsOn="{x:Bind ViewModel.ExcludeClipboardHistory, Mode=TwoWay}" AutomationProperties.Name="不进入剪贴板历史" /></StackPanel></tk:SettingsCard>
+                            </StackPanel></Border>
+                        </StackPanel>
+                        <StackPanel Margin="0,0,0,32">
+                            <TextBlock Text="隐私" Style="{StaticResource SettingsGroupTitleStyle}" />
+                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="允许截屏和录屏" Description="关闭时，截图和屏幕共享中看不到这个窗口" IsClickEnabled="True" Click="OnToggleSettingClick"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{x:Bind ToggleState(ViewModel.AllowScreenshots), Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch Style="{StaticResource SettingsSwitchStyle}" IsOn="{x:Bind ViewModel.AllowScreenshots, Mode=TwoWay}" AutomationProperties.Name="允许截屏和录屏" /></StackPanel></tk:SettingsCard></Border>
+                        </StackPanel>
                     </StackPanel>
-                    <StackPanel x:Name="PrivacySettingsSection" Spacing="12"
-                        Visibility="{x:Bind ViewModel.IsSecuritySection, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Text="隐私"
-                            Style="{StaticResource SectionHeaderTextBlockStyle}"
-                            AutomationProperties.HeadingLevel="Level2" />
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1" CornerRadius="8">
-                            <StackPanel Spacing="0">
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="清空剪贴板" Description="复制内容仍在剪贴板中时，按此时限清除。">
-                                    <ComboBox MinWidth="0"
-                                        HorizontalAlignment="Stretch"
-                                        AutomationProperties.Name="清空剪贴板"
-                                        SelectedIndex="{x:Bind ViewModel.SelectedClearClipboardIndex, Mode=TwoWay}">
-                                        <ComboBoxItem Content="永不" />
-                                        <ComboBoxItem Content="10 秒" />
-                                        <ComboBoxItem Content="20 秒" />
-                                        <ComboBoxItem Content="30 秒" />
-                                        <ComboBoxItem Content="1 分钟" />
-                                        <ComboBoxItem Content="2 分钟" />
-                                        <ComboBoxItem Content="5 分钟" />
-                                    </ComboBox>
-                                </tk:SettingsCard>
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="允许屏幕截图" Description="包括截图、录屏及屏幕共享。">
-                                    <ToggleSwitch AutomationProperties.Name="允许屏幕截图"
-                                        IsOn="{x:Bind ViewModel.AllowScreenshots, Mode=TwoWay}" />
-                                </tk:SettingsCard>
-                            </StackPanel>
-                        </Border>
+                    <StackPanel x:Name="SshSettingsSection" Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,6,0,28"><FontIcon Glyph="&#xE711;" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Text="此版本尚未提供 SSH 代理" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+                        <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Margin="0,0,0,32"><tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="启用 SSH 代理" Description="让 ssh、git 等程序使用密码库里的 SSH 密钥"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="关" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch Style="{StaticResource SettingsSwitchStyle}" IsEnabled="False" IsOn="False" AutomationProperties.Name="启用 SSH 代理，尚未提供" /></StackPanel></tk:SettingsCard></Border>
+                        <TextBlock Text="密码库仍可保存 SSH 密钥。当前版本未实现 Windows OpenSSH 管道、签名请求确认、程序授权及请求记录。" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <StackPanel x:Name="AccountSettingsSection" Spacing="12"
-                        Visibility="{x:Bind ViewModel.IsAccountSection, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Text="账户"
-                            Style="{StaticResource SectionHeaderTextBlockStyle}"
-                            AutomationProperties.HeadingLevel="Level2" />
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1" CornerRadius="8">
-                            <StackPanel Spacing="0">
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="{x:Bind ViewModel.AccountEmail}"
-                                    Description="{x:Bind ViewModel.AccountServer}">
-                                    <Button AutomationProperties.AutomationId="EditProfileButton"
-                                        Content="编辑资料"
-                                        Click="OnEditProfileClick" />
-                                </tk:SettingsCard>
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="修改主密码"
-                                    Description="更改后需要重新登录此账户。"
-                                    IsClickEnabled="True"
-                                    AutomationProperties.AutomationId="ChangePasswordCard"
-                                    Click="OnChangePasswordCardClick">
-                                </tk:SettingsCard>
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="加密设置"
-                                    Description="{x:Bind ViewModel.KdfSummary}"
-                                    IsClickEnabled="True"
-                                    AutomationProperties.AutomationId="ChangeKdfCard"
-                                    Click="OnChangeKdfCardClick">
-                                </tk:SettingsCard>
-                            </StackPanel>
-                        </Border>
+                    <StackPanel x:Name="PreferencesSettingsSection" Visibility="Collapsed" Margin="0,28,0,0">
+                        <StackPanel Margin="0,0,0,32">
+                            <TextBlock Text="外观" Style="{StaticResource SettingsGroupTitleStyle}" />
+                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><StackPanel>
+                                <tk:SettingsCard Style="{StaticResource CompactSettingsRowStyle}" Header="主题"><ComboBox MinWidth="180" AutomationProperties.Name="主题" SelectedIndex="{x:Bind ViewModel.SelectedThemeIndex, Mode=TwoWay}"><ComboBoxItem Content="跟随系统" /><ComboBoxItem Content="浅色" /><ComboBoxItem Content="深色" /></ComboBox></tk:SettingsCard>
+                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="显示网站图标" Description="关闭后用单色首字母代替网站图标" IsClickEnabled="True" Click="OnToggleSettingClick"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{x:Bind ToggleState(ViewModel.ShowWebsiteIcons), Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch Style="{StaticResource SettingsSwitchStyle}" IsOn="{x:Bind ViewModel.ShowWebsiteIcons, Mode=TwoWay}" AutomationProperties.Name="显示网站图标" /></StackPanel></tk:SettingsCard>
+                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="语言" Description="此版本仅提供简体中文"><ComboBox MinWidth="180" IsEnabled="False" SelectedIndex="1" AutomationProperties.Name="语言，当前仅提供简体中文"><ComboBoxItem Content="跟随系统" /><ComboBoxItem Content="简体中文" /><ComboBoxItem Content="繁體中文" /><ComboBoxItem Content="English" /><ComboBoxItem Content="日本語" /></ComboBox></tk:SettingsCard>
+                            </StackPanel></Border>
+                        </StackPanel>
+                        <StackPanel Margin="0,0,0,32">
+                            <TextBlock Text="窗口" Style="{StaticResource SettingsGroupTitleStyle}" />
+                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><StackPanel>
+                                <tk:SettingsCard Style="{StaticResource CompactSettingsRowStyle}" Header="关闭窗口时"><ComboBox MinWidth="180" AutomationProperties.Name="关闭窗口时" IsEnabled="{x:Bind ViewModel.CanConfigureTrayBehavior, Mode=OneWay}" SelectedIndex="{x:Bind ViewModel.SelectedCloseBehaviorIndex, Mode=TwoWay}"><ComboBoxItem Content="最小化到通知区域" /><ComboBoxItem Content="退出应用" /></ComboBox></tk:SettingsCard>
+                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="开机时启动" Description="此版本尚未提供登录 Windows 后自动启动"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="关" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch Style="{StaticResource SettingsSwitchStyle}" IsEnabled="False" IsOn="False" AutomationProperties.Name="开机时启动，尚未提供" /></StackPanel></tk:SettingsCard>
+                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="复制后最小化" Description="当前最小化会锁定并清除剪贴板，复制后最小化暂不可用"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="关" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch Style="{StaticResource SettingsSwitchStyle}" IsOn="False" IsEnabled="False" AutomationProperties.Name="复制后最小化，暂不可用" /></StackPanel></tk:SettingsCard>
+                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="显示通知区域图标" Description="保留通知区域入口，便于重新打开窗口" IsClickEnabled="True" Click="OnToggleSettingClick"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{x:Bind ToggleState(ViewModel.ShowTrayIcon), Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch Style="{StaticResource SettingsSwitchStyle}" IsOn="{x:Bind ViewModel.ShowTrayIcon, Mode=TwoWay}" AutomationProperties.Name="显示通知区域图标" /></StackPanel></tk:SettingsCard>
+                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="最小化时收起到通知区域" Description="{x:Bind ViewModel.TrayBehaviorDescription, Mode=OneWay}" IsClickEnabled="True" Click="OnToggleSettingClick"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{x:Bind ToggleState(ViewModel.MinimizeToTray), Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch Style="{StaticResource SettingsSwitchStyle}" IsOn="{x:Bind ViewModel.MinimizeToTray, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.CanConfigureTrayBehavior, Mode=OneWay}" AutomationProperties.Name="最小化时收起到通知区域" /></StackPanel></tk:SettingsCard>
+                            </StackPanel></Border>
+                        </StackPanel>
+                        <StackPanel Margin="0,0,0,32">
+                            <TextBlock Text="浏览器" Style="{StaticResource SettingsGroupTitleStyle}" />
+                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="浏览器集成" Description="{x:Bind ViewModel.BrowserIntegrationDescription, Mode=OneWay}" IsClickEnabled="True" Click="OnToggleSettingClick"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{x:Bind ToggleState(ViewModel.AllowBrowserIntegration), Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch Style="{StaticResource SettingsSwitchStyle}" IsEnabled="{x:Bind ViewModel.BrowserIntegrationSupported, Mode=OneTime}" IsOn="{x:Bind ViewModel.AllowBrowserIntegration, Mode=TwoWay}" AutomationProperties.Name="浏览器集成" /></StackPanel></tk:SettingsCard></Border>
+                        </StackPanel>
+                        <StackPanel Margin="0,0,0,32">
+                            <TextBlock Text="高级" Style="{StaticResource SettingsGroupTitleStyle}" />
+                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><StackPanel>
+                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="使用硬件加速" Description="此版本使用 WinUI 系统渲染，尚不支持关闭硬件加速"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="开" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch Style="{StaticResource SettingsSwitchStyle}" IsOn="True" IsEnabled="False" AutomationProperties.Name="使用硬件加速，不支持更改" /></StackPanel></tk:SettingsCard>
+                                <tk:SettingsCard Style="{StaticResource CompactSettingsRowStyle}" Header="动画效果"><TextBlock Text="跟随 Windows 系统设置" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></tk:SettingsCard>
+                            </StackPanel></Border>
+                        </StackPanel>
                     </StackPanel>
-                    <StackPanel x:Name="PreferencesSettingsSection" Spacing="12"
-                        Visibility="{x:Bind ViewModel.IsPreferencesSection, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Text="应用（所有账户）"
-                            Style="{StaticResource SectionHeaderTextBlockStyle}"
-                            AutomationProperties.HeadingLevel="Level2" />
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1" CornerRadius="8">
-                            <StackPanel Spacing="0">
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="主题" Description="更改应用颜色主题">
-                                    <ComboBox MinWidth="0"
-                                        HorizontalAlignment="Stretch"
-                                        AutomationProperties.Name="主题"
-                                        SelectedIndex="{x:Bind ViewModel.SelectedThemeIndex, Mode=TwoWay}">
-                                        <ComboBoxItem Content="默认（跟随系统）" />
-                                        <ComboBoxItem Content="浅色" />
-                                        <ComboBoxItem Content="深色" />
-                                    </ComboBox>
-                                </tk:SettingsCard>
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="显示网站图标" Description="关闭后仅显示类型图标，不向服务器请求网站图标">
-                                    <ToggleSwitch OffContent="关" OnContent="开"
-                                        AutomationProperties.Name="显示网站图标"
-                                        IsOn="{x:Bind ViewModel.ShowWebsiteIcons, Mode=TwoWay}" />
-                                </tk:SettingsCard>
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="显示托盘图标" Description="始终在系统托盘中显示图标">
-                                    <ToggleSwitch AutomationProperties.Name="显示托盘图标"
-                                        IsOn="{x:Bind ViewModel.ShowTrayIcon, Mode=TwoWay}" />
-                                </tk:SettingsCard>
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="最小化到托盘" Description="{x:Bind ViewModel.TrayBehaviorDescription, Mode=OneWay}">
-                                    <ToggleSwitch AutomationProperties.Name="最小化到托盘"
-                                        IsEnabled="{x:Bind ViewModel.CanConfigureTrayBehavior, Mode=OneWay}"
-                                        IsOn="{x:Bind ViewModel.MinimizeToTray, Mode=TwoWay}" />
-                                </tk:SettingsCard>
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="关闭到托盘" Description="{x:Bind ViewModel.TrayBehaviorDescription, Mode=OneWay}">
-                                    <ToggleSwitch AutomationProperties.Name="关闭到托盘"
-                                        IsEnabled="{x:Bind ViewModel.CanConfigureTrayBehavior, Mode=OneWay}"
-                                        IsOn="{x:Bind ViewModel.CloseToTray, Mode=TwoWay}" />
-                                </tk:SettingsCard>
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="允许浏览器集成" Description="{x:Bind ViewModel.BrowserIntegrationDescription, Mode=OneWay}">
-                                    <ToggleSwitch IsEnabled="{x:Bind ViewModel.BrowserIntegrationSupported, Mode=OneTime}"
-                                        AutomationProperties.Name="允许浏览器集成"
-                                        IsOn="{x:Bind ViewModel.AllowBrowserIntegration, Mode=TwoWay}" />
-                                </tk:SettingsCard>
-                                <tk:SettingsExpander Header="更多选项" Description="以下选项在此版本中暂不支持。">
-                                    <tk:SettingsExpander.Items>
-                                        <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="语言" Description="更改应用显示语言（此版本暂不支持）">
-                                            <ComboBox MinWidth="0"
-                                                HorizontalAlignment="Stretch"
-                                                AutomationProperties.Name="语言"
-                                                IsEnabled="False"
-                                                SelectedIndex="{x:Bind ViewModel.SelectedLanguageIndex, Mode=TwoWay}">
-                                                <ComboBoxItem Content="zh-CN - 中文（中国大陆）" />
-                                                <ComboBoxItem Content="English" />
-                                            </ComboBox>
-                                        </tk:SettingsCard>
-                                        <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="登录时自动启动" Description="登录 Windows 后自动启动应用（此版本暂不支持）">
-                                            <ToggleSwitch IsEnabled="False"
-                                                AutomationProperties.Name="登录时自动启动"
-                                                IsOn="{x:Bind ViewModel.StartOnLogin, Mode=TwoWay}" />
-                                        </tk:SettingsCard>
-                                        <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="使用硬件加速" Description="仅在遇到图形问题时关闭（此版本暂不支持）">
-                                            <ToggleSwitch IsEnabled="False"
-                                                AutomationProperties.Name="使用硬件加速"
-                                                IsOn="{x:Bind ViewModel.UseHardwareAcceleration, Mode=TwoWay}" />
-                                        </tk:SettingsCard>
-                                        <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="复制后最小化" Description="复制项目数据到剪贴板后最小化应用（此版本暂不支持）">
-                                            <ToggleSwitch IsEnabled="False"
-                                                AutomationProperties.Name="复制后最小化"
-                                                IsOn="{x:Bind ViewModel.MinimizeOnCopy, Mode=TwoWay}" />
-                                        </tk:SettingsCard>
-                                        <tk:SettingsExpander Header="SSH 代理" Description="允许应用处理 SSH 签名请求（此版本暂不支持）"
-                                            IsEnabled="False">
-                                            <tk:SettingsExpander.HeaderIcon>
-                                                <FontIcon Glyph="&#xE756;" />
-                                            </tk:SettingsExpander.HeaderIcon>
-                                            <ToggleSwitch AutomationProperties.Name="SSH 代理"
-                                                IsOn="{x:Bind ViewModel.EnableSshAgent, Mode=TwoWay}" />
-                                            <tk:SettingsExpander.Items>
-                                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="SSH 授权提示">
-                                                    <ComboBox MinWidth="0"
-                                                        HorizontalAlignment="Stretch"
-                                                        AutomationProperties.Name="SSH 授权提示"
-                                                        SelectedIndex="{x:Bind ViewModel.SelectedSshAuthorizationPromptIndex, Mode=TwoWay}">
-                                                        <ComboBoxItem Content="记住直到密码库锁定" />
-                                                        <ComboBoxItem Content="每次都提示" />
-                                                        <ComboBoxItem Content="永不提示" />
-                                                    </ComboBox>
-                                                </tk:SettingsCard>
-                                            </tk:SettingsExpander.Items>
-                                        </tk:SettingsExpander>
-                                    </tk:SettingsExpander.Items>
-                                </tk:SettingsExpander>
-                            </StackPanel>
+                    <StackPanel x:Name="AboutSettingsSection" Visibility="Collapsed">
+                        <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1" Padding="0,20" Margin="0,24,0,28">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="56" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Border Width="56" Height="56" CornerRadius="12" Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Center"><Image Source="ms-appx:///Assets/Square44x44Logo.png" Width="40" Height="40" AutomationProperties.Name="WinVaultWarden" /></Border>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="WinVaultWarden" FontFamily="{StaticResource WardenDisplayFontFamily}" FontSize="20" FontWeight="SemiBold" LineHeight="28" /><TextBlock Text="{x:Bind ViewModel.VersionSummary}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Text="{x:Bind ViewModel.RuntimeSummary}" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+                            </Grid>
                         </Border>
-                    </StackPanel>
-                    <StackPanel x:Name="AboutSettingsSection" Spacing="12"
-                        Visibility="{x:Bind ViewModel.IsAboutSection, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Text="关于"
-                            Style="{StaticResource SectionHeaderTextBlockStyle}"
-                            AutomationProperties.HeadingLevel="Level2" />
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1" CornerRadius="8">
-                            <StackPanel Spacing="0">
-                                <tk:SettingsExpander Header="WinVaultWarden"
-                                    Description="版本与诊断信息">
-                                    <tk:SettingsExpander.HeaderIcon>
-                                        <FontIcon Glyph="&#xE946;" />
-                                    </tk:SettingsExpander.HeaderIcon>
-                                    <TextBlock Text="{x:Bind ViewModel.AppVersion}"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        VerticalAlignment="Center" />
-                                    <tk:SettingsExpander.Items>
-                                        <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="诊断数据" Description="复制系统与版本信息以便反馈问题">
-                                            <Button Click="OnExportDiagnosticsClick">
-                                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingSmall}">
-                                                    <FontIcon Glyph="&#xE8C8;" FontSize="14" />
-                                                    <TextBlock Text="复制" />
-                                                </StackPanel>
-                                            </Button>
-                                        </tk:SettingsCard>
-                                        <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="应用版本">
-                                            <TextBlock Text="{x:Bind ViewModel.AppVersion}"
-                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        </tk:SettingsCard>
-                                        <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="Windows 版本">
-                                            <TextBlock Text="{x:Bind ViewModel.WindowsVersion}"
-                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        </tk:SettingsCard>
-                                        <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header=".NET 运行时">
-                                            <TextBlock Text="{x:Bind ViewModel.DotNetVersion}"
-                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        </tk:SettingsCard>
-                                        <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="架构">
-                                            <TextBlock Text="{x:Bind ViewModel.AppArchitecture}"
-                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        </tk:SettingsCard>
-                                    </tk:SettingsExpander.Items>
-                                </tk:SettingsExpander>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                    <StackPanel x:Name="DangerSettingsSection" Spacing="12"
-                        Visibility="{x:Bind ViewModel.IsAccountSection, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Text="危险区"
-                            Style="{StaticResource SectionHeaderTextBlockStyle}"
-                            AutomationProperties.HeadingLevel="Level2" />
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1" CornerRadius="8">
-                            <StackPanel Spacing="0">
-                                <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="删除账户"
-                                    Description="永久删除账户、密码库数据及服务端访问权限">
-                                    <Button x:Name="DeleteAccountButton"
-                                        AutomationProperties.AutomationId="DeleteAccountButton"
-                                        Click="OnDeleteAccountClick">
-                                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingSmall}">
-                                            <FontIcon Glyph="&#xE74D;" FontSize="14"
-                                                Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
-                                            <TextBlock Text="删除账户"
-                                                Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
-                                        </StackPanel>
-                                    </Button>
-                                </tk:SettingsCard>
-                            </StackPanel>
-                        </Border>
+                        <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><StackPanel>
+                            <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="诊断信息" Description="反馈问题时附上，不包含任何密码库内容"><Button Content="复制" Style="{StaticResource SettingsButtonStyle}" Click="OnExportDiagnosticsClick" /></tk:SettingsCard>
+                            <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="检查更新" Description="此版本尚未提供自动检查，可打开发布页"><Button Content="打开发布页" Style="{StaticResource SettingsButtonStyle}" Click="OnOpenReleasesClick" /></tk:SettingsCard>
+                            <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="日志文件" Description="排查问题时查看，不包含密码库内容"><Button Content="打开文件夹" Style="{StaticResource SettingsButtonStyle}" Click="OnOpenLogsClick" /></tk:SettingsCard>
+                            <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="源代码" Description="github.com/moooyo/WinVaultWarden"><Button Content="打开" Style="{StaticResource SettingsButtonStyle}" Click="OnOpenSourceClick" /></tk:SettingsCard>
+                        </StackPanel></Border>
                     </StackPanel>
                 </StackPanel>
-            </ScrollViewer>
+            </Border>
+            </Grid>
+        </ScrollViewer>
+        <Grid x:Name="SubpageHost" Visibility="Collapsed">
+            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+            <Grid x:Name="BreadcrumbContainer" Padding="40,40,40,0" HorizontalAlignment="Stretch">
+            <Border MaxWidth="680" HorizontalAlignment="Stretch">
+                <BreadcrumbBar x:Name="SettingsBreadcrumb" ItemClicked="OnBreadcrumbItemClicked" FontSize="28" FontFamily="{StaticResource WardenDisplayFontFamily}" FontWeight="SemiBold" />
+            </Border>
+            </Grid>
+            <Frame x:Name="SettingsContentFrame" Grid.Row="1" />
         </Grid>
+        <InfoBar x:Name="SettingsFeedbackInfoBar" IsOpen="False" IsClosable="True" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="24" MaxWidth="620" AutomationProperties.LiveSetting="Polite" />
     </Grid>
 </Page>

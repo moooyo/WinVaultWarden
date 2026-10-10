@@ -1574,9 +1574,78 @@ public class LoginViewModelAuthTests
         public byte[]? LoadChallenge() => Set ? new byte[32] : null;
     }
 
+    [Fact]
+    public async Task PasswordHint_SubmitsOnlyAccountIdentityAndDoesNotClaimEmailDelivery()
+    {
+        var auth = new FakeAuthService();
+        var vm = new LoginViewModel(auth) { Email = "me@example.com" };
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        await vm.RequestPasswordHintCommand.ExecuteAsync(null);
+
+        Assert.Equal("me@example.com", auth.PasswordHintCall?.Email);
+        Assert.Null(auth.LoginCall);
+        Assert.Contains("请求已提交", vm.Status);
+        Assert.DoesNotContain("邮件已发送", vm.Status);
+        Assert.Equal(LoginStatusKind.Info, vm.StatusKind);
+        Assert.True(vm.IsPasswordStage);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Theory]
+    [InlineData("This server is not configured to provide password hints.", "此服务器未启用主密码提示。", LoginStatusKind.Error)]
+    [InlineData("Your password hint is: first pet", "主密码提示：first pet", LoginStatusKind.Info)]
+    public async Task PasswordHint_PreservesActualServerOutcome(string serverMessage, string expected, LoginStatusKind kind)
+    {
+        var auth = new FakeAuthService
+        {
+            PasswordHintOperation = _ => Task.FromException(new Api.VaultWriteException(serverMessage)),
+        };
+        var vm = new LoginViewModel(auth) { Email = "me@example.com" };
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        await vm.RequestPasswordHintCommand.ExecuteAsync(null);
+
+        Assert.Equal(expected, vm.Status);
+        Assert.Equal(kind, vm.StatusKind);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task PasswordHint_PrepareAnotherAccountRejectsLateResultAndDuplicateRequest()
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var auth = new FakeAuthService { PasswordHintOperation = _ => completion.Task };
+        var vm = new LoginViewModel(auth) { Email = "me@example.com" };
+        await vm.LoginCommand.ExecuteAsync(null);
+        var request = vm.RequestPasswordHintCommand.ExecuteAsync(null);
+        Assert.True(vm.IsBusy);
+        await vm.RequestPasswordHintCommand.ExecuteAsync(null);
+        Assert.Equal(1, auth.PasswordHintCallCount);
+
+        vm.PrepareAccount("https://another.example", "other@example.com");
+        completion.SetResult();
+        await request;
+
+        Assert.True(vm.IsAccountStage);
+        Assert.Equal("other@example.com", vm.Email);
+        Assert.Empty(vm.Status);
+        Assert.False(vm.IsBusy);
+    }
+
     private sealed class FakeAuthService : IAuthService
     {
         private readonly Vault.VaultSession _attempts = new();
+        public Func<CancellationToken, Task>? PasswordHintOperation { get; init; }
+        public (string ServerUrl, string Email)? PasswordHintCall { get; private set; }
+        public int PasswordHintCallCount { get; private set; }
+        public Task RequestPasswordHintAsync(string serverUrl, string email, CancellationToken ct = default)
+        {
+            PasswordHintCallCount++;
+            PasswordHintCall = (serverUrl, email);
+            return PasswordHintOperation?.Invoke(ct) ?? Task.CompletedTask;
+        }
+
         public AuthResult LoginResult { get; set; } = new AuthResult.Failure("not set");
         public AuthResult SsoResult { get; set; } = new AuthResult.Failure("not set");
         public AuthResult SubmitResult { get; set; } = new AuthResult.Failure("not set");

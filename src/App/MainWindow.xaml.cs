@@ -16,17 +16,8 @@ namespace App;
 
 public sealed partial class MainWindow : Window
 {
-    private const double LoginWindowInitialWidthDip = 480;
-    private const double LoginWindowInitialHeightDip = 540;
-    private const double LoginWindowMeasureWidthDip = 480;
-    private const double LoginWindowMinWidthDip = 480;
-    private const double LoginWindowMaxWidthDip = 520;
-    private const double LoginWindowMinHeightDip = 500;
-    private const double LoginWindowMaxHeightDip = 820;
-    private const double LoginWindowWorkAreaMarginPerEdgeDip = 40;
-    private const double LoginWindowVerticalBreathingRoomDip = 2;
     private const double DefaultVaultWindowWidthDip = 1280;
-    private const double DefaultVaultWindowHeightDip = 900;
+    private const double DefaultVaultWindowHeightDip = 760;
     private const double VaultWindowWorkAreaMarginDip = 24;
 
     private SizeInt32? _lastVaultWindowSize;
@@ -61,6 +52,7 @@ public sealed partial class MainWindow : Window
         _ = global::App.App.Services.GetRequiredService<SessionTerminationHost>();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
         SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop();
 
         _timeout.TimeoutRequested += OnTimeoutRequested;
@@ -98,6 +90,7 @@ public sealed partial class MainWindow : Window
 
         // 系统托盘：取 HWND、建服务（回调恢复/锁定/退出），按设置增删图标。
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        InitializeShell();
         _tray = new Services.TrayIconService(_hwnd, RestoreFromTray, LockFromTray, ExitApp);
         ApplyTrayIconSetting();
         ViewModels.SettingsViewModel.ShowTrayIconSettingChanged += OnShowTrayIconSettingChanged;
@@ -176,13 +169,17 @@ public sealed partial class MainWindow : Window
         Activated -= OnFirstActivated;
 
         if (_isLoginWindow)
+        {
+            // XamlRoot exposes the monitor's actual DPI only after the window is activated.
+            ResizeWindowDip(DefaultVaultWindowWidthDip, DefaultVaultWindowHeightDip);
             RequestLoginWindowFit();
+        }
     }
 
     private void UpdateCaptionPadding()
     {
         // RightInset 是物理像素,转成 DIP(除以光栅缩放)。
-        var scale = AppTitleBar.XamlRoot?.RasterizationScale ?? 1.0;
+        var scale = WindowRasterizationScale();
         RightPaddingColumn.Width = new GridLength(AppWindow.TitleBar.RightInset / scale);
     }
 
@@ -201,33 +198,17 @@ public sealed partial class MainWindow : Window
             VaultNavItemBuilder.BuildCollectionItems(filters));
 
         var vault = global::App.App.Services.GetRequiredService<IVaultService>();
-        SendNavItem.Visibility = VaultPolicyEvaluator.IsEnabledForUser(
+        SendTab.Visibility = VaultPolicyEvaluator.IsEnabledForUser(
             vault.Snapshot,
             Core.Enums.OrganizationPolicyType.DisableSend)
             ? Visibility.Collapsed
             : Visibility.Visible;
-        UpdateNavigationContext();
+        RefreshShellNavigation(force: _shellPage == "vault");
     }
 
     private void UpdateNavigationContext()
     {
-        var vaultPage = ContentFrame.Content as VaultPage;
-        var vaultVisibility = vaultPage is null ? Visibility.Collapsed : Visibility.Visible;
-        foreach (var item in new UIElement[] { VaultContextHeader, AllScopeNavItem, FavoritesNavItem, ArchiveNavItem, TrashNavItem })
-            item.Visibility = vaultVisibility;
-        foreach (var group in new[] { FoldersNavItem, OrganizationsNavItem, CollectionsNavItem })
-            group.Visibility = vaultPage is not null && group.MenuItems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        Nav.SelectedItem = ContentFrame.Content switch
-        {
-            VaultPage => FindNavigationItem(vaultPage!.ViewModel.SelectedFilterTag) ?? AllItemsNavItem,
-            SendPage => SendNavItem,
-            GeneratorPage => GeneratorNavItem,
-            SecurityReportPage => ReportsNavItem,
-            ImportExportPage => TransferNavItem,
-            DevicesPage => DevicesNavItem,
-            SettingsPage or EmergencyAccessPage => SettingsNavItem,
-            _ => null,
-        };
+        RefreshShellNavigation();
     }
 
     private NavigationViewItem? FindNavigationItem(string? tag)
@@ -235,7 +216,7 @@ public sealed partial class MainWindow : Window
         // The primary vault destination restores the previous workspace; scopes remain explicit.
         if (tag is null or "vault:allitems")
             return AllItemsNavItem;
-        return Find(Nav.MenuItems);
+        return Find(Nav.MenuItems) ?? Find(Nav.FooterMenuItems);
         NavigationViewItem? Find(IEnumerable<object> items)
         {
             foreach (var item in items.OfType<NavigationViewItem>())
@@ -253,11 +234,14 @@ public sealed partial class MainWindow : Window
     {
         var account = CurrentVaultSnapshot().Account;
         AccountPicture.Initials = account.Initial;
+        PaneAccountPicture.Initials = account.Initial;
+        AccountNameText.Text = string.IsNullOrWhiteSpace(account.Name) ? account.Email : account.Name;
         AccountEmailText.Text = account.Email;
         AccountServerText.Text = Uri.TryCreate(account.ServerUrl, UriKind.Absolute, out var server)
             ? server.Authority : account.ServerUrl;
         ToolTipService.SetToolTip(AccountEmailText, account.Email);
         ToolTipService.SetToolTip(AccountServerText, account.ServerUrl);
+        ToolTipService.SetToolTip(AccountButton, account.Email);
     }
 
     private static void PopulateNavigationGroup(
@@ -281,6 +265,7 @@ public sealed partial class MainWindow : Window
 
     public void RefreshVaultSnapshot()
     {
+        if (IsVaultUnlocked()) UpdateAccountContext();
         PopulateFolderNavigation();
         RefreshVaultList();
         if (ContentFrame.Content is Views.SettingsPage settingsPage)
@@ -307,6 +292,7 @@ public sealed partial class MainWindow : Window
     {
         if (ContentFrame.Content is Views.DevicesPage devicesPage)
             devicesPage.RefreshRequestsList();
+        _ = global::App.App.Services.GetRequiredService<DeviceApprovalWindowService>().ShowPendingRequestsAsync();
     }
 
     // 登录前:隐藏导航壳,只显示登录页(占满整窗,标题栏仅保留品牌)。
@@ -326,6 +312,7 @@ public sealed partial class MainWindow : Window
         CollectionsNavItem.MenuItems.Clear();
         Nav.SelectedItem = null;
         Nav.Visibility = Visibility.Collapsed;
+        SetShellSessionVisibility(false);
         LoginHost.Visibility = Visibility.Visible;
         _nav.GoToLoginPage();
     }
@@ -338,7 +325,17 @@ public sealed partial class MainWindow : Window
     }
 
     // 敏感操作 UI 门禁:锁屏/登出等生命周期过渡期间禁用主导航,避免过渡中触发新的敏感操作。
-    public void SetSensitiveUiEnabled(bool enabled) => Nav.IsEnabled = enabled;
+    public void SetSensitiveUiEnabled(bool enabled)
+    {
+        Nav.IsEnabled = enabled;
+        foreach (var tab in new Microsoft.UI.Xaml.Controls.Primitives.ToggleButton[] { VaultTab, GeneratorTab, SendTab, ReportsTab })
+            tab.IsEnabled = enabled;
+        TitleSearch.IsEnabled = enabled;
+        SettingsButton.IsEnabled = enabled;
+        AccountButton.IsEnabled = enabled;
+        SyncStatusButton.IsEnabled = enabled && !_syncing;
+        SshStatusButton.IsEnabled = enabled;
+    }
 
     // 生命周期协调器完成清理后真实退出进程(此前已阻断新敏感操作、清空会话与瞬态)。
     public void ExitAfterLifecycle()
@@ -369,9 +366,11 @@ public sealed partial class MainWindow : Window
             UpdateAccountContext();
             LoginHost.Visibility = Visibility.Collapsed;
             Nav.Visibility = Visibility.Visible;
+            SetShellSessionVisibility(true);
             Nav.SelectedItem = AllItemsNavItem;
             _nav.GoToVault("vault:allitems");
             _ = global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StartAsync();
+            _ = global::App.App.Services.GetRequiredService<DeviceApprovalWindowService>().ShowPendingRequestsAsync();
 
             if (AppPreferences.Current.AllowBrowserIntegration && !AboutInfo.IsPackaged)
                 global::App.App.Services.GetRequiredService<Services.PasskeyBridgeServer>().Start();
@@ -380,6 +379,20 @@ public sealed partial class MainWindow : Window
             EnforceCurrentTimeoutPolicy();
             if (_timeout.IsArmed)
                 _idleTimer?.Start();
+        }));
+    }
+
+    public bool ShowHelloEnrollment(VaultSessionLease lease, Action showEnrollment)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(showEnrollment);
+        var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+        return _lifecycle.TryActivateSession(() => session.TryRunIfUnlocked(lease, () =>
+        {
+            showEnrollment();
+            _timeout.Start();
+            EnforceCurrentTimeoutPolicy();
+            if (_timeout.IsArmed) _idleTimer?.Start();
         }));
     }
 
@@ -397,7 +410,8 @@ public sealed partial class MainWindow : Window
             _lastVaultWindowSize = AppWindow.Size;
 
         _isLoginWindow = true;
-        ResizeLoginClientDip(LoginWindowInitialWidthDip, LoginWindowInitialHeightDip);
+        if (!_hasShownVault)
+            ResizeWindowDip(DefaultVaultWindowWidthDip, DefaultVaultWindowHeightDip);
     }
 
     public void RequestLoginWindowFit()
@@ -411,45 +425,9 @@ public sealed partial class MainWindow : Window
         if (!_isLoginWindow || loginContent.XamlRoot is null)
             return;
 
-        var horizontalPadding = contentPadding.Left + contentPadding.Right;
-        var verticalPadding = contentPadding.Top + contentPadding.Bottom;
-        var measureWindowSize = ClampLoginWindowSizeToWorkArea(
-            LoginWindowMeasureWidthDip,
-            LoginWindowMaxHeightDip);
-        var contentMeasureWidth = Math.Max(1, measureWindowSize.Width - horizontalPadding);
-
-        loginContent.Measure(new Size(contentMeasureWidth, double.PositiveInfinity));
-
-        var titleBarHeight = AppTitleBar.ActualHeight > 0 ? AppTitleBar.ActualHeight : AppTitleBar.Height;
-        var desiredWidth = Math.Ceiling(loginContent.DesiredSize.Width + horizontalPadding);
-        var desiredHeight = Math.Ceiling(
-            titleBarHeight
-            + loginContent.DesiredSize.Height
-            + verticalPadding
-            + LoginWindowVerticalBreathingRoomDip);
-
-        ResizeLoginClientDip(desiredWidth, desiredHeight);
-    }
-
-    private void ResizeLoginClientDip(double desiredWidth, double desiredHeight)
-    {
-        var size = ClampLoginWindowSizeToWorkArea(desiredWidth, desiredHeight);
-        ResizeClientDip(size.Width, size.Height);
-    }
-
-    private WindowSizeDip ClampLoginWindowSizeToWorkArea(double desiredWidth, double desiredHeight)
-    {
-        var scale = AppTitleBar.XamlRoot?.RasterizationScale ?? 1.0;
-        if (!double.IsFinite(scale) || scale <= 0)
-            scale = 1.0;
-
-        var workArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
-        return LoginWindowSizing.ClampToWorkArea(
-            new WindowSizeDip(desiredWidth, desiredHeight),
-            new WindowSizeDip(workArea.Width / scale, workArea.Height / scale),
-            new WindowSizeDip(LoginWindowMinWidthDip, LoginWindowMinHeightDip),
-            new WindowSizeDip(LoginWindowMaxWidthDip, LoginWindowMaxHeightDip),
-            LoginWindowWorkAreaMarginPerEdgeDip);
+        // Authentication uses the same stable shell size as the vault. Its content scrolls.
+        if (ShellRoot.ActualWidth is > 0 and < 640)
+            ResizeClientDip(640, Math.Max(480, ShellRoot.ActualHeight));
     }
 
     private void ApplyVaultWindowLayout()
@@ -465,7 +443,7 @@ public sealed partial class MainWindow : Window
 
     private void ResizeWindowDip(double width, double height)
     {
-        var scale = AppTitleBar.XamlRoot?.RasterizationScale ?? 1.0;
+        var scale = WindowRasterizationScale();
         var requestedSize = new SizeInt32(
             Math.Max(1, (int)Math.Round(width * scale)),
             Math.Max(1, (int)Math.Round(height * scale)));
@@ -474,7 +452,7 @@ public sealed partial class MainWindow : Window
 
     private SizeInt32 ClampVaultWindowSizeToWorkArea(SizeInt32 requestedSize)
     {
-        var scale = AppTitleBar.XamlRoot?.RasterizationScale ?? 1.0;
+        var scale = WindowRasterizationScale();
         var workArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         var marginPixels = Math.Max(0, (int)Math.Round(VaultWindowWorkAreaMarginDip * scale));
         var maxWidth = Math.Max(1, workArea.Width - (2 * marginPixels));
@@ -487,10 +465,19 @@ public sealed partial class MainWindow : Window
 
     private void ResizeClientDip(double width, double height)
     {
-        var scale = AppTitleBar.XamlRoot?.RasterizationScale ?? 1.0;
+        var scale = WindowRasterizationScale();
         AppWindow.ResizeClient(new SizeInt32(
             Math.Max(1, (int)Math.Round(width * scale)),
             Math.Max(1, (int)Math.Round(height * scale))));
+    }
+
+    private double WindowRasterizationScale()
+    {
+        var dpi = _hwnd == IntPtr.Zero ? 0u : NativeMethods.GetDpiForWindow(_hwnd);
+        if (dpi > 0) return dpi / 96d;
+        if (AppTitleBar.XamlRoot is { RasterizationScale: > 0 } root)
+            return root.RasterizationScale;
+        return 1;
     }
 
     private async void Nav_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
@@ -498,17 +485,41 @@ public sealed partial class MainWindow : Window
         if (args.InvokedItemContainer is not NavigationViewItem item)
             return;
 
+        if (item.Tag as string == "shell:new")
+        {
+            (_shellPage == "send" ? NewSendButton.Flyout : NewVaultButton.Flyout)?.ShowAt(item);
+            return;
+        }
+        if (item.Tag as string == "shell:recheck")
+        {
+            OnRecheckClick(item, new RoutedEventArgs());
+            return;
+        }
+
         await NavigateByTagAsync(item.Tag as string);
+        if (Nav.DisplayMode != NavigationViewDisplayMode.Expanded)
+            Nav.IsPaneOpen = false;
         UpdateNavigationContext();
     }
 
-    private async Task NavigateByTagAsync(string? tag)
+    private async Task NavigateByTagAsync(string? tag, bool preserveDraft = false)
     {
         if (string.IsNullOrWhiteSpace(tag))
             return;
 
+        if (!preserveDraft && tag is not ("lock" or "logout"))
+        {
+            if (ContentFrame.Content is VaultPage leavingVault && !await leavingVault.ConfirmLeaveEditorAsync())
+                return;
+            if (ContentFrame.Content is SendPage leavingSend && !await leavingSend.CanNavigateAwayAsync())
+                return;
+        }
+
+        if (await NavigateContextTagAsync(tag))
+            return;
+
         var currentVaultPage = ContentFrame.Content as Views.VaultPage;
-        var vaultCreateGateActive = currentVaultPage is not null
+        var vaultCreateGateActive = !preserveDraft && currentVaultPage is not null
             && global::App.App.Services.GetRequiredService<IVaultUiService>()
                 .HasPendingOrInFlightCipherCreate();
 
@@ -549,17 +560,19 @@ public sealed partial class MainWindow : Window
 
         if (tag.StartsWith("send:", StringComparison.Ordinal))
         {
-            _nav.GoToSend(tag);
+            if (ContentFrame.Content is SendPage sendPage)
+            {
+                if (!preserveDraft) sendPage.SelectFilter(tag);
+            }
+            else
+                _nav.GoToSend(tag);
             return;
         }
 
         switch (tag)
         {
             case "gen":
-                if (currentVaultPage?.ViewModel.EditorDraft is not null)
-                    await ShowGeneratorDialogAsync();
-                else
-                    _nav.GoToGenerator();
+                _nav.GoToGenerator();
                 break;
             case "settings":
                 _nav.GoToSettings();

@@ -1,6 +1,6 @@
 namespace App.ViewModels.Models;
 
-public enum FilterKind { AllItems, Favorites, Archive, Trash, Type, Folder, Organization, Collection }
+public enum FilterKind { AllItems, Favorites, Archive, Trash, Type, Folder, Organization, Collection, Totp }
 
 // 栏② 过滤/文件夹节点。
 public sealed partial class FilterNode

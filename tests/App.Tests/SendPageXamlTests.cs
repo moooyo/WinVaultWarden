@@ -13,11 +13,13 @@ public class SendPageXamlTests
         var document = LoadXaml();
         var menuItems = document.Descendants(Xaml + "MenuFlyoutItem").ToList();
 
-        var edit = menuItems.Single(e => e.Attribute("Text")?.Value == "编辑");
-        var delete = menuItems.Single(e => e.Attribute("Text")?.Value == "删除");
+        var edit = menuItems.Where(e => e.Attribute("Text")?.Value == "编辑").ToArray();
+        var delete = menuItems.Where(e => e.Attribute("Text")?.Value == "删除").ToArray();
 
-        Assert.Equal("OnEditSendClick", edit.Attribute("Click")?.Value);
-        Assert.Equal("OnDeleteSendClick", delete.Attribute("Click")?.Value);
+        Assert.NotEmpty(edit);
+        Assert.NotEmpty(delete);
+        Assert.All(edit, item => Assert.Equal("OnEditSendClick", item.Attribute("Click")?.Value));
+        Assert.All(delete, item => Assert.Equal("OnDeleteSendClick", item.Attribute("Click")?.Value));
     }
 
     [Fact]

@@ -10,7 +10,7 @@ public sealed class MainWindowSizingSourceTests
         var source = ReadMainWindowSource();
 
         Assert.Contains("private const double DefaultVaultWindowWidthDip = 1280;", source);
-        Assert.Contains("private const double DefaultVaultWindowHeightDip = 900;", source);
+        Assert.Contains("private const double DefaultVaultWindowHeightDip = 760;", source);
         Assert.Contains("private const double VaultWindowWorkAreaMarginDip = 24;", source);
         Assert.Contains("AppWindow.Resize(ClampVaultWindowSizeToWorkArea(size));", source);
         Assert.Contains("AppWindow.Resize(ClampVaultWindowSizeToWorkArea(requestedSize));", source);
@@ -32,16 +32,14 @@ public sealed class MainWindowSizingSourceTests
     }
 
     [Fact]
-    public void LoginLayout_ClampsInitialAndMeasuredSizesToCurrentWorkArea()
+    public void LoginLayout_PreservesTheFullSizeShellAndClampsToWorkArea()
     {
         var source = ReadMainWindowSource();
 
-        Assert.Contains("ResizeLoginClientDip(LoginWindowInitialWidthDip, LoginWindowInitialHeightDip);", source);
-        Assert.Contains("var measureWindowSize = ClampLoginWindowSizeToWorkArea(", source);
-        Assert.Contains("ResizeLoginClientDip(desiredWidth, desiredHeight);", source);
-        Assert.Contains("workArea.Width / scale, workArea.Height / scale", source);
-        Assert.Contains("LoginWindowSizing.ClampToWorkArea(", source);
-        Assert.DoesNotContain("GetLoginWindowMaxHeightDip", source);
+        Assert.Contains("if (!_hasShownVault)", source);
+        Assert.Contains("ResizeWindowDip(DefaultVaultWindowWidthDip, DefaultVaultWindowHeightDip);", source);
+        Assert.Contains("if (ShellRoot.ActualWidth is > 0 and < 640)", source);
+        Assert.DoesNotContain("ResizeLoginClientDip(desiredWidth, desiredHeight);", source);
     }
 
     private static string ReadMainWindowSource()

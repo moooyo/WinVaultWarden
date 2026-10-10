@@ -51,7 +51,8 @@ public class DemoVaultLoginWiringTests
         Assert.Contains("BackCommand", RequireElementByName(document, "BackButton").Attribute("Command")?.Value);
         Assert.Contains("SwitchAccountCommand", RequireElementByName(document, "SwitchAccountButton").Attribute("Command")?.Value);
         Assert.Equal("0", RequireElementByName(document, "LoginForm").Attribute("Spacing")?.Value);
-        Assert.Equal("0,18,0,0", RequireElementByName(document, "LoginAccountStage").Attribute("Margin")?.Value);
+        Assert.Equal("0,28,0,0", RequireElementByName(document, "LoginAccountStage").Attribute("Margin")?.Value);
+        Assert.Equal("32", primary.Attribute("MinHeight")?.Value);
     }
 
     [Fact]
@@ -68,8 +69,12 @@ public class DemoVaultLoginWiringTests
         Assert.Contains("ShowTwoFactorCodeInput", code.Attribute("Visibility")?.Value);
         Assert.Equal("Warning", warning.Attribute("Severity")?.Value);
         Assert.Contains("ShowRecoveryCodeWarning", warning.Attribute("IsOpen")?.Value);
-        Assert.Contains("ToggleRecoveryCodeModeCommand", switchButton.Attribute("Command")?.Value);
-        Assert.Contains("ShowRecoveryCodeSwitch", switchButton.Attribute("Visibility")?.Value);
+        Assert.Equal("OnOpenTwoFactorPickerClick", switchButton.Attribute("Click")?.Value);
+        Assert.Contains("CanUsePrimaryAction", switchButton.Attribute("IsEnabled")?.Value);
+        Assert.Equal("360", RequireElementByName(document, "TwoFactorPickerPanel").Attribute("MaxWidth")?.Value);
+        var source = LoadSource("LoginPage.xaml.cs", "src", "App", "Views");
+        Assert.Contains("ViewModel.ToggleRecoveryCodeModeCommand.Execute", source);
+        Assert.Contains("ViewModel.SelectedTwoFactorProviderIndex =", source);
     }
 
     [Fact]
@@ -129,7 +134,10 @@ public class DemoVaultLoginWiringTests
         var cancel = RequireElementByName(document, "CancelSsoButton");
         var register = RequireElementByName(document, "GoToRegisterButton");
 
-        Assert.Contains("LoginWithSsoCommand", start.Attribute("Command")?.Value);
+        Assert.Equal("OnOpenSsoSignInClick", start.Attribute("Click")?.Value);
+        Assert.Equal("360", RequireElementByName(document, "SsoSignInPanel").Attribute("MaxWidth")?.Value);
+        Assert.Contains("SsoOrganizationIdentifier", RequireElementByName(document, "SsoOrganizationBox").Attribute("Text")?.Value);
+        Assert.Equal("OnSsoReopenClick", RequireElementByName(document, "SsoReopenButton").Attribute("Click")?.Value);
         Assert.Contains("CanUseSso", start.Attribute("IsEnabled")?.Value);
         Assert.Contains("CancelSsoCommand", cancel.Attribute("Command")?.Value);
         Assert.Contains("ShowCancelSso", cancel.Attribute("Visibility")?.Value);
@@ -137,28 +145,53 @@ public class DemoVaultLoginWiringTests
     }
 
     [Fact]
-    public void MainWindow_AdaptsLoginWindowToMeasuredContent()
+    public void MainWindow_KeepsAuthenticationInTheStableShellWithScrollableContent()
     {
         var source = LoadSource("MainWindow.xaml.cs", "src", "App");
+        var fitStart = source.IndexOf("public void FitLoginWindowToContent(", StringComparison.Ordinal);
+        Assert.True(fitStart >= 0);
+        var fitEnd = source.IndexOf("\n    private ", fitStart, StringComparison.Ordinal);
+        Assert.True(fitEnd > fitStart);
+        var fitMethod = source[fitStart..fitEnd];
 
-        Assert.Contains("LoginWindowMeasureWidthDip", source);
-        Assert.Contains("LoginWindowMinWidthDip", source);
-        Assert.Contains("LoginWindowMaxHeightDip", source);
-        Assert.Contains("FitLoginWindowToContent", source);
+        Assert.Contains("DefaultVaultWindowWidthDip = 1280", source);
+        Assert.Contains("DefaultVaultWindowHeightDip = 760", source);
         Assert.Contains("RequestLoginWindowFit", source);
-        Assert.Contains("loginContent.Measure", source);
-        Assert.Contains("loginContent.DesiredSize.Height", source);
-        Assert.Contains("contentPadding", source);
-        Assert.Contains("ResizeClientDip", source);
-        Assert.Contains("AppWindow.ResizeClient", source);
-        Assert.Contains("DisplayArea.GetFromWindowId", source);
-        Assert.Contains("Math.Clamp", source);
         Assert.Contains("ApplyLoginWindowLayout()", source);
         Assert.Contains("ApplyVaultWindowLayout()", source);
-        Assert.Contains("ResizeWindowDip", source);
         Assert.Contains("Activated += OnFirstActivated", source);
         Assert.Contains("RequestLoginWindowFit();", source);
-        Assert.DoesNotContain("Math.Max(loginContent.ActualHeight", source);
+        Assert.Contains("if (!_isLoginWindow || loginContent.XamlRoot is null)", fitMethod);
+        Assert.Contains("if (ShellRoot.ActualWidth is > 0 and < 640)", fitMethod);
+        Assert.Contains("ResizeClientDip(640, Math.Max(480, ShellRoot.ActualHeight))", fitMethod);
+        Assert.DoesNotContain("loginContent.Measure", fitMethod);
+        Assert.DoesNotContain("loginContent.DesiredSize", fitMethod);
+        Assert.DoesNotContain("ResizeLoginClientDip", fitMethod);
+
+        var document = LoadXaml("LoginPage.xaml");
+        var scrollViewer = RequireElementByName(document, "LoginScrollViewer");
+        Assert.Equal("Auto", scrollViewer.Attribute("VerticalScrollBarVisibility")?.Value);
+        Assert.Equal("Disabled", scrollViewer.Attribute("HorizontalScrollBarVisibility")?.Value);
+        Assert.Equal("360", RequireElementByName(document, "LoginForm").Attribute("MaxWidth")?.Value);
+        Assert.Contains(RequireElementByName(document, "LoginForm"), scrollViewer.Descendants());
+    }
+
+    [Fact]
+    public void HelloEnrollment_PreservesSkipAndExactSessionCommitBoundaries()
+    {
+        var document = LoadXaml("LoginPage.xaml");
+        var source = LoadSource("LoginPage.xaml.cs", "src", "App", "Views");
+        var window = LoadSource("MainWindow.xaml.cs", "src", "App");
+        Assert.Equal("Collapsed", RequireElementByName(document, "HelloEnrollmentPanel").Attribute("Visibility")?.Value);
+        Assert.Equal("OnSkipHelloEnrollmentClick", RequireElementByName(document, "SkipHelloEnrollmentButton").Attribute("Click")?.Value);
+        Assert.Equal("OnEnableHelloEnrollmentClick", RequireElementByName(document, "EnableHelloEnrollmentButton").Attribute("Click")?.Value);
+        Assert.Contains("window.ShowHelloEnrollment(lease", source);
+        Assert.Contains("ShowHelloEnrollment(VaultSessionLease lease, Action showEnrollment)", window);
+        Assert.Contains("lifecycle.TryRunSensitive(() => session.TryRunIfUnlocked(lease", source);
+        Assert.Contains("IsCurrentHelloEnrollment(lease, generation, cancellation)", source);
+        Assert.Contains("CryptographicOperations.ZeroMemory(signature)", source);
+        Assert.Contains("RequestIfAsync(AppLifecycleIntent.Lock, () => session.IsUnlocked(lease))", source);
+        Assert.Contains("session.UsesV2UserKey", source);
     }
 
     [Fact]

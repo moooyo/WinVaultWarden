@@ -145,7 +145,10 @@ public class SettingsPageBrowserIntegrationXamlTests
     {
         var doc = LoadXaml();
         var card = doc.Descendants().Single(element =>
-            element.Name.LocalName == "SettingsCard" && element.Attribute("Header")?.Value == "允许浏览器集成");
+            element.Name.LocalName == "SettingsCard"
+            && element.Descendants().Any(descendant =>
+                descendant.Name.LocalName == "ToggleSwitch"
+                && descendant.Attribute("IsOn")?.Value.Contains("ViewModel.AllowBrowserIntegration", StringComparison.Ordinal) == true));
         Assert.Contains("ViewModel.BrowserIntegrationDescription", card.Attribute("Description")?.Value);
     }
 

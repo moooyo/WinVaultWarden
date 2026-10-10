@@ -13,7 +13,8 @@ public sealed class ClipboardSecuritySourceTests
             "public void SetText(string text) => SetVaultText(text, autoClearSeconds: null);",
             source);
         Assert.Contains("SetVaultText(text, autoClearSeconds);", source);
-        Assert.Contains("IsAllowedInHistory = false", source);
+        Assert.Contains("IsAllowedInHistory = !AppPreferences.Current.ExcludeClipboardHistory", source);
+        Assert.True(new App.Services.AppPreferencesData().ExcludeClipboardHistory);
         Assert.Contains("IsRoamable = false", source);
         Assert.Contains("AppPreferences.Current.ClearClipboardIndex", source);
     }
@@ -42,13 +43,14 @@ public sealed class ClipboardSecuritySourceTests
             "private void ClearLatestOwned",
             StringComparison.Ordinal);
         var nextMethod = source.IndexOf(
-            "private void StopTimerNoLock",
+            "private void CompleteClearNoLock",
             methodStart,
             StringComparison.Ordinal);
 
         Assert.True(methodStart >= 0 && nextMethod > methodStart);
         var method = source[methodStart..nextMethod];
-        Assert.Contains("TryClearIfOwnedNoLock(operation)", method);
+        Assert.Contains("CompleteClearNoLock(operation)", method);
+        Assert.Contains("if (!TryClearIfOwnedNoLock(operation, out var cleared))", source);
         Assert.DoesNotContain("_latestWrite is not null", method);
         Assert.DoesNotContain("write is not null", method);
     }
@@ -73,26 +75,34 @@ public sealed class ClipboardSecuritySourceTests
     [Theory]
     [InlineData("Controls", "FieldRow.xaml.cs")]
     [InlineData("Controls", "TotpField.xaml.cs")]
-    public void ClipboardFallback_DisablesHistoryAndRoaming(string folder, string file)
+    [InlineData("Controls", "CopyStrip.xaml.cs")]
+    public void VaultControls_RequireProtectedClipboardServiceAndActiveLifecycle(string folder, string file)
     {
         var source = ReadAppSource(folder, file);
 
-        Assert.Contains("Clipboard.SetContentWithOptions", source);
-        Assert.Contains("IsAllowedInHistory = false", source);
-        Assert.Contains("IsRoamable = false", source);
-        Assert.DoesNotContain("Clipboard.SetContent(package)", source);
+        Assert.Contains("GetService<IClipboardService>()", source);
+        Assert.Contains("if (clipboard is null || lifecycle?.TryRunSensitive", source);
+        Assert.DoesNotContain("Clipboard.SetContent", source);
+        Assert.DoesNotContain("new DataPackage", source);
     }
 
     [Fact]
     public void FieldRow_ProtectsEveryVaultFieldRegardlessOfRevealState()
     {
         var source = ReadAppSource("Controls", "FieldRow.xaml.cs");
-        var copyStart = source.IndexOf("private void OnCopy", StringComparison.Ordinal);
+        var copyStart = source.IndexOf("private async void OnCopy", StringComparison.Ordinal);
         var openStart = source.IndexOf("private async void OnOpen", copyStart, StringComparison.Ordinal);
         Assert.True(copyStart >= 0 && openStart > copyStart);
 
         var copyBlock = source[copyStart..openStart];
-        Assert.Contains("clipboard.SetText(value)", copyBlock);
+        Assert.Contains("clipboard.SetText(Value)", copyBlock);
+        Assert.Contains("IsReadOnly || IsDeletedContext(this)", copyBlock);
+        Assert.Contains("lifecycle?.TryRunSensitive", copyBlock);
+        var authorize = copyBlock.IndexOf("if (!await AuthorizeCurrentItemAsync(version, value, operationToken)) return", StringComparison.Ordinal);
+        var write = copyBlock.IndexOf("clipboard.SetText(Value)", StringComparison.Ordinal);
+        Assert.True(authorize >= 0 && write > authorize);
+        Assert.Contains("if (!IsCurrentOperation(version, value, operationToken)) return false", copyBlock);
+        Assert.Contains("catch (OperationCanceledException) when (operationToken.IsCancellationRequested)", copyBlock);
         Assert.DoesNotContain("if (IsSecret)", copyBlock);
     }
 
@@ -100,10 +110,16 @@ public sealed class ClipboardSecuritySourceTests
     public void DiagnosticsCopy_RemainsOutsideTheVaultClipboardContract()
     {
         var source = ReadAppSource("Views", "SettingsPage.xaml.cs");
+        var copyStart = source.IndexOf("private void OnExportDiagnosticsClick(", StringComparison.Ordinal);
+        Assert.True(copyStart >= 0);
+        var copyEnd = source.IndexOf("\n    private ", copyStart, StringComparison.Ordinal);
+        Assert.True(copyEnd > copyStart);
+        var copyMethod = source[copyStart..copyEnd];
 
-        Assert.Contains("AboutInfo.ToDiagnosticsText()", source);
-        Assert.Contains("Clipboard.SetContent(package)", source);
-        Assert.DoesNotContain("IClipboardService", source);
+        Assert.Contains("package.SetText(AboutInfo.ToDiagnosticsText())", copyMethod);
+        Assert.Contains("Clipboard.SetContent(package)", copyMethod);
+        Assert.DoesNotContain("IClipboardService", copyMethod);
+        Assert.DoesNotContain("SetSecretText", copyMethod);
     }
 
     private static string ReadAppSource(params string[] parts)

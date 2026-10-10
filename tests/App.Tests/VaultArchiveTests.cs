@@ -128,9 +128,9 @@ public sealed class VaultArchiveTests
             element => element.Attribute("Click")?.Value == "OnRowArchiveClick");
         Assert.Contains(vaultPage.Descendants(Xaml + "MenuFlyoutItem"),
             element => element.Attribute("Click")?.Value == "OnRowUnarchiveClick");
-        Assert.Contains(vaultPage.Descendants(Xaml + "Button"),
+        Assert.Contains(vaultPage.Descendants(Xaml + "MenuFlyoutItem"),
             element => element.Attribute("Click")?.Value == "OnArchiveCipherClick");
-        Assert.Contains(vaultPage.Descendants(Xaml + "Button"),
+        Assert.Contains(vaultPage.Descendants(Xaml + "MenuFlyoutItem"),
             element => element.Attribute("Click")?.Value == "OnUnarchiveCipherClick");
     }
 

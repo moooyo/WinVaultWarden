@@ -20,6 +20,12 @@ public sealed partial record PasskeyDetail(
     public string? DisplayName => string.IsNullOrWhiteSpace(UserDisplayName) ? UserName : UserDisplayName;
     public string DiscoverableText => Discoverable ? "是" : "否";
     public string? CreatedText => Created?.LocalDateTime.ToString("yyyy/M/d HH:mm:ss");
+    public string DisplaySummary => string.IsNullOrWhiteSpace(DisplayName) ? RpId ?? string.Empty : $"{RpId} · {DisplayName}";
+    public string MetadataSummary => string.Join(" · ", new[]
+    {
+        Discoverable ? "可发现" : "不可发现",
+        Created is { } date ? $"{date.LocalDateTime:yyyy 年 M 月}创建" : null,
+    }.Where(value => value is not null));
 }
 
 // 详情基类。共用:名称、文件夹、备注、自定义字段、时间。
@@ -53,7 +59,7 @@ public abstract class CipherDetail
     public string AttachmentHeader => HasAttachments ? $"附件 ({AttachmentCount})" : "附件";
 
     public string HistoryText =>
-        $"最后编辑:{Edited.LocalDateTime:yyyy/M/d HH:mm:ss}　创建于:{Created.LocalDateTime:yyyy/M/d HH:mm:ss}";
+        $"修改于 {Edited.LocalDateTime:yyyy-MM-dd HH:mm}　创建于 {Created.LocalDateTime:yyyy-MM-dd}";
 }
 
 public sealed partial class LoginDetail : CipherDetail
@@ -61,6 +67,7 @@ public sealed partial class LoginDetail : CipherDetail
     public override VaultItemKind Kind => VaultItemKind.Login;
     public string? Username { get; init; }
     public string? Password { get; init; }
+    public DateTimeOffset? PasswordRevisionDate { get; init; }
     public string PasswordEmptyText => SensitiveUnlocked ? "未设置" : "敏感字段未显示";
     public string? TotpSecret { get; init; }
     public string? Uri { get; init; }

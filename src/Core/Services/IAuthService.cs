@@ -6,6 +6,12 @@ public interface IAuthService
 {
     AuthenticationAttemptLease BeginAuthenticationAttempt();
     void AbandonAuthenticationAttempt(AuthenticationAttemptLease attempt);
+    Task RequestPasswordHintAsync(
+        string serverUrl,
+        string email,
+        CancellationToken ct = default) =>
+        Task.FromException(
+            new NotSupportedException("Password hints are unavailable."));
     Task<bool> IsLoginWithDeviceAvailableAsync(
         string serverUrl,
         string email,

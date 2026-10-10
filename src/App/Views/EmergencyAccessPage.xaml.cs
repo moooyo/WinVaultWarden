@@ -25,8 +25,47 @@ public sealed partial class EmergencyAccessPage : Page
 
     private void OnRetryClick(object sender, RoutedEventArgs e) => _ = ViewModel.LoadAsync();
 
-    private void OnBackToSettingsClick(object sender, RoutedEventArgs e) =>
-        global::App.App.Services.GetRequiredService<INavigationService>().GoToSettings();
+    public static Visibility ShowLists(bool hasContent, bool isEmpty) =>
+        hasContent || isEmpty ? Visibility.Visible : Visibility.Collapsed;
+
+    public static Visibility ShowDefaultContactIcon(EmergencyAccessStatus status) =>
+        status == EmergencyAccessStatus.RecoveryInitiated ? Visibility.Collapsed : Visibility.Visible;
+
+    public static string FormatContactName(string? name, string? email) =>
+        string.IsNullOrWhiteSpace(name) ? email ?? "紧急联系人" : name;
+
+    public static string FormatContactAccess(EmergencyAccessType type) =>
+        type == EmergencyAccessType.Takeover ? "· 可以接管" : "· 可以查看";
+
+    public static string FormatGrantedAccess(EmergencyAccessType type) =>
+        type == EmergencyAccessType.Takeover ? "· 你可以接管" : "· 你可以查看";
+
+    public static string FormatContactDetail(string? email, EmergencyAccessStatus status, int waitDays)
+    {
+        var detail = status switch
+        {
+            EmergencyAccessStatus.Invited => "已发送邀请，等对方接受",
+            EmergencyAccessStatus.Accepted => "对方已接受，确认后才生效",
+            EmergencyAccessStatus.Confirmed => $"等待期 {waitDays} 天",
+            EmergencyAccessStatus.RecoveryInitiated => $"发起了访问请求 · 等待期 {waitDays} 天",
+            EmergencyAccessStatus.RecoveryApproved => "已获得访问权限",
+            _ => "未知状态",
+        };
+        return string.IsNullOrWhiteSpace(email) ? detail : $"{email} · {detail}";
+    }
+
+    public static string FormatGrantedDetail(string? email, EmergencyAccessStatus status, int waitDays)
+    {
+        var detail = status switch
+        {
+            EmergencyAccessStatus.Invited => "请通过邀请邮件接受",
+            EmergencyAccessStatus.Accepted => "已接受邀请，等对方确认",
+            EmergencyAccessStatus.RecoveryInitiated => $"已发起请求 · 等待期 {waitDays} 天",
+            EmergencyAccessStatus.RecoveryApproved => "已获得访问权限",
+            _ => $"等待期 {waitDays} 天",
+        };
+        return string.IsNullOrWhiteSpace(email) ? detail : $"{email} · {detail}";
+    }
 
     public static string FormatStatus(EmergencyAccessStatus status) => status switch
     {
@@ -59,6 +98,27 @@ public sealed partial class EmergencyAccessPage : Page
 
     private static bool IsValidWaitTime(double value) =>
         double.IsFinite(value) && value >= 1 && value <= 90 && value == Math.Truncate(value);
+
+    private async Task<bool> ConfirmEmergencyAsync(
+        string title,
+        string message,
+        string primaryText,
+        bool dangerous = false,
+        CancellationToken ct = default)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = title,
+            Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = primaryText,
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (dangerous)
+            dialog.PrimaryButtonStyle = (Style)Resources["EmergencyDangerButtonStyle"];
+        return await DialogHelper.ShowTrackedAsync(dialog, ct: ct) == ContentDialogResult.Primary;
+    }
 
 
     public static Visibility ShowReinvite(EmergencyAccessStatus status) =>
@@ -116,8 +176,8 @@ public sealed partial class EmergencyAccessPage : Page
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(emailBox, "InviteEmailBox");
 
         var typeCombo = new ComboBox { MinWidth = 200, Header = "访问权限" };
-        typeCombo.Items.Add(new ComboBoxItem { Content = "查看 (View)", Tag = EmergencyAccessType.View });
-        typeCombo.Items.Add(new ComboBoxItem { Content = "接管 (Takeover)", Tag = EmergencyAccessType.Takeover });
+        typeCombo.Items.Add(new ComboBoxItem { Content = "查看", Tag = EmergencyAccessType.View });
+        typeCombo.Items.Add(new ComboBoxItem { Content = "接管", Tag = EmergencyAccessType.Takeover });
         typeCombo.SelectedIndex = 0;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(typeCombo, "InviteTypeCombo");
 
@@ -135,7 +195,7 @@ public sealed partial class EmergencyAccessPage : Page
         var errorText = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
         errorText.SetValue(ForegroundProperty, Application.Current.Resources["SystemFillColorCriticalBrush"]);
 
-        var panel = new StackPanel { Spacing = 12 };
+        var panel = new StackPanel { Spacing = 16 };
         panel.Children.Add(emailBox);
         panel.Children.Add(typeCombo);
         var accessHelp = new TextBlock { Text = AccessConsequences(EmergencyAccessType.View), TextWrapping = TextWrapping.Wrap };
@@ -150,9 +210,9 @@ public sealed partial class EmergencyAccessPage : Page
 
         var dialog = new ContentDialog
         {
-            Title = "邀请紧急联系人",
+            Title = "添加紧急联系人",
             Content = new ScrollViewer { Content = panel, MaxHeight = 460 },
-            PrimaryButtonText = "邀请",
+            PrimaryButtonText = "发送邀请",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
@@ -161,6 +221,7 @@ public sealed partial class EmergencyAccessPage : Page
 
         void UpdateInviteState()
         {
+            errorText.Visibility = Visibility.Collapsed;
             var email = emailBox.Text.Trim();
             dialog.IsPrimaryButtonEnabled = System.Net.Mail.MailAddress.TryCreate(email, out var address)
                 && string.Equals(address.Address, email, StringComparison.OrdinalIgnoreCase)
@@ -168,8 +229,12 @@ public sealed partial class EmergencyAccessPage : Page
         }
         emailBox.TextChanged += (_, _) => UpdateInviteState();
         waitDaysBox.ValueChanged += (_, _) => UpdateInviteState();
-        typeCombo.SelectionChanged += (_, _) => accessHelp.Text = AccessConsequences(
-            typeCombo.SelectedItem is ComboBoxItem { Tag: EmergencyAccessType type } ? type : EmergencyAccessType.View);
+        typeCombo.SelectionChanged += (_, _) =>
+        {
+            accessHelp.Text = AccessConsequences(
+                typeCombo.SelectedItem is ComboBoxItem { Tag: EmergencyAccessType type } ? type : EmergencyAccessType.View);
+            UpdateInviteState();
+        };
 
         while (true)
         {
@@ -197,8 +262,8 @@ public sealed partial class EmergencyAccessPage : Page
     {
         if ((sender as FrameworkElement)?.Tag is not EmergencyContact item)
             return;
-        if (!await DialogHelper.ConfirmAsync(XamlRoot, "确认紧急联系人",
-            $"确认 {item.Email} 为紧急联系人。\n{AccessConsequences(item.Type)}\n{FormatWaitTime(item.WaitTimeDays)}", "确认联系人"))
+        if (!await DialogHelper.ConfirmAsync(XamlRoot, $"确认{FormatContactName(item.Name, item.Email)}为紧急联系人？",
+            $"{item.Email}\n{AccessConsequences(item.Type)}\n{FormatWaitTime(item.WaitTimeDays)}", "确认"))
             return;
         await ViewModel.ConfirmAsync(item);
     }
@@ -214,8 +279,9 @@ public sealed partial class EmergencyAccessPage : Page
     {
         if ((sender as FrameworkElement)?.Tag is not EmergencyContact item)
             return;
-        if (!await DialogHelper.ConfirmAsync(XamlRoot, "立即批准紧急访问",
-            $"批准后，{item.Email} 无需继续等待即可获得访问权限。\n{AccessConsequences(item.Type)}", "批准访问"))
+        if (!await ConfirmEmergencyAsync($"现在就允许{FormatContactName(item.Name, item.Email)}访问你的密码库？",
+            $"{item.Email}\n不用等到等待期结束，对方马上就能获得访问权限。\n{AccessConsequences(item.Type)}", "批准",
+            dangerous: item.Type == EmergencyAccessType.Takeover))
             return;
         await ViewModel.ApproveAsync(item);
     }
@@ -241,11 +307,11 @@ public sealed partial class EmergencyAccessPage : Page
             return;
         await ViewModel.RemoveAsync(
             item,
-            (contact, ct) => DialogHelper.ConfirmAsync(
-                XamlRoot,
+            (contact, ct) => ConfirmEmergencyAsync(
                 "移除紧急联系人",
                 $"移除 {contact.Email} 后，对方将失去紧急访问权限。如需恢复，必须重新邀请并确认。",
                 "移除",
+                dangerous: true,
                 ct: ct),
             CancellationToken.None);
     }
@@ -256,8 +322,8 @@ public sealed partial class EmergencyAccessPage : Page
             return;
 
         var typeCombo = new ComboBox { MinWidth = 200, Header = "访问权限" };
-        typeCombo.Items.Add(new ComboBoxItem { Content = "查看 (View)", Tag = EmergencyAccessType.View });
-        typeCombo.Items.Add(new ComboBoxItem { Content = "接管 (Takeover)", Tag = EmergencyAccessType.Takeover });
+        typeCombo.Items.Add(new ComboBoxItem { Content = "查看", Tag = EmergencyAccessType.View });
+        typeCombo.Items.Add(new ComboBoxItem { Content = "接管", Tag = EmergencyAccessType.Takeover });
         typeCombo.SelectedIndex = item.Type == EmergencyAccessType.Takeover ? 1 : 0;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(typeCombo, "UpdateTypeCombo");
 
@@ -275,7 +341,7 @@ public sealed partial class EmergencyAccessPage : Page
         var errorText = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
         errorText.SetValue(ForegroundProperty, Application.Current.Resources["SystemFillColorCriticalBrush"]);
 
-        var panel = new StackPanel { Spacing = 12 };
+        var panel = new StackPanel { Spacing = 16 };
         panel.Children.Add(typeCombo);
         var accessHelp = new TextBlock { Text = AccessConsequences(item.Type), TextWrapping = TextWrapping.Wrap };
         panel.Children.Add(accessHelp);
@@ -410,6 +476,7 @@ public sealed partial class EmergencyAccessPage : Page
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
             IsPrimaryButtonEnabled = false,
+            PrimaryButtonStyle = (Style)Resources["EmergencyDangerButtonStyle"],
         };
         void UpdateTakeoverState() => dialog.IsPrimaryButtonEnabled = acknowledgedBox.IsChecked == true
             && !string.IsNullOrWhiteSpace(pwBox.Password) && pwBox.Password == confirmBox.Password;

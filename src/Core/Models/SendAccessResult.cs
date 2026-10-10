@@ -16,6 +16,9 @@ public sealed class SendAccessResult : IDisposable
     public string Name { get; init; } = "";
     public string? Notes { get; init; }
     public string? TextContent { get; init; }
+    public bool TextHidden { get; init; }
+    public string? CreatorIdentifier { get; init; }
+    public DateTimeOffset? ExpirationDate { get; init; }
     public string? FileName { get; init; }
     public string? FileDownloadUrl { get; init; }
     /// <summary>The file Send UUID used by the access-file request.</summary>

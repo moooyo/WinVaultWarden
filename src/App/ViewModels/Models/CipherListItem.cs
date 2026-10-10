@@ -3,8 +3,23 @@ namespace App.ViewModels.Models;
 public enum VaultItemKind { Login, Card, Identity, Note, Ssh, BankAccount, DriversLicense, Passport }
 
 // 栏③ 列表项。Subtitle 随类型不同(登录=用户名,网站=域名等)。
-public sealed partial class CipherListItem
+public sealed partial class CipherListItem : System.ComponentModel.INotifyPropertyChanged
 {
+    private string _groupHeader = string.Empty;
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    public string GroupHeader
+    {
+        get => _groupHeader;
+        set
+        {
+            if (string.Equals(_groupHeader, value, StringComparison.Ordinal))
+                return;
+            _groupHeader = value;
+            PropertyChanged?.Invoke(this, new(nameof(GroupHeader)));
+            PropertyChanged?.Invoke(this, new(nameof(HasGroupHeader)));
+        }
+    }
+    public bool HasGroupHeader => !string.IsNullOrEmpty(GroupHeader);
     public override string ToString() => Name;
     public required string Id { get; init; }
     public required string Name { get; init; }
@@ -43,4 +58,17 @@ public sealed partial class CipherListItem
     // 排序键。
     public DateTimeOffset RevisionDate { get; init; }
     public DateTimeOffset CreationDate { get; init; }
+    public DateTimeOffset? LastUsedAt { get; set; }
+    public string TypeLabel => Kind switch
+    {
+        VaultItemKind.Login => "登录",
+        VaultItemKind.Card => "支付卡",
+        VaultItemKind.Identity => "身份",
+        VaultItemKind.Note => "安全笔记",
+        VaultItemKind.Ssh => "SSH 密钥",
+        VaultItemKind.BankAccount => "银行账户",
+        VaultItemKind.DriversLicense => "驾驶证",
+        VaultItemKind.Passport => "护照",
+        _ => "条目",
+    };
 }

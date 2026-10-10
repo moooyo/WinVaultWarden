@@ -115,6 +115,16 @@ public static class ServiceConfiguration
             new UserVerificationService(
                 sp.GetRequiredService<IWindowsHelloAuthenticator>(),
                 sp.GetRequiredService<IAccountService>()));
+        services.AddSingleton<ISensitiveActionVerificationService>(sp => TrackSensitive(sp,
+            new SensitiveActionVerificationService(
+                new WindowsSensitiveActionVerifier(sp.GetRequiredService<IAccountService>()),
+                sp.GetRequiredService<VaultSession>())));
+        services.AddSingleton<DeviceApprovalWindowService>(sp => TrackSensitive(sp,
+            new DeviceApprovalWindowService(
+                sp.GetRequiredService<IAuthRequestUiService>(),
+                sp.GetRequiredService<VaultSession>(),
+                sp.GetRequiredService<ITransientOperationRegistry>(),
+                sp.GetRequiredService<IAppLifecycleCoordinator>())));
         services.AddSingleton<ITwoFactorService, Vault.TwoFactorService>();
         services.AddSingleton<IAuthRequestService, Vault.AuthRequestService>();
         services.AddSingleton<IEmergencyAccessService, Vault.EmergencyAccessService>();
@@ -161,8 +171,8 @@ public static class ServiceConfiguration
             var vault = sp.GetRequiredService<IVaultService>();
             var tokenStore = sp.GetRequiredService<ITokenStore>();
             return tokenStore.TryLoad(out var session)
-                ? new DeviceUiService(vault, session.DeviceIdentifier)
-                : new DeviceUiService(vault);
+                ? new DeviceUiService(vault, session.DeviceIdentifier, sp.GetRequiredService<IVaultApiClientProvider>(), sp.GetRequiredService<VaultSession>())
+                : new DeviceUiService(vault, null, sp.GetRequiredService<IVaultApiClientProvider>(), sp.GetRequiredService<VaultSession>());
         });
         services.AddTransient<IAccountUiService, AccountUiService>();
         services.AddSingleton<IClipboardService, ClipboardService>();
@@ -215,12 +225,18 @@ public static class ServiceConfiguration
                 vault: sp.GetRequiredService<IVaultService>(),
                 deviceTrust: sp.GetRequiredService<IDeviceTrustService>(),
                 webAuthnRegistration: sp.GetRequiredService<IWebAuthnTwoFactorRegistrationService>(),
-                accountDeletion: sp.GetRequiredService<IAccountDeletionService>()));
+                accountDeletion: sp.GetRequiredService<IAccountDeletionService>(),
+                supportsLocalUnlock: () =>
+                {
+                    var session = sp.GetRequiredService<VaultSession>();
+                    return session.State == Core.Session.VaultState.Unlocked && !session.UsesV2UserKey;
+                }));
         services.AddTransient<DevicesViewModel>(sp =>
-            new DevicesViewModel(
+            TrackSensitive(sp, new DevicesViewModel(
                 sp.GetRequiredService<IDeviceUiService>(),
                 sp.GetRequiredService<IAuthRequestUiService>(),
-                sp.GetRequiredService<VaultSession>()));
+                sp.GetRequiredService<VaultSession>(),
+                sp.GetRequiredService<IAppLifecycleCoordinator>())));
 
         // ── Vault 健康报告 ──────────────────────────────────────────────────────
         services.AddSingleton<PasswordStrengthEvaluator>(_ =>
@@ -236,7 +252,7 @@ public static class ServiceConfiguration
                 sp.GetRequiredService<IVaultHealthService>(),
                 sp.GetRequiredService<VaultSession>()));
         services.AddSingleton<ISavedSearchStore, AppPreferencesSavedSearchStore>();
-        services.AddTransient<SecurityReportViewModel>(sp =>
+        services.AddSingleton<SecurityReportViewModel>(sp =>
             TrackSensitive(sp, ActivatorUtilities.CreateInstance<SecurityReportViewModel>(sp)));
 
         // ── 导入 / 导出 ──────────────────────────────────────────────────────────

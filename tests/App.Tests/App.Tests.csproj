@@ -35,6 +35,8 @@
     <Compile Include="..\..\src\App\Services\MockVaultUiService.cs" Link="Services\MockVaultUiService.cs" />
     <Compile Include="..\..\src\App\Services\MockDeviceUiService.cs" Link="Services\MockDeviceUiService.cs" />
     <Compile Include="..\..\src\App\Services\VaultUiService.cs" Link="Services\VaultUiService.cs" />
+    <Compile Include="..\..\src\App\Services\VaultRecentUseStore.cs" Link="Services\VaultRecentUseStore.cs" />
+    <Compile Include="..\..\src\App\Services\IClipboardStatus.cs" Link="Services\IClipboardStatus.cs" />
     <Compile Include="..\..\src\App\Services\DeviceUiService.cs" Link="Services\DeviceUiService.cs" />
     <Compile Include="..\..\src\App\Services\AccountUiService.cs" Link="Services\AccountUiService.cs" />
     <Compile Include="..\..\src\App\Services\DpapiTokenStore.cs" Link="Services\DpapiTokenStore.cs" />
@@ -90,6 +92,7 @@
     <Compile Include="..\..\src\App\Services\AttachmentUiService.cs" Link="Services\AttachmentUiService.cs" />
     <Compile Include="..\..\src\App\Services\TwoFactorUiService.cs" Link="Services\TwoFactorUiService.cs" />
     <Compile Include="..\..\src\App\Services\AuthRequestUiService.cs" Link="Services\AuthRequestUiService.cs" />
+    <Compile Include="..\..\src\App\Services\DeviceApprovalDecisionService.cs" Link="Services\DeviceApprovalDecisionService.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\AuthRequestItem.cs" Link="Models\AuthRequestItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\GeneratorHistoryItem.cs" Link="Models\GeneratorHistoryItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\GeneratorViewModel.cs" Link="ViewModels\GeneratorViewModel.cs" />
@@ -121,6 +124,7 @@
     <Compile Include="..\..\src\App\Services\UiOperationResult.cs" Link="Services\UiOperationResult.cs" />
     <Compile Include="..\..\src\App\Services\AsyncOperationGate.cs" Link="Services\AsyncOperationGate.cs" />
     <Compile Include="..\..\src\App\Services\SensitiveStateRegistry.cs" Link="Services\SensitiveStateRegistry.cs" />
+    <Compile Include="..\..\src\App\Services\SensitiveActionVerificationService.cs" Link="Services\SensitiveActionVerificationService.cs" />
     <Compile Include="..\..\src\App\Services\TransientOperationRegistry.cs" Link="Services\TransientOperationRegistry.cs" />
     <Compile Include="..\..\src\App\Services\AppLifecycleCoordinator.cs" Link="Services\AppLifecycleCoordinator.cs" />
     <Compile Include="..\..\src\App\Services\ResponsiveDialogSizing.cs" Link="Services\ResponsiveDialogSizing.cs" />

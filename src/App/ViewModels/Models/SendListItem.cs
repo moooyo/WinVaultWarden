@@ -48,6 +48,44 @@ public sealed record SendListItem(
     public bool HasPassword { get; init; }
     public Core.Enums.SendAuthType AuthType { get; init; } = Core.Enums.SendAuthType.Unknown;
     public DateTimeOffset DisplayTime { get; init; } = DateTimeOffset.UtcNow;
+    public string? TextContent { get; init; }
+    public string? FileName { get; init; }
+    public DateTimeOffset? RevisionDate { get; init; }
+    public bool HasRowStatus => HasPassword || GetAvailability(DisplayTime).State is
+        SendAvailabilityState.Disabled or SendAvailabilityState.Expired or SendAvailabilityState.Deleted
+        or SendAvailabilityState.AccessLimitReached or SendAvailabilityState.AwaitingConfirmation;
+    public string RowStatusGlyph => GetAvailability(DisplayTime).State switch
+    {
+        SendAvailabilityState.Disabled => "\uE733",
+        SendAvailabilityState.Expired or SendAvailabilityState.Deleted or SendAvailabilityState.AccessLimitReached
+            or SendAvailabilityState.AwaitingConfirmation => "\uE7BA",
+        _ => "\uE72E",
+    };
+    public double NameOpacity => GetAvailability(DisplayTime).State is SendAvailabilityState.Available or SendAvailabilityState.Unknown ? 1 : 0.62;
+    public string ToggleActionLabel => Disabled ? "启用" : "禁用";
+
+    public string ListSubtitle => GetAvailability(DisplayTime).State switch
+    {
+        SendAvailabilityState.Disabled => "已禁用 · 链接暂时打不开",
+        SendAvailabilityState.Expired or SendAvailabilityState.Deleted => "已过期",
+        SendAvailabilityState.AccessLimitReached => "已达访问上限",
+        SendAvailabilityState.AwaitingConfirmation => "等待服务器确认",
+        _ => $"{DeletionRelativeLabel}删除 · 已访问 {AccessCount} 次",
+    };
+
+    public string DeletionRelativeLabel
+    {
+        get
+        {
+            if (DeletionDateTime is not { } deletion) return "待确认后";
+            var remaining = deletion - DisplayTime;
+            if (remaining <= TimeSpan.Zero) return "已到期 · ";
+            if (remaining.TotalHours < 1) return $"{Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes))} 分钟后";
+            if (remaining.TotalDays < 1) return $"{(int)Math.Ceiling(remaining.TotalHours)} 小时后";
+            if (remaining.TotalDays < 2) return "明天";
+            return $"{(int)Math.Ceiling(remaining.TotalDays)} 天后";
+        }
+    }
 
     public SendAvailability GetAvailability(DateTimeOffset now)
     {
@@ -139,7 +177,7 @@ public sealed record SendListItem(
 
     public string Glyph => Type switch
     {
-        SendType.Text => "\uE8D2",
+        SendType.Text => "\uE8E4",
         SendType.File => "\uE8A5",
         _ => "\uE724",
     };

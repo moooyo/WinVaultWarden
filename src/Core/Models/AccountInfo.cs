@@ -7,6 +7,8 @@ public sealed record AccountInfo(
     string Initial,
     string KdfSummary)
 {
+    public string Name { get; init; } = string.Empty;
+
     public bool? UserIsClaimedByOrganization { get; init; }
 
     public AccountInfo(

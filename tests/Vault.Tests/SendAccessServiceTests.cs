@@ -37,10 +37,10 @@ public class SendAccessServiceTests
             Id: "s-1",
             Type: 0,
             Name: crypto.EncryptField("Shared Note", cryptoKey),
-            Text: new SendTextDto(Text: crypto.EncryptField("hello world", cryptoKey), Hidden: false),
+            Text: new SendTextDto(Text: crypto.EncryptField("hello world", cryptoKey), Hidden: true),
             File: null,
-            ExpirationDate: null,
-            CreatorIdentifier: null,
+            ExpirationDate: DateTimeOffset.Parse("2026-10-12T14:00:00Z"),
+            CreatorIdentifier: "sender@example.test",
             Object: "send-access");
 
         var result = await service.AccessAsync(url, password: null, TestContext.Current.CancellationToken);
@@ -50,6 +50,9 @@ public class SendAccessServiceTests
         Assert.Equal(SendType.Text, result.Type);
         Assert.Equal("Shared Note", result.Name);
         Assert.Equal("hello world", result.TextContent);
+        Assert.True(result.TextHidden);
+        Assert.Equal("sender@example.test", result.CreatorIdentifier);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-12T14:00:00Z"), result.ExpirationDate);
         Assert.Equal("acc-1", result.AccessId);
         Assert.Equal(seed, result.Seed);
     }

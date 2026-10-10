@@ -22,6 +22,7 @@ public sealed class TransientOperationRegistry(Action<Exception> reportFailure)
     private readonly object _gate = new();
     private readonly HashSet<Entry> _entries = [];
 
+
     public IDisposable Register(Action cancel, Action close, Action clearSensitive)
     {
         var entry = new Entry(this, cancel, close, clearSensitive);

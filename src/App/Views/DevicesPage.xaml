@@ -9,122 +9,189 @@
     Loaded="OnPageLoaded">
     <Page.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <Style x:Key="DeviceListRowStyle" TargetType="Border">
+            <Setter Property="MinHeight" Value="60" />
+            <Setter Property="Padding" Value="0,8" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="BorderBrush" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
+        </Style>
+        <Style x:Key="DeviceTileStyle" TargetType="Border">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="{ThemeResource ControlFillColorSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="DeviceSecondaryTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="LineHeight" Value="16" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Style>
+        <Style x:Key="DeviceActionButtonStyle" TargetType="Button"
+               BasedOn="{StaticResource DefaultButtonStyle}">
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
     </Page.Resources>
-    <ScrollViewer Padding="{StaticResource PageContentPadding}"
+    <ScrollViewer HorizontalContentAlignment="Stretch"
                   HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="20" MaxWidth="1000" HorizontalAlignment="Stretch">
-            <StackPanel Spacing="8">
-                <TextBlock Text="设备管理" Style="{ThemeResource TitleTextBlockStyle}" />
-                <TextBlock Text="识别已登记的设备，并核对新的登录请求。"
-                           TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            </StackPanel>
-            <InfoBar x:Name="DevicesErrorInfoBar" IsClosable="False" Severity="Error"
-                     AutomationProperties.LiveSetting="Assertive"
-                     IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
-                     Message="{x:Bind ViewModel.Error, Mode=OneWay}"
-                     Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-            <ProgressRing x:Name="DevicesBusyRing" Width="24" Height="24" HorizontalAlignment="Left"
-                          AutomationProperties.Name="正在处理设备请求"
-                          IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
-                          Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-
-            <StackPanel Spacing="12">
-                <Grid ColumnSpacing="12">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <TextBlock Text="待批准的登录请求" Style="{ThemeResource SubtitleTextBlockStyle}"
-                               TextWrapping="Wrap" VerticalAlignment="Center" />
-                    <Button Grid.Column="1" AutomationProperties.AutomationId="DevicesRefreshRequestsButton"
-                            Content="刷新" AutomationProperties.Name="刷新登录请求" Click="OnRefreshRequestsClick"
-                            IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}" />
+        <Grid Padding="40,40,40,48" HorizontalAlignment="Stretch">
+        <Border MaxWidth="680" HorizontalAlignment="Stretch">
+            <StackPanel>
+                <Grid ColumnSpacing="12" Margin="0,0,0,28">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="设备" FontFamily="{StaticResource WardenDisplayFontFamily}"
+                               FontSize="28" LineHeight="36" FontWeight="SemiBold" />
+                    <ProgressRing x:Name="DevicesBusyRing" Grid.Column="1"
+                                  Width="24" Height="24" VerticalAlignment="Center"
+                                  AutomationProperties.Name="正在处理设备请求"
+                                  IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
+                                  Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                 </Grid>
-                <TextBlock Text="仅批准由您本人发起、且五词指纹短语完全一致的请求。"
-                           Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
-                <StackPanel x:Name="DevicesLoadingPanel" HorizontalAlignment="Left"
-                            AutomationProperties.AutomationId="DevicesLoadingPanel"
-                            Visibility="{x:Bind ViewModel.ShowRequestsLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Text="正在加载登录请求…" AutomationProperties.LiveSetting="Polite" />
-                </StackPanel>
-                <Border Style="{StaticResource CardBorderStyle}" Padding="{StaticResource CardContentPadding}"
-                        Visibility="{x:Bind ViewModel.ShowRequestsEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <TextBlock x:Name="RequestsEmptyText" Text="当前没有待批准的登录请求。" TextWrapping="Wrap"
-                               AutomationProperties.LiveSetting="Polite" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </Border>
-                <ContentControl x:Name="PendingRequestsRepeater" HorizontalContentAlignment="Stretch"
-                                Visibility="{x:Bind ViewModel.ShowRequestsContent, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                                IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}">
-                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.PendingRequests, Mode=OneWay}">
-                        <ItemsRepeater.ItemTemplate>
-                            <DataTemplate x:DataType="models:AuthRequestItem">
-                                <Border Style="{StaticResource CardBorderStyle}" Padding="{StaticResource CardContentPadding}" Margin="0,0,0,8">
-                                    <StackPanel Spacing="12">
-                                        <StackPanel Spacing="4">
-                                            <TextBlock Text="{x:Bind DeviceTypeName}" Style="{ThemeResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
-                                            <TextBlock Style="{StaticResource CaptionSecondaryTextBlockStyle}"><Run Text="IP 地址：" /><Run Text="{x:Bind IpAddress}" /></TextBlock>
-                                            <TextBlock Text="{x:Bind CreatedLabel}" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
-                                        </StackPanel>
-                                        <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="4" Padding="12">
-                                            <StackPanel Spacing="4">
-                                                <TextBlock Text="指纹短语" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
-                                                <TextBlock Text="{x:Bind FingerprintPhrase}" FontFamily="{StaticResource MonospaceFontFamily}"
-                                                           IsTextSelectionEnabled="True" TextWrapping="Wrap" FontSize="16" />
-                                            </StackPanel>
-                                        </Border>
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <Button AutomationProperties.AutomationId="DevicesApproveRequestButton"
-                                                    Content="核对并批准" Tag="{x:Bind}" Click="OnApproveRequestClick"
-                                                    Style="{ThemeResource AccentButtonStyle}" />
-                                            <Button AutomationProperties.AutomationId="DevicesDenyRequestButton"
-                                                    Content="拒绝" Tag="{x:Bind}" Click="OnDenyRequestClick" />
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsRepeater.ItemTemplate>
-                    </ItemsRepeater>
-                </ContentControl>
-            </StackPanel>
+                <InfoBar x:Name="DevicesErrorInfoBar" IsClosable="False" Severity="Error" Margin="0,0,0,16"
+                         AutomationProperties.LiveSetting="Assertive"
+                         IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
+                         Message="{x:Bind ViewModel.Error, Mode=OneWay}"
+                         Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
 
-            <StackPanel Spacing="12">
-                <TextBlock Text="已登记的设备" Style="{ThemeResource SubtitleTextBlockStyle}" />
-                <TextBlock Text="以下时间为设备登记时间，不代表最近活动。列表来自最近一次密码库同步。"
-                           Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
-                <Border x:Name="DevicesEmptyPanel" Style="{StaticResource CardBorderStyle}" Padding="24"
-                        Visibility="{x:Bind ViewModel.HasNoDevices, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="没有已登记的设备" Style="{ThemeResource BodyStrongTextBlockStyle}" />
-                        <TextBlock Text="在此账户上登录并同步后，设备会显示在这里。" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
-                    </StackPanel>
-                </Border>
-                <ItemsRepeater ItemsSource="{x:Bind ViewModel.Devices}">
-                    <ItemsRepeater.ItemTemplate>
-                        <DataTemplate x:DataType="models:DeviceItem">
-                            <Border Style="{StaticResource CardBorderStyle}" Padding="{StaticResource CardContentPadding}" Margin="0,0,0,8">
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                    <Border Style="{StaticResource IconBadgeBorderStyle}" Padding="12" VerticalAlignment="Top">
-                                        <FontIcon Glyph="{x:Bind Glyph}" FontSize="20" AutomationProperties.AccessibilityView="Raw" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" Spacing="6">
-                                        <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                        <TextBlock Text="{x:Bind RegisteredLabel}" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <Border Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="4" Padding="6,2"
-                                                    Visibility="{x:Bind IsCurrent, Converter={StaticResource BoolToVis}}">
-                                                <TextBlock Text="当前设备" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-                                            </Border>
-                                            <Border Background="{ThemeResource SystemFillColorSuccessBackgroundBrush}" CornerRadius="4" Padding="6,2"
-                                                    Visibility="{x:Bind IsTrusted, Converter={StaticResource BoolToVis}}">
-                                                <TextBlock Text="可信设备" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
-                                            </Border>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Grid>
+                <StackPanel Margin="0,0,0,32">
+                    <Grid ColumnSpacing="14" Padding="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="待处理的登录请求" FontSize="14" FontWeight="SemiBold"
+                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" AutomationProperties.AutomationId="DevicesRefreshRequestsButton"
+                                Content="刷新" AutomationProperties.Name="刷新登录请求" Click="OnRefreshRequestsClick"
+                                Style="{StaticResource DeviceActionButtonStyle}"
+                                IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}" />
+                    </Grid>
+                    <Border BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+                        <StackPanel>
+                            <StackPanel x:Name="DevicesLoadingPanel" Padding="0,16"
+                                        AutomationProperties.AutomationId="DevicesLoadingPanel"
+                                        Visibility="{x:Bind ViewModel.ShowRequestsLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="正在加载登录请求…" AutomationProperties.LiveSetting="Polite"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <Border Padding="0,16" BorderThickness="0,0,0,1"
+                                    BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                                    Visibility="{x:Bind ViewModel.ShowRequestsEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                <TextBlock x:Name="RequestsEmptyText" Text="当前没有待处理的登录请求。" TextWrapping="Wrap"
+                                           AutomationProperties.LiveSetting="Polite" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </Border>
-                        </DataTemplate>
-                    </ItemsRepeater.ItemTemplate>
-                </ItemsRepeater>
+                            <ContentControl x:Name="PendingRequestsRepeater" HorizontalContentAlignment="Stretch"
+                                            Visibility="{x:Bind ViewModel.ShowRequestsContent, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+                                            IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}">
+                                <ItemsRepeater ItemsSource="{x:Bind ViewModel.PendingRequests, Mode=OneWay}">
+                                    <ItemsRepeater.ItemTemplate>
+                                        <DataTemplate x:DataType="models:AuthRequestItem">
+                                            <Border Style="{StaticResource DeviceListRowStyle}">
+                                                <Grid ColumnSpacing="14">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="32" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Style="{StaticResource DeviceTileStyle}">
+                                                        <FontIcon Glyph="&#xE8EA;" FontSize="16"
+                                                                  Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                                  AutomationProperties.AccessibilityView="Raw" />
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                                        <TextBlock FontSize="14" TextTrimming="CharacterEllipsis" MaxLines="1"
+                                                                   ToolTipService.ToolTip="{x:Bind DeviceTypeName}">
+                                                            <Run Text="{x:Bind DeviceTypeName}" /><Run Text=" 想登录你的账户" />
+                                                        </TextBlock>
+                                                        <TextBlock Style="{StaticResource DeviceSecondaryTextStyle}"
+                                                                   TextTrimming="CharacterEllipsis" MaxLines="1">
+                                                            <Run Text="IP 地址：" /><Run Text="{x:Bind IpAddress}" />
+                                                            <Run Text=" · " /><Run Text="{x:Bind CreatedLabel}" />
+                                                            <Run Text=" · " /><Run Text="{x:Bind ExpirationLabel, Mode=OneWay}" />
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                        <Button AutomationProperties.AutomationId="DevicesApproveRequestButton"
+                                                                Content="查看" AutomationProperties.Name="查看并核对设备登录请求"
+                                                                Tag="{x:Bind}" Click="OnApproveRequestClick"
+                                                                Style="{StaticResource DeviceActionButtonStyle}" />
+                                                        <Button AutomationProperties.AutomationId="DevicesDenyRequestButton"
+                                                                Content="拒绝" AutomationProperties.Name="拒绝设备登录请求"
+                                                                Tag="{x:Bind}" Click="OnDenyRequestClick"
+                                                                Style="{StaticResource DeviceActionButtonStyle}" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsRepeater.ItemTemplate>
+                                </ItemsRepeater>
+                            </ContentControl>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Margin="0,0,0,32">
+                    <TextBlock Text="已登录的设备" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <InfoBar IsOpen="{x:Bind ViewModel.HasDeviceError, Mode=OneWay}" IsClosable="False"
+                             Severity="Error" Message="{x:Bind ViewModel.DeviceError, Mode=OneWay}"
+                             Visibility="{x:Bind ViewModel.HasDeviceError, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                    <Border BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+                        <StackPanel>
+                            <Border x:Name="DevicesEmptyPanel" Padding="0,16" BorderThickness="0,0,0,1"
+                                    BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                                    Visibility="{x:Bind ViewModel.HasNoDevices, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="还没有已登记的设备，登录并同步后会显示在这里。" TextWrapping="Wrap"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Border>
+                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.Devices}">
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="models:DeviceItem">
+                                        <Border Style="{StaticResource DeviceListRowStyle}">
+                                            <Grid ColumnSpacing="14">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="32" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border Style="{StaticResource DeviceTileStyle}">
+                                                    <FontIcon Glyph="{x:Bind Glyph}" FontSize="16"
+                                                              AutomationProperties.AccessibilityView="Raw" />
+                                                </Border>
+                                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                                    <Grid ColumnSpacing="8" HorizontalAlignment="Left">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{x:Bind Name}" FontSize="14" TextTrimming="CharacterEllipsis" MaxLines="1"
+                                                                   ToolTipService.ToolTip="{x:Bind Name}" />
+                                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                            <TextBlock Text="· 当前设备" Style="{StaticResource DeviceSecondaryTextStyle}"
+                                                                       Visibility="{x:Bind IsCurrent, Converter={StaticResource BoolToVis}}" />
+                                                            <TextBlock Text="· 受信任" Style="{StaticResource DeviceSecondaryTextStyle}"
+                                                                       Visibility="{x:Bind IsTrusted, Converter={StaticResource BoolToVis}}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                    <TextBlock Text="{x:Bind RegisteredLabel}" Style="{StaticResource DeviceSecondaryTextStyle}"
+                                                               TextTrimming="CharacterEllipsis" MaxLines="1"
+                                                               ToolTipService.ToolTip="{x:Bind RegisteredLabel}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
             </StackPanel>
-        </StackPanel>
+        </Border>
+        </Grid>
     </ScrollViewer>
 </Page>

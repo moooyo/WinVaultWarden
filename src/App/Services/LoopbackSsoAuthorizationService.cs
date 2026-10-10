@@ -26,6 +26,9 @@ public sealed class LoopbackSsoAuthorizationService : ISsoAuthorizationService
     private readonly IExternalUriLauncher _launcher;
     private readonly TimeSpan _timeout;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly object _pendingGate = new();
+    private Uri? _pendingAuthorizationUri;
+    private CancellationToken _pendingAuthorizationToken;
 
     public LoopbackSsoAuthorizationService(
         IExternalUriLauncher launcher,
@@ -37,9 +40,16 @@ public sealed class LoopbackSsoAuthorizationService : ISsoAuthorizationService
             throw new ArgumentOutOfRangeException(nameof(timeout));
     }
 
+    public Task<SsoAuthorizationCode> AuthorizeAsync(
+        ServerEndpoints endpoints,
+        string email,
+        CancellationToken ct = default) => AuthorizeAsync(endpoints, email, null, null, ct);
+
     public async Task<SsoAuthorizationCode> AuthorizeAsync(
         ServerEndpoints endpoints,
         string email,
+        string? organizationIdentifier,
+        IProgress<bool>? browserOpened,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
@@ -61,7 +71,8 @@ public sealed class LoopbackSsoAuthorizationService : ISsoAuthorizationService
                 redirectUri,
                 state,
                 challenge,
-                email.Trim());
+                email.Trim(),
+                organizationIdentifier);
 
             bool launched;
             try
@@ -79,6 +90,14 @@ public sealed class LoopbackSsoAuthorizationService : ISsoAuthorizationService
 
             if (!launched)
                 throw new SsoAuthorizationException("The system browser declined the SSO authorization URI.");
+
+            linked.Token.ThrowIfCancellationRequested();
+            lock (_pendingGate)
+            {
+                _pendingAuthorizationUri = authorizationUri;
+                _pendingAuthorizationToken = linked.Token;
+            }
+            browserOpened?.Report(true);
 
             for (var attempt = 0; attempt < MaxCallbackAttempts; attempt++)
             {
@@ -125,7 +144,37 @@ public sealed class LoopbackSsoAuthorizationService : ISsoAuthorizationService
         }
         finally
         {
+            lock (_pendingGate)
+            {
+                _pendingAuthorizationUri = null;
+                _pendingAuthorizationToken = default;
+            }
             _gate.Release();
+        }
+    }
+
+    public async Task<bool> ReopenPendingBrowserAsync(CancellationToken ct = default)
+    {
+        Task<bool>? launch = null;
+        CancellationTokenSource? cancellation = null;
+        try
+        {
+            lock (_pendingGate)
+            {
+                if (_pendingAuthorizationUri is null || _pendingAuthorizationToken.IsCancellationRequested)
+                    return false;
+                cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct, _pendingAuthorizationToken);
+                launch = _launcher.LaunchAsync(_pendingAuthorizationUri, cancellation.Token);
+            }
+            return await launch.ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw new SsoAuthorizationException("The system browser could not be reopened.", ex);
+        }
+        finally
+        {
+            cancellation?.Dispose();
         }
     }
 
@@ -134,7 +183,8 @@ public sealed class LoopbackSsoAuthorizationService : ISsoAuthorizationService
         string redirectUri,
         string state,
         string codeChallenge,
-        string email)
+        string email,
+        string? organizationIdentifier = null)
     {
         if (!webVault.IsInitialized)
             throw new ArgumentException("The web vault endpoint is not initialized.", nameof(webVault));
@@ -149,6 +199,9 @@ public sealed class LoopbackSsoAuthorizationService : ISsoAuthorizationService
             $"state={Uri.EscapeDataString(state)}",
             $"codeChallenge={Uri.EscapeDataString(codeChallenge)}",
             $"email={Uri.EscapeDataString(email)}");
+        // The web vault's existing SSO route accepts identifier to prefill and submit the organization.
+        if (!string.IsNullOrWhiteSpace(organizationIdentifier))
+            query += $"&identifier={Uri.EscapeDataString(organizationIdentifier.Trim())}";
         return new Uri($"{webVault.Value.TrimEnd('/')}/#/sso?{query}", UriKind.Absolute);
     }
 

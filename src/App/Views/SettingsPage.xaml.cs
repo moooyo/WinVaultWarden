@@ -11,6 +11,8 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using System.ComponentModel;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage;
+using Windows.System;
 
 namespace App.Views;
 
@@ -21,12 +23,29 @@ public sealed partial class SettingsPage : Page
     private bool _suppressPinToggle;
     private bool _suppressHelloToggle;
     private CancellationTokenSource? _accountDeletionCts;
+    private string _sectionKey = "account";
+    private bool _isSubpage;
+    private CancellationTokenSource? _securitySummaryCancellation;
+    public string CurrentSection => _sectionKey;
+    public string ToggleState(bool value) => value ? "开" : "关";
+
+    private void OnToggleSettingClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is CommunityToolkit.WinUI.Controls.SettingsCard { Content: StackPanel panel }
+            && panel.Children.OfType<ToggleSwitch>().FirstOrDefault() is { IsEnabled: true } toggle)
+            toggle.IsOn = !toggle.IsOn;
+    }
 
     public SettingsPage()
     {
         ViewModel = global::App.App.Services.GetRequiredService<SettingsViewModel>();
         InitializeComponent();
         Unloaded += OnSettingsPageUnloaded;
+        KeyDown += (_, e) =>
+        {
+            if (e.Key == VirtualKey.Escape && TryNavigateBack())
+                e.Handled = true;
+        };
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -46,6 +65,105 @@ public sealed partial class SettingsPage : Page
         _suppressHelloToggle = false;
 
         _ = LoadWindowsHelloAvailabilityAsync();
+        SelectSection(e.Parameter as string ?? _sectionKey);
+    }
+
+    public void SelectSection(string section)
+    {
+        CancelSecuritySummary();
+        if (section == "emergency")
+        {
+            SelectSection("security");
+            ShowSubpage("紧急访问");
+            SettingsContentFrame.Navigate(typeof(EmergencyAccessPage));
+            return;
+        }
+        _sectionKey = section switch
+        {
+            "data" => "import",
+            "account" or "security" or "ssh" or "devices" or "import" or "appearance" or "about" => section,
+            _ => "account",
+        };
+        _isSubpage = false;
+        SettingsContentFrame.Content = null;
+        SubpageHost.Visibility = Visibility.Collapsed;
+        SettingsScrollViewer.Visibility = Visibility.Visible;
+        SettingsFeedbackInfoBar.IsOpen = false;
+        ViewModel.OperationError = string.Empty;
+        AccountSettingsSection.Visibility = Visibility.Collapsed;
+        SecuritySettingsSection.Visibility = Visibility.Collapsed;
+        SshSettingsSection.Visibility = Visibility.Collapsed;
+        PreferencesSettingsSection.Visibility = Visibility.Collapsed;
+        AboutSettingsSection.Visibility = Visibility.Collapsed;
+        switch (_sectionKey)
+        {
+            case "account":
+                ViewModel.SelectedSectionIndex = 1;
+                SectionTitle.Text = "账户";
+                AccountSettingsSection.Visibility = Visibility.Visible;
+                break;
+            case "security":
+                ViewModel.SelectedSectionIndex = 0;
+                SectionTitle.Text = "安全";
+                SecuritySettingsSection.Visibility = Visibility.Visible;
+                _ = RefreshSecuritySummaryAsync();
+                break;
+            case "ssh":
+                SectionTitle.Text = "SSH 代理";
+                SshSettingsSection.Visibility = Visibility.Visible;
+                break;
+            case "appearance":
+                ViewModel.SelectedSectionIndex = 2;
+                SectionTitle.Text = "外观与行为";
+                PreferencesSettingsSection.Visibility = Visibility.Visible;
+                ViewModel.SelectedThemeIndex = AppPreferences.Current.ThemeIndex;
+                break;
+            case "about":
+                ViewModel.SelectedSectionIndex = 3;
+                SectionTitle.Text = "关于";
+                AboutSettingsSection.Visibility = Visibility.Visible;
+                break;
+            case "devices":
+                ShowSectionPage(typeof(DevicesPage));
+                break;
+            case "import":
+                ShowSectionPage(typeof(ImportExportPage));
+                break;
+        }
+        SettingsScrollViewer.ChangeView(0, 0, null, true);
+    }
+
+    public bool TryNavigateBack()
+    {
+        if (!_isSubpage)
+            return false;
+        SelectSection(_sectionKey);
+        return true;
+    }
+
+    private void ShowSectionPage(Type pageType)
+    {
+        SettingsScrollViewer.Visibility = Visibility.Collapsed;
+        SubpageHost.Visibility = Visibility.Visible;
+        BreadcrumbContainer.Visibility = Visibility.Collapsed;
+        SettingsContentFrame.Navigate(pageType);
+    }
+
+    private void ShowSubpage(string title)
+    {
+        CancelSecuritySummary();
+        _isSubpage = true;
+        SettingsScrollViewer.Visibility = Visibility.Collapsed;
+        SubpageHost.Visibility = Visibility.Visible;
+        BreadcrumbContainer.Visibility = Visibility.Visible;
+        SettingsBreadcrumb.ItemsSource = new[] { _sectionKey == "account" ? "账户" : "安全", title };
+        SettingsFeedbackInfoBar.IsOpen = false;
+    }
+
+    private void OnBreadcrumbItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
+    {
+        if (args.Index == 0)
+            TryNavigateBack();
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -59,6 +177,8 @@ public sealed partial class SettingsPage : Page
     {
         ViewModel.PropertyChanged -= OnSettingsPropertyChanged;
         CancelAccountDeletion();
+        SettingsContentFrame.Content = null;
+        CancelSecuritySummary();
     }
 
     private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -78,6 +198,65 @@ public sealed partial class SettingsPage : Page
         }
         catch (ObjectDisposedException)
         {
+        }
+    }
+
+    private void CancelSecuritySummary()
+    {
+        var cancellation = Interlocked.Exchange(ref _securitySummaryCancellation, null);
+        if (cancellation is null)
+            return;
+        try { cancellation.Cancel(); }
+        catch (ObjectDisposedException) { }
+        cancellation.Dispose();
+    }
+
+    private async Task RefreshSecuritySummaryAsync()
+    {
+        var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+        var expectedSession = session.CaptureLease();
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(expectedSession.CancellationToken);
+        _securitySummaryCancellation = cancellation;
+        TwoFactorSummaryCard.Description = "正在读取两步登录设置…";
+        EmergencySummaryCard.Description = "正在读取紧急联系人…";
+        try
+        {
+            var providers = await global::App.App.Services.GetRequiredService<ITwoFactorUiService>()
+                .ListProvidersAsync(cancellation.Token);
+            if (!ReferenceEquals(_securitySummaryCancellation, cancellation) || !session.IsUnlocked(expectedSession))
+                return;
+            var names = providers.Where(provider => provider.Enabled && provider.Type != (int)TwoFactorProviderType.Remember)
+                .Select(provider => SettingsViewModel.GetTwoFactorProviderDisplayName(provider.Type)).ToArray();
+            TwoFactorSummaryCard.Description = names.Length == 0
+                ? "未开启 · 主密码泄露时，它能挡住别人登录"
+                : "已开启 · " + string.Join("、", names);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return; }
+        catch (Exception)
+        {
+            if (ReferenceEquals(_securitySummaryCancellation, cancellation))
+                TwoFactorSummaryCard.Description = "暂时无法读取状态，可以打开管理页重试";
+        }
+        try
+        {
+            var contacts = await global::App.App.Services.GetRequiredService<IEmergencyAccessUiService>()
+                .GetTrustedAsync(cancellation.Token);
+            if (!ReferenceEquals(_securitySummaryCancellation, cancellation) || !session.IsUnlocked(expectedSession))
+                return;
+            var requested = contacts.FirstOrDefault(contact => contact.Status == EmergencyAccessStatus.RecoveryInitiated);
+            EmergencySummaryCard.Description = requested is null
+                ? $"{contacts.Count} 位紧急联系人"
+                : $"{requested.Name ?? requested.Email ?? "联系人"} 发起了访问请求，等你处理";
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        catch (Exception)
+        {
+            if (ReferenceEquals(_securitySummaryCancellation, cancellation))
+                EmergencySummaryCard.Description = "暂时无法读取状态，可以打开管理页重试";
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref _securitySummaryCancellation, null, cancellation);
         }
     }
 
@@ -132,7 +311,7 @@ public sealed partial class SettingsPage : Page
         SettingsFeedbackInfoBar.IsOpen = true;
     }
 
-    private ScrollViewer CreateDialogBody(UIElement content)
+    private ScrollViewer CreateDialogBody(UIElement content, double preferredWidth = 432)
     {
         var scroller = new ScrollViewer
         {
@@ -146,7 +325,7 @@ public sealed partial class SettingsPage : Page
         var root = XamlRoot;
         void ResizeBody()
         {
-            scroller.Width = ResponsiveDialogSizing.Clamp(root.Size.Width, 480, 96);
+            scroller.Width = ResponsiveDialogSizing.Clamp(root.Size.Width, preferredWidth, 96);
             scroller.MaxHeight = Math.Max(0, root.Size.Height - 200);
         }
         void OnRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => ResizeBody();
@@ -164,10 +343,40 @@ public sealed partial class SettingsPage : Page
 
     private async void OnEditProfileClick(object sender, RoutedEventArgs e)
     {
+        if (sender is not Button button || !button.IsEnabled)
+            return;
+        button.IsEnabled = false;
+        try
+        {
+            await EditProfileAsync();
+        }
+        catch (Exception)
+        {
+            if (IsLoaded)
+                ShowFeedback("无法打开名称编辑，请稍后重试。", InfoBarSeverity.Error);
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
+    private async Task EditProfileAsync()
+    {
+        var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+        Core.Session.VaultSessionLease expectedSession;
+        try { expectedSession = session.CaptureLease(); }
+        catch (InvalidOperationException) { return; }
+        if (!session.IsUnlocked(expectedSession))
+            return;
+        var lifecycle = global::App.App.Services.GetRequiredService<IAppLifecycleCoordinator>();
+        var sync = global::App.App.Services.GetRequiredService<ISyncService>();
         var nameBox = new TextBox
         {
-            PlaceholderText = "显示名称",
-            Text = string.Empty,
+            Header = "名称",
+            PlaceholderText = "名称",
+            Text = ViewModel.AccountName,
+            MaxLength = 50,
             MinWidth = 0,
         };
         AutomationProperties.SetAutomationId(nameBox, "EditProfileNameBox");
@@ -179,7 +388,7 @@ public sealed partial class SettingsPage : Page
         };
         AutomationProperties.SetAutomationId(errorText, "EditProfileErrorText");
         errorText.SetValue(TextBlock.ForegroundProperty,
-            Application.Current.Resources["SystemFillColorCriticalBrush"]);
+            global::App.Controls.ThemeBrushResolver.Resolve(this, "SystemFillColorCriticalBrush"));
 
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(nameBox);
@@ -187,7 +396,7 @@ public sealed partial class SettingsPage : Page
 
         var dialog = new ContentDialog
         {
-            Title = "编辑资料",
+            Title = "编辑名称",
             Content = CreateDialogBody(panel),
             PrimaryButtonText = "保存",
             CloseButtonText = "取消",
@@ -199,14 +408,30 @@ public sealed partial class SettingsPage : Page
 
         while (true)
         {
-            var result = await DialogHelper.ShowTrackedAsync(dialog);
+            var result = await DialogHelper.ShowTrackedAsync(dialog, expectedSession);
             if (result != ContentDialogResult.Primary)
                 return;
 
-            var operation = await ViewModel.RenameAsync(nameBox.Text.Trim());
+            var operation = await ViewModel.RenameAsync(
+                nameBox.Text.Trim(),
+                expectedSession.CancellationToken,
+                token => sync.SyncAsync(expectedSession, token));
 
             if (operation.IsSuccess)
+            {
+                lifecycle.TryRunSensitive(() => session.TryRunIfUnlocked(expectedSession, () =>
+                {
+                    if (!ViewModel.ProfileRefreshPending)
+                    {
+                        try { global::App.App.MainWindow?.RefreshVaultSnapshot(); }
+                        catch (Exception) { ViewModel.ProfileRefreshPending = true; }
+                    }
+                    ShowFeedback(ViewModel.ProfileRefreshPending
+                        ? "已更新名称，账户信息将在下次同步时刷新"
+                        : "已更新名称");
+                }));
                 return;
+            }
             if (operation.Status != UiOperationStatus.Failed)
                 return;
 
@@ -217,89 +442,32 @@ public sealed partial class SettingsPage : Page
 
     // ── 修改主密码 ───────────────────────────────────────────────────────────
 
-    private async void OnChangePasswordCardClick(object sender, RoutedEventArgs e)
+    private void OnChangePasswordCardClick(object sender, RoutedEventArgs e)
     {
-        var currentBox = new PasswordBox { Header = "当前主密码", PlaceholderText = "当前主密码", MinWidth = 0 };
-        AutomationProperties.SetAutomationId(currentBox, "ChangePasswordCurrentBox");
-
-        var newBox = new PasswordBox { Header = "新主密码", PlaceholderText = "新主密码" };
-        AutomationProperties.SetAutomationId(newBox, "ChangePasswordNewBox");
-
-        var confirmBox = new PasswordBox { Header = "确认新主密码", PlaceholderText = "确认新主密码" };
-        AutomationProperties.SetAutomationId(confirmBox, "ChangePasswordConfirmBox");
-
-        var hintBox = new TextBox { PlaceholderText = "密码提示（可选）" };
-        AutomationProperties.SetAutomationId(hintBox, "ChangePasswordHintBox");
-
-        var errorText = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
-        AutomationProperties.SetAutomationId(errorText, "ChangePasswordErrorText");
-        errorText.SetValue(TextBlock.ForegroundProperty,
-            Application.Current.Resources["SystemFillColorCriticalBrush"]);
-
-        var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(currentBox);
-        panel.Children.Add(newBox);
-        panel.Children.Add(confirmBox);
-        panel.Children.Add(hintBox);
-        panel.Children.Add(errorText);
-
-        var dialog = new ContentDialog
-        {
-            Title = "修改主密码",
-            Content = CreateDialogBody(panel),
-            PrimaryButtonText = "修改",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = XamlRoot,
-        };
-
-        ViewModel.OperationError = string.Empty;
-
-        try
-        {
-            while (true)
-            {
-                var result = await DialogHelper.ShowTrackedAsync(
-                    dialog,
-                    () =>
-                    {
-                        currentBox.Password = string.Empty;
-                        newBox.Password = string.Empty;
-                        confirmBox.Password = string.Empty;
-                    });
-                if (result != ContentDialogResult.Primary)
-                    return;
-
-                var hint = string.IsNullOrWhiteSpace(hintBox.Text) ? null : hintBox.Text.Trim();
-                var operation = await ViewModel.ChangePasswordAsync(
-                    currentBox.Password,
-                    newBox.Password,
-                    confirmBox.Password,
-                    hint);
-
-                // 成功由 App 层协调器统一登出并回登录页(SettingsViewModel 发 CredentialChanged intent)。
-                if (operation.IsSuccess)
-                    return;
-                if (operation.Status != UiOperationStatus.Failed)
-                    return;
-
-                errorText.Text = operation.Error ?? "操作失败，请稍后重试";
-                errorText.Visibility = Visibility.Visible;
-            }
-        }
-        finally
-        {
-            currentBox.Password = string.Empty;
-            newBox.Password = string.Empty;
-            confirmBox.Password = string.Empty;
-        }
+        ShowSubpage("更改主密码");
+        var page = new SettingsPasswordPage();
+        page.Initialize(ViewModel, () => SelectSection("account"));
+        SettingsContentFrame.Content = page;
     }
-
-    // ── 加密设置（KDF 迭代次数） ─────────────────────────────────────────────
-
     private async void OnChangeKdfCardClick(object sender, RoutedEventArgs e)
     {
-        var currentBox = new PasswordBox { Header = "当前主密码", PlaceholderText = "当前主密码", MinWidth = 0 };
+        var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+        var expectedSession = session.CaptureLease();
+        if (!ViewModel.TryReadCurrentKdf(out var kdfType, out var iterations, out _, out _))
+        {
+            ShowFeedback("无法读取当前账户的加密参数，请重新登录后重试。", InfoBarSeverity.Error);
+            return;
+        }
+        if (kdfType != KdfType.Pbkdf2)
+        {
+            ShowFeedback("当前账户使用 Argon2id；此版本暂不支持编辑其参数或切换加密算法。", InfoBarSeverity.Informational);
+            return;
+        }
+        var verifiedPassword = await PromptVerifiedMasterPasswordAsync("更改加密方式前，需要验证主密码。");
+        if (verifiedPassword is null)
+            return;
+        var currentBox = new PasswordBox { Password = verifiedPassword };
+        verifiedPassword = string.Empty;
         AutomationProperties.SetAutomationId(currentBox, "ChangeKdfCurrentBox");
 
         var iterationsBox = new NumberBox
@@ -307,7 +475,7 @@ public sealed partial class SettingsPage : Page
             Header = "PBKDF2 迭代次数",
             Minimum = KdfParameterPolicy.MinimumPbkdf2WriteIterations,
             Maximum = KdfParameterPolicy.MaximumPbkdf2WriteIterations,
-            Value = KdfParameterPolicy.MinimumPbkdf2WriteIterations,
+            Value = Math.Clamp(iterations, KdfParameterPolicy.MinimumPbkdf2WriteIterations, KdfParameterPolicy.MaximumPbkdf2WriteIterations),
             SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline,
             SmallChange = 100000,
             LargeChange = 500000,
@@ -317,16 +485,20 @@ public sealed partial class SettingsPage : Page
         var errorText = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(errorText, "ChangeKdfErrorText");
         errorText.SetValue(TextBlock.ForegroundProperty,
-            Application.Current.Resources["SystemFillColorCriticalBrush"]);
+            global::App.Controls.ThemeBrushResolver.Resolve(this, "SystemFillColorCriticalBrush"));
 
         var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(currentBox);
+        panel.Children.Add(new TextBlock
+        {
+            Text = "此版本支持调整 PBKDF2-SHA256 迭代次数；暂不支持切换到 Argon2id。",
+            TextWrapping = TextWrapping.Wrap,
+        });
         panel.Children.Add(iterationsBox);
         panel.Children.Add(errorText);
 
         var dialog = new ContentDialog
         {
-            Title = "加密设置",
+            Title = "更改加密方式",
             Content = CreateDialogBody(panel),
             PrimaryButtonText = "应用",
             CloseButtonText = "取消",
@@ -342,12 +514,13 @@ public sealed partial class SettingsPage : Page
             {
                 var result = await DialogHelper.ShowTrackedAsync(
                     dialog,
+                    expectedSession,
                     () => currentBox.Password = string.Empty);
                 if (result != ContentDialogResult.Primary)
                     return;
 
-                var iterations = double.IsNaN(iterationsBox.Value) ? 600000 : (int)iterationsBox.Value;
-                var operation = await ViewModel.ChangeIterationsAsync(currentBox.Password, iterations);
+                var requestedIterations = double.IsNaN(iterationsBox.Value) ? iterations : (int)iterationsBox.Value;
+                var operation = await ViewModel.ChangeIterationsAsync(currentBox.Password, requestedIterations);
 
                 // 成功由 App 层协调器统一登出并回登录页(SettingsViewModel 发 CredentialChanged intent)。
                 if (operation.IsSuccess)
@@ -371,26 +544,67 @@ public sealed partial class SettingsPage : Page
     {
         if (_suppressPinToggle)
             return;
-
-        if (PinToggle.IsOn)
+        try
         {
-            var pin = await PromptSetPinAsync();
-            if (pin is null)
+            if (PinToggle.IsOn)
+                await SetPinFromDialogAsync(false);
+            else
             {
-                _suppressPinToggle = true;
-                PinToggle.IsOn = false;
-                _suppressPinToggle = false;
-                return;
+                ViewModel.ClearPin();
+                ShowFeedback("已关闭 PIN 解锁");
             }
-
-            ViewModel.SetPin(pin);
         }
-        else
+        catch (OperationCanceledException ex) when (UiExceptionPolicy.IsGenuineCancellation(ex)) { }
+        catch (Exception)
         {
-            ViewModel.ClearPin();
+            if (IsLoaded)
+                ShowFeedback(ViewModel.SupportsLocalUnlock ? "无法更新 PIN 解锁，请稍后重试。" : ViewModel.PinUnlockDescription, InfoBarSeverity.Error);
+        }
+        finally
+        {
+            RestorePinToggle();
         }
     }
 
+    private async void OnChangePinClick(object sender, RoutedEventArgs e)
+    {
+        try { await SetPinFromDialogAsync(true); }
+        catch (OperationCanceledException ex) when (UiExceptionPolicy.IsGenuineCancellation(ex)) { }
+        catch (Exception)
+        {
+            if (IsLoaded)
+                ShowFeedback(ViewModel.SupportsLocalUnlock ? "无法更新 PIN 解锁，请稍后重试。" : ViewModel.PinUnlockDescription, InfoBarSeverity.Error);
+        }
+        finally { RestorePinToggle(); }
+    }
+
+    private async Task SetPinFromDialogAsync(bool replacing)
+    {
+        if (!ViewModel.CanUsePinUnlock)
+        {
+            ShowFeedback(ViewModel.PinUnlockDescription, InfoBarSeverity.Informational);
+            return;
+        }
+        var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+        var expectedSession = session.CaptureLease();
+        var pin = await PromptSetPinAsync();
+        if (pin is null)
+            return;
+        var lifecycle = global::App.App.Services.GetRequiredService<IAppLifecycleCoordinator>();
+        if (lifecycle.TryRunSensitive(() => session.TryRunIfUnlocked(expectedSession, () => ViewModel.SetPin(pin))))
+            ShowFeedback(replacing ? "已更改 PIN" : "已开启 PIN 解锁");
+    }
+
+    private void RestorePinToggle()
+    {
+        _suppressPinToggle = true;
+        try
+        {
+            PinToggle.IsOn = ViewModel.IsPinSet;
+            PinToggle.IsEnabled = ViewModel.CanUsePinUnlock;
+        }
+        finally { _suppressPinToggle = false; }
+    }
     private async Task<string?> PromptSetPinAsync()
     {
         var pinBox = new PasswordBox { Header = $"PIN（至少 {Core.Services.PinPolicy.MinLength} 位）", PlaceholderText = $"PIN（至少 {Core.Services.PinPolicy.MinLength} 位）", MinWidth = 0 };
@@ -402,7 +616,7 @@ public sealed partial class SettingsPage : Page
         var errorText = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(errorText, "SetPinErrorText");
         errorText.SetValue(TextBlock.ForegroundProperty,
-            Application.Current.Resources["SystemFillColorCriticalBrush"]);
+            global::App.Controls.ThemeBrushResolver.Resolve(this, "SystemFillColorCriticalBrush"));
 
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(pinBox);
@@ -411,9 +625,9 @@ public sealed partial class SettingsPage : Page
 
         var dialog = new ContentDialog
         {
-            Title = "设置 PIN",
+            Title = ViewModel.IsPinSet ? "更改 PIN" : "设置 PIN",
             Content = CreateDialogBody(panel),
-            PrimaryButtonText = "设置",
+            PrimaryButtonText = ViewModel.IsPinSet ? "更改" : "设置",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
@@ -469,7 +683,14 @@ public sealed partial class SettingsPage : Page
 
         if (HelloToggle.IsOn)
         {
-            var ok = await ViewModel.EnableWindowsHelloAsync();
+            var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+            var expectedSession = session.CaptureLease();
+            var lifecycle = global::App.App.Services.GetRequiredService<IAppLifecycleCoordinator>();
+            var ok = await ViewModel.EnableWindowsHelloAsync(
+                action => lifecycle.TryRunSensitive(() => session.TryRunIfUnlocked(expectedSession, action)),
+                expectedSession.CancellationToken);
+            if (!session.IsUnlocked(expectedSession))
+                return;
             if (!ok)
             {
                 _suppressHelloToggle = true;
@@ -496,166 +717,52 @@ public sealed partial class SettingsPage : Page
 
     private async void OnTwoFactorCardClick(object sender, RoutedEventArgs e)
     {
+        var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+        var expectedSession = session.CaptureLease();
+        var verifiedPassword = await PromptVerifiedMasterPasswordAsync("管理两步登录前，需要验证主密码。");
+        if (verifiedPassword is null)
+            return;
+        WebAuthnManagementSnapshot? webAuthnSnapshot;
         try
         {
-            // ── Loading 面板 ─────────────────────────────────────────────────
-            var loadingPanel = new StackPanel
-            {
-                Name = "TwoFactorLoadingPanel",
-                Orientation = Orientation.Horizontal,
-                Spacing = 8,
-                Children =
-                {
-                    new ProgressRing { IsActive = true, Width = 24, Height = 24 },
-                    new TextBlock { Text = "正在加载双重验证设置…", VerticalAlignment = VerticalAlignment.Center },
-                },
-            };
-            AutomationProperties.SetAutomationId(loadingPanel, "TwoFactorLoadingPanel");
-
-            // ── Error 面板 ───────────────────────────────────────────────────
-            var errorBar = new InfoBar
-            {
-                Severity = InfoBarSeverity.Error,
-                IsOpen = true,
-                IsClosable = false,
-            };
-            var retryButton = new Button { Content = "重试" };
-            AutomationProperties.SetAutomationId(retryButton, "TwoFactorRetryButton");
-            var errorPanel = new StackPanel
-            {
-                Visibility = Visibility.Collapsed,
-                Spacing = 8,
-                Children = { errorBar, retryButton },
-            };
-            AutomationProperties.SetAutomationId(errorPanel, "TwoFactorErrorPanel");
-
-            // ── Content 面板（含操作按钮）────────────────────────────────────
-            var infoText = new TextBlock { TextWrapping = TextWrapping.Wrap };
-            var enableTotpButton = new Button { Content = "启用 TOTP 验证器", HorizontalAlignment = HorizontalAlignment.Stretch };
-            AutomationProperties.SetAutomationId(enableTotpButton, "TwoFactorEnableTotpButton");
-            var enableEmailButton = new Button { Content = "启用邮箱验证码", HorizontalAlignment = HorizontalAlignment.Stretch };
-            AutomationProperties.SetAutomationId(enableEmailButton, "TwoFactorEnableEmailButton");
-            var manageWebAuthnButton = new Button
-            {
-                Content = "管理安全密钥 / Windows Hello",
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-            };
-            AutomationProperties.SetAutomationId(manageWebAuthnButton, "TwoFactorManageWebAuthnButton");
-            var disableButton = new Button { Content = "禁用已启用的验证", HorizontalAlignment = HorizontalAlignment.Stretch };
-            AutomationProperties.SetAutomationId(disableButton, "TwoFactorDisableButton");
-            var contentPanel = new StackPanel
-            {
-                Spacing = 12,
-                Visibility = Visibility.Collapsed,
-                Children = { infoText, enableTotpButton, enableEmailButton, manageWebAuthnButton, disableButton },
-            };
-            AutomationProperties.SetAutomationId(contentPanel, "TwoFactorContentPanel");
-
-            var rootPanel = new StackPanel { Spacing = 4, MinWidth = 0 };
-            rootPanel.Children.Add(loadingPanel);
-            rootPanel.Children.Add(errorPanel);
-            rootPanel.Children.Add(contentPanel);
-
-            var menuDialog = new ContentDialog
-            {
-                Title = "双重验证",
-                Content = CreateDialogBody(rootPanel),
-                CloseButtonText = "关闭",
-                XamlRoot = XamlRoot,
-            };
-
-            using var loadCts = new CancellationTokenSource();
-            using var trackedLoad = global::App.App.Services
-                .GetRequiredService<ITransientOperationRegistry>()
-                .Register(loadCts.Cancel, menuDialog.Hide, () => { });
-
-            IReadOnlyList<Core.Models.TwoFactorProvider>? loadedProviders = null;
-
-            async Task LoadAsync()
-            {
-                loadingPanel.Visibility = Visibility.Visible;
-                errorPanel.Visibility = Visibility.Collapsed;
-                contentPanel.Visibility = Visibility.Collapsed;
-
-                var result = await ViewModel.LoadProvidersAsync(loadCts.Token);
-                loadingPanel.Visibility = Visibility.Collapsed;
-                if (!result.IsSuccess || result.Value is null)
-                {
-                    if (result.Status == UiOperationStatus.Failed)
-                    {
-                        errorBar.Message = result.Error ?? "无法加载双重验证设置";
-                        errorPanel.Visibility = Visibility.Visible;
-                    }
-                    return;
-                }
-
-                loadedProviders = result.Value;
-                var providers = result.Value;
-                var totpEnabled = providers.Any(provider =>
-                    provider.Type == (int)TwoFactorProviderType.Authenticator && provider.Enabled);
-                var emailEnabled = providers.Any(provider =>
-                    provider.Type == (int)TwoFactorProviderType.Email && provider.Enabled);
-                var webAuthnEnabled = providers.Any(provider =>
-                    provider.Type == (int)TwoFactorProviderType.WebAuthn && provider.Enabled);
-                enableTotpButton.Content = totpEnabled ? "重新配置 TOTP 验证器" : "启用 TOTP 验证器";
-                enableEmailButton.Content = emailEnabled ? "重新配置邮箱验证码" : "启用邮箱验证码";
-                disableButton.IsEnabled = providers.Any(provider => provider.Enabled);
-                infoText.Text = providers.Count == 0
-                    ? "尚未配置任何双重验证方式。"
-                    : $"TOTP 验证器：{(totpEnabled ? "已启用" : "未启用")}\n邮箱验证码：{(emailEnabled ? "已启用" : "未启用")}\n安全密钥：{(webAuthnEnabled ? "已启用" : "未启用")}";
-                contentPanel.Visibility = Visibility.Visible;
-            }
-
-            retryButton.Click += async (_, _) => await LoadAsync();
-
-            string? action = null;
-            enableTotpButton.Click  += (_, _) => { action = "totp";    menuDialog.Hide(); };
-            enableEmailButton.Click += (_, _) => { action = "email";   menuDialog.Hide(); };
-            manageWebAuthnButton.Click += (_, _) => { action = "webauthn"; menuDialog.Hide(); };
-            disableButton.Click     += (_, _) => { action = "disable"; menuDialog.Hide(); };
-
-            menuDialog.Opened += async (_, _) => await LoadAsync();
-
-            await DialogHelper.ShowTrackedAsync(menuDialog);
-
-            switch (action)
-            {
-                case "totp":    await ShowEnableTotpDialogAsync(); break;
-                case "email":   await ShowEnableEmailDialogAsync(); break;
-                case "webauthn": await ShowManageWebAuthnDialogAsync(); break;
-                case "disable":
-                    if (loadedProviders is not null)
-                        await ShowDisableTwoFactorDialogAsync(loadedProviders);
-                    break;
-            }
+            var load = await ViewModel.LoadWebAuthnAsync(verifiedPassword, expectedSession.CancellationToken);
+            if (!session.IsUnlocked(expectedSession))
+                return;
+            webAuthnSnapshot = load.Value;
         }
-        catch (OperationCanceledException ex)
-            when (UiExceptionPolicy.IsGenuineCancellation(ex))
+        finally
         {
-            // 生命周期取消，正常退出
+            verifiedPassword = string.Empty;
         }
-        catch (Exception ex) when (Api.RequestTimeoutClassifier.IsTimeout(ex))
-        {
-            ViewModel.OperationError = UiExceptionPolicy.RequestTimeoutMessage;
-        }
-        catch (Exception)
-        {
-            ViewModel.OperationError = "无法加载双重验证设置，请稍后重试。";
-        }
+        ShowSubpage("两步登录");
+        var page = new SettingsTwoFactorPage();
+        page.Initialize(
+            ViewModel,
+            ShowEnableTotpDialogAsync,
+            ShowEnableEmailDialogAsync,
+            () => ShowManageWebAuthnDialogAsync(page.ApplyWebAuthnSnapshot, addOnly: true),
+            ShowDisableTwoFactorDialogAsync,
+            ShowRecoveryCodeDialogAsync,
+            id => ShowManageWebAuthnDialogAsync(page.ApplyWebAuthnSnapshot, removeId: id),
+            webAuthnSnapshot,
+            () => ShowManageWebAuthnDialogAsync(page.ApplyWebAuthnSnapshot, listOnly: true));
+        SettingsContentFrame.Content = page;
     }
-
-    // ── TOTP 启用对话框（三步：密码 → secret+code → 恢复码） ─────────────────
-
     private async Task ShowEnableTotpDialogAsync()
     {
-        // 步骤 1：输入主密码
+        var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+        var expectedSession = session.CaptureLease();
+        if (!session.IsUnlocked(expectedSession))
+            return;
+        TotpSetupCredentialsPanel? credentialsPanel = null;
+        // Step 1: authenticate before requesting a setup secret.
         var pwBox = new PasswordBox { Header = "当前主密码", PlaceholderText = "当前主密码", MinWidth = 0 };
         AutomationProperties.SetAutomationId(pwBox, "TotpSetupPasswordBox");
 
         var step1Error = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(step1Error, "TotpSetupStep1ErrorText");
         step1Error.SetValue(TextBlock.ForegroundProperty,
-            Application.Current.Resources["SystemFillColorCriticalBrush"]);
+            global::App.Controls.ThemeBrushResolver.Resolve(this, "SystemFillColorCriticalBrush"));
 
         var step1Panel = new StackPanel { Spacing = 8 };
         step1Panel.Children.Add(new TextBlock { Text = "请输入主密码以开始设置 TOTP 验证器", TextWrapping = TextWrapping.Wrap });
@@ -664,7 +771,7 @@ public sealed partial class SettingsPage : Page
 
         var step1Dialog = new ContentDialog
         {
-            Title = "启用 TOTP 验证器 — 第 1 步",
+            Title = "验证主密码",
             Content = CreateDialogBody(step1Panel),
             PrimaryButtonText = "下一步",
             CloseButtonText = "取消",
@@ -683,10 +790,13 @@ public sealed partial class SettingsPage : Page
             {
                 var r1 = await DialogHelper.ShowTrackedAsync(
                     step1Dialog,
+                    expectedSession,
                     () => pwBox.Password = string.Empty);
                 if (r1 != ContentDialogResult.Primary) return;
 
-                var operation = await ViewModel.BeginTotpSetupAsync(pwBox.Password);
+                var operation = await ViewModel.BeginTotpSetupAsync(pwBox.Password, expectedSession.CancellationToken);
+                if (!session.IsUnlocked(expectedSession))
+                    return;
 
                 if (operation.IsSuccess)
                 {
@@ -700,49 +810,33 @@ public sealed partial class SettingsPage : Page
                 step1Error.Visibility = Visibility.Visible;
             }
 
-        // 步骤 2：显示 secret/otpauth，让用户输入验证码
-        var secretText = new TextBlock
-        {
-            Text = secret,
-            IsTextSelectionEnabled = true,
-            TextWrapping = TextWrapping.Wrap,
-            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
-        };
-        AutomationProperties.SetAutomationId(secretText, "TotpSetupSecretText");
-
-        var otpauthText = new TextBlock
-        {
-            Text = otpauth,
-            IsTextSelectionEnabled = true,
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 12,
-            Foreground = Application.Current.Resources.TryGetValue("TextFillColorSecondaryBrush", out var sb2)
-                ? (Microsoft.UI.Xaml.Media.Brush)sb2 : null,
-        };
-        AutomationProperties.SetAutomationId(otpauthText, "TotpSetupOtpauthText");
-
-        var codeBox = new TextBox { PlaceholderText = "输入验证码（6 位）", MaxLength = 8 };
+        // Step 2: render the actual setup URI locally and keep manual entry available.
+        credentialsPanel = await TotpSetupCredentialsPanel.CreateAsync(secret, otpauth, expectedSession);
+        if (credentialsPanel is null)
+            return;
+        var codeBox = new TextBox { PlaceholderText = "6 位验证码", MaxLength = 6, Width = 160, HorizontalAlignment = HorizontalAlignment.Left, FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Code, Consolas") };
         AutomationProperties.SetAutomationId(codeBox, "TotpSetupCodeBox");
 
         var step2Error = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(step2Error, "TotpSetupStep2ErrorText");
         step2Error.SetValue(TextBlock.ForegroundProperty,
-            Application.Current.Resources["SystemFillColorCriticalBrush"]);
+            global::App.Controls.ThemeBrushResolver.Resolve(this, "SystemFillColorCriticalBrush"));
 
         var step2Panel = new StackPanel { Spacing = 8, MinWidth = 0 };
-        step2Panel.Children.Add(new TextBlock { Text = "请将以下密钥添加到您的验证器应用，然后输入验证码", TextWrapping = TextWrapping.Wrap });
-        step2Panel.Children.Add(new TextBlock { Text = "密钥（Base32）：", Margin = new Microsoft.UI.Xaml.Thickness(0, 8, 0, 0) });
-        step2Panel.Children.Add(secretText);
-        step2Panel.Children.Add(new TextBlock { Text = "OTPAuth URI：", Margin = new Microsoft.UI.Xaml.Thickness(0, 8, 0, 0) });
-        step2Panel.Children.Add(otpauthText);
-        step2Panel.Children.Add(new TextBlock { Text = "验证码：", Margin = new Microsoft.UI.Xaml.Thickness(0, 8, 0, 0) });
+        step2Panel.Children.Add(new TextBlock
+        {
+            Text = "用 Microsoft Authenticator、Google Authenticator 等应用扫描二维码，再输入应用里显示的 6 位验证码。",
+            TextWrapping = TextWrapping.Wrap,
+        });
+        step2Panel.Children.Add(credentialsPanel);
+        step2Panel.Children.Add(new TextBlock { Text = "验证码", Margin = new Thickness(0, 8, 0, 0) });
         step2Panel.Children.Add(codeBox);
         step2Panel.Children.Add(step2Error);
 
         var step2Dialog = new ContentDialog
         {
-            Title = "启用 TOTP 验证器 — 第 2 步",
-            Content = CreateDialogBody(step2Panel),
+            Title = "设置身份验证器应用",
+            Content = CreateDialogBody(step2Panel, 472),
             PrimaryButtonText = "启用",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
@@ -756,27 +850,31 @@ public sealed partial class SettingsPage : Page
         {
             var r2 = await DialogHelper.ShowTrackedAsync(
                 step2Dialog,
+                expectedSession,
                 () =>
                 {
                     pwBox.Password = string.Empty;
                     codeBox.Text = string.Empty;
-                    secretText.Text = string.Empty;
-                    otpauthText.Text = string.Empty;
+                    credentialsPanel.ClearSensitive();
+                    secret = string.Empty;
+                    otpauth = string.Empty;
                 });
             if (r2 != ContentDialogResult.Primary) return;
 
             var operation = await ViewModel.EnableTotpAsync(
                 pwBox.Password,
                 secret,
-                codeBox.Text.Trim());
+                codeBox.Text.Trim(), expectedSession.CancellationToken);
+            if (!session.IsUnlocked(expectedSession))
+                return;
 
             if (operation.IsSuccess)
             {
                 activation = operation.Value!;
                 pwBox.Password = string.Empty;
                 codeBox.Text = string.Empty;
-                secretText.Text = string.Empty;
-                otpauthText.Text = string.Empty;
+                credentialsPanel.ClearSensitive();
+                otpauth = string.Empty;
                 secret = string.Empty;
                 otpauth = string.Empty;
                 break;
@@ -791,13 +889,13 @@ public sealed partial class SettingsPage : Page
         if (activation is null)
             return;
 
-        // 步骤 3：显示恢复码
+        // Step 3: show the server-issued recovery code only after activation succeeds.
         var recoveryCode = activation.RecoveryCode ?? string.Empty;
         var rcText = new TextBlock
         {
             Text = recoveryCode,
             Visibility = activation.HasRecoveryCode ? Visibility.Visible : Visibility.Collapsed,
-            IsTextSelectionEnabled = true,
+            IsTextSelectionEnabled = false,
             TextWrapping = TextWrapping.Wrap,
             FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
         };
@@ -832,7 +930,7 @@ public sealed partial class SettingsPage : Page
         {
             Title = "TOTP 启用成功",
             Content = CreateDialogBody(step3Panel),
-            PrimaryButtonText = activation.HasRecoveryCode ? string.Empty : "重新获取恢复码",
+            PrimaryButtonText = activation.HasRecoveryCode ? "复制" : "重新获取恢复码",
             CloseButtonText = "完成",
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
@@ -842,6 +940,7 @@ public sealed partial class SettingsPage : Page
         {
             var r3 = await DialogHelper.ShowTrackedAsync(
                 step3Dialog,
+                expectedSession,
                 () =>
                 {
                     rcText.Text = string.Empty;
@@ -853,15 +952,26 @@ public sealed partial class SettingsPage : Page
                 break;
             }
 
+            if (!string.IsNullOrEmpty(rcText.Text))
+            {
+                var lifecycle = global::App.App.Services.GetRequiredService<IAppLifecycleCoordinator>();
+                lifecycle.TryRunSensitive(() => session.TryRunIfUnlocked(expectedSession, () =>
+                    global::App.App.Services.GetRequiredService<IClipboardService>().SetSecretText(rcText.Text)));
+                break;
+            }
+
             UiOperationResult<string> recoveryOperation;
             try
             {
-                recoveryOperation = await ViewModel.GetRecoveryCodeAsync(recoveryPasswordBox.Password);
+                recoveryOperation = await ViewModel.GetRecoveryCodeAsync(recoveryPasswordBox.Password, expectedSession.CancellationToken);
             }
             finally
             {
                 recoveryPasswordBox.Password = string.Empty;
             }
+
+            if (!session.IsUnlocked(expectedSession))
+                return;
 
             if (recoveryOperation.IsSuccess)
             {
@@ -869,7 +979,7 @@ public sealed partial class SettingsPage : Page
                 rcText.Visibility = Visibility.Visible;
                 recoveryWarning.IsOpen = false;
                 recoveryPasswordBox.Visibility = Visibility.Collapsed;
-                step3Dialog.PrimaryButtonText = string.Empty;
+                step3Dialog.PrimaryButtonText = "复制";
                 continue;
             }
             if (recoveryOperation.Status != UiOperationStatus.Failed)
@@ -883,6 +993,9 @@ public sealed partial class SettingsPage : Page
         }
         finally
         {
+            credentialsPanel?.Dispose();
+            secret = string.Empty;
+            otpauth = string.Empty;
             pwBox.Password = string.Empty;
         }
     }
@@ -901,7 +1014,7 @@ public sealed partial class SettingsPage : Page
         var step1Error = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(step1Error, "EmailSetupStep1ErrorText");
         step1Error.SetValue(TextBlock.ForegroundProperty,
-            Application.Current.Resources["SystemFillColorCriticalBrush"]);
+            global::App.Controls.ThemeBrushResolver.Resolve(this, "SystemFillColorCriticalBrush"));
 
         var step1Panel = new StackPanel { Spacing = 8 };
         step1Panel.Children.Add(new TextBlock { Text = "请输入主密码和接收验证码的邮箱地址", TextWrapping = TextWrapping.Wrap });
@@ -950,7 +1063,7 @@ public sealed partial class SettingsPage : Page
         var step2Error = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(step2Error, "EmailSetupStep2ErrorText");
         step2Error.SetValue(TextBlock.ForegroundProperty,
-            Application.Current.Resources["SystemFillColorCriticalBrush"]);
+            global::App.Controls.ThemeBrushResolver.Resolve(this, "SystemFillColorCriticalBrush"));
 
         var step2Panel = new StackPanel { Spacing = 8, MinWidth = 0 };
         step2Panel.Children.Add(new TextBlock { Text = $"验证码已发送至 {emailAddressBox.Text.Trim()}，请输入：", TextWrapping = TextWrapping.Wrap });
@@ -1011,9 +1124,15 @@ public sealed partial class SettingsPage : Page
 
     // WebAuthn credential management
 
-    private async Task ShowManageWebAuthnDialogAsync()
+    private async Task ShowManageWebAuthnDialogAsync(
+        Action<WebAuthnManagementSnapshot> publishSnapshot,
+        bool listOnly = false,
+        bool addOnly = false,
+        int? removeId = null)
     {
-        using var managementCts = new CancellationTokenSource();
+        var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+        var expectedSession = session.CaptureLease();
+        using var managementCts = CancellationTokenSource.CreateLinkedTokenSource(expectedSession.CancellationToken);
         var verificationMethod = new ComboBox
         {
             Header = "验证方式",
@@ -1083,7 +1202,7 @@ public sealed partial class SettingsPage : Page
         };
         passwordError.SetValue(
             TextBlock.ForegroundProperty,
-            Application.Current.Resources["SystemFillColorCriticalBrush"]);
+            global::App.Controls.ThemeBrushResolver.Resolve(this, "SystemFillColorCriticalBrush"));
         AutomationProperties.SetAutomationId(passwordError, "WebAuthnManagementPasswordError");
 
         var passwordPanel = new StackPanel { Spacing = 8 };
@@ -1181,6 +1300,7 @@ public sealed partial class SettingsPage : Page
             {
                 var result = await DialogHelper.ShowTrackedAsync(
                     passwordDialog,
+                    expectedSession,
                     () =>
                     {
                         verificationInput.Password = string.Empty;
@@ -1210,6 +1330,9 @@ public sealed partial class SettingsPage : Page
                     activeVerification = verification;
                     verificationInput.Password = string.Empty;
                     snapshot = load.Value;
+                    if (!session.IsUnlocked(expectedSession))
+                        return;
+                    publishSnapshot(snapshot);
                     break;
                 }
                 if (load.Status == UiOperationStatus.Busy)
@@ -1224,6 +1347,9 @@ public sealed partial class SettingsPage : Page
                 passwordError.Text = load.Error ?? "无法加载安全密钥，请稍后重试";
                 passwordError.Visibility = Visibility.Visible;
             }
+
+            if (listOnly || removeId.HasValue && snapshot.Credentials.All(credential => credential.Id != removeId.Value))
+                return;
 
             string? statusMessage = ViewModel.CanRegisterWebAuthn
                 ? null
@@ -1248,7 +1374,9 @@ public sealed partial class SettingsPage : Page
                     });
                 }
 
-                WebAuthnCredentialListItem? deleteTarget = null;
+                WebAuthnCredentialListItem? deleteTarget = removeId.HasValue
+                    ? snapshot.Credentials.FirstOrDefault(credential => credential.Id == removeId.Value)
+                    : null;
                 ContentDialog? managementDialog = null;
                 foreach (var credential in snapshot.Credentials)
                 {
@@ -1319,6 +1447,7 @@ public sealed partial class SettingsPage : Page
 
                 var credentialScroller = new ScrollViewer
                 {
+                    Visibility = addOnly ? Visibility.Collapsed : Visibility.Visible,
                     MaxHeight = 280,
                     VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                     VerticalScrollMode = ScrollMode.Auto,
@@ -1344,7 +1473,7 @@ public sealed partial class SettingsPage : Page
 
                 managementDialog = new ContentDialog
                 {
-                    Title = "安全密钥",
+                    Title = "添加安全密钥",
                     Content = CreateDialogBody(content),
                     PrimaryButtonText = "添加安全密钥",
                     IsPrimaryButtonEnabled = ViewModel.CanRegisterWebAuthn,
@@ -1353,8 +1482,9 @@ public sealed partial class SettingsPage : Page
                     XamlRoot = XamlRoot,
                 };
 
-                var action = await DialogHelper.ShowTrackedAsync(
+                var action = removeId.HasValue ? ContentDialogResult.None : await DialogHelper.ShowTrackedAsync(
                     managementDialog,
+                    expectedSession,
                     () =>
                     {
                         activeVerification = null;
@@ -1367,6 +1497,7 @@ public sealed partial class SettingsPage : Page
                     var isLastCredential = snapshot.Credentials.Count == 1;
                     var confirmed = await DialogHelper.ConfirmAsync(
                         XamlRoot,
+                        expectedSession,
                         "删除安全密钥",
                         isLastCredential
                             ? "这是最后一把安全密钥。删除后将关闭 WebAuthn 双重验证，确定继续吗？"
@@ -1375,7 +1506,7 @@ public sealed partial class SettingsPage : Page
                         ct: managementCts.Token);
                     if (!confirmed)
                     {
-                        if (managementCts.IsCancellationRequested)
+                        if (managementCts.IsCancellationRequested || removeId.HasValue)
                             return;
                         continue;
                     }
@@ -1388,10 +1519,18 @@ public sealed partial class SettingsPage : Page
                     if (deletion.IsSuccess && deletion.Value is not null)
                     {
                         snapshot = deletion.Value;
+                        if (!session.IsUnlocked(expectedSession))
+                            return;
+                        publishSnapshot(snapshot);
                         statusMessage = isLastCredential
                             ? "WebAuthn 双重验证已关闭。"
                             : "安全密钥已删除。";
                         statusSeverity = InfoBarSeverity.Success;
+                        if (removeId.HasValue)
+                        {
+                            ShowFeedback(statusMessage);
+                            return;
+                        }
                         continue;
                     }
                     if (deletion.Status == UiOperationStatus.Busy)
@@ -1405,6 +1544,11 @@ public sealed partial class SettingsPage : Page
 
                     statusMessage = deletion.Error ?? "无法删除安全密钥，请稍后重试";
                     statusSeverity = InfoBarSeverity.Error;
+                    if (removeId.HasValue)
+                    {
+                        ShowFeedback(statusMessage, statusSeverity);
+                        return;
+                    }
                     continue;
                 }
 
@@ -1448,7 +1592,12 @@ public sealed partial class SettingsPage : Page
                 }
 
                 if (registration.Value is not null)
+                {
                     snapshot = registration.Value;
+                    if (!session.IsUnlocked(expectedSession))
+                        return;
+                    publishSnapshot(snapshot);
+                }
 
                 if (registration.IsSuccess)
                 {
@@ -1460,6 +1609,11 @@ public sealed partial class SettingsPage : Page
                     statusMessage = registration.Error
                         ?? "无法添加安全密钥，请稍后重试";
                     statusSeverity = InfoBarSeverity.Error;
+                }
+                if (addOnly)
+                {
+                    ShowFeedback(statusMessage, statusSeverity);
+                    return;
                 }
             }
         }
@@ -1508,7 +1662,7 @@ public sealed partial class SettingsPage : Page
         var disableError = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(disableError, "DisableTwoFactorErrorText");
         disableError.SetValue(TextBlock.ForegroundProperty,
-            Application.Current.Resources["SystemFillColorCriticalBrush"]);
+            global::App.Controls.ThemeBrushResolver.Resolve(this, "SystemFillColorCriticalBrush"));
 
         var disablePanel = new StackPanel { Spacing = 8 };
         disablePanel.Children.Add(new TextBlock { Text = "选择要禁用的验证方式并输入主密码确认：", TextWrapping = TextWrapping.Wrap });
@@ -1755,7 +1909,7 @@ public sealed partial class SettingsPage : Page
         };
         credentialError.SetValue(
             TextBlock.ForegroundProperty,
-            Application.Current.Resources["SystemFillColorCriticalBrush"]);
+            global::App.Controls.ThemeBrushResolver.Resolve(this, "SystemFillColorCriticalBrush"));
         AutomationProperties.SetAutomationId(credentialError, "DeleteAccountCredentialError");
 
         var credentialPanel = new StackPanel { Spacing = 8 };
@@ -1855,7 +2009,7 @@ public sealed partial class SettingsPage : Page
         {
             Text = $"{preflight.Binding.NormalizedEmail}\n{preflight.Binding.Endpoints.WebVault.Value}",
             TextWrapping = TextWrapping.Wrap,
-            IsTextSelectionEnabled = true,
+            IsTextSelectionEnabled = false,
         });
         panel.Children.Add(new InfoBar
         {
@@ -1912,7 +2066,7 @@ public sealed partial class SettingsPage : Page
         };
         error.SetValue(
             TextBlock.ForegroundProperty,
-            Application.Current.Resources["SystemFillColorCriticalBrush"]);
+            global::App.Controls.ThemeBrushResolver.Resolve(this, "SystemFillColorCriticalBrush"));
         AutomationProperties.SetAutomationId(error, "DeleteAccountEmailConfirmationError");
 
         var panel = new StackPanel { Spacing = 8 };
@@ -2035,6 +2189,222 @@ public sealed partial class SettingsPage : Page
 
     private void OnEmergencyAccessCardClick(object sender, RoutedEventArgs e)
     {
-        global::App.App.Services.GetRequiredService<global::App.Services.INavigationService>().GoToEmergencyAccess();
+        SelectSection("emergency");
+    }
+
+    private void ShowFeedback(string message, InfoBarSeverity severity = InfoBarSeverity.Success)
+    {
+        SettingsFeedbackInfoBar.Message = message;
+        SettingsFeedbackInfoBar.Severity = severity;
+        SettingsFeedbackInfoBar.IsOpen = true;
+    }
+
+    private async Task<bool> VerifyMasterPasswordAsync(string reason) =>
+        await PromptVerifiedMasterPasswordAsync(reason) is not null;
+
+    private async Task<string?> PromptVerifiedMasterPasswordAsync(string reason)
+    {
+        var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+        var expectedSession = session.CaptureLease();
+        var password = new PasswordBox { Header = "主密码", MinWidth = 280 };
+        var error = new TextBlock { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
+        error.SetValue(TextBlock.ForegroundProperty, global::App.Controls.ThemeBrushResolver.Resolve(this, "SystemFillColorCriticalBrush"));
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(new TextBlock { Text = reason, TextWrapping = TextWrapping.Wrap });
+        content.Children.Add(password);
+        content.Children.Add(error);
+        var dialog = new ContentDialog
+        {
+            Title = "验证主密码",
+            Content = CreateDialogBody(content),
+            PrimaryButtonText = "继续",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+        };
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(expectedSession.CancellationToken);
+        using var registration = global::App.App.Services.GetRequiredService<ITransientOperationRegistry>()
+            .Register(cancellation.Cancel, () => dialog.DispatcherQueue.TryEnqueue(dialog.Hide), () => password.Password = string.Empty);
+        try
+        {
+            while (!cancellation.IsCancellationRequested)
+            {
+                if (await DialogHelper.ShowTrackedAsync(dialog, expectedSession, () => password.Password = string.Empty, ct: cancellation.Token)
+                    != ContentDialogResult.Primary)
+                    return null;
+                if (string.IsNullOrEmpty(password.Password))
+                {
+                    error.Text = "请输入主密码";
+                    error.Visibility = Visibility.Visible;
+                    continue;
+                }
+                if (await global::App.App.Services.GetRequiredService<IAccountService>()
+                    .VerifyMasterPasswordAsync(password.Password, cancellation.Token))
+                    return session.IsUnlocked(expectedSession) ? password.Password : null;
+                error.Text = "主密码不正确，请重试";
+                error.Visibility = Visibility.Visible;
+            }
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        catch (Exception)
+        {
+            ShowFeedback("暂时无法验证主密码，请重试。", InfoBarSeverity.Error);
+        }
+        finally
+        {
+            password.Password = string.Empty;
+        }
+        return null;
+    }
+
+    private async Task ShowRecoveryCodeDialogAsync()
+    {
+        var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+        var expectedSession = session.CaptureLease();
+        var lifecycle = global::App.App.Services.GetRequiredService<IAppLifecycleCoordinator>();
+        var password = new PasswordBox { Header = "主密码", MinWidth = 280 };
+        var error = new TextBlock { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(new TextBlock { Text = "查看恢复代码前，需要验证主密码。", TextWrapping = TextWrapping.Wrap });
+        content.Children.Add(password);
+        content.Children.Add(error);
+        var dialog = new ContentDialog
+        {
+            Title = "恢复代码",
+            Content = CreateDialogBody(content),
+            PrimaryButtonText = "继续",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+        };
+        string recovery = string.Empty;
+        try
+        {
+            while (true)
+            {
+                if (await DialogHelper.ShowTrackedAsync(dialog, expectedSession, () => password.Password = string.Empty)
+                    != ContentDialogResult.Primary)
+                    return;
+                session.ThrowIfExpired(expectedSession);
+                var result = await ViewModel.GetRecoveryCodeAsync(password.Password);
+                if (result.IsSuccess)
+                {
+                    session.ThrowIfExpired(expectedSession);
+                    recovery = result.Value ?? string.Empty;
+                    break;
+                }
+                if (result.Status != UiOperationStatus.Failed)
+                    return;
+                error.Text = result.Error ?? "无法获取恢复代码";
+                error.Visibility = Visibility.Visible;
+            }
+        }
+        finally
+        {
+            password.Password = string.Empty;
+        }
+
+        var code = new TextBlock
+        {
+            Text = recovery,
+            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Code, Consolas"),
+            FontSize = 20,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Center,
+            IsTextSelectionEnabled = false,
+        };
+        var body = new StackPanel { Spacing = 16 };
+        body.Children.Add(new TextBlock
+        {
+            Text = "把它保存在密码库以外的安全地方，比如打印出来。丢失所有验证方式时用它登录，登录后两步登录会全部关闭。",
+            TextWrapping = TextWrapping.Wrap,
+        });
+        body.Children.Add(new Border
+        {
+            Child = code,
+            Padding = new Thickness(16, 14, 16, 14),
+            CornerRadius = new CornerRadius(6),
+            BorderThickness = new Thickness(1),
+            BorderBrush = global::App.Controls.ThemeBrushResolver.Resolve(this, "DividerStrokeColorDefaultBrush"),
+        });
+        var recoveryDialog = new ContentDialog
+        {
+            Title = "恢复代码",
+            Content = CreateDialogBody(body),
+            PrimaryButtonText = "复制",
+            CloseButtonText = "关闭",
+            XamlRoot = XamlRoot,
+        };
+        try
+        {
+            if (await DialogHelper.ShowTrackedAsync(recoveryDialog, expectedSession, () =>
+                {
+                    code.Text = string.Empty;
+                    recovery = string.Empty;
+                })
+                == ContentDialogResult.Primary)
+            {
+                if (lifecycle.TryRunSensitive(() => session.TryRunIfUnlocked(expectedSession, () =>
+                    global::App.App.Services.GetRequiredService<IClipboardService>().SetSecretText(recovery))))
+                    ShowFeedback("恢复代码已复制");
+            }
+        }
+        finally
+        {
+            code.Text = string.Empty;
+            recovery = string.Empty;
+        }
+    }
+
+    private async void OnLogoutClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "退出登录？",
+            Content = new TextBlock { Text = "清除本机缓存的密码库，下次需要联网登录。", TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = "退出登录",
+            CloseButtonText = "取消",
+            XamlRoot = XamlRoot,
+        };
+        if (await DialogHelper.ShowTrackedAsync(dialog) == ContentDialogResult.Primary)
+            await global::App.App.Services.GetRequiredService<IAppLifecycleCoordinator>().RequestAsync(AppLifecycleIntent.Logout);
+    }
+
+    private async void OnOpenSourceClick(object sender, RoutedEventArgs e) =>
+        await OpenWebLinkAsync("https://github.com/moooyo/WinVaultWarden");
+
+    private async void OnOpenReleasesClick(object sender, RoutedEventArgs e) =>
+        await OpenWebLinkAsync("https://github.com/moooyo/WinVaultWarden/releases");
+
+    private async Task OpenWebLinkAsync(string address)
+    {
+        try
+        {
+            if (!await Launcher.LaunchUriAsync(new Uri(address)))
+                ShowFeedback("无法打开浏览器。", InfoBarSeverity.Error);
+        }
+        catch (Exception)
+        {
+            ShowFeedback("无法打开浏览器。", InfoBarSeverity.Error);
+        }
+    }
+
+    private async void OnOpenLogsClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WinVaultWarden", "logs");
+            Directory.CreateDirectory(path);
+            var folder = await StorageFolder.GetFolderFromPathAsync(path);
+            if (await Launcher.LaunchFolderAsync(folder))
+                ShowFeedback("已在资源管理器中打开日志文件夹");
+            else
+                ShowFeedback("无法打开日志文件夹。", InfoBarSeverity.Error);
+        }
+        catch (Exception)
+        {
+            ShowFeedback("无法打开日志文件夹。", InfoBarSeverity.Error);
+        }
     }
 }

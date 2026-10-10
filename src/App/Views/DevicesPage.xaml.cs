@@ -1,5 +1,6 @@
 using App.ViewModels;
 using App.ViewModels.Models;
+using App.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -8,84 +9,98 @@ namespace App.Views;
 
 public sealed partial class DevicesPage : Page
 {
+    private readonly DeviceApprovalWindowService _requestWindows;
+    private readonly DispatcherTimer _expiryTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private bool _loaded;
+    private CancellationTokenSource? _pageCancellation;
+    private bool _refreshing;
+    private bool _refreshAgain;
     public DevicesViewModel ViewModel { get; }
 
     public DevicesPage()
     {
         ViewModel = global::App.App.Services.GetRequiredService<DevicesViewModel>();
+        _requestWindows = global::App.App.Services.GetRequiredService<DeviceApprovalWindowService>();
         InitializeComponent();
+        Unloaded += OnPageUnloaded;
+        _expiryTimer.Tick += (_, _) => RefreshExpiryLabels();
     }
 
     private void OnPageLoaded(object sender, RoutedEventArgs e)
     {
-        _ = ViewModel.RefreshRequestsAsync();
+        _loaded = true;
+        _pageCancellation?.Dispose();
+        _pageCancellation = new CancellationTokenSource();
+        _requestWindows.PendingRequestsChanged -= RefreshRequestsList;
+        _requestWindows.PendingRequestsChanged += RefreshRequestsList;
+        _expiryTimer.Start();
+        RefreshRequestsList();
+    }
+
+    private void OnPageUnloaded(object sender, RoutedEventArgs e)
+    {
+        _loaded = false;
+        _pageCancellation?.Cancel();
+        _expiryTimer.Stop();
+        _requestWindows.PendingRequestsChanged -= RefreshRequestsList;
     }
 
     private void OnRefreshRequestsClick(object sender, RoutedEventArgs e)
     {
-        _ = ViewModel.RefreshRequestsAsync();
+        RefreshRequestsList();
     }
 
     /// <summary>Refreshes requests after a notification on the UI thread.</summary>
-    public void RefreshRequestsList() => _ = ViewModel.RefreshRequestsAsync();
+    public void RefreshRequestsList() => _ = RefreshPendingRequestsAsync();
 
-    private async void OnApproveRequestClick(object sender, RoutedEventArgs e)
+    private async Task RefreshPendingRequestsAsync()
+    {
+        if (!_loaded)
+            return;
+        if (_refreshing)
+        {
+            _refreshAgain = true;
+            return;
+        }
+        _refreshing = true;
+        try
+        {
+            var ct = _pageCancellation?.Token ?? CancellationToken.None;
+            await Task.WhenAll(ViewModel.RefreshRequestsAsync(ct), ViewModel.RefreshDevicesAsync(ct));
+            if (_loaded)
+                RefreshExpiryLabels();
+        }
+        finally
+        {
+            _refreshing = false;
+            if (_refreshAgain && _loaded)
+            {
+                _refreshAgain = false;
+                await RefreshPendingRequestsAsync();
+            }
+        }
+    }
+
+    private void RefreshExpiryLabels()
+    {
+        foreach (var item in ViewModel.PendingRequests.ToArray())
+        {
+            if (item.ExpiresAt is { } expiry && expiry <= DateTimeOffset.UtcNow)
+                ViewModel.PendingRequests.Remove(item);
+            else
+                item.RefreshExpiration();
+        }
+        if (!ViewModel.IsBusy && ViewModel.PendingRequests.Count == 0
+            && ViewModel.RequestsState == DataPageState.Content)
+            ViewModel.RequestsState = DataPageState.Empty;
+    }
+
+    private void OnApproveRequestClick(object sender, RoutedEventArgs e)
     {
         var item = (sender as FrameworkElement)?.Tag as AuthRequestItem
                 ?? (sender as FrameworkElement)?.DataContext as AuthRequestItem;
-        if (item is null)
-            return;
-        await ViewModel.ApproveAsync(item, ConfirmFingerprintAsync, CancellationToken.None);
-    }
-
-    /// <summary>Requires an explicit fingerprint match before releasing the approval gate.</summary>
-    private async Task<bool> ConfirmFingerprintAsync(AuthRequestItem item, CancellationToken ct)
-    {
-        var body = new StackPanel { Spacing = 12 };
-        body.Children.Add(new TextBlock
-        {
-            Text = $"{item.DeviceTypeName} · {item.IpAddress}\n{item.CreatedLabel}",
-            TextWrapping = TextWrapping.Wrap,
-        });
-        body.Children.Add(new TextBlock
-        {
-            Text = "请确认下方指纹短语与发起登录的设备上显示的完全一致。只有一致才批准；若不一致，可能是恶意或被篡改的设备正试图窃取你的密码库，请拒绝。",
-            TextWrapping = TextWrapping.Wrap,
-        });
-        body.Children.Add(new TextBlock
-        {
-            Text = item.FingerprintPhrase,
-            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
-            FontSize = 18,
-            IsTextSelectionEnabled = true,
-            TextWrapping = TextWrapping.Wrap,
-        });
-
-        var verifiedBox = new CheckBox
-        {
-            Content = new TextBlock
-            {
-                Text = "我已在请求设备上核对，五词指纹短语完全一致。",
-                TextWrapping = TextWrapping.Wrap,
-            },
-        };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(verifiedBox, "DevicesFingerprintVerifiedCheckBox");
-        body.Children.Add(verifiedBox);
-
-        var dialog = new ContentDialog
-        {
-            XamlRoot = this.XamlRoot,
-            Title = "确认设备登录请求",
-            Content = body,
-            PrimaryButtonText = "确认并批准",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Close,
-            IsPrimaryButtonEnabled = false,
-        };
-        verifiedBox.Checked += (_, _) => dialog.IsPrimaryButtonEnabled = true;
-        verifiedBox.Unchecked += (_, _) => dialog.IsPrimaryButtonEnabled = false;
-        return await DialogHelper.ShowTrackedAsync(dialog, ct: ct) == ContentDialogResult.Primary
-            && verifiedBox.IsChecked == true;
+        if (item is not null)
+            _requestWindows.OpenRequest(item);
     }
 
     private async void OnDenyRequestClick(object sender, RoutedEventArgs e)

@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Collections.Specialized;
+using System.Security.Cryptography;
+using System.Text;
 using App.Services;
 using App.ViewModels.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -41,7 +43,15 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     private readonly IAttachmentUiService? _attachments;
     private readonly ISavedSearchStore? _savedStore;
     private readonly IItemRepromptGate? _reprompt;
+    private readonly VaultRecentUseStore? _recentUseStore;
+    private readonly Dictionary<string, DateTimeOffset> _recentUses = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTimeOffset?> _recentOrderSnapshot = new(StringComparer.Ordinal);
+    private DateTime _recentGroupDate = DateTime.Today;
+    private readonly HashSet<INotifyPropertyChanged> _editorObservedObjects = [];
+    private readonly HashSet<INotifyCollectionChanged> _editorObservedCollections = [];
+    private byte[]? _editorBaseline;
     private string? _editingId;
+    private byte[]? _editorPasswordBaseline;
     private bool _suppressApply;
     private bool _isRebuildingFilteredItems;
     private readonly HashSet<string> _selectedIds = new(StringComparer.Ordinal);
@@ -73,6 +83,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     public ObservableCollection<CipherListItem> FilteredItems { get; } = new();
     public ObservableCollection<VaultListGroup> GroupedItems { get; } = new();
     public IReadOnlyList<FilterNode> FolderFilters => Filters.Where(f => f.Kind == FilterKind.Folder).ToList();
+
+    public bool AutoSelectFirstResult { get; set; }
 
     [ObservableProperty]
     public partial bool IsSelectionMode { get; set; }
@@ -188,6 +200,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     [NotifyPropertyChangedFor(nameof(ShowDetailNotes))]
     [NotifyPropertyChangedFor(nameof(ShowProtectedPasswordCopy))]
     [NotifyPropertyChangedFor(nameof(DetailLocation))]
+    [NotifyPropertyChangedFor(nameof(DetailWebsite))]
+    [NotifyPropertyChangedFor(nameof(HasDetailWebsite))]
     public partial CipherDetail? Detail { get; set; }
 
     [ObservableProperty]
@@ -201,7 +215,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         if (!_suppressApply) ApplyFilter();
     }
 
-    public string WorkspaceTitle => SelectedFilter?.Label ?? "所有项目";
+    public string WorkspaceTitle => SelectedFilter?.Kind == FilterKind.AllItems
+        ? "全部条目" : SelectedFilter?.Label ?? "全部条目";
     public string VisibleItemCountText => $"{FilteredItems.Count} 个条目";
     public bool ShowDetailNotes => Detail is not NoteDetail && !string.IsNullOrWhiteSpace(Detail?.Notes);
     public bool ShowReadOnlyNotice => SelectedItem is { CanModify: false, IsDeleted: false };
@@ -213,11 +228,28 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         {
             var owner = SelectedItem?.OrganizationId is { } organizationId
                 ? Filters.FirstOrDefault(filter => filter.Kind == FilterKind.Organization
-                    && filter.OrganizationId == organizationId)?.Label ?? "组织保险库"
-                : "个人保险库";
-            return string.IsNullOrWhiteSpace(Detail?.FolderName) ? owner : $"{owner} / {Detail.FolderName}";
+                    && filter.OrganizationId == organizationId)?.Label ?? "组织密码库"
+                : "个人密码库";
+            return string.IsNullOrWhiteSpace(Detail?.FolderName) ? owner : $"{owner} › {Detail.FolderName}";
         }
     }
+    public string DetailWebsite => Detail is LoginDetail login
+        ? login.DisplayUris.FirstOrDefault(value => System.Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && uri.Scheme is "https" or "http") ?? string.Empty
+        : string.Empty;
+    public bool HasDetailWebsite => !string.IsNullOrEmpty(DetailWebsite);
+    public string EmptyStateTitle => SelectedFilter?.Kind switch
+    {
+        FilterKind.Trash => "回收站是空的",
+        FilterKind.Archive => "没有归档的条目",
+        _ => "这里还没有条目",
+    };
+    public string NoResultsTitle => string.IsNullOrWhiteSpace(SearchText)
+        ? "没有符合筛选条件的条目"
+        : $"没有找到“{SearchText.Trim()}”";
+    public string NewSearchItemLabel => string.IsNullOrWhiteSpace(SearchText)
+        ? "新建条目"
+        : $"新建“{SearchText.Trim()}”";
     public VaultWorkspaceContext WorkspaceContext => new(
         SearchText, CurrentFacets, SelectedSort, SelectedTypeIndex,
         _workspaceVerticalOffset, _workspaceFocusedItemId, _workspaceSearchHadFocus);
@@ -240,13 +272,16 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     public void RestoreWorkspaceContext(string? tag = null)
     {
+        RefreshRecentUseSnapshot();
         if (tag?.StartsWith("vault:item:", StringComparison.Ordinal) == true)
         {
+            ApplyFilter();
             OpenItemFromNavigation(tag["vault:item:".Length..]);
             return;
         }
         if (tag is not null)
             SelectFilterByTag(tag);
+        ApplyFilter();
         // A return to the workspace restores results without reopening a credential.
         if (!IsEditing)
             SelectedItem = null;
@@ -317,7 +352,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     [NotifyPropertyChangedFor(nameof(HasActiveFacets))]
     public partial bool FacetFavoriteOnly { get; set; }
     [ObservableProperty]
-    public partial VaultSortKey SelectedSort { get; set; } = VaultSortKey.NameAsc;
+    public partial VaultSortKey SelectedSort { get; set; } = VaultSortKey.RecentUse;
 
     public VaultFacets CurrentFacets => new(FacetTotp, FacetAttachment, FacetUri, FacetFavoriteOnly);
     public bool HasActiveRefinement => CurrentFacets.Any || SelectedTypeIndex > 0 || !string.IsNullOrWhiteSpace(SearchText);
@@ -327,11 +362,14 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         (FacetTotp ? 1 : 0) + (FacetAttachment ? 1 : 0) + (FacetUri ? 1 : 0) + (FacetFavoriteOnly ? 1 : 0);
     public bool HasActiveFacets => CurrentFacets.Any;
 
-    /// <summary>供排序 ComboBox.SelectedIndex 双向绑定使用（顺序与 VaultSortKey 枚举一致）。</summary>
+    private static readonly VaultSortKey[] DisplaySortOrder =
+        [VaultSortKey.RecentUse, VaultSortKey.NameAsc, VaultSortKey.RevisionDesc, VaultSortKey.NameDesc, VaultSortKey.CreationDesc];
+
+    /// <summary>Maps the visual sort menu to stable persisted enum values.</summary>
     public int SelectedSortIndex
     {
-        get => (int)SelectedSort;
-        set { if ((int)SelectedSort != value) SelectedSort = (VaultSortKey)value; }
+        get => Math.Max(0, Array.IndexOf(DisplaySortOrder, SelectedSort));
+        set { if (value >= 0 && value < DisplaySortOrder.Length) SelectedSort = DisplaySortOrder[value]; }
     }
 
     partial void OnFacetTotpChanged(bool value) { if (!_suppressApply) ApplyFilter(); }
@@ -341,6 +379,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     partial void OnSelectedSortChanged(VaultSortKey value)
     {
         OnPropertyChanged(nameof(SelectedSortIndex));
+        RefreshRecentUseSnapshot();
         if (!_suppressApply) ApplyFilter();
     }
 
@@ -349,7 +388,24 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNoSelectionPlaceholder))]
+    [NotifyPropertyChangedFor(nameof(HasUnsavedEditorChanges))]
     public partial bool IsEditing { get; set; }
+
+    public bool HasUnsavedEditorChanges => IsEditing && EditorDraft is { } draft
+        && (_editingId is null ? HasNewDraftContent(draft)
+            : _editorBaseline is null || !FingerprintDraft(draft).AsSpan().SequenceEqual(_editorBaseline));
+
+    public bool HasEditorPasswordChange
+    {
+        get
+        {
+            if (!IsEditing || _editingId is null || EditorDraft is not { IsLogin: true } draft || _editorPasswordBaseline is null)
+                return false;
+            var current = FingerprintPassword(draft.Login.Password);
+            try { return !CryptographicOperations.FixedTimeEquals(current, _editorPasswordBaseline); }
+            finally { CryptographicOperations.ZeroMemory(current); }
+        }
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(EditorSelectedFolder))]
@@ -376,25 +432,165 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     {
         if (newValue is null)
             _emptyEditorDisplayDraft = CipherEditorDraft.CreateDefault(VaultItemKind.Login);
-        if (oldValue is not null)
-        {
-            oldValue.PropertyChanged -= OnEditorRequirementChanged;
-            oldValue.SshKey.PropertyChanged -= OnEditorRequirementChanged;
-            oldValue.CollectionIds.CollectionChanged -= OnEditorCollectionRequirementChanged;
-        }
-        if (newValue is not null)
-        {
-            newValue.PropertyChanged += OnEditorRequirementChanged;
-            newValue.SshKey.PropertyChanged += OnEditorRequirementChanged;
-            newValue.CollectionIds.CollectionChanged += OnEditorCollectionRequirementChanged;
-        }
+        ObserveEditorDraft(newValue);
+        ResetEditorBaseline();
     }
 
-    private void OnEditorRequirementChanged(object? sender, PropertyChangedEventArgs e) =>
+    private void OnEditorRequirementChanged(object? sender, PropertyChangedEventArgs e)
+    {
         OnPropertyChanged(nameof(HasValidEditorDraft));
+        OnPropertyChanged(nameof(HasUnsavedEditorChanges));
+    }
 
-    private void OnEditorCollectionRequirementChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
+    private void OnEditorCollectionRequirementChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        ObserveEditorDraft(EditorDraft);
         OnPropertyChanged(nameof(HasValidEditorDraft));
+        OnPropertyChanged(nameof(HasUnsavedEditorChanges));
+    }
+
+    private void ObserveEditorDraft(CipherEditorDraft? draft)
+    {
+        foreach (var value in _editorObservedObjects)
+            value.PropertyChanged -= OnEditorRequirementChanged;
+        foreach (var value in _editorObservedCollections)
+            value.CollectionChanged -= OnEditorCollectionRequirementChanged;
+        _editorObservedObjects.Clear();
+        _editorObservedCollections.Clear();
+        if (draft is null)
+            return;
+
+        _editorObservedObjects.UnionWith(new INotifyPropertyChanged[]
+        {
+            draft, draft.Login, draft.Card, draft.Identity, draft.SecureNote,
+            draft.SshKey, draft.BankAccount, draft.DriversLicense, draft.Passport,
+        });
+        _editorObservedObjects.UnionWith(draft.Login.Uris);
+        _editorObservedObjects.UnionWith(draft.CustomFields);
+        _editorObservedCollections.UnionWith(new INotifyCollectionChanged[]
+        {
+            draft.CollectionIds, draft.Login.Uris, draft.CustomFields,
+        });
+        foreach (var value in _editorObservedObjects)
+            value.PropertyChanged += OnEditorRequirementChanged;
+        foreach (var value in _editorObservedCollections)
+            value.CollectionChanged += OnEditorCollectionRequirementChanged;
+    }
+
+    private void ResetEditorBaseline()
+    {
+        if (_editorBaseline is not null)
+            CryptographicOperations.ZeroMemory(_editorBaseline);
+        _editorBaseline = EditorDraft is { } draft ? FingerprintDraft(draft) : null;
+        if (_editorPasswordBaseline is not null)
+            CryptographicOperations.ZeroMemory(_editorPasswordBaseline);
+        _editorPasswordBaseline = EditorDraft is { IsLogin: true } loginDraft
+            ? FingerprintPassword(loginDraft.Login.Password) : null;
+        OnPropertyChanged(nameof(HasUnsavedEditorChanges));
+    }
+
+    private static byte[] FingerprintPassword(string? password)
+    {
+        var bytes = Encoding.UTF8.GetBytes(string.IsNullOrWhiteSpace(password) ? string.Empty : password);
+        try { return SHA256.HashData(bytes); }
+        finally { CryptographicOperations.ZeroMemory(bytes); }
+    }
+
+    private static bool HasNewDraftContent(CipherEditorDraft draft)
+    {
+        static bool HasValue(params string?[] values) => values.Any(value => !string.IsNullOrEmpty(value));
+
+        // A generated password or copied item is already valuable even before the first edit.
+        // Placement defaults and an empty initial URI row do not make a new draft dirty.
+        return !string.IsNullOrWhiteSpace(draft.Name)
+            || HasValue(draft.Notes, draft.Login.Username, draft.Login.Password, draft.Login.Totp)
+            || draft.Login.Uris.Any(uri => !string.IsNullOrEmpty(uri.Uri))
+            || HasValue(draft.Card.CardholderName, draft.Card.Number, draft.Card.ExpMonth,
+                draft.Card.ExpYear, draft.Card.Code, draft.Card.Brand)
+            || HasValue(draft.Identity.Title, draft.Identity.FirstName, draft.Identity.MiddleName,
+                draft.Identity.LastName, draft.Identity.Username, draft.Identity.Company,
+                draft.Identity.Ssn, draft.Identity.PassportNumber, draft.Identity.LicenseNumber,
+                draft.Identity.Email, draft.Identity.Phone, draft.Identity.Address1,
+                draft.Identity.Address2, draft.Identity.Address3, draft.Identity.City,
+                draft.Identity.State, draft.Identity.PostalCode, draft.Identity.Country)
+            || HasValue(draft.SshKey.PrivateKey, draft.SshKey.PublicKey, draft.SshKey.KeyFingerprint)
+            || HasValue(draft.BankAccount.BankName, draft.BankAccount.NameOnAccount, draft.BankAccount.AccountType,
+                draft.BankAccount.AccountNumber, draft.BankAccount.RoutingNumber, draft.BankAccount.BranchNumber,
+                draft.BankAccount.Pin, draft.BankAccount.SwiftCode, draft.BankAccount.Iban, draft.BankAccount.BankContactPhone)
+            || HasValue(draft.DriversLicense.FirstName, draft.DriversLicense.MiddleName, draft.DriversLicense.LastName,
+                draft.DriversLicense.DateOfBirth, draft.DriversLicense.LicenseNumber, draft.DriversLicense.IssuingCountry,
+                draft.DriversLicense.IssuingState, draft.DriversLicense.IssueDate, draft.DriversLicense.ExpirationDate,
+                draft.DriversLicense.IssuingAuthority, draft.DriversLicense.LicenseClass)
+            || HasValue(draft.Passport.Surname, draft.Passport.GivenName, draft.Passport.DateOfBirth,
+                draft.Passport.Sex, draft.Passport.BirthPlace, draft.Passport.Nationality,
+                draft.Passport.IssuingCountry, draft.Passport.PassportNumber, draft.Passport.PassportType,
+                draft.Passport.NationalIdentificationNumber, draft.Passport.IssuingAuthority,
+                draft.Passport.IssueDate, draft.Passport.ExpirationDate)
+            || draft.CustomFields.Any(field => HasValue(field.Name, field.Value)
+                || field.BooleanValue || field.LinkedId is not null);
+    }
+
+    private static byte[] FingerprintDraft(CipherEditorDraft draft)
+    {
+        // Retain only a digest for dirty tracking; do not retain a second plaintext draft.
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+        void Write(params string?[] values)
+        {
+            foreach (var value in values)
+                writer.Write(value ?? string.Empty);
+        }
+        writer.Write((int)draft.Type);
+        Write(draft.Name, draft.FolderId, draft.OrganizationId, draft.CollectionId, draft.Notes);
+        writer.Write(draft.Favorite);
+        writer.Write(draft.Reprompt);
+        writer.Write(draft.CollectionIds.Count);
+        foreach (var collection in draft.CollectionIds)
+            Write(collection);
+        Write(draft.Login.Username, draft.Login.Password, draft.Login.Totp);
+        writer.Write(draft.Login.Uris.Count);
+        foreach (var uri in draft.Login.Uris)
+        {
+            Write(uri.Uri);
+            writer.Write(uri.Match ?? -1);
+        }
+        Write(draft.Card.CardholderName, draft.Card.Number, draft.Card.ExpMonth,
+            draft.Card.ExpYear, draft.Card.Code, draft.Card.Brand);
+        Write(draft.Identity.Title, draft.Identity.FirstName, draft.Identity.MiddleName,
+            draft.Identity.LastName, draft.Identity.Username, draft.Identity.Company,
+            draft.Identity.Ssn, draft.Identity.PassportNumber, draft.Identity.LicenseNumber,
+            draft.Identity.Email, draft.Identity.Phone, draft.Identity.Address1,
+            draft.Identity.Address2, draft.Identity.Address3, draft.Identity.City,
+            draft.Identity.State, draft.Identity.PostalCode, draft.Identity.Country);
+        writer.Write(draft.SecureNote.Type);
+        Write(draft.SshKey.PrivateKey, draft.SshKey.PublicKey, draft.SshKey.KeyFingerprint);
+        Write(draft.BankAccount.BankName, draft.BankAccount.NameOnAccount, draft.BankAccount.AccountType,
+            draft.BankAccount.AccountNumber, draft.BankAccount.RoutingNumber, draft.BankAccount.BranchNumber,
+            draft.BankAccount.Pin, draft.BankAccount.SwiftCode, draft.BankAccount.Iban, draft.BankAccount.BankContactPhone);
+        Write(draft.DriversLicense.FirstName, draft.DriversLicense.MiddleName, draft.DriversLicense.LastName,
+            draft.DriversLicense.DateOfBirth, draft.DriversLicense.LicenseNumber, draft.DriversLicense.IssuingCountry,
+            draft.DriversLicense.IssuingState, draft.DriversLicense.IssueDate, draft.DriversLicense.ExpirationDate,
+            draft.DriversLicense.IssuingAuthority, draft.DriversLicense.LicenseClass);
+        Write(draft.Passport.Surname, draft.Passport.GivenName, draft.Passport.DateOfBirth,
+            draft.Passport.Sex, draft.Passport.BirthPlace, draft.Passport.Nationality,
+            draft.Passport.IssuingCountry, draft.Passport.PassportNumber, draft.Passport.PassportType,
+            draft.Passport.NationalIdentificationNumber, draft.Passport.IssuingAuthority,
+            draft.Passport.IssueDate, draft.Passport.ExpirationDate);
+        writer.Write(draft.CustomFields.Count);
+        foreach (var field in draft.CustomFields)
+        {
+            Write(field.Name, field.Value);
+            writer.Write((int)field.Type);
+            writer.Write(field.BooleanValue);
+            writer.Write(field.LinkedId ?? -1);
+            writer.Write(field.RawType ?? -1);
+            writer.Write(field.PreserveWhenNameBlank);
+        }
+        writer.Flush();
+        var buffer = stream.GetBuffer().AsSpan(0, checked((int)stream.Length));
+        try { return SHA256.HashData(buffer); }
+        finally { CryptographicOperations.ZeroMemory(buffer); }
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(EditorSelectedDestination))]
@@ -602,10 +798,10 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     public int ArchiveCount => Items.Count(i => i.IsArchived && !i.IsDeleted);
     public bool IsArchiveEmpty => IsArchiveFilterSelected && ArchiveCount == 0;
 
-    // 保险库内一条(未删除)记录都没有 → 空库引导。
+    // An empty navigation scope uses the creation prompt when no refinements are active.
     public bool HasNoItems => !IsTrashFilterSelected && !IsArchiveFilterSelected
-        && Items.All(i => i.IsDeleted || i.IsArchived);
-    // 库里有记录,但当前搜索/筛选结果为空 → 无结果提示。
+        && FilteredItems.Count == 0 && !HasActiveRefinement;
+    // Search and facet misses remain distinct from an empty navigation scope.
     public bool NoResults => FilteredItems.Count == 0 && !HasNoItems && !IsTrashEmpty && !IsArchiveEmpty;
 
     public event EventHandler? FoldersChanged;
@@ -629,17 +825,20 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     };
 
     public VaultViewModel(IVaultUiService service, IClipboardService? clipboard = null, IAttachmentUiService? attachments = null,
-        ISavedSearchStore? savedStore = null, IItemRepromptGate? reprompt = null)
+        ISavedSearchStore? savedStore = null, IItemRepromptGate? reprompt = null, Vault.VaultSession? session = null)
     {
         _service = service;
         _clipboard = clipboard;
         _attachments = attachments;
         _savedStore = savedStore;
         _reprompt = reprompt;
+        _recentUseStore = VaultRecentUseStore.CreateForSession(session);
         SubscribeToCipherCreateGateChanges(service);
         Capabilities = service.Capabilities;
         foreach (var it in service.GetItems()) Items.Add(it);
+        RefreshRecentUseSnapshot();
         foreach (var f in service.GetFilters()) Filters.Add(f);
+        AddSupplementaryFilters();
         SkippedCipherCount = service.SkippedCipherCount;
         UnsupportedOrganizationCipherCount = service.UnsupportedOrganizationCipherCount;
         DataStale = service.DataStale;
@@ -732,8 +931,11 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     partial void OnSearchTextChanged(string value)
     {
+        RefreshRecentUseSnapshot();
         if (!_suppressApply) ApplyFilter();
         OnPropertyChanged(nameof(HasActiveRefinement));
+        OnPropertyChanged(nameof(NoResultsTitle));
+        OnPropertyChanged(nameof(NewSearchItemLabel));
     }
 
     public void SelectFilterByTag(string? tag)
@@ -756,7 +958,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             SelectedFilter = nextFilter;
             var context = nextTag is not null && _workspaceContexts.TryGetValue(nextTag, out var saved)
                 ? saved
-                : new VaultWorkspaceContext(string.Empty, new VaultFacets(false, false, false, false), VaultSortKey.NameAsc, 0, 0, null, false);
+                : new VaultWorkspaceContext(string.Empty, new VaultFacets(false, false, false, false), VaultSortKey.RecentUse, 0, 0, null, false);
             SearchText = context.Search;
             FacetTotp = context.Facets.Totp;
             FacetAttachment = context.Facets.Attachment;
@@ -786,6 +988,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         {
             "vault:allitems" => Filters.FirstOrDefault(f => f.Kind == FilterKind.AllItems),
             "vault:favorites" => Filters.FirstOrDefault(f => f.Kind == FilterKind.Favorites),
+            "vault:totp" => Filters.FirstOrDefault(f => f.Kind == FilterKind.Totp),
             "vault:archive" => Filters.FirstOrDefault(f => f.Kind == FilterKind.Archive),
             "vault:trash" => Filters.FirstOrDefault(f => f.Kind == FilterKind.Trash),
             _ when tag.StartsWith("vault:type:", StringComparison.Ordinal) => FindTypeFilter(tag["vault:type:".Length..]),
@@ -808,8 +1011,10 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     private FilterNode? FindFolderFilter(string folderId) =>
         Filters.FirstOrDefault(f => f.Kind == FilterKind.Folder && f.FolderId == folderId);
 
-    partial void OnSelectedFilterChanged(FilterNode? value)
+    partial void OnSelectedFilterChanged(FilterNode? oldValue, FilterNode? newValue)
     {
+        if (!_isRebuildingFilteredItems && TagForFilter(oldValue) != TagForFilter(newValue))
+            RefreshRecentUseSnapshot();
         if (!_suppressApply) ApplyFilter();
         OnPropertyChanged(nameof(SelectedFilterTag));
         OnPropertyChanged(nameof(IsFolderFilterSelected));
@@ -818,12 +1023,14 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(ShowArchiveSelectionAction));
         OnPropertyChanged(nameof(ShowUnarchiveSelectionAction));
         OnPropertyChanged(nameof(WorkspaceTitle));
+        OnPropertyChanged(nameof(EmptyStateTitle));
     }
 
     private static string? TagForFilter(FilterNode? filter) => filter?.Kind switch
     {
         FilterKind.AllItems => "vault:allitems",
         FilterKind.Favorites => "vault:favorites",
+        FilterKind.Totp => "vault:totp",
         FilterKind.Archive => "vault:archive",
         FilterKind.Trash => "vault:trash",
         FilterKind.Type when filter.TypeFilter is not null => $"vault:type:{filter.TypeFilter}",
@@ -847,6 +1054,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             IEnumerable<CipherListItem> baseItems = SelectedFilter?.Kind switch
             {
                 FilterKind.Favorites => Items.Where(i => i.Favorite && !i.IsDeleted && !i.IsArchived),
+                FilterKind.Totp => Items.Where(i => i.HasTotp && !i.IsDeleted && !i.IsArchived),
                 FilterKind.Archive   => Items.Where(i => i.IsArchived && !i.IsDeleted),
                 FilterKind.Trash     => Items.Where(i => i.IsDeleted),
                 FilterKind.Type      => Items.Where(i => i.Kind == SelectedFilter.TypeFilter && !i.IsDeleted && !i.IsArchived),
@@ -897,6 +1105,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         var item = string.IsNullOrEmpty(id)
             ? null
             : FilteredItems.FirstOrDefault(item => item.Id == id);
+        if (item is null && !string.IsNullOrEmpty(id) && AutoSelectFirstResult && !IsEditing)
+            item = FilteredItems.FirstOrDefault();
 
         if (SelectedItem is null && item is null)
         {
@@ -944,55 +1154,56 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     private void RebuildGroups()
     {
         GroupedItems.Clear();
+        foreach (var item in FilteredItems)
+            item.GroupHeader = string.Empty;
+        if (FilteredItems.Count == 0)
+            return;
 
-        // 日期排序:压平为单一无头分组(跨文件夹/类型分组无意义)。
-        if (SelectedSort is VaultSortKey.RevisionDesc or VaultSortKey.CreationDesc)
+        if (IsSelectionMode || SelectedSort != VaultSortKey.RecentUse || !string.IsNullOrWhiteSpace(SearchText))
         {
-            if (FilteredItems.Count == 0) return;
             var flat = new VaultListGroup { Key = string.Empty, ShowHeader = false };
             foreach (var i in FilteredItems) flat.Add(i);
             GroupedItems.Add(flat);
             return;
         }
 
-        // 选具体文件夹:单组、不显头。
-        if (SelectedFilter?.Kind is FilterKind.Folder or FilterKind.Organization or FilterKind.Collection)
+        foreach (var groupItems in FilteredItems.GroupBy(item =>
+            item.LastUsedAt?.LocalDateTime.Date >= _recentGroupDate ? "今天"
+                : item.LastUsedAt?.LocalDateTime.Date >= _recentGroupDate.AddDays(-6) ? "过去 7 天"
+                : "更早"))
         {
-            if (FilteredItems.Count == 0)
-                return;
-            var single = new VaultListGroup { Key = SelectedFilter.Label, ShowHeader = false };
-            foreach (var i in FilteredItems) single.Add(i);
-            GroupedItems.Add(single);
-            return;
-        }
-
-        // 选具体类型:按文件夹分组,"无文件夹"置末,其余按名称。
-        if (SelectedFilter?.Kind == FilterKind.Type)
-        {
-            var byFolder = FilteredItems
-                .GroupBy(i => i.FolderId)
-                .OrderBy(g => string.IsNullOrEmpty(g.Key) ? 1 : 0)
-                .ThenBy(g => FolderNameFor(g.Key), StringComparer.CurrentCulture);
-            foreach (var g in byFolder)
-            {
-                var group = new VaultListGroup { Key = FolderNameFor(g.Key), ShowHeader = true };
-                foreach (var i in g) group.Add(i);
-                GroupedItems.Add(group);
-            }
-            return;
-        }
-
-        // 聚合视图:按类型分组,固定组序。
-        foreach (var kind in TypeOrder)
-        {
-            var items = FilteredItems.Where(i => i.Kind == kind).ToList();
-            if (items.Count == 0)
-                continue;
-            var group = new VaultListGroup { Key = TypeDisplayName(kind), ShowHeader = true };
-            foreach (var i in items) group.Add(i);
+            var group = new VaultListGroup { Key = groupItems.Key, ShowHeader = true };
+            foreach (var item in groupItems) group.Add(item);
+            if (group.FirstOrDefault() is { } first)
+                first.GroupHeader = group.Key;
             GroupedItems.Add(group);
         }
     }
+
+    private void RefreshRecentUseSnapshot()
+    {
+        _recentGroupDate = DateTime.Today;
+        foreach (var item in Items)
+        {
+            var usedAt = _recentUses.TryGetValue(item.Id, out var latest)
+                ? latest : _recentUseStore?.GetLastUsed(item.Id);
+            item.LastUsedAt = usedAt;
+            _recentOrderSnapshot[item.Id] = usedAt;
+        }
+    }
+
+    public void RecordRecentUse(string id)
+    {
+        if (Items.All(item => item.Id != id))
+            return;
+        var usedAt = DateTimeOffset.UtcNow;
+        _recentUses[id] = usedAt;
+        _recentUseStore?.Record(id, usedAt);
+        // Keep the visible list stable until navigation or an explicit sort change.
+    }
+
+    public DateTimeOffset? GetLastUsedAt(string id) =>
+        _recentUses.TryGetValue(id, out var usedAt) ? usedAt : _recentUseStore?.GetLastUsed(id);
 
     public void BeginAdd(VaultItemKind type)
     {
@@ -1016,7 +1227,10 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         _editingId = null;
         OnPropertyChanged(nameof(CanChangeEditorType));
         EditorDraft = CipherEditorDraft.CreateDefault(type);
+        if (SelectedFilter is { Kind: FilterKind.Folder, FolderId: { } folderId })
+            EditorDraft.FolderId = folderId;
         ConfigureEditorDestinations(canChoose: true);
+        ResetEditorBaseline();
         EditorError = EditorDestinations.Count == 0
             ? "当前账户没有可写入的密码库或组织集合。"
             : string.Empty;
@@ -1094,6 +1308,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         _editingId = id;
         OnPropertyChanged(nameof(CanChangeEditorType));
         ConfigureEditorDestinations(canChoose: false);
+        ResetEditorBaseline();
         EditorError = string.Empty;
         OperationError = string.Empty;
         IsEditing = true;
@@ -1152,6 +1367,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         _editingId = null;
         OnPropertyChanged(nameof(CanChangeEditorType));
         ConfigureEditorDestinations(canChoose: true);
+        ResetEditorBaseline();
         EditorError = string.Empty;
         OperationError = string.Empty;
         IsSelectionMode = false;
@@ -1751,7 +1967,10 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
                         || Items.Any(item => string.Equals(item.Id, savedId, StringComparison.Ordinal));
                     if (createdCipherIsVisible)
                     {
-                        SelectById(savedId);
+                        if (editingId is null)
+                            SelectCreatedCipher(savedId);
+                        else
+                            SelectById(savedId);
                     }
                     else
                     {
@@ -1785,9 +2004,13 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             async token =>
             {
                 await operation(token);
+                var previouslySelectedId = SelectedItem?.Id;
                 ReloadItems();
                 ReloadFilters();
-                SelectById(selectId);
+                if (selectId is null)
+                    RestoreVisibleSelection(previouslySelectedId);
+                else
+                    SelectById(selectId);
                 return true;
             },
             ct,
@@ -2053,7 +2276,11 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         Capabilities = _service.Capabilities;
         Items.Clear();
         foreach (var item in _service.GetItems())
+        {
+            item.LastUsedAt = _recentOrderSnapshot.TryGetValue(item.Id, out var usedAt)
+                ? usedAt : _recentUseStore?.GetLastUsed(item.Id);
             Items.Add(item);
+        }
         _selectedIds.IntersectWith(Items.Select(item => item.Id));
         NotifySelectionStateChanged();
     }
@@ -2064,8 +2291,23 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         Filters.Clear();
         foreach (var filter in _service.GetFilters())
             Filters.Add(filter);
+        AddSupplementaryFilters();
         OnPropertyChanged(nameof(FolderFilters));
         SelectFilterByTag(tag); // 复原选中(凭 tag),触发 ApplyFilter
+    }
+
+    private void AddSupplementaryFilters()
+    {
+        if (Filters.All(filter => filter.Kind != FilterKind.Totp))
+        {
+            Filters.Add(new FilterNode
+            {
+                Label = "验证码",
+                Glyph = "\uE916",
+                Kind = FilterKind.Totp,
+                Count = Items.Count(item => item.HasTotp && !item.IsDeleted && !item.IsArchived),
+            });
+        }
     }
 
     private void ReloadSnapshotPreservingSelection(string? selectedId)
@@ -2107,6 +2349,40 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             item = FilteredItems.FirstOrDefault(i => i.Id == id);
         }
         SelectedItem = item;
+    }
+
+    private void SelectCreatedCipher(string id)
+    {
+        var created = Items.FirstOrDefault(item => item.Id == id);
+        if (created is null)
+        {
+            SelectedItem = null;
+            return;
+        }
+
+        var keepScope = SelectedFilter?.Kind == FilterKind.AllItems
+            || SelectedFilter is { Kind: FilterKind.Folder } folder
+                && string.Equals(folder.FolderId, created.FolderId, StringComparison.Ordinal);
+        if (!keepScope)
+            RememberCurrentScope();
+
+        var wasSuppressed = _suppressApply;
+        _suppressApply = true;
+        try
+        {
+            if (!keepScope)
+                SelectFilterByTag("vault:allitems");
+            SearchText = string.Empty;
+            SelectedTypeIndex = 0;
+            // Retain compatible refinements while ensuring the saved item remains discoverable.
+            if (!created.HasTotp) FacetTotp = false;
+            if (!created.HasAttachment) FacetAttachment = false;
+            if (!created.HasUri) FacetUri = false;
+            if (!created.Favorite) FacetFavoriteOnly = false;
+        }
+        finally { _suppressApply = wasSuppressed; }
+        ApplyFilter();
+        SelectedItem = FilteredItems.FirstOrDefault(item => item.Id == id);
     }
 
     public async Task<UiOperationResult> SyncAsync(CancellationToken ct = default)
@@ -2166,7 +2442,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             var confirmedCipherIsVisible = Items.Any(item =>
                 string.Equals(item.Id, confirmedId, StringComparison.Ordinal));
             if (!IsEditing)
-                SelectById(confirmedId);
+                SelectCreatedCipher(confirmedId);
             OperationError = string.Empty;
             if (!confirmedCipherIsVisible)
             {
@@ -2324,12 +2600,14 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         FacetAttachment = false;
         FacetUri = false;
         FacetFavoriteOnly = false;
-        SelectedSort = VaultSortKey.NameAsc;
+        SelectedSort = VaultSortKey.RecentUse;
         OperationError = string.Empty;
         OperationWarning = string.Empty;
         EditorError = string.Empty;
         ClearSelection();
         Items.Clear();
+        _recentUses.Clear();
+        _recentOrderSnapshot.Clear();
         FilteredItems.Clear();
         GroupedItems.Clear();
         Filters.Clear();
@@ -2346,6 +2624,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         {
             NotifySelectionStateChanged();
         }
+        RebuildGroups();
     }
 
     [RelayCommand]
@@ -2458,7 +2737,11 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     {
         // IClipboardService applies the protected vault policy to non-secret fields as well.
         if (!string.IsNullOrEmpty(value))
-            _ = WriteClipboard(value, isSecret: false);
+        {
+            var result = WriteClipboard(value, isSecret: false);
+            if (result.IsSuccess && SelectedItem is { } item)
+                RecordRecentUse(item.Id);
+        }
     }
 
     private UiOperationResult WriteClipboard(string value, bool isSecret)
@@ -2493,6 +2776,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         Func<CancellationToken, Task<string?>> prompt,
         CancellationToken ct = default)
     {
+        var lifecycleEpoch = _lifecycleEpoch;
         if (string.IsNullOrEmpty(id))
             return UiOperationResult.Failure("无效条目");
         if (Items.FirstOrDefault(item => item.Id == id) is not { CanViewPassword: true })
@@ -2502,11 +2786,15 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             id, SensitiveItemAction.Copy, prompt, ct);
         if (!authorization.IsSuccess)
             return new UiOperationResult(authorization.Status, authorization.Error);
+        if (ct.IsCancellationRequested || lifecycleEpoch != _lifecycleEpoch)
+            return UiOperationResult.Cancelled();
+        if (Items.FirstOrDefault(item => item.Id == id) is not { CanViewPassword: true })
+            return UiOperationResult.Failure("该条目已不可用，请刷新后重试。");
 
         var value = PrimaryValue(_service.GetDetail(id, includeSensitive: true));
         if (!string.IsNullOrEmpty(value))
-            return WriteClipboard(value, isSecret: true);
-        return UiOperationResult.Success();
+            return WriteItemClipboard(id, value, isSecret: true);
+        return UiOperationResult.Failure("没有可复制的内容。");
     }
 
     public async Task<UiOperationResult> CopyPasswordAsync(
@@ -2514,15 +2802,126 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         Func<CancellationToken, Task<string?>> prompt,
         CancellationToken ct = default)
     {
+        var lifecycleEpoch = _lifecycleEpoch;
         if (Items.FirstOrDefault(item => item.Id == id) is not { Kind: VaultItemKind.Login, CanViewPassword: true })
             return UiOperationResult.Failure("此条目不允许复制密码。");
         var authorization = await EnsureAuthorizedAsync(id, SensitiveItemAction.Copy, prompt, ct);
         if (!authorization.IsSuccess)
             return new UiOperationResult(authorization.Status, authorization.Error);
+        if (ct.IsCancellationRequested || lifecycleEpoch != _lifecycleEpoch)
+            return UiOperationResult.Cancelled();
+        if (Items.FirstOrDefault(item => item.Id == id) is not { CanViewPassword: true })
+            return UiOperationResult.Failure("该条目已不可用，请刷新后重试。");
 
         if (_service.GetDetail(id, includeSensitive: true) is not LoginDetail { Password: { Length: > 0 } password })
             return UiOperationResult.Failure("未设置密码。");
-        return WriteClipboard(password, isSecret: true);
+        return WriteItemClipboard(id, password, isSecret: true);
+    }
+
+    private UiOperationResult WriteItemClipboard(string id, string value, bool isSecret)
+    {
+        var result = WriteClipboard(value, isSecret);
+        if (result.IsSuccess)
+            RecordRecentUse(id);
+        return result;
+    }
+
+    public async Task<UiOperationResult> CopyFieldAsync(
+        string id,
+        string key,
+        Func<CancellationToken, Task<string?>> prompt,
+        CancellationToken ct = default)
+    {
+        var lifecycleEpoch = _lifecycleEpoch;
+        var isSecret = key is "password" or "totp" or "number" or "cvv" or "privateKey";
+        var item = Items.FirstOrDefault(candidate => candidate.Id == id);
+        if (item is null || (isSecret && !item.CanViewPassword))
+            return UiOperationResult.Failure("此条目不允许复制该字段。");
+        var authorization = await EnsureAuthorizedAsync(id, SensitiveItemAction.Copy, prompt, ct);
+        if (!authorization.IsSuccess)
+            return new UiOperationResult(authorization.Status, authorization.Error);
+        if (ct.IsCancellationRequested || lifecycleEpoch != _lifecycleEpoch)
+            return UiOperationResult.Cancelled();
+        item = Items.FirstOrDefault(candidate => candidate.Id == id);
+        if (item is null || (isSecret && !item.CanViewPassword))
+            return UiOperationResult.Failure("该条目的访问权限已发生变化。");
+
+        CipherDetail detail;
+        try { detail = _service.GetDetail(id, includeSensitive: true); }
+        catch (InvalidOperationException)
+        {
+            return UiOperationResult.Failure("该条目已不可用，请刷新后重试。");
+        }
+
+        var value = (detail, key) switch
+        {
+            (LoginDetail login, "username") => login.Username,
+            (LoginDetail login, "password") => login.Password,
+            (LoginDetail login, "totp") => Crypto.TotpGenerator.TryGenerate(
+                login.TotpSecret, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), out var code) ? code : null,
+            (CardDetail card, "number") => card.Number,
+            (CardDetail card, "expiry") => card.Expiry,
+            (CardDetail card, "cvv") => card.Cvv,
+            (IdentityDetail identity, "fullName") => identity.FullName,
+            (IdentityDetail identity, "phone") => identity.Phone,
+            (IdentityDetail identity, "email") => identity.Email,
+            (IdentityDetail identity, "username") => identity.Username,
+            (SshDetail ssh, "publicKey") => ssh.PublicKey,
+            (SshDetail ssh, "fingerprint") => ssh.Fingerprint,
+            (SshDetail ssh, "privateKey") => ssh.PrivateKey,
+            _ => null,
+        };
+        return string.IsNullOrEmpty(value)
+            ? UiOperationResult.Failure(key == "totp" ? "验证码不可用。" : "此字段没有可复制的内容。")
+            : WriteItemClipboard(id, value, isSecret);
+    }
+
+    public CipherDetail? ReadAuthorizedDetail(string id)
+    {
+        if (SelectedItem?.Id != id || Items.FirstOrDefault(candidate => candidate.Id == id) is not { } item)
+            return null;
+        try
+        {
+            var policy = _service.GetAccessPolicy(id);
+            if (policy.RequiresReprompt && _reprompt?.IsAuthorized(policy) != true)
+                return null;
+            // The service also applies the current organization policy when projecting secrets.
+            return _service.GetDetail(id, includeSensitive: item.CanViewPassword);
+        }
+        catch (InvalidOperationException) { return null; }
+    }
+
+    public async Task<bool> AuthorizeFieldCopyAsync(
+        string id,
+        Func<CancellationToken, Task<string?>> prompt,
+        CancellationToken ct = default)
+    {
+        var lifecycleEpoch = _lifecycleEpoch;
+        if (SelectedItem?.Id != id || Items.All(item => item.Id != id) || ct.IsCancellationRequested)
+            return false;
+        try
+        {
+            var result = await EnsureAuthorizedAsync(id, SensitiveItemAction.Copy, prompt, ct);
+            if (!result.IsSuccess)
+            {
+                if (result.Status == UiOperationStatus.Failed)
+                    OperationError = result.Error ?? "无法完成条目验证，请重试。";
+                return false;
+            }
+            return !ct.IsCancellationRequested
+                && lifecycleEpoch == _lifecycleEpoch && SelectedItem?.Id == id
+                && Items.Any(item => item.Id == id);
+        }
+        catch (OperationCanceledException exception) when (UiExceptionPolicy.IsGenuineCancellation(exception, ct))
+        {
+            return false;
+        }
+        catch (Exception exception) when (Api.RequestTimeoutClassifier.IsTimeout(exception))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return false;
+        }
+        catch (InvalidOperationException) { return false; }
     }
 
     // 各类型主值:登录→密码(空则用户名),卡→卡号,笔记→内容,SSH→公钥,身份等→名称。
@@ -2543,6 +2942,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         Func<CancellationToken, Task<string?>> prompt,
         CancellationToken ct = default)
     {
+        var lifecycleEpoch = _lifecycleEpoch;
         if (Items.FirstOrDefault(item => item.Id == id) is not { CanViewPassword: true })
             return UiOperationResult<bool>.Failure("该组织条目已隐藏密码，不能显示敏感字段。");
 
@@ -2550,6 +2950,10 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             id, SensitiveItemAction.Totp, prompt, ct);
         if (!authorization.IsSuccess)
             return authorization;
+        if (ct.IsCancellationRequested || lifecycleEpoch != _lifecycleEpoch)
+            return UiOperationResult<bool>.Cancelled();
+        if (Items.FirstOrDefault(item => item.Id == id) is not { CanViewPassword: true })
+            return UiOperationResult<bool>.Failure("该条目的访问权限已发生变化。");
 
         if (SelectedItem?.Id == id || Detail?.Id == id)
         {
@@ -2662,6 +3066,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             SensitiveUnlocked = l.SensitiveUnlocked,
             Username = l.Username, Password = l.Password, TotpSecret = l.TotpSecret, Uri = l.Uri, Uris = l.Uris, Passkeys = l.Passkeys,
             PasswordHistory = l.PasswordHistory,
+            PasswordRevisionDate = l.PasswordRevisionDate,
             Attachments = attachments,
         },
         CardDetail c => new CardDetail

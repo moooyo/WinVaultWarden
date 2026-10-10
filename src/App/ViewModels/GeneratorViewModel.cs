@@ -31,24 +31,25 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
     private sealed record GeneratedValue(object Options, string Value);
 
     private GeneratorMode _mode;
-    private int _length = 14;
+    private int _length = 20;
     private bool _includeUppercase = true;
     private bool _includeLowercase = true;
     private bool _includeNumbers = true;
-    private bool _includeSpecial;
+    private bool _includeSpecial = true;
     private int _minNumbers = 1;
-    private int _minSpecial;
+    private int _minSpecial = 1;
     private bool _avoidAmbiguous;
     private string _generatedPassword = string.Empty;
     private int _strengthScore;
-    private int _passphraseWordCount = 6;
-    private bool _passphraseCapitalize;
-    private bool _passphraseIncludeNumber;
+    private int _passphraseWordCount = 4;
+    private bool _passphraseCapitalize = true;
+    private bool _passphraseIncludeNumber = true;
     private PasswordGeneratorPolicyRequirements _policy =
         PasswordGeneratorPolicyRequirements.None;
     private bool _refreshingPolicy;
 
     public ObservableCollection<GeneratorHistoryItem> History { get; } = new();
+    public ObservableCollection<GeneratorHistoryItem> RecentHistory => History;
 
     public GeneratorMode Mode
     {
@@ -63,7 +64,7 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
                 NotifyModeChanged();
             }
             if (changed || policyChanged)
-                Generate(allowReuse: true);
+                Generate(allowReuse: false);
         }
     }
 
@@ -230,7 +231,7 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         set
         {
             var policyChanged = RefreshAndApplyPolicy();
-            if (SetProperty(ref _includeNumbers, value || PolicyRequiresNumbers))
+            if (SetProperty(ref _includeNumbers, PolicyRequiresNumbers || (value && CanEnableCharacterSet("numbers"))))
                 CharacterSetChanged();
             else if (policyChanged)
                 Regenerate();
@@ -243,7 +244,7 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         set
         {
             var policyChanged = RefreshAndApplyPolicy();
-            if (SetProperty(ref _includeSpecial, value || PolicyRequiresSpecial))
+            if (SetProperty(ref _includeSpecial, PolicyRequiresSpecial || (value && CanEnableCharacterSet("special"))))
                 CharacterSetChanged();
             else if (policyChanged)
                 Regenerate();
@@ -318,18 +319,40 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
     public bool IsPasswordMode => Mode == GeneratorMode.Password;
     public bool IsPassphraseMode => Mode == GeneratorMode.Passphrase;
     public bool IsUsernameMode => Mode == GeneratorMode.Username;
+    public string PageTitle => Mode switch
+    {
+        GeneratorMode.Passphrase => "密码短语",
+        GeneratorMode.Username => "用户名",
+        _ => "随机密码",
+    };
+    public string PageDescription => Mode switch
+    {
+        GeneratorMode.Passphrase => "由几个随机单词组成，好记、好输入，也足够强。",
+        GeneratorMode.Username => "生成随机用户名或邮箱别名，让不同账户保持独立。",
+        _ => "由字母、数字和符号随机组成，适合交给密码库保管。",
+    };
+    public string EntropyLabel => $"约 {Math.Round(EntropyBits)} 位熵";
+    public double EntropyBits => Mode switch
+    {
+        GeneratorMode.Passphrase => PassphraseWordCount * Math.Log2(7776)
+            + (PassphraseIncludeNumber ? Math.Log2(10 * PassphraseWordCount) : 0),
+        GeneratorMode.Username => 0,
+        _ => Length * Math.Log2(Math.Max(1,
+            (IncludeUppercase ? (AvoidAmbiguous ? 24 : 26) : 0)
+            + (IncludeLowercase ? (AvoidAmbiguous ? 25 : 26) : 0)
+            + (IncludeNumbers ? (AvoidAmbiguous ? 8 : 10) : 0)
+            + (IncludeSpecial ? 8 : 0))),
+    };
+    public int StrengthSegments => Math.Clamp(_strengthScore, 1, 4);
+    public double PasswordSliderMaximum => Math.Max(64, Math.Max(Length, MinimumPasswordLength));
+    public double PassphraseSliderMaximum => Math.Max(10, Math.Max(PassphraseWordCount, MinimumPassphraseWordCount));
     public string GeneratedValueLabel => Mode switch
     {
         GeneratorMode.Passphrase => "已生成的密码短语",
         GeneratorMode.Username => "已生成的用户名",
         _ => "已生成的密码",
     };
-    public string CopyLabel => Mode switch
-    {
-        GeneratorMode.Passphrase => "复制密码短语",
-        GeneratorMode.Username => "复制用户名",
-        _ => "复制密码",
-    };
+    public string CopyLabel => HasCopyFeedback && !CopyFailed ? "已复制" : "复制";
     public string GeneratedValueSummary => string.IsNullOrEmpty(GeneratedPassword)
         ? "请先完成下面的生成选项。"
         : Mode == GeneratorMode.Passphrase
@@ -353,11 +376,11 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
 
     public string StrengthLabel => _strengthScore switch
     {
-        0 => "很弱",
+        0 => "弱",
         1 => "弱",
-        2 => "中",
+        2 => "中等",
         3 => "强",
-        _ => "很强",
+        _ => "非常强",
     };
 
     public bool HasGeneratorPolicyNotice =>
@@ -378,14 +401,21 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         _policy.OverridePasswordType != PasswordGeneratorCredentialType.Password;
 
     public bool CanToggleUppercase =>
-        !_policy.UseUppercase && (_includeUppercase || CanEnableUppercase());
+        !_policy.UseUppercase && (!_includeUppercase || CharacterSetCount > 1)
+        && (_includeUppercase || CanEnableUppercase());
 
     public bool CanToggleLowercase =>
-        !_policy.UseLowercase && (_includeLowercase || CanEnableLowercase());
+        !_policy.UseLowercase && (!_includeLowercase || CharacterSetCount > 1)
+        && (_includeLowercase || CanEnableLowercase());
 
-    public bool CanToggleNumbers => !PolicyRequiresNumbers;
+    public bool CanToggleNumbers => !PolicyRequiresNumbers && (!_includeNumbers || CharacterSetCount > 1)
+        && (_includeNumbers || CanEnableCharacterSet("numbers"));
 
-    public bool CanToggleSpecial => !PolicyRequiresSpecial;
+    public bool CanToggleSpecial => !PolicyRequiresSpecial && (!_includeSpecial || CharacterSetCount > 1)
+        && (_includeSpecial || CanEnableCharacterSet("special"));
+
+    private int CharacterSetCount => (_includeUppercase ? 1 : 0) + (_includeLowercase ? 1 : 0)
+        + (_includeNumbers ? 1 : 0) + (_includeSpecial ? 1 : 0);
 
     public bool CanTogglePassphraseCapitalize => !_policy.Capitalize;
 
@@ -408,11 +438,11 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
             var requiredCharacters =
                 (_includeUppercase ? 1 : 0)
                 + (_includeLowercase ? 1 : 0)
-                + PolicyMinimumNumbers
-                + PolicyMinimumSpecial;
+                + (_includeNumbers ? Math.Max(1, PolicyMinimumNumbers) : 0)
+                + (_includeSpecial ? Math.Max(1, PolicyMinimumSpecial) : 0);
             return Math.Clamp(
-                Math.Max(5, Math.Max(_policy.MinLength, requiredCharacters)),
-                5,
+                Math.Max(8, Math.Max(_policy.MinLength, requiredCharacters)),
+                8,
                 128);
         }
     }
@@ -508,6 +538,8 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(IsPassphraseMode));
         OnPropertyChanged(nameof(IsUsernameMode));
         OnPropertyChanged(nameof(GeneratedValueLabel));
+        OnPropertyChanged(nameof(PageTitle));
+        OnPropertyChanged(nameof(PageDescription));
         OnPropertyChanged(nameof(CopyLabel));
         OnPropertyChanged(nameof(GeneratedValueSummary));
         OnPropertyChanged(nameof(ShowStrength));
@@ -528,6 +560,8 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(MinimumPasswordLength));
         OnPropertyChanged(nameof(CanToggleUppercase));
         OnPropertyChanged(nameof(CanToggleLowercase));
+        OnPropertyChanged(nameof(CanToggleNumbers));
+        OnPropertyChanged(nameof(CanToggleSpecial));
         Regenerate();
     }
 
@@ -661,7 +695,9 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         var optionalSlots = 128 - requiredCharacters;
         var optionalCount =
             (_includeUppercase && !_policy.UseUppercase ? 1 : 0)
-            + (_includeLowercase && !_policy.UseLowercase ? 1 : 0);
+            + (_includeLowercase && !_policy.UseLowercase ? 1 : 0)
+            + (_includeNumbers && !PolicyRequiresNumbers ? 1 : 0)
+            + (_includeSpecial && !PolicyRequiresSpecial ? 1 : 0);
         var toDisable = Math.Max(0, optionalCount - optionalSlots);
         var changed = false;
         if (toDisable > 0 && _includeUppercase && !_policy.UseUppercase)
@@ -679,26 +715,35 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
                 ref _includeLowercase,
                 false,
                 nameof(IncludeLowercase));
+            toDisable--;
         }
+
+        if (toDisable > 0 && _includeSpecial && !PolicyRequiresSpecial)
+        {
+            changed |= SetProperty(ref _includeSpecial, false, nameof(IncludeSpecial));
+            toDisable--;
+        }
+        if (toDisable > 0 && _includeNumbers && !PolicyRequiresNumbers)
+            changed |= SetProperty(ref _includeNumbers, false, nameof(IncludeNumbers));
 
         return changed;
     }
 
-    private bool CanEnableUppercase()
+    private bool CanEnableUppercase() => CanEnableCharacterSet("upper");
+
+    private bool CanEnableLowercase() => CanEnableCharacterSet("lower");
+
+    private bool CanEnableCharacterSet(string requested)
     {
         var otherOptionalMinimum =
-            _includeLowercase && !_policy.UseLowercase ? 1 : 0;
+            (requested != "upper" && _includeUppercase && !_policy.UseUppercase ? 1 : 0)
+            + (requested != "lower" && _includeLowercase && !_policy.UseLowercase ? 1 : 0)
+            + (requested != "numbers" && _includeNumbers && !PolicyRequiresNumbers ? 1 : 0)
+            + (requested != "special" && _includeSpecial && !PolicyRequiresSpecial ? 1 : 0);
         return _policy.MinimumRequiredPasswordLength + otherOptionalMinimum < 128;
     }
 
-    private bool CanEnableLowercase()
-    {
-        var otherOptionalMinimum =
-            _includeUppercase && !_policy.UseUppercase ? 1 : 0;
-        return _policy.MinimumRequiredPasswordLength + otherOptionalMinimum < 128;
-    }
-
-    private const int MaxHistory = 20;
+    private const int MaxHistory = 5;
 
     [RelayCommand]
     private void Regenerate() => Generate(allowReuse: false);
@@ -751,6 +796,10 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
 
     private void UpdateStrength()
     {
+        OnPropertyChanged(nameof(EntropyLabel));
+        OnPropertyChanged(nameof(EntropyBits));
+        OnPropertyChanged(nameof(PasswordSliderMaximum));
+        OnPropertyChanged(nameof(PassphraseSliderMaximum));
         var score = (_strength is not null && Mode != GeneratorMode.Username && !string.IsNullOrEmpty(GeneratedPassword))
             ? _strength.Evaluate(GeneratedPassword).Score : 0;
         if (score != _strengthScore)
@@ -759,6 +808,7 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
             OnPropertyChanged(nameof(StrengthScore));
             OnPropertyChanged(nameof(StrengthFraction));
             OnPropertyChanged(nameof(StrengthLabel));
+            OnPropertyChanged(nameof(StrengthSegments));
         }
     }
 
@@ -788,7 +838,7 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
     {
         if (!_suspended && item is not null && History.Contains(item)
             && !string.IsNullOrWhiteSpace(item.Value))
-            TryCopy(item.Value);
+            TryCopy(item.Value, recordHistory: true, historyMode: item.Mode);
     }
 
     public bool TryCopyCurrentValue()
@@ -797,15 +847,17 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         return HasCopyFeedback && !CopyFailed;
     }
 
-    private bool TryCopy(string value, bool recordHistory = false)
+    private bool TryCopy(string value, bool recordHistory = false, GeneratorMode? historyMode = null)
     {
         bool WriteClipboard()
         {
             if (_clipboard is null || _suspended)
                 return false;
             _clipboard.SetSecretText(value);
+            if (_clipboard is IClipboardStatus status)
+                status.SetLabel((historyMode ?? Mode) == GeneratorMode.Username ? "用户名" : "密码");
             if (recordHistory)
-                RecordHistory(value);
+                RecordHistory(value, historyMode);
             SetCopyFeedback("已复制。剪贴板将按安全设置清除。");
             return true;
         }
@@ -831,14 +883,16 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         SetProperty(ref _copyFailed, failed, nameof(CopyFailed));
         if (SetProperty(ref _copyFeedback, message, nameof(CopyFeedback)))
             OnPropertyChanged(nameof(HasCopyFeedback));
+        OnPropertyChanged(nameof(CopyLabel));
     }
 
-    // Record only values the user explicitly copies, deduplicate adjacent entries, and cap at 20.
-    private void RecordHistory(string value)
+    // Keep only the five most recently copied distinct values during this unlock session.
+    private void RecordHistory(string value, GeneratorMode? historyMode = null)
     {
-        if (History.Count > 0 && History[0].Value == value)
-            return;
-        History.Insert(0, new GeneratorHistoryItem(value, DateTimeOffset.Now, Mode));
+        for (var index = History.Count - 1; index >= 0; index--)
+            if (History[index].Value == value)
+                History.RemoveAt(index);
+        History.Insert(0, new GeneratorHistoryItem(value, DateTimeOffset.Now, historyMode ?? Mode));
         while (History.Count > MaxHistory)
             History.RemoveAt(History.Count - 1);
     }
@@ -950,9 +1004,23 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
             IncludeSpecial,
             minUppercase,
             minLowercase,
-            _minNumbers,
-            _minSpecial,
+            IncludeNumbers ? Math.Max(1, _minNumbers) : 0,
+            IncludeSpecial ? Math.Max(1, _minSpecial) : 0,
             AvoidAmbiguous);
+    }
+
+    /// <summary>Generates a credential using the current password settings and organization policy.</summary>
+    public string GenerateCredentialForLogin()
+    {
+        RefreshAndApplyPolicy();
+        if (_suspended || !_policy.CanGenerateCompliantCredential)
+            return string.Empty;
+        var credentialMode = NormalizeMode(Mode == GeneratorMode.Username ? GeneratorMode.Password : Mode);
+        return credentialMode == GeneratorMode.Passphrase
+            ? PasswordGenerator.GeneratePassphrase(new PassphraseGenerationOptions(
+                PassphraseWordCount, string.IsNullOrEmpty(PassphraseSeparator) ? "-" : PassphraseSeparator,
+                PassphraseCapitalize, PassphraseIncludeNumber))
+            : PasswordGenerator.Generate(BuildOptions());
     }
 
     private bool EnsureAtLeastOneCharacterSet()
@@ -971,8 +1039,8 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         int requestedSpecial,
         MinimumPriority priority)
     {
-        var numberFloor = IncludeNumbers ? PolicyMinimumNumbers : 0;
-        var specialFloor = IncludeSpecial ? PolicyMinimumSpecial : 0;
+        var numberFloor = IncludeNumbers ? Math.Max(1, PolicyMinimumNumbers) : 0;
+        var specialFloor = IncludeSpecial ? Math.Max(1, PolicyMinimumSpecial) : 0;
         requestedNumbers = IncludeNumbers
             ? Math.Clamp(requestedNumbers, numberFloor, 128)
             : 0;

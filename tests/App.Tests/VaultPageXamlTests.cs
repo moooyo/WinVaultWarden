@@ -7,6 +7,38 @@ public class VaultPageXamlTests
 {
     private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
 
+    [Theory]
+    [InlineData("FacetFilterButton", "\uE71C", "VaultFacetFilterButton")]
+    [InlineData("SavedViewsButton", "\uE8A9", "VaultSavedViewsButton")]
+    public void CompactFlyoutButtons_KeepTheirIconsAndActionsReachable(
+        string name, string glyph, string automationId)
+    {
+        var document = LoadXaml();
+        var x = XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml");
+        var button = document.Descendants().Single(element => element.Attribute(x + "Name")?.Value == name);
+
+        // A native DropDownButton chevron consumed these 30-pixel icon surfaces in the walkthrough.
+        Assert.Equal(Xaml + "Button", button.Name);
+        Assert.Equal(automationId, button.Attribute("AutomationProperties.AutomationId")?.Value);
+        var content = button.Elements(Xaml + "StackPanel").Single();
+        Assert.Equal(glyph, content.Elements(Xaml + "FontIcon").Single().Attribute("Glyph")?.Value);
+        var flyout = button.Element(Xaml + "Button.Flyout");
+        Assert.NotNull(flyout);
+        if (name == "FacetFilterButton")
+        {
+            foreach (var property in new[] { "FacetTotp", "FacetAttachment", "FacetUri", "FacetFavoriteOnly" })
+                Assert.Contains(flyout!.Descendants(Xaml + "ToggleButton"), element =>
+                    element.Attribute("IsChecked")?.Value == $"{{x:Bind ViewModel.{property}, Mode=TwoWay}}");
+        }
+        else
+        {
+            Assert.Contains(flyout!.Descendants(Xaml + "MenuFlyout"), element =>
+                element.Attribute("Opening")?.Value == "OnSavedViewsFlyoutOpening");
+            Assert.Contains(flyout.Descendants(Xaml + "MenuFlyoutItem"), element =>
+                element.Attribute("Click")?.Value == "OnSaveCurrentViewClick");
+        }
+    }
+
     [Fact]
     public void Vault_SelectAndMoveButtons_BindToCommands()
     {
@@ -17,11 +49,9 @@ public class VaultPageXamlTests
         var move = buttons.Single(b => b.Attribute("Label")?.Value == "移动");
 
         Assert.Contains("SelectAllCommand", selectAll.Attribute("Command")?.Value ?? "");
-        // 移动按钮改为 MenuFlyout 模式（OnMoveSelectedFlyoutOpening 在 code-behind 动态填充），
-        // 不再把 MoveSelectedToFolderCommand 直接绑 Command 属性。
-        // 验证按钮有 Flyout（即 MenuFlyout 子元素）而非硬编码 CommandParameter。
+        // Folder actions are populated dynamically when the flyout opens.
         Assert.NotNull(move.Element(Xaml + "AppBarButton.Flyout"));
-        Assert.Null(move.Attribute("Command")); // command 已移至 flyout items
+        Assert.Null(move.Attribute("Command"));
     }
 
     [Fact]
@@ -39,12 +69,12 @@ public class VaultPageXamlTests
     {
         var document = LoadXaml();
 
-        // 「选择」入口按钮:进入选择模式(此前只有「完成」退出、无入口,多选整段在发布 UI 不可达)。
+        // Selection mode must remain reachable from the command bar.
         var enter = document.Descendants(Xaml + "AppBarButton")
             .Single(b => b.Attribute("Label")?.Value == "选择");
         Assert.Contains("ToggleSelectionModeCommand", enter.Attribute("Command")?.Value ?? "");
 
-        // CipherList 接线 SelectionChanged,把勾选精确同步进 VM 的选中集(R4)。
+        // Keep the visual selection synchronized with the view model.
         var list = document.Descendants(Xaml + "ListView")
             .Single(e => e.Attribute(XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml") + "Name")?.Value == "CipherList");
         Assert.Equal("OnCipherSelectionChanged", list.Attribute("SelectionChanged")?.Value);
@@ -56,15 +86,17 @@ public class VaultPageXamlTests
         var document = LoadXaml();
         var x = XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml");
 
-        var transfer = document.Descendants(Xaml + "Button")
+        var transfer = document.Descendants(Xaml + "MenuFlyoutItem")
             .Single(button => button.Attribute(x + "Name")?.Value == "TransferCipherToOrganizationButton");
-        var manage = document.Descendants(Xaml + "Button")
+        var manage = document.Descendants(Xaml + "MenuFlyoutItem")
             .Single(button => button.Attribute(x + "Name")?.Value == "ManageCipherCollectionsButton");
         var collectionCheckbox = document.Descendants(Xaml + "CheckBox")
             .Single(box => (box.Attribute("IsChecked")?.Value ?? "").Contains("IsSelected"));
 
         Assert.Equal("OnTransferCipherToOrganizationClick", transfer.Attribute("Click")?.Value);
         Assert.Equal("OnManageCipherCollectionsClick", manage.Attribute("Click")?.Value);
+        Assert.Contains("CanTransferSelectedItem", transfer.Attribute("Visibility")?.Value ?? "");
+        Assert.Contains("CanManageSelectedItemCollections", manage.Attribute("Visibility")?.Value ?? "");
         Assert.Contains("CanSelect", collectionCheckbox.Attribute("IsEnabled")?.Value ?? "");
     }
 
@@ -99,6 +131,29 @@ public class VaultPageXamlTests
         Assert.Contains("AbandonPendingCipherCreateAsync(expected)", handler, StringComparison.Ordinal);
         Assert.Contains("服务器已经返回成功", handler, StringComparison.Ordinal);
         Assert.DoesNotContain("SaveDraftAsync", handler, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Vault_PasswordExposureFindingIsClearedOnlyAfterSuccessfulPasswordSave()
+    {
+        var code = LoadCodeBehind();
+        var start = code.IndexOf("private async void OnSaveCipherEditorClick", StringComparison.Ordinal);
+        var end = code.IndexOf("private async void OnAbandonPendingCipherCreateClick", start, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start);
+        var handler = code[start..end];
+        var capture = handler.IndexOf("var passwordChanged = ViewModel.HasEditorPasswordChange", StringComparison.Ordinal);
+        var save = handler.IndexOf("await ViewModel.SaveDraftAsync()", StringComparison.Ordinal);
+        Assert.True(capture >= 0 && save > capture);
+
+        var successStart = handler.IndexOf("if (result.IsSuccess)", save, StringComparison.Ordinal);
+        var successEnd = handler.IndexOf("else if", successStart, StringComparison.Ordinal);
+        Assert.True(successStart > save && successEnd > successStart);
+        var success = handler[successStart..successEnd];
+        Assert.Contains("if (passwordChanged && !string.IsNullOrEmpty(result.Value))", success);
+        Assert.Contains("GetRequiredService<SecurityReportViewModel>().MarkPasswordChanged(result.Value)", success);
+        Assert.Equal(1, handler.Split(".MarkPasswordChanged(", StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain("MarkPasswordChanged", handler[..successStart]);
+        Assert.DoesNotContain("MarkPasswordChanged", handler[successEnd..]);
     }
 
     private static XDocument LoadXaml()

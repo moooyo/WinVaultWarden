@@ -776,6 +776,9 @@ public sealed class SendUiService : ISendUiService
             FileSize = send.File?.Size,
             HasPassword = send.HasPassword,
             AuthType = send.AuthType,
+            TextContent = send.Text?.Content,
+            FileName = send.File?.FileName,
+            RevisionDate = send.RevisionDate,
         };
     }
 
@@ -797,9 +800,9 @@ public sealed class SendUiService : ISendUiService
         ExistingHasPassword = id is not null && draft.ExistingHasPassword,
         ExistingAuthType = id is null ? SendAuthType.None : draft.ExistingAuthType,
         ExistingRawAuthType = id is null ? (int)SendAuthType.None : draft.ExistingRawAuthType,
-        PasswordChange = string.IsNullOrWhiteSpace(draft.Password)
-            ? new SendPasswordChange.Keep()
-            : new SendPasswordChange.Set(draft.Password),
+        PasswordChange = !string.IsNullOrWhiteSpace(draft.Password)
+            ? new SendPasswordChange.Set(draft.Password)
+            : draft.RemovePassword ? new SendPasswordChange.Remove() : new SendPasswordChange.Keep(),
     };
 
     private static AppSendType MapType(CoreSendType type) => type == CoreSendType.File ? AppSendType.File : AppSendType.Text;
@@ -890,11 +893,11 @@ public sealed class SendUiService : ISendUiService
             HideEmail = draft.HideEmail,
             AuthType = !string.IsNullOrWhiteSpace(draft.Password)
                 ? SendAuthType.Password
-                : existing?.AuthType ?? SendAuthType.None,
+                : draft.RemovePassword ? SendAuthType.None : existing?.AuthType ?? SendAuthType.None,
             RawAuthType = !string.IsNullOrWhiteSpace(draft.Password)
                 ? (int)SendAuthType.Password
-                : existing?.RawAuthType ?? (int)SendAuthType.None,
-            HasPassword = !string.IsNullOrWhiteSpace(draft.Password) || (existing?.HasPassword ?? false),
+                : draft.RemovePassword ? (int)SendAuthType.None : existing?.RawAuthType ?? (int)SendAuthType.None,
+            HasPassword = !string.IsNullOrWhiteSpace(draft.Password) || (!draft.RemovePassword && (existing?.HasPassword ?? false)),
             ShareUrl = $"https://demo.local/#/send/{id}/demoAccessKey",
         };
     }

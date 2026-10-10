@@ -62,6 +62,72 @@ public class CipherDraftMapperTests
         Assert.Null(cipher.FolderId);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ToCipher_ExistingLogin_UnchangedPasswordPreservesPasswordRevisionDate(bool changeUsername)
+    {
+        var passwordRevision = new DateTimeOffset(2024, 3, 12, 9, 30, 0, TimeSpan.Zero);
+        var original = new Cipher
+        {
+            Id = "existing-login",
+            Type = CipherType.Login,
+            Name = "Existing login",
+            Login = new CipherLogin("old-user", "existing-password", null, [])
+            {
+                PasswordRevisionDate = passwordRevision,
+            },
+        };
+        var draft = CipherDraftMapper.ToDraft(original);
+        if (changeUsername)
+            draft.Login.Username = "new-user";
+
+        var updated = CipherDraftMapper.ToCipher(draft, original);
+
+        Assert.Equal(passwordRevision, updated.Login!.PasswordRevisionDate);
+        Assert.Equal("existing-password", updated.Login.Password);
+        Assert.Equal(changeUsername ? "new-user" : "old-user", updated.Login.Username);
+    }
+
+    [Theory]
+    [InlineData("changed-password")]
+    [InlineData("")]
+    public void ToCipher_ExistingLogin_ChangedPasswordUpdatesPasswordRevisionDate(string password)
+    {
+        var original = new Cipher
+        {
+            Id = "existing-login",
+            Type = CipherType.Login,
+            Name = "Existing login",
+            Login = new CipherLogin("user", "existing-password", null, [])
+            {
+                PasswordRevisionDate = DateTimeOffset.UnixEpoch,
+            },
+        };
+        var draft = CipherDraftMapper.ToDraft(original);
+        draft.Login.Password = password;
+        var before = DateTimeOffset.UtcNow;
+
+        var updated = CipherDraftMapper.ToCipher(draft, original);
+
+        var after = DateTimeOffset.UtcNow;
+        Assert.NotNull(updated.Login!.PasswordRevisionDate);
+        Assert.InRange(updated.Login.PasswordRevisionDate.Value, before, after);
+        Assert.Equal(DateTimeOffset.UnixEpoch, original.Login.PasswordRevisionDate);
+    }
+
+    [Fact]
+    public void ToCipher_NewLoginWithoutPassword_HasNoPasswordRevisionDate()
+    {
+        var draft = CipherEditorDraft.CreateDefault(VaultItemKind.Login);
+        draft.Name = "Passwordless login";
+
+        var created = CipherDraftMapper.ToCipher(draft, original: null);
+
+        Assert.Null(created.Login!.Password);
+        Assert.Null(created.Login.PasswordRevisionDate);
+    }
+
     [Fact]
     public void ToCipher_Edit_PreservesId_Dates_OrgId_AndPasskeys()
     {

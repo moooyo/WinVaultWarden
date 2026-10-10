@@ -19,22 +19,49 @@ public class VaultPageGroupingXamlTests
     }
 
     [Fact]
-    public void List_UsesFlatFilteredItems_NoCollectionViewSourceGrouping()
+    public void List_UsesFlatItemsWithInlineHeadersToAvoidNativeEmptyListRegression()
     {
-        // 回归:Native AOT 下 CollectionViewSource(IsSourceGrouped)只建组不渲染子项
-        // (microsoft-ui-xaml #10881),再叠加 GroupStyle HidesIfEmpty 导致整份保险库列表不可见。
-        // 因此列表改为平铺绑定 ViewModel.FilteredItems(纯 x:Bind,AOT 安全,必然渲染)。
         var doc = LoadVaultPageXaml();
+        // The 2026-10-10 native Debug walkthrough reproduced the empty cipher list
+        // previously seen under Native AOT when using grouped CollectionViewSource.
+        // Date headers must stay inside flat item templates to avoid that path.
+        Assert.DoesNotContain(doc.Descendants(), element => element.Name.LocalName == "CollectionViewSource");
+        Assert.DoesNotContain(doc.Descendants(), element => element.Name.LocalName == "GroupStyle");
 
-        // 不得再出现分组用的 CollectionViewSource。
-        Assert.DoesNotContain(doc.Descendants(), e => e.Name.LocalName == "CollectionViewSource");
-        Assert.DoesNotContain(doc.Descendants(), e => e.Name.LocalName == "GroupStyle");
-
-        // CipherList 直接绑定平铺的 FilteredItems。
-        var list = doc.Descendants().FirstOrDefault(e =>
+        var list = doc.Descendants().Single(e =>
             e.Name.LocalName == "ListView" && e.Attribute(Xaml.X + "Name")?.Value == "CipherList");
-        Assert.NotNull(list);
-        Assert.Contains("ViewModel.FilteredItems", list!.Attribute("ItemsSource")?.Value ?? "");
+        Assert.Equal("{x:Bind ViewModel.FilteredItems, Mode=OneWay}", list.Attribute("ItemsSource")?.Value);
+        var template = list.Elements().Single(element => element.Name.LocalName == "ListView.ItemTemplate").Elements().Single();
+        Assert.Equal("models:CipherListItem", template.Attribute(Xaml.X + "DataType")?.Value);
+        var row = template.Descendants().Single(element => element.Attribute(Xaml.X + "Name")?.Value == "RowRoot");
+        var header = template.Descendants().Single(element =>
+            element.Name.LocalName == "TextBlock" && element.Attribute("Text")?.Value?.Contains("x:Bind GroupHeader") == true);
+
+        Assert.Contains("x:Bind HasGroupHeader", header.Attribute("Visibility")?.Value);
+        Assert.Equal("12", header.Attribute("FontSize")?.Value);
+        Assert.Equal("52", row.Attribute("Height")?.Value);
+        Assert.Same(row.Parent, header.Parent);
+        Assert.Contains(header, row.ElementsBeforeSelf());
+    }
+
+    [Fact]
+    public void InlineHeader_StaysOutsideSelectionChromeWhileNativeSelectionRemainsWired()
+    {
+        var doc = LoadVaultPageXaml();
+        var list = doc.Descendants().Single(element => element.Attribute(Xaml.X + "Name")?.Value == "CipherList");
+        var resources = list.Elements().Single(element => element.Name.LocalName == "ListView.Resources");
+        var nativeIndicator = resources.Elements().Single(element =>
+            element.Attribute(Xaml.X + "Key")?.Value == "ListViewItemSelectionIndicatorVisualEnabled");
+        Assert.Equal("False", nativeIndicator.Value);
+        foreach (var key in new[] { "ListViewItemBackgroundSelected", "ListViewItemBackgroundSelectedPointerOver", "ListViewItemBackgroundSelectedPressed" })
+            Assert.Equal("Transparent", resources.Elements().Single(element => element.Attribute(Xaml.X + "Key")?.Value == key).Attribute("Color")?.Value);
+
+        var row = list.Descendants().Single(element => element.Attribute(Xaml.X + "Name")?.Value == "RowRoot");
+        Assert.Contains(row.Descendants(), element => element.Attribute(Xaml.X + "Name")?.Value == "RowSelectionIndicator");
+        Assert.Equal("OnRowLoaded", row.Attribute("Loaded")?.Value);
+        Assert.Contains("ViewModel.SelectedItem", list.Attribute("SelectedItem")?.Value);
+        Assert.Contains("ViewModel.IsSelectionMode", list.Attribute("SelectionMode")?.Value);
+        Assert.Equal("OnCipherSelectionChanged", list.Attribute("SelectionChanged")?.Value);
     }
 }
 

@@ -1,7 +1,7 @@
 namespace App.Services;
 
 /// <summary>
-/// Writes vault-derived text to the clipboard without allowing clipboard history or roaming.
+/// Writes vault-derived text without roaming and excludes history by default.
 /// Every write uses the user's clipboard clear timeout and remains eligible for an
 /// ownership-checked clear when the vault locks or the account signs out.
 /// </summary>

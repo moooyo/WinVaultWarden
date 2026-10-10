@@ -29,6 +29,29 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     public ObservableCollection<SendListItem> Items { get; } = new();
     public ObservableCollection<SendListItem> FilteredItems { get; } = new();
     public VaultSessionLease? LoadedSession { get; private set; }
+    public SendListItem? LastCommittedItem { get; private set; }
+
+    [ObservableProperty]
+    public partial string SearchQuery { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool SortByDeletion { get; set; }
+
+    public string ListTitle => SelectedFilterTag switch
+    {
+        "send:text" => "文本 Send",
+        "send:file" => "文件 Send",
+        _ => "全部 Send",
+    };
+    public string ListCountLabel => $"{FilteredItems.Count}";
+    public string EmptyTitle => !string.IsNullOrWhiteSpace(SearchQuery)
+        ? $"没有找到“{SearchQuery}”"
+        : SelectedFilterTag switch
+        {
+            "send:text" => "还没有文本 Send",
+            "send:file" => "还没有文件 Send",
+            _ => "还没有 Send",
+        };
 
     [ObservableProperty]
     public partial string SelectedFilterTag { get; set; } = "send:all";
@@ -38,6 +61,8 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanCreateSend))]
+    [NotifyPropertyChangedFor(nameof(CanReceiveInput))]
+    [NotifyPropertyChangedFor(nameof(ReceiveButtonText))]
     [NotifyCanExecuteChangedFor(nameof(OpenReceivedLinkCommand))]
     public partial bool IsBusy { get; set; }
 
@@ -74,7 +99,16 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasReceivedText))]
+    [NotifyPropertyChangedFor(nameof(ShowReceivedTextContent))]
+    [NotifyPropertyChangedFor(nameof(HasHiddenReceivedText))]
+    [NotifyPropertyChangedFor(nameof(DisplayedReceivedText))]
     public partial string? ReceivedText { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowReceivedTextContent))]
+    [NotifyPropertyChangedFor(nameof(HasHiddenReceivedText))]
+    [NotifyPropertyChangedFor(nameof(DisplayedReceivedText))]
+    public partial bool ReceivedTextRevealed { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasReceivedFile))]
@@ -84,7 +118,17 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     public partial bool ReceivedWrongPassword { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ReceivedSourceText))]
+    [NotifyPropertyChangedFor(nameof(HasReceivedSource))]
+    [NotifyPropertyChangedFor(nameof(ReceivedExpirationText))]
+    [NotifyPropertyChangedFor(nameof(HasReceivedExpiration))]
     public partial SendReceivedResult? LastReceived { get; set; }
+
+    public string ReceivedSourceText => LastReceived?.Accessed?.CreatorIdentifier is { Length: > 0 } creator ? $"来自 {creator}" : string.Empty;
+    public bool HasReceivedSource => !string.IsNullOrEmpty(ReceivedSourceText);
+    public string ReceivedExpirationText => LastReceived?.Accessed?.ExpirationDate is { } expiration
+        ? $"{expiration.ToLocalTime():M 月 d 日 HH:mm} 过期" : string.Empty;
+    public bool HasReceivedExpiration => !string.IsNullOrEmpty(ReceivedExpirationText);
 
     partial void OnLastReceivedChanging(SendReceivedResult? value)
     {
@@ -103,9 +147,14 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     public bool CanCreateSend => !IsReadOnly && !IsBusy;
     public bool ShowStaleInfo => IsReadOnly;
     public bool HasReceivedText => !string.IsNullOrEmpty(ReceivedText);
+    public bool ShowReceivedTextContent => HasReceivedText && ReceivedTextRevealed;
+    public bool HasHiddenReceivedText => HasReceivedText && !ReceivedTextRevealed;
+    public string DisplayedReceivedText => ShowReceivedTextContent ? ReceivedText! : string.Empty;
     public bool HasReceivedFile => !string.IsNullOrEmpty(ReceivedFileName);
     public bool HasCopyFeedback => !string.IsNullOrEmpty(CopyFeedback);
     public bool CanOpenReceivedLink => !IsBusy && !string.IsNullOrWhiteSpace(ReceivedLinkUrl);
+    public bool CanReceiveInput => !IsBusy;
+    public string ReceiveButtonText => IsBusy ? "正在打开…" : "打开";
     public bool IsAllFilter => SelectedFilterTag == "send:all";
     public bool IsTextFilter => SelectedFilterTag == "send:text";
     public bool IsFileFilter => SelectedFilterTag == "send:file";
@@ -354,6 +403,9 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         ApplyFilter();
     }
 
+    partial void OnSearchQueryChanged(string value) => ApplyFilter();
+    partial void OnSortByDeletionChanged(bool value) => ApplyFilter();
+
     private void ApplyFilter()
     {
         FilteredItems.Clear();
@@ -363,12 +415,26 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
             "send:file" => Items.Where(i => i.Type == SendType.File),
             _ => Items,
         };
+        if (!string.IsNullOrWhiteSpace(SearchQuery))
+        {
+            var query = SearchQuery.Trim();
+            source = source.Where(item => item.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || item.TextContent?.Contains(query, StringComparison.OrdinalIgnoreCase) == true
+                || item.FileName?.Contains(query, StringComparison.OrdinalIgnoreCase) == true);
+        }
+        source = SortByDeletion
+            ? source.OrderBy(item => item.DeletionDateTime ?? DateTimeOffset.MaxValue)
+            : source.OrderByDescending(item => item.Id == LastCommittedItem?.Id)
+                .ThenByDescending(item => item.RevisionDate ?? DateTimeOffset.MinValue);
         foreach (var item in source) FilteredItems.Add(item);
         OnPropertyChanged(nameof(HasItems));
         OnPropertyChanged(nameof(NoItems));
         OnPropertyChanged(nameof(AllFilterLabel));
         OnPropertyChanged(nameof(TextFilterLabel));
         OnPropertyChanged(nameof(FileFilterLabel));
+        OnPropertyChanged(nameof(ListTitle));
+        OnPropertyChanged(nameof(ListCountLabel));
+        OnPropertyChanged(nameof(EmptyTitle));
         if (LoadState is DataPageState.Empty or DataPageState.Content)
             LoadState = FilteredItems.Count == 0 ? DataPageState.Empty : DataPageState.Content;
     }
@@ -716,6 +782,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
 
     private void UpsertCommittedItem(SendListItem committed, string? replacedId)
     {
+        LastCommittedItem = committed;
         if (!string.IsNullOrEmpty(replacedId)
             && replacedId != committed.Id
             && committed.ReconciliationState != SendReconciliationState.ReplacementNewPending)
@@ -743,6 +810,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
 
     private void MarkReplacementPending(string existingSendId, SendListItem replacement)
     {
+        LastCommittedItem = replacement;
         var existing = Items.FirstOrDefault(item => item.Id == existingSendId);
         if (existing is not null)
         {
@@ -795,6 +863,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
                 }
 
                 _clipboard.SetSecretText(link);
+                (_clipboard as IClipboardStatus)?.SetLabel("链接");
                 Error = null;
                 var availability = item.GetAvailability(DateTimeOffset.UtcNow);
                 CopyFeedback = availability.State switch
@@ -819,6 +888,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     {
         var (requestId, operationCts) = BeginReceiveOperation(ct);
         ReceivedText = null;
+        ReceivedTextRevealed = false;
         ReceivedFileName = null;
         ReceivedWrongPassword = false;
         LastReceived = null;
@@ -876,7 +946,16 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         if (result.Type == SendType.File)
             ReceivedFileName = result.FileName;
         else
+        {
+            ReceivedTextRevealed = result.Accessed?.TextHidden != true;
             ReceivedText = result.TextContent;
+        }
+    }
+
+    [RelayCommand]
+    private void RevealReceivedText()
+    {
+        if (HasReceivedText) ReceivedTextRevealed = true;
     }
 
     private (long RequestId, CancellationTokenSource Cts) BeginReceiveOperation(CancellationToken ct)
@@ -993,6 +1072,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         ReceivedLinkUrl = string.Empty;
         ReceivedLinkPassword = string.Empty;
         ReceivedText = null;
+        ReceivedTextRevealed = false;
         ReceivedFileName = null;
         ReceivedWrongPassword = false;
         LastReceived = null;
@@ -1002,6 +1082,8 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         Items.Clear();
         FilteredItems.Clear();
         LoadedSession = null;
+        LastCommittedItem = null;
+        SearchQuery = string.Empty;
         IsReadOnly = false;
         LoadState = DataPageState.Loading;
     }

@@ -1,11 +1,12 @@
 using System.Linq;
+using System.Xml.Linq;
 using Xunit;
 
 namespace App.Tests;
 
 /// <summary>
-/// 字符串断言测试：确认 EmergencyAccessPage.xaml 包含正确的绑定和状态矩阵，且无反射 {Binding}（AOT 要求）。
-/// 同时断言 code-behind 文件中实际调用了各 item-based 方法，且接管密码不落在 ViewModel 状态上。
+/// Protects the settings subpage, state-specific actions, AOT-safe bindings,
+/// and local handling of takeover credentials.
 /// </summary>
 public class EmergencyAccessPageXamlTests
 {
@@ -41,12 +42,38 @@ public class EmergencyAccessPageXamlTests
         var xaml = Xaml();
         Assert.Contains("ViewModel.MyContacts", xaml);
         Assert.Contains("ViewModel.TrustedByOthers", xaml);
+        Assert.Contains("Text=\"你信任的人\"", xaml);
+        Assert.Contains("Text=\"信任你的人\"", xaml);
+    }
+
+    [Fact]
+    public void Page_UsesCompactContactRowsAndLeavesBreadcrumbToSettingsHost()
+    {
+        var document = XDocument.Parse(Xaml());
+        var scrollViewer = document.Descendants().Single(e => e.Name.LocalName == "ScrollViewer");
+        var container = scrollViewer.Elements().Single();
+
+        Assert.Null(container.Attribute("MaxWidth"));
+        Assert.Equal("680", container.Elements().Single().Attribute("MaxWidth")?.Value);
+        Assert.Equal("40,8,40,48", container.Attribute("Padding")?.Value);
+        Assert.Equal("Disabled", scrollViewer.Attribute("HorizontalScrollBarVisibility")?.Value);
+        Assert.DoesNotContain(document.Descendants(), e => e.Name.LocalName == "BreadcrumbBar"
+            || e.Attribute("Text")?.Value == "紧急访问");
+        Assert.DoesNotContain(document.Descendants(), e =>
+            e.Attribute("Style")?.Value == "{StaticResource CardBorderStyle}");
+
+        var rowStyle = document.Descendants().Single(e =>
+            e.Attribute("{http://schemas.microsoft.com/winfx/2006/xaml}Key")?.Value == "EmergencyRowStyle");
+        Assert.Contains(rowStyle.Elements(), e =>
+            e.Attribute("Property")?.Value == "MinHeight" && e.Attribute("Value")?.Value == "60");
+        Assert.Contains(rowStyle.Elements(), e =>
+            e.Attribute("Property")?.Value == "BorderThickness" && e.Attribute("Value")?.Value == "0,0,0,1");
     }
 
     [Fact]
     public void Page_NoReflectionBinding()
     {
-        // AOT: 禁止任何反射 {Binding ...}（允许 {x:Bind ...}）
+        // Compiled bindings are required for the native AOT build.
         var xaml = Xaml();
         Assert.DoesNotContain("{Binding ", xaml);
     }
@@ -69,29 +96,42 @@ public class EmergencyAccessPageXamlTests
         Assert.Contains("ViewModel.HasNoGranted", xaml);
     }
 
-    // ── 状态矩阵：每个行级按钮必须绑定到 Show* 静态函数,不存在无条件显示的命令 ────
+    // Each supported row action must keep its own state-dependent visibility.
 
     [Theory]
-    [InlineData("ShowReinvite")]
-    [InlineData("ShowConfirm")]
-    [InlineData("ShowUpdate")]
-    [InlineData("ShowApprove")]
-    [InlineData("ShowReject")]
-    [InlineData("ShowRemove")]
-    [InlineData("ShowInitiate")]
-    [InlineData("ShowView")]
-    [InlineData("ShowTakeover")]
-    public void Page_ButtonVisibility_BoundToStateMatrixFunction(string functionName)
+    [InlineData("ShowReinvite", "OnReinviteClick")]
+    [InlineData("ShowConfirm", "OnConfirmClick")]
+    [InlineData("ShowUpdate", "OnUpdateClick")]
+    [InlineData("ShowApprove", "OnApproveClick")]
+    [InlineData("ShowReject", "OnRejectClick")]
+    [InlineData("ShowRemove", "OnRemoveContactClick")]
+    [InlineData("ShowInitiate", "OnInitiateClick")]
+    [InlineData("ShowView", "OnViewClick")]
+    [InlineData("ShowTakeover", "OnTakeoverClick")]
+    public void Page_ButtonVisibility_BoundToStateMatrixFunction(string functionName, string clickHandler)
     {
-        var xaml = Xaml();
-        Assert.Contains($"local:EmergencyAccessPage.{functionName}(", xaml);
+        var document = XDocument.Parse(Xaml());
+        var button = document.Descendants().Single(e => e.Name.LocalName == "Button"
+            && e.Attribute("Click")?.Value == clickHandler);
+        Assert.Contains($"local:EmergencyAccessPage.{functionName}(", button.Attribute("Visibility")?.Value);
+        Assert.Equal("{x:Bind}", button.Attribute("Tag")?.Value);
     }
 
     [Fact]
     public void Page_InviteAndListsAreDisabled_WhenBusy()
     {
-        var xaml = Xaml();
-        Assert.Contains("ViewModel.CanOperate", xaml);
+        var document = XDocument.Parse(Xaml());
+        var invite = document.Descendants().Single(e =>
+            e.Attribute("AutomationProperties.AutomationId")?.Value == "EmergencyInviteButton");
+        Assert.Equal("OnInviteClick", invite.Attribute("Click")?.Value);
+        Assert.Contains("ViewModel.CanOperate", invite.Attribute("IsEnabled")?.Value);
+        foreach (var name in new[] { "MyContactsList", "TrustedByOthersList" })
+        {
+            var list = document.Descendants().Single(e =>
+                e.Attribute("{http://schemas.microsoft.com/winfx/2006/xaml}Name")?.Value == name);
+            Assert.Contains("ViewModel.CanOperate", list.Attribute("IsEnabled")?.Value);
+            Assert.Equal("None", list.Attribute("SelectionMode")?.Value);
+        }
     }
 
     [Fact]
@@ -124,7 +164,7 @@ public class EmergencyAccessPageXamlTests
         Assert.Contains("ViewModel.ViewAsync(item", cs);
         Assert.Contains("ViewModel.TakeoverAsync(item", cs);
 
-        // 不再依赖可变 SelectedId
+        // Actions must use their captured item rather than mutable selection.
         Assert.DoesNotContain("SelectedContactId", cs);
         Assert.DoesNotContain("SelectedGranteeId", cs);
         Assert.DoesNotContain("SelectedGrantedId", cs);
@@ -158,10 +198,20 @@ public class EmergencyAccessPageXamlTests
     public void CodeBehind_RemoveAndReject_RequireConfirmationDialog()
     {
         var cs = CodeBehind();
-        Assert.Contains("DialogHelper.ConfirmAsync(", cs);
+        var reject = Section(cs, "private async void OnRejectClick", "private async void OnRemoveContactClick");
+        var remove = Section(cs, "private async void OnRemoveContactClick", "private async void OnUpdateClick");
+        var confirmation = Section(cs, "private async Task<bool> ConfirmEmergencyAsync", "public static Visibility ShowReinvite");
+
+        Assert.Contains("ViewModel.RejectAsync(", reject);
+        Assert.Contains("DialogHelper.ConfirmAsync(", reject);
+        Assert.Contains("ViewModel.RemoveAsync(", remove);
+        Assert.Contains("ConfirmEmergencyAsync(", remove);
+        Assert.Contains("dangerous: true", remove);
+        Assert.Contains("DefaultButton = ContentDialogButton.Close", confirmation);
+        Assert.Contains("DialogHelper.ShowTrackedAsync(dialog, ct: ct)", confirmation);
     }
 
-    // ── 接管密码不得残留：不写入 ViewModel,且始终在 finally 清空局部密码框 ──────
+    // Takeover passwords remain local and are cleared on every exit path.
 
     [Fact]
     public void CodeBehind_TakeoverDoesNotStorePasswordOnViewModel()
@@ -207,5 +257,14 @@ public class EmergencyAccessPageXamlTests
             directory = directory.Parent;
         }
         throw new FileNotFoundException("Could not find " + Path.Combine(segments));
+    }
+
+    private static string Section(string source, string startMarker, string endMarker)
+    {
+        var start = source.IndexOf(startMarker, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Missing source section: {startMarker}");
+        var end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
+        Assert.True(end > start, $"Missing source section end: {endMarker}");
+        return source[start..end];
     }
 }

@@ -59,6 +59,17 @@ public sealed class ApiClient :
         return await ReadJson(response, ApiJsonContext.Default.PreloginResponse, ct);
     }
 
+    public Task RequestPasswordHintAsync(string email, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+        return SendWriteAsync(
+            HttpMethod.Post,
+            "api/accounts/password-hint",
+            new PreloginRequest(email),
+            ApiJsonContext.Default.PreloginRequest,
+            ct);
+    }
+
     public async Task<ConnectTokenResult> ConnectTokenAsync(ConnectTokenRequest request, CancellationToken ct = default)
     {
         using var httpRequest = new HttpRequestMessage(

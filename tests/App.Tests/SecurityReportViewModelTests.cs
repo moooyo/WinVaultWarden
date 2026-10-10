@@ -204,7 +204,7 @@ public class SecurityReportViewModelTests
     }
 
     [Fact]
-    public async Task ReloadOfflineReport_InvalidatesExposureResultsFromPreviousSnapshot()
+    public async Task ReloadOfflineReport_PreservesExposureSnapshotAndRequiresRecheck()
     {
         var vm = new SecurityReportViewModel(new MockVaultHealthUiService());
         await vm.RunExposedCheckCommand.ExecuteAsync(null);
@@ -212,9 +212,13 @@ public class SecurityReportViewModelTests
 
         await vm.LoadOfflineAsync();
 
-        Assert.Empty(vm.ExposedItems);
-        Assert.Equal(ExposureCheckState.NotStarted, vm.ExposureState);
-        Assert.False(vm.ShowExposedCount);
+        Assert.NotEmpty(vm.ExposedItems);
+        Assert.Equal(ExposureCheckState.Succeeded, vm.ExposureState);
+        Assert.True(vm.ShowExposedCount);
+        Assert.False(vm.ExposedChecked);
+        Assert.Equal("待复查", vm.ExposureStatusLabel);
+        Assert.Contains("待复查", vm.LastCheckedText);
+        Assert.Empty(vm.ResolvedItems);
     }
 
     [Fact]
@@ -494,19 +498,455 @@ public class SecurityReportViewModelTests
         Assert.Equal(ExposureCheckState.Succeeded, vm.ExposureState);
     }
 
+    [Fact]
+    public async Task Overview_DeduplicatesByPriorityAndPreservesEachCategoryDetail()
+    {
+        var breached = new HealthItemRef("breached", "Zulu", "one@example.test");
+        var alsoBreached = new HealthItemRef("also-breached", "Alpha", null);
+        var reused = new HealthItemRef("reused", "Reused", null);
+        var weak = new HealthItemRef("weak", "Weak", null);
+        var unsecured = new HealthItemRef("unsecured", "Unsecured", null);
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport(
+                [new ReusedGroup(2, [breached, reused])],
+                [new WeakFinding(breached, 1), new WeakFinding(reused, 1), new WeakFinding(weak, 1)],
+                [new UnsecuredFinding(breached, "http://one.test"),
+                    new UnsecuredFinding(weak, "http://two.test"),
+                    new UnsecuredFinding(unsecured, "http://three.test")]),
+            Exposed = [new ExposedFinding(alsoBreached, 2), new ExposedFinding(breached, 50)],
+        };
+        var vm = new SecurityReportViewModel(service);
+
+        await vm.LoadOfflineAsync();
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+
+        Assert.Equal("breached", vm.PriorityIssue?.CipherId);
+        Assert.Equal("critical", vm.PriorityIssue?.Severity);
+        Assert.Equal("还有 5 项需要处理", vm.CategorySummary);
+        Assert.Equal(new[] { "breach", "reuse", "weak", "http" }, vm.IssueGroups.Select(group => group.Category));
+        var remaining = vm.IssueGroups.SelectMany(group => group.Items).ToArray();
+        Assert.Equal(new[] { "also-breached", "reused", "weak", "unsecured" }, remaining.Select(item => item.CipherId));
+        Assert.DoesNotContain(remaining, item => item.CipherId == vm.PriorityIssue?.CipherId);
+        Assert.Equal(4, remaining.Select(item => item.CipherId).Distinct().Count());
+
+        vm.Category = "weak";
+        Assert.False(vm.ShowPriority);
+        Assert.Null(vm.PriorityIssue);
+        Assert.Equal("弱密码", vm.PageTitle);
+        Assert.Equal(3, Assert.Single(vm.IssueGroups).Count);
+        Assert.Contains(Assert.Single(vm.IssueGroups).Items, item => item.CipherId == "breached");
+        Assert.Empty(vm.ResolvedItems);
+
+        vm.Category = "no2fa";
+        Assert.Equal("all", vm.Category);
+        Assert.DoesNotContain(vm.IssueGroups, group => group.Category == "no2fa");
+    }
+
+    [Fact]
+    public async Task ResolvedItems_RequireEveryKnownIssueToDisappearAndResetOnLock()
+    {
+        var item = new HealthItemRef("entry", "Example", "user@example.test");
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport([], [new WeakFinding(item, 1)], [new UnsecuredFinding(item, "http://example.test")]),
+        };
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+
+        service.Report = new HealthReport([], [], [new UnsecuredFinding(item, "http://example.test")]);
+        await vm.RefreshReportsAsync();
+        Assert.Empty(vm.ResolvedItems);
+        Assert.Equal("http", vm.PriorityIssue?.Category);
+
+        service.Report = new HealthReport([], [], []);
+        await vm.RefreshReportsAsync();
+        var resolved = Assert.Single(vm.ResolvedItems);
+        Assert.Equal("entry", resolved.CipherId);
+        Assert.Equal("weak", resolved.Category);
+        Assert.False(string.IsNullOrWhiteSpace(resolved.ResultLabel));
+        Assert.Equal(0, service.ExposureCalls);
+        Assert.Contains("尚未检查", vm.EmptyMessage);
+
+        vm.Category = "done";
+        Assert.Equal("已处理 1 项", vm.CategorySummary);
+        Assert.True(vm.HasVisibleIssues);
+        Assert.Empty(vm.IssueGroups);
+        Assert.False(vm.ShowPriority);
+
+        vm.ClearSensitive();
+        await vm.LoadOfflineAsync();
+        vm.Category = "done";
+        Assert.Empty(vm.ResolvedItems);
+        Assert.False(vm.HasVisibleIssues);
+        Assert.Equal("已处理 0 项", vm.CategorySummary);
+    }
+
+    [Fact]
+    public async Task BreachResolution_RequiresFreshSuccessfulOnlineResult()
+    {
+        var item = new HealthItemRef("entry", "Example", null);
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport([], [new WeakFinding(item, 1)], []),
+            Exposed = [new ExposedFinding(item, 7)],
+        };
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+
+        service.Report = new HealthReport([], [], []);
+        service.Exposed = [];
+        await vm.LoadOfflineAsync();
+        Assert.Empty(vm.ResolvedItems);
+        Assert.Equal("entry", Assert.Single(vm.ExposedItems).Item.CipherId);
+        Assert.False(vm.ExposedChecked);
+
+        service.ExposureError = new InvalidOperationException("unavailable");
+        await vm.RefreshReportsAsync();
+        Assert.Equal(ExposureCheckState.Failed, vm.ExposureState);
+        Assert.Empty(vm.ResolvedItems);
+        Assert.Equal("entry", vm.PriorityIssue?.CipherId);
+        Assert.Equal(SecuritySeverity.Critical, vm.OverallSeverity);
+
+        service.ExposureError = null;
+        await vm.RefreshReportsAsync();
+        Assert.True(vm.ExposedChecked);
+        Assert.Empty(vm.ExposedItems);
+        Assert.Equal("entry", Assert.Single(vm.ResolvedItems).CipherId);
+        Assert.Equal("breach", Assert.Single(vm.ResolvedItems).Category);
+        Assert.Equal("所有条目都通过了检查。", vm.EmptyMessage);
+    }
+
+    [Fact]
+    public async Task RefreshReports_OnlyChecksExposureAfterAnExplicitCheckInTheCurrentSession()
+    {
+        var service = new StubHealthUiService();
+        var vm = new SecurityReportViewModel(service);
+
+        await vm.RefreshReportsAsync();
+        await vm.RefreshReportsAsync();
+        Assert.Equal(0, service.ExposureCalls);
+        Assert.False(vm.ExposedChecked);
+        Assert.Equal(SecuritySeverity.Unknown, vm.OverallSeverity);
+
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+        await vm.RefreshReportsAsync();
+        Assert.Equal(2, service.ExposureCalls);
+        Assert.True(vm.ExposedChecked);
+
+        vm.ClearSensitive();
+        await vm.RefreshReportsAsync();
+        Assert.Equal(2, service.ExposureCalls);
+        Assert.False(vm.ExposedChecked);
+    }
+
+    [Fact]
+    public async Task CancelExposedCheck_AfterCompletionPreservesTheSuccessfulSnapshot()
+    {
+        var vm = new SecurityReportViewModel(new MockVaultHealthUiService());
+        await vm.LoadOfflineAsync();
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+        var findings = vm.ExposedItems.ToArray();
+
+        vm.CancelExposedCheck();
+
+        Assert.Equal(findings, vm.ExposedItems.ToArray());
+        Assert.True(vm.ExposedChecked);
+        Assert.Equal(ExposureCheckState.Succeeded, vm.ExposureState);
+    }
+
+    [Fact]
+    public async Task CommandCancellation_WhenServiceIgnoresToken_DoesNotStayCheckingOrClaimClean()
+    {
+        var service = new ControlledExposedHealthUiService();
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+        var check = vm.RunExposedCheckCommand.ExecuteAsync(null);
+        await service.Entered.Task;
+
+        vm.RunExposedCheckCommand.Cancel();
+        service.Complete(0, []);
+        await check;
+
+        Assert.False(vm.IsCheckingExposed);
+        Assert.False(vm.ExposedChecked);
+        Assert.Equal(ExposureCheckState.NotStarted, vm.ExposureState);
+        Assert.Equal(SecuritySeverity.Unknown, vm.OverallSeverity);
+        Assert.Contains("尚未检查", vm.EmptyMessage);
+    }
+
+    [Fact]
+    public async Task CancelledRecheck_DoesNotReplaceThePreviousExposureSnapshotOrResolveIt()
+    {
+        var service = new ControlledExposedHealthUiService();
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+        var initial = vm.RunExposedCheckCommand.ExecuteAsync(null);
+        service.Complete(0, [new ExposedFinding(new HealthItemRef("entry", "Example", null), 4)]);
+        await initial;
+
+        var recheck = vm.RunExposedCheckCommand.ExecuteAsync(null);
+        vm.CancelExposedCheck();
+        service.Complete(1, []);
+        await recheck;
+
+        Assert.False(vm.IsCheckingExposed);
+        Assert.False(vm.ExposedChecked);
+        Assert.Equal("entry", Assert.Single(vm.ExposedItems).Item.CipherId);
+        Assert.Equal("entry", vm.PriorityIssue?.CipherId);
+        Assert.Empty(vm.ResolvedItems);
+        Assert.Equal("待复查", vm.ExposureStatusLabel);
+    }
+
+    [Fact]
+    public async Task CancellationDuringCollectionPublication_ProjectsOnlyTheCompleteCommittedSnapshot()
+    {
+        var first = new HealthItemRef("first", "First", null);
+        var second = new HealthItemRef("second", "Second", null);
+        var service = new StubHealthUiService { Report = new HealthReport([], [new WeakFinding(first, 1)], []) };
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+        var cancelled = false;
+        vm.WeakItems.CollectionChanged += (_, args) =>
+        {
+            if (!cancelled && args.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset)
+            {
+                cancelled = true;
+                vm.CancelOfflineAnalysis();
+            }
+        };
+        service.Report = new HealthReport([], [new WeakFinding(second, 1)], [new UnsecuredFinding(first, "http://example.test")]);
+
+        var result = await vm.LoadOfflineAsync();
+
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
+        Assert.Empty(vm.ResolvedItems);
+        Assert.Equal("second", vm.PriorityIssue?.CipherId);
+        Assert.Equal("first", Assert.Single(Assert.Single(vm.IssueGroups).Items).CipherId);
+        Assert.Equal("http", Assert.Single(vm.IssueGroups).Category);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ClearSensitive_DuringCollectionNotificationPurgesFindingsAndSessionBaseline(bool clearDuringResolution)
+    {
+        var first = new HealthItemRef("first", "First", null);
+        var second = new HealthItemRef("second", "Second", null);
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport([], [new WeakFinding(first, 1), new WeakFinding(second, 1)], []),
+        };
+        var vm = new SecurityReportViewModel(service);
+        var cleared = false;
+        void ClearOnAddition(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs args)
+        {
+            if (!cleared && args.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add)
+            {
+                cleared = true;
+                vm.ClearSensitive();
+            }
+        }
+
+        if (clearDuringResolution)
+        {
+            await vm.LoadOfflineAsync();
+            service.Report = new HealthReport([], [], []);
+            vm.ResolvedItems.CollectionChanged += (_, _) => { };
+            vm.ResolvedItems.CollectionChanged += ClearOnAddition;
+        }
+        else
+        {
+            vm.WeakItems.CollectionChanged += ClearOnAddition;
+        }
+
+        var result = await vm.LoadOfflineAsync();
+
+        Assert.True(cleared);
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
+        Assert.Empty(vm.WeakItems);
+        Assert.Empty(vm.ReusedGroups);
+        Assert.Empty(vm.UnsecuredItems);
+        Assert.Empty(vm.ExposedItems);
+        Assert.Empty(vm.IssueGroups);
+        Assert.Empty(vm.ResolvedItems);
+        Assert.Null(vm.PriorityIssue);
+        Assert.False(vm.HasVisibleIssues);
+        Assert.Equal(0, vm.TotalIssueCount);
+
+        service.Report = new HealthReport([], [], []);
+        await vm.LoadOfflineAsync();
+        vm.Category = "done";
+        Assert.Empty(vm.ResolvedItems);
+        Assert.Equal("已处理 0 项", vm.CategorySummary);
+    }
+
+    [Fact]
+    public async Task MarkPasswordChanged_RemovesOnlyTheOldPasswordFindingUntilRechecked()
+    {
+        var changed = new HealthItemRef("changed", "Changed", null);
+        var unchanged = new HealthItemRef("unchanged", "Unchanged", null);
+        var service = new StubHealthUiService
+        {
+            Exposed = [new ExposedFinding(changed, 9), new ExposedFinding(unchanged, 3)],
+        };
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+
+        vm.MarkPasswordChanged(changed.CipherId);
+
+        Assert.Equal("unchanged", Assert.Single(vm.ExposedItems).Item.CipherId);
+        Assert.Equal(1, vm.ExposedCount);
+        Assert.Equal(1, vm.GetCategoryIssueCount("breach"));
+        Assert.Equal(1, vm.OverviewIssueCount);
+        Assert.Equal("unchanged", vm.PriorityIssue?.CipherId);
+        Assert.False(vm.ExposedChecked);
+        Assert.Equal("待复查", vm.ExposureStatusLabel);
+        Assert.Equal(0, vm.ResolvedCount);
+        Assert.Empty(vm.ResolvedItems);
+        Assert.Equal(1, service.ExposureCalls);
+
+        service.Exposed = [new ExposedFinding(unchanged, 3)];
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+
+        Assert.True(vm.ExposedChecked);
+        Assert.Equal(1, vm.ResolvedCount);
+        Assert.Equal("changed", Assert.Single(vm.ResolvedItems).CipherId);
+        Assert.Equal("breach", Assert.Single(vm.ResolvedItems).Category);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MarkPasswordChanged_DropsTheOldInFlightExposureResultAndFailure(bool failOldRequest)
+    {
+        var item = new HealthItemRef("entry", "Example", null);
+        var service = new ControlledExposedHealthUiService();
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+        var initial = vm.RunExposedCheckCommand.ExecuteAsync(null);
+        service.Complete(0, [new ExposedFinding(item, 7)]);
+        await initial;
+        var stale = vm.RunExposedCheckCommand.ExecuteAsync(null);
+
+        vm.MarkPasswordChanged(item.CipherId);
+        if (failOldRequest)
+            service.Fail(1, new InvalidOperationException("old request failure"));
+        else
+            service.Complete(1, [new ExposedFinding(item, 7)]);
+        await stale;
+
+        Assert.Empty(vm.ExposedItems);
+        Assert.Equal(0, vm.ExposedCount);
+        Assert.Equal(0, vm.OverviewIssueCount);
+        Assert.Equal(0, vm.ResolvedCount);
+        Assert.Empty(vm.ResolvedItems);
+        Assert.Null(vm.PriorityIssue);
+        Assert.Null(vm.ExposedError);
+        Assert.False(vm.IsCheckingExposed);
+        Assert.False(vm.ExposedChecked);
+        Assert.Equal("待复查", vm.ExposureStatusLabel);
+        Assert.Equal(SecuritySeverity.Unknown, vm.OverallSeverity);
+    }
+
+    [Fact]
+    public async Task MarkPasswordChanged_BeforeAnyExposureCheckDoesNotAuthorizeAnOnlineRefresh()
+    {
+        var service = new StubHealthUiService();
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+
+        vm.MarkPasswordChanged("entry");
+        await vm.RefreshReportsAsync();
+
+        Assert.Equal(0, service.ExposureCalls);
+        Assert.Equal(ExposureCheckState.NotStarted, vm.ExposureState);
+        Assert.Equal("未检查", vm.ExposureStatusLabel);
+        Assert.False(vm.ExposedChecked);
+        Assert.Equal(0, vm.ResolvedCount);
+    }
+
+    [Fact]
+    public async Task MarkPasswordChanged_AfterLaterExposureCannotResolveAnOfflineBaselineWithoutRecheck()
+    {
+        var item = new HealthItemRef("entry", "Example", null);
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport([], [new WeakFinding(item, 1)], []),
+        };
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+        service.Report = new HealthReport([], [], []);
+        service.Exposed = [new ExposedFinding(item, 5)];
+        await vm.RefreshReportsAsync();
+
+        vm.MarkPasswordChanged(item.CipherId);
+
+        Assert.Empty(vm.ExposedItems);
+        Assert.Equal(0, vm.ResolvedCount);
+        Assert.Empty(vm.ResolvedItems);
+        Assert.False(vm.ExposedChecked);
+
+        service.Exposed = [];
+        service.ExposureError = new InvalidOperationException("unavailable");
+        await vm.RefreshReportsAsync();
+        Assert.Equal(0, vm.ResolvedCount);
+        Assert.False(vm.ExposedChecked);
+
+        service.ExposureError = null;
+        await vm.RefreshReportsAsync();
+        Assert.True(vm.ExposedChecked);
+        Assert.Equal("entry", Assert.Single(vm.ResolvedItems).CipherId);
+        Assert.Equal(1, vm.ResolvedCount);
+    }
+
+    [Fact]
+    public async Task ClearSensitive_ClearsPasswordChangeRecheckRequirementsForTheNextSession()
+    {
+        var item = new HealthItemRef("entry", "Example", null);
+        var service = new StubHealthUiService { Exposed = [new ExposedFinding(item, 4)] };
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+        vm.MarkPasswordChanged(item.CipherId);
+
+        vm.ClearSensitive();
+        service.Report = new HealthReport([], [new WeakFinding(item, 1)], []);
+        await vm.LoadOfflineAsync();
+        service.Report = new HealthReport([], [], []);
+        await vm.RefreshReportsAsync();
+
+        Assert.Equal(1, service.ExposureCalls);
+        Assert.Equal(ExposureCheckState.NotStarted, vm.ExposureState);
+        Assert.Equal(1, vm.ResolvedCount);
+        Assert.Equal("entry", Assert.Single(vm.ResolvedItems).CipherId);
+        Assert.Equal("weak", Assert.Single(vm.ResolvedItems).Category);
+    }
+
     // ── Fakes ──────────────────────────────────────────────────────────────────
 
     private sealed class StubHealthUiService : IVaultHealthUiService
     {
         public HealthReport Report { get; set; } = new(Reused: [], Weak: [], Unsecured: []);
+        public IReadOnlyList<ExposedFinding> Exposed { get; set; } = [];
+        public Exception? ExposureError { get; set; }
+        public int ExposureCalls { get; private set; }
 
         public Task<HealthReport> AnalyzeOfflineAsync(
             IProgress<HealthAnalysisProgress>? progress = null,
             CancellationToken ct = default) =>
             Task.FromResult(Report);
 
-        public Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<ExposedFinding>>([]);
+        public Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(CancellationToken ct = default)
+        {
+            ExposureCalls++;
+            return ExposureError is { } error
+                ? Task.FromException<IReadOnlyList<ExposedFinding>>(error)
+                : Task.FromResult(Exposed);
+        }
     }
 
     private sealed class ThrowingHealthUiService : IVaultHealthUiService

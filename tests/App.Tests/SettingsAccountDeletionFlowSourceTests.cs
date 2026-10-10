@@ -167,7 +167,7 @@ public sealed class SettingsAccountDeletionFlowSourceTests
             "private void CancelAccountDeletion()",
             StringComparison.Ordinal);
         var cancelEnd = source.IndexOf(
-            "public void RefreshPolicyRestrictions",
+            "private void CancelSecuritySummary()",
             cancelStart,
             StringComparison.Ordinal);
         var cancel = source[cancelStart..cancelEnd];

@@ -8,6 +8,7 @@ public sealed partial class DetailCard : UserControl
     public DetailCard()
     {
         InitializeComponent();
+        UpdateTitle();
         UpdateCardContent();
     }
 
@@ -18,7 +19,15 @@ public sealed partial class DetailCard : UserControl
     }
     public static readonly DependencyProperty TitleProperty =
         DependencyProperty.Register(nameof(Title), typeof(string), typeof(DetailCard),
-            new PropertyMetadata("", (d, e) => ((DetailCard)d).TitleText.Text = (string)e.NewValue));
+            new PropertyMetadata("", (d, _) => ((DetailCard)d).UpdateTitle()));
+
+    private void UpdateTitle()
+    {
+        if (TitleText is null)
+            return;
+        TitleText.Text = Title ?? string.Empty;
+        TitleText.Visibility = string.IsNullOrWhiteSpace(Title) ? Visibility.Collapsed : Visibility.Visible;
+    }
 
     public object? CardContent
     {

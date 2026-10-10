@@ -1,335 +1,141 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Page
-    x:Class="App.Views.SendPage"
-    x:Name="Root"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:conv="using:App.Converters"
-    xmlns:models="using:App.ViewModels.Models">
+<Page x:Class="App.Views.SendPage" x:Name="Root"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:conv="using:App.Converters"
+      xmlns:models="using:App.ViewModels.Models">
     <Page.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="{ThemeResource SubtleFillColorSecondary}" />
+        <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="{ThemeResource SubtleFillColorTertiary}" />
+        <SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="{ThemeResource TextFillColorPrimary}" />
+        <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="{ThemeResource TextFillColorPrimary}" />
+        <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="{ThemeResource ControlStrokeColorDefault}" />
+        <Style x:Key="SendPropertyRow" TargetType="Border">
+            <Setter Property="BorderBrush" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="0,6" />
+            <Setter Property="MinHeight" Value="48" />
+        </Style>
+        <Style x:Key="SendEditorRow" TargetType="Border" BasedOn="{StaticResource SendPropertyRow}">
+            <Setter Property="MinHeight" Value="56" />
+            <Setter Property="Padding" Value="0,10,0,12" />
+        </Style>
+        <Style x:Key="SendLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="FontSize" Value="14" />
+        </Style>
+        <Style x:Key="SendIconButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+            <Setter Property="Width" Value="32" /><Setter Property="Height" Value="32" />
+            <Setter Property="MinWidth" Value="0" /><Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="0" /><Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
     </Page.Resources>
-
-    <Grid Padding="{StaticResource PageContentPadding}">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" MinHeight="120" />
-        </Grid.RowDefinitions>
-
-        <StackPanel Grid.Row="1">
-            <InfoBar x:Name="SendErrorInfoBar"
-                     IsClosable="True"
-                     Severity="Error"
-                     IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
-                     Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                     Margin="0,12,0,0"
-                     Message="{x:Bind ViewModel.Error, Mode=OneWay}" />
-            <InfoBar x:Name="SendNoticeInfoBar"
-                     IsClosable="True"
-                     Severity="Warning"
-                     IsOpen="{x:Bind ViewModel.ShowNotice, Mode=OneWay}"
-                     Visibility="{x:Bind ViewModel.ShowNotice, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                     Margin="0,12,0,0"
-                     Message="{x:Bind ViewModel.Notice, Mode=OneWay}" />
-            <InfoBar x:Name="SendOfflineInfoBar"
-                     IsClosable="False"
-                     Severity="Warning"
-                     IsOpen="{x:Bind ViewModel.ShowStaleInfo, Mode=OneWay}"
-                     Visibility="{x:Bind ViewModel.ShowStaleInfo, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                     Margin="0,12,0,0"
-                     Message="正在显示离线缓存中的 Send。请先成功同步密码库，再进行新增、编辑或删除。" />
-            <InfoBar IsClosable="True"
-                     Severity="Informational"
-                     AutomationProperties.LiveSetting="Polite"
-                     IsOpen="{x:Bind ViewModel.HasCopyFeedback, Mode=OneWay}"
-                     Visibility="{x:Bind ViewModel.HasCopyFeedback, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                     Margin="0,12,0,0"
-                     Message="{x:Bind ViewModel.CopyFeedback, Mode=OneWay}" />
+    <Page.KeyboardAccelerators>
+        <KeyboardAccelerator Key="F2" Invoked="OnEditAccelerator" /><KeyboardAccelerator Key="S" Modifiers="Control" Invoked="OnSaveAccelerator" />
+        <KeyboardAccelerator Key="C" Modifiers="Control" Invoked="OnCopyAccelerator" />
+        <KeyboardAccelerator Key="Escape" Invoked="OnEscapeAccelerator" />
+        <KeyboardAccelerator Key="Delete" Invoked="OnDeleteAccelerator" />
+    </Page.KeyboardAccelerators>
+    <Grid x:Name="SendSurface" SizeChanged="OnSurfaceSizeChanged">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+        <StackPanel>
+            <InfoBar x:Name="SendErrorInfoBar" IsClosable="True" Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}" Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVis}}" Message="{x:Bind ViewModel.Error, Mode=OneWay}" AutomationProperties.LiveSetting="Assertive" />
+            <InfoBar x:Name="SendNoticeInfoBar" IsClosable="True" Severity="Warning" IsOpen="{x:Bind ViewModel.ShowNotice, Mode=OneWay}" Visibility="{x:Bind ViewModel.ShowNotice, Mode=OneWay, Converter={StaticResource BoolToVis}}" Message="{x:Bind ViewModel.Notice, Mode=OneWay}" />
+            <InfoBar x:Name="SendOfflineInfoBar" IsClosable="False" Severity="Warning" IsOpen="{x:Bind ViewModel.ShowStaleInfo, Mode=OneWay}" Visibility="{x:Bind ViewModel.ShowStaleInfo, Mode=OneWay, Converter={StaticResource BoolToVis}}" Message="正在显示离线缓存中的 Send。请先成功同步密码库，再进行新增、编辑或删除。" />
         </StackPanel>
-
-        <Grid Grid.Row="0" ColumnSpacing="12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <StackPanel Spacing="6">
-                <TextBlock Text="Send" Style="{ThemeResource TitleTextBlockStyle}" />
-                <TextBlock Text="通过可控的链接，安全分享加密文本和文件。"
-                           TextWrapping="Wrap"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            </StackPanel>
-            <Button x:Name="AddSendButton"
-                    Grid.Column="1"
-                    Style="{ThemeResource AccentButtonStyle}"
-                    IsEnabled="{x:Bind ViewModel.CanCreateSend, Mode=OneWay}"
-                    Click="OnAddSendClick">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <FontIcon Glyph="&#xE710;" FontSize="14" />
-                    <TextBlock Text="新增 Send" />
+        <Grid x:Name="BrowsePane" Grid.Row="1">
+            <Grid.ColumnDefinitions><ColumnDefinition x:Name="SendListColumn" Width="344" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <Grid x:Name="ListPane" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="24,20,20,12">
+                    <TextBlock Text="{x:Bind ViewModel.ListTitle, Mode=OneWay}" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Text="{x:Bind ViewModel.ListCountLabel, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
                 </StackPanel>
-            </Button>
-        </Grid>
+                <DropDownButton Grid.Row="1" Content="最近修改" x:Name="SortButton" Margin="16,0,16,10" Height="30" MinHeight="0" Padding="8,0" BorderThickness="0" Background="Transparent" HorizontalAlignment="Left">
+                    <DropDownButton.Flyout><MenuFlyout><RadioMenuFlyoutItem Text="最近修改" IsChecked="True" Tag="recent" Click="OnSortClick" /><RadioMenuFlyoutItem Text="即将删除" Tag="deletion" Click="OnSortClick" /></MenuFlyout></DropDownButton.Flyout>
+                </DropDownButton>
+                <Border x:Name="DraftRow" Grid.Row="2" Visibility="Collapsed" Margin="8,6,8,2" Padding="12,8" CornerRadius="4" Background="{ThemeResource SubtleFillColorSecondaryBrush}"><Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Border Width="32" Height="32" CornerRadius="6" Background="{ThemeResource WardenTileBrush}"><FontIcon x:Name="DraftRowGlyph" FontSize="16" /></Border><StackPanel Grid.Column="1" Spacing="2"><TextBlock x:Name="DraftRowName" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Text="新建 · 未保存" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel></Grid></Border><Grid Grid.Row="3">
+                    <ListView x:Name="SendContentList" ItemsSource="{x:Bind ViewModel.FilteredItems}" SelectionMode="Single" SelectionChanged="OnSendSelectionChanged" Margin="8,0" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Send 列表" AutomationProperties.AutomationId="SendsList" Visibility="{x:Bind ViewModel.ShowContent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <ListView.ItemContainerStyle><Style TargetType="ListViewItem"><Setter Property="Padding" Value="12,8" /><Setter Property="Margin" Value="0,1" /><Setter Property="MinHeight" Value="56" /><Setter Property="HorizontalContentAlignment" Value="Stretch" /></Style></ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate><DataTemplate x:DataType="models:SendListItem">
+                            <Grid ColumnSpacing="12" PointerEntered="OnRowPointerEntered" PointerExited="OnRowPointerExited" RightTapped="OnRowRightTapped">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <Grid.ContextFlyout><MenuFlyout Opening="OnRowMenuOpening"><MenuFlyoutItem Text="复制链接" Click="OnCopyLinkMenuClick" KeyboardAcceleratorTextOverride="Ctrl+C" /><MenuFlyoutItem Text="编辑" IsEnabled="{x:Bind CanModify}" Click="OnEditSendClick" KeyboardAcceleratorTextOverride="F2" /><MenuFlyoutItem Text="{x:Bind ToggleActionLabel}" IsEnabled="{x:Bind CanModify}" Click="OnToggleDisabledClick" /><MenuFlyoutSeparator /><MenuFlyoutItem Text="删除" IsEnabled="{x:Bind CanModify}" Click="OnDeleteSendClick" KeyboardAcceleratorTextOverride="Delete" /></MenuFlyout></Grid.ContextFlyout>
+                                <Border Width="32" Height="32" CornerRadius="6" Background="{ThemeResource WardenTileBrush}" VerticalAlignment="Center"><FontIcon Glyph="{x:Bind Glyph}" FontSize="16" /></Border>
+                                <StackPanel Grid.Column="1" Spacing="2"><TextBlock Text="{x:Bind Name}" Opacity="{x:Bind NameOpacity}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Text="{x:Bind ListSubtitle}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" /></StackPanel>
+                                <Grid Grid.Column="2" Width="28"><FontIcon x:Name="RowProtection" Glyph="{x:Bind RowStatusGlyph}" FontSize="14" Foreground="{ThemeResource TextFillColorTertiaryBrush}" Visibility="{x:Bind HasRowStatus, Converter={StaticResource BoolToVis}}" /><Button x:Name="RowCopyButton" AutomationProperties.AutomationId="SendRowCopyLinkButton" Style="{StaticResource SendIconButton}" Width="28" Height="28" Visibility="Collapsed" Click="OnCopyLinkClick" ToolTipService.ToolTip="复制链接" AutomationProperties.Name="复制链接"><FontIcon Glyph="&#xE71B;" FontSize="14" /></Button></Grid>
+                            </Grid>
+                        </DataTemplate></ListView.ItemTemplate>
+                    </ListView>
+                    <ProgressRing x:Name="SendLoadingRing" AutomationProperties.Name="正在加载 Send" AutomationProperties.LiveSetting="Polite" Width="28" Height="28" IsActive="{x:Bind ViewModel.ShowLoading, Mode=OneWay}" Visibility="{x:Bind ViewModel.ShowLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                    <StackPanel x:Name="SendEmptyPanel" Margin="24" Spacing="12" VerticalAlignment="Center" Visibility="{x:Bind EmptyStateVisibility(ViewModel.ShowEmpty), Mode=OneWay}"><TextBlock Text="{x:Bind ViewModel.EmptyTitle, Mode=OneWay}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" HorizontalAlignment="Center" /><TextBlock Text="用链接安全地分享文本或文件，到期自动删除。" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center" /><Button x:Name="AddSendButton" Content="新建 Send" Style="{ThemeResource AccentButtonStyle}" HorizontalAlignment="Center" Click="OnAddSendClick" IsEnabled="{x:Bind ViewModel.CanCreateSend, Mode=OneWay}" Margin="0,4,0,0" /></StackPanel>
+                    <StackPanel Spacing="12" Margin="24" VerticalAlignment="Center" Visibility="{x:Bind ViewModel.ShowError, Mode=OneWay, Converter={StaticResource BoolToVis}}"><TextBlock Text="无法加载 Send" FontSize="16" HorizontalAlignment="Center" /><Button Content="重新加载" HorizontalAlignment="Center" Click="OnRetryClick" /></StackPanel>
+                </Grid>
+            </Grid>
+            <Grid x:Name="DetailPane" Grid.Column="1"><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions><Border x:Name="NarrowBackBar" Height="44" Visibility="Collapsed" Padding="12,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1"><Button x:Name="BackToListButton" Click="OnBackToListClick" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE72B;" FontSize="16" /><TextBlock Text="{x:Bind ViewModel.ListTitle, Mode=OneWay}" /></StackPanel></Button></Border>
+                <StackPanel x:Name="ChooseSendHint" Grid.Row="1" Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center"><FontIcon Glyph="&#xE724;" FontSize="32" Foreground="{ThemeResource TextFillColorTertiaryBrush}" /><TextBlock Text="选择一个 Send" FontSize="20" FontWeight="SemiBold" /><TextBlock Text="查看内容和分享链接" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+                <ScrollViewer x:Name="DetailScroll" Grid.Row="1" Visibility="Collapsed" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+                    <StackPanel x:Name="DetailContent" Padding="40,32,40,36" MaxWidth="1000" HorizontalAlignment="Stretch">
 
-        <Grid Grid.Row="2" ColumnSpacing="12" Margin="0,20,0,20">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal" Spacing="4">
-                <ToggleButton Content="{x:Bind ViewModel.AllFilterLabel, Mode=OneWay}"
-                              IsChecked="{x:Bind ViewModel.IsAllFilter, Mode=OneWay}"
-                              Tag="send:all" Click="OnFilterClick" />
-                <ToggleButton Content="{x:Bind ViewModel.TextFilterLabel, Mode=OneWay}"
-                              IsChecked="{x:Bind ViewModel.IsTextFilter, Mode=OneWay}"
-                              Tag="send:text" Click="OnFilterClick" />
-                <ToggleButton Content="{x:Bind ViewModel.FileFilterLabel, Mode=OneWay}"
-                              IsChecked="{x:Bind ViewModel.IsFileFilter, Mode=OneWay}"
-                              Tag="send:file" Click="OnFilterClick" />
-            </StackPanel>
-            <Button Grid.Column="1" Content="打开收到的 Send" Click="OnReceiveClick" />
-        </Grid>
-
-        <Expander x:Name="ReceivedSendExpander" Grid.Row="3"
-                  Visibility="Collapsed" IsExpanded="True"
-                  Margin="0,0,0,20"
-                  HorizontalAlignment="Stretch"
-                  HorizontalContentAlignment="Stretch"
-                  Header="打开收到的 Send 链接">
-            <ScrollViewer MaxHeight="300" HorizontalScrollBarVisibility="Disabled"
-                          HorizontalScrollMode="Disabled" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="10">
-                <TextBox x:Name="ReceivedLinkTextBox" Header="Send 链接"
-                         PlaceholderText="https://vault.example/#/send/&lt;accessId&gt;/&lt;seed&gt;"
-                         Text="{x:Bind ViewModel.ReceivedLinkUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                <PasswordBox Header="访问密码（如有）"
-                             Password="{x:Bind ViewModel.ReceivedLinkPassword, Mode=TwoWay}" />
-                <Button Content="打开"
-                        Style="{ThemeResource AccentButtonStyle}"
-                        Command="{x:Bind ViewModel.OpenReceivedLinkCommand}" />
-                <InfoBar IsOpen="{x:Bind ViewModel.ReceivedWrongPassword, Mode=OneWay}"
-                         Visibility="{x:Bind ViewModel.ReceivedWrongPassword, Mode=OneWay, Converter={StaticResource BoolToVis}}"
-                         IsClosable="False"
-                         Severity="Warning"
-                         Message="密码不正确，请重试。" />
-                <ScrollViewer x:Name="ReceivedTextScrollViewer"
-                              MaxHeight="240"
-                              VerticalScrollMode="Auto"
-                              VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollMode="Disabled"
-                              HorizontalScrollBarVisibility="Disabled"
-                              Visibility="{x:Bind ViewModel.HasReceivedText, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <TextBlock x:Name="ReceivedTextBlock"
-                               Text="{x:Bind ViewModel.ReceivedText, Mode=OneWay}"
-                               TextWrapping="Wrap"
-                               IsTextSelectionEnabled="True" />
-                </ScrollViewer>
-                <Button x:Name="SaveReceivedFileButton"
-                        Content="保存收到的文件"
-                        Click="OnSaveReceivedFileClick"
-                        Visibility="{x:Bind ViewModel.HasReceivedFile, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                <ProgressRing x:Name="ReceivedFileSaveProgressRing"
-                              IsActive="False"
-                              Visibility="Collapsed"
-                              AutomationProperties.Name="正在保存收到的 Send 文件"
-                              AutomationProperties.LiveSetting="Polite"
-                              HorizontalAlignment="Left" />
-            </StackPanel>
-            </ScrollViewer>
-        </Expander>
-
-        <Grid Grid.Row="4" MinHeight="36" Padding="12,0" ColumnSpacing="12"
-              BorderThickness="0,0,0,1"
-              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
-            <VisualStateManager.VisualStateGroups>
-                <VisualStateGroup>
-                    <VisualState x:Name="WideColumns">
-                        <VisualState.StateTriggers>
-                            <AdaptiveTrigger MinWindowWidth="1120" />
-                        </VisualState.StateTriggers>
-                    </VisualState>
-                    <VisualState x:Name="NarrowColumns">
-                        <VisualState.StateTriggers>
-                            <AdaptiveTrigger MinWindowWidth="0" />
-                        </VisualState.StateTriggers>
-                        <VisualState.Setters>
-                            <Setter Target="AccessColumn.Width" Value="0" />
-                            <Setter Target="AccessHeader.Visibility" Value="Collapsed" />
-                        </VisualState.Setters>
-                    </VisualState>
-                </VisualStateGroup>
-            </VisualStateManager.VisualStateGroups>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2*" />
-                <ColumnDefinition x:Name="AccessColumn" Width="*" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="152" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Text="名称" VerticalAlignment="Center"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <TextBlock x:Name="AccessHeader" Grid.Column="1" Text="访问状态" VerticalAlignment="Center"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <TextBlock Grid.Column="2" Text="可访问至 / 删除时间" VerticalAlignment="Center"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <TextBlock Grid.Column="3" Text="操作" VerticalAlignment="Center"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-        </Grid>
-
-        <ProgressRing x:Name="SendLoadingRing"
-                      Grid.Row="5"
-                      Width="36" Height="36"
-                      HorizontalAlignment="Center"
-                      VerticalAlignment="Top"
-                      Margin="0,72,0,0"
-                      IsActive="{x:Bind ViewModel.ShowLoading, Mode=OneWay}"
-                      AutomationProperties.Name="正在加载 Send"
-                      AutomationProperties.LiveSetting="Polite"
-                      Visibility="{x:Bind ViewModel.ShowLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-
-        <StackPanel x:Name="SendEmptyPanel"
-                    Grid.Row="5"
-                    HorizontalAlignment="Center"
-                    Spacing="{StaticResource SpacingMedium}"
-                    Margin="0,72,0,0"
-                    Visibility="{x:Bind ViewModel.ShowEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <FontIcon Glyph="&#xE724;" FontSize="44"
-                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                      HorizontalAlignment="Center" />
-            <TextBlock Text="没有 Send"
-                       Style="{ThemeResource SubtitleTextBlockStyle}"
-                       HorizontalAlignment="Center" />
-            <TextBlock Text="没有符合当前筛选的 Send。点击右上角“新增 Send”开始分享。"
-                       Style="{StaticResource CaptionSecondaryTextBlockStyle}"
-                       TextAlignment="Center"
-                       HorizontalAlignment="Center" />
-        </StackPanel>
-
-        <ListView x:Name="SendContentList"
-                  Grid.Row="5"
-                  HorizontalContentAlignment="Stretch"
-                  ItemsSource="{x:Bind ViewModel.FilteredItems, Mode=OneWay}"
-                  SelectionMode="None"
-                  Visibility="{x:Bind ViewModel.ShowContent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-            <ListView.ItemContainerStyle>
-                <Style TargetType="ListViewItem">
-                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                    <Setter Property="Padding" Value="0" />
-                </Style>
-            </ListView.ItemContainerStyle>
-            <ListView.ItemTemplate>
-                <DataTemplate x:DataType="models:SendListItem">
-                    <Grid MinHeight="88" Padding="8,12" ColumnSpacing="12"
-                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
-                        <VisualStateManager.VisualStateGroups>
-                            <VisualStateGroup>
-                                <VisualState x:Name="WideColumns">
-                                    <VisualState.StateTriggers>
-                                        <AdaptiveTrigger MinWindowWidth="1120" />
-                                    </VisualState.StateTriggers>
-                                </VisualState>
-                                <VisualState x:Name="NarrowColumns">
-                                    <VisualState.StateTriggers>
-                                        <AdaptiveTrigger MinWindowWidth="0" />
-                                    </VisualState.StateTriggers>
-                                    <VisualState.Setters>
-                                        <Setter Target="AccessColumn.Width" Value="0" />
-                                        <Setter Target="AccessCell.Visibility" Value="Collapsed" />
-                                        <Setter Target="CompactAccessText.Visibility" Value="Visible" />
-                                    </VisualState.Setters>
-                                </VisualState>
-                            </VisualStateGroup>
-                        </VisualStateManager.VisualStateGroups>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="2*" />
-                            <ColumnDefinition x:Name="AccessColumn" Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="152" />
-                        </Grid.ColumnDefinitions>
-                        <Grid ColumnSpacing="10" VerticalAlignment="Center">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Border Width="32" Height="32"
-                                    Style="{StaticResource IconBadgeBorderStyle}">
-                                <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" />
-                            </Border>
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-                                <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold"
-                                           TextTrimming="CharacterEllipsis" MaxLines="1" />
-                                <TextBlock Text="{x:Bind MetadataLabel}" FontSize="12"
-                                           TextTrimming="CharacterEllipsis" MaxLines="1"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <TextBlock x:Name="CompactAccessText" Visibility="Collapsed"
-                                           Text="{x:Bind CompactAccessLabel}" FontSize="12"
-                                           TextTrimming="CharacterEllipsis" MaxLines="1"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            </StackPanel>
+                        <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="56" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <Border Width="56" Height="56" CornerRadius="10" Background="{ThemeResource WardenTileBrush}"><FontIcon x:Name="DetailGlyph" FontSize="24" /></Border>
+                            <StackPanel Grid.Column="1" Spacing="2"><TextBlock x:Name="DetailName" FontSize="28" FontWeight="SemiBold" TextWrapping="Wrap" /><TextBlock x:Name="DetailSubtitle" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" /></StackPanel>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Top"><Button x:Name="EditSelectedSendButton" Click="OnEditSendClick" ToolTipService.ToolTip="编辑 · F2"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE70F;" FontSize="16" /><TextBlock Text="编辑" /></StackPanel></Button><Button x:Name="SelectedMoreButton" AutomationProperties.AutomationId="SendDetailMoreButton" Style="{StaticResource SendIconButton}" Click="OnSelectedMoreClick" ToolTipService.ToolTip="更多" AutomationProperties.Name="更多"><FontIcon Glyph="&#xE712;" FontSize="16" /><Button.Flyout><MenuFlyout><MenuFlyoutItem Text="复制链接" Click="OnCopyLinkMenuClick" /><MenuFlyoutItem Text="编辑" IsEnabled="{x:Bind ViewModel.CanModifySend(ViewModel.SelectedMenuItem), Mode=OneWay}" Click="OnEditSendClick" /><MenuFlyoutItem Text="{x:Bind ViewModel.SelectedMenuItem.ToggleActionLabel, Mode=OneWay}" IsEnabled="{x:Bind ViewModel.CanModifySend(ViewModel.SelectedMenuItem), Mode=OneWay}" Click="OnToggleDisabledClick" /><MenuFlyoutSeparator /><MenuFlyoutItem Text="删除" IsEnabled="{x:Bind ViewModel.CanModifySend(ViewModel.SelectedMenuItem), Mode=OneWay}" Click="OnDeleteSendClick" /></MenuFlyout></Button.Flyout></Button></StackPanel>
                         </Grid>
-                        <StackPanel x:Name="AccessCell" Grid.Column="1" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="{x:Bind AccessStatus}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="{x:Bind AudienceLabel}" FontSize="12" TextTrimming="CharacterEllipsis"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Grid Margin="72,12,0,0" ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><Grid ColumnSpacing="6"><Grid.ColumnDefinitions><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Border x:Name="DetailStatusBadge" Width="14" Height="14" CornerRadius="7" Background="{ThemeResource SystemFillColorSuccessBrush}" VerticalAlignment="Center"><FontIcon x:Name="DetailStatusIcon" Glyph="&#xE73E;" FontSize="8" Foreground="{ThemeResource WardenLayerBrush}" /></Border><TextBlock x:Name="DetailStatus" Grid.Column="1" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" /></Grid><HyperlinkButton x:Name="DetailStatusAction" Grid.Column="1" Click="OnDetailStatusActionClick" Visibility="Collapsed" Padding="8,0" MinHeight="24" /></Grid>
+                        <Button x:Name="ShareLinkButton" Margin="-12,28,-12,0" Padding="12,12,12,20" Background="Transparent" BorderThickness="0" CornerRadius="6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OnCopySelectedLinkClick" ToolTipService.ToolTip="点击复制链接"><StackPanel Spacing="4"><TextBlock x:Name="ShareLinkLabel" Text="分享链接" Height="24" VerticalAlignment="Center" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock x:Name="ShareLinkText" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="16" LineHeight="28" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"><Run x:Name="ShareLinkHostRun" /><Run x:Name="ShareLinkPathRun" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></TextBlock><ProgressBar x:Name="ShareLinkProgress" Height="2" MinHeight="0" Maximum="1" Visibility="Collapsed" /></StackPanel></Button>
+                        <Border x:Name="TextDetailBlock" Margin="0,24,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,1" Padding="0,16,0,20"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel Spacing="6"><TextBlock Text="文本内容" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock x:Name="SendTextContent" FontSize="15" LineHeight="26" TextWrapping="Wrap" MaxWidth="600" HorizontalAlignment="Left" IsTextSelectionEnabled="True" /></StackPanel><Button Grid.Column="1" Style="{StaticResource SendIconButton}" VerticalAlignment="Top" Click="OnCopyTextClick" ToolTipService.ToolTip="复制文本" AutomationProperties.Name="复制文本"><FontIcon Glyph="&#xE8C8;" FontSize="16" /></Button></Grid></Border>
+                        <Border x:Name="FileDetailBlock" Visibility="Collapsed" Margin="0,24,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,1" Padding="0,16"><Grid ColumnSpacing="14"><Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><Border Height="40" CornerRadius="6" Background="{ThemeResource WardenTileBrush}"><FontIcon Glyph="&#xE8A5;" FontSize="20" /></Border><StackPanel Grid.Column="1"><TextBlock x:Name="DetailFileName" TextTrimming="CharacterEllipsis" /><TextBlock x:Name="DetailFileSize" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel><Button Grid.Column="2" Click="OnDownloadOwnFileClick"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE896;" FontSize="16" /><TextBlock Text="下载" /></StackPanel></Button></Grid></Border>
+                        <StackPanel Margin="0,28,0,0">
+                            <Border Style="{StaticResource SendPropertyRow}" BorderThickness="0,1,0,1"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="删除时间" Style="{StaticResource SendLabel}" /><StackPanel Grid.Column="1" Spacing="2"><TextBlock x:Name="DetailDeletion" /><TextBlock x:Name="DetailDeletionHint" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel></Grid></Border>
+                            <Border Style="{StaticResource SendPropertyRow}"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="过期时间" Style="{StaticResource SendLabel}" /><TextBlock x:Name="DetailExpiration" Grid.Column="1" VerticalAlignment="Center" /></Grid></Border>
+                            <Border Style="{StaticResource SendPropertyRow}"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="最大访问次数" Style="{StaticResource SendLabel}" /><StackPanel Grid.Column="1" Spacing="2"><TextBlock x:Name="DetailAccessLimit" /><TextBlock x:Name="DetailAccessCount" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel></Grid></Border>
+                            <Border Style="{StaticResource SendPropertyRow}"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="访问密码" Style="{StaticResource SendLabel}" /><TextBlock x:Name="DetailPassword" Grid.Column="1" VerticalAlignment="Center" /></Grid></Border>
+                            <Border Style="{StaticResource SendPropertyRow}"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="隐藏我的邮箱" Style="{StaticResource SendLabel}" /><TextBlock x:Name="DetailHideEmail" Grid.Column="1" VerticalAlignment="Center" /></Grid></Border>
+                            <Border x:Name="NotesDetailRow" Style="{StaticResource SendPropertyRow}"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="备注" Style="{StaticResource SendLabel}" /><StackPanel Grid.Column="1" Spacing="2"><TextBlock x:Name="DetailNotes" TextWrapping="Wrap" /><TextBlock Text="只有你自己能看到" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel></Grid></Border>
                         </StackPanel>
-                        <StackPanel Grid.Column="2" Spacing="6" VerticalAlignment="Center"
-                                    ToolTipService.ToolTip="{x:Bind AvailableUntilAccessibleLabel}">
-                            <TextBlock Text="{x:Bind AvailableUntilLabel}" TextTrimming="CharacterEllipsis"
-                                       AutomationProperties.Name="{x:Bind AvailableUntilAccessibleLabel}" />
-                            <TextBlock x:Name="DeleteDateCell"
-                                   Text="{x:Bind RetentionLabel}"
-                                   AutomationProperties.Name="{x:Bind DeleteDateAccessibleLabel}"
-                                   FontSize="12"
-                                   TextTrimming="CharacterEllipsis"
-                                   MaxLines="1"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="DetailModified" Margin="0,24,0,0" FontSize="12" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                    </StackPanel>
+                </ScrollViewer>
+                <ScrollViewer x:Name="EditorScroll" Grid.Row="1" Visibility="Collapsed" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+                    <StackPanel x:Name="EditorContent" Padding="40,32,40,40" MaxWidth="1000" HorizontalAlignment="Stretch">
+                        <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="56" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><Border Width="56" Height="56" CornerRadius="10" Background="{ThemeResource WardenTileBrush}"><FontIcon x:Name="EditorGlyph" FontSize="24" /></Border><TextBox x:Name="SendNameTextBox" Grid.Column="1" Text="{x:Bind Draft.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="名称（必填）" AutomationProperties.Name="名称（必填）" FontSize="20" FontWeight="SemiBold" Height="44" VerticalAlignment="Center" /><StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"><Button Content="取消" Click="OnCancelEditorClick" /><Button x:Name="SaveEditorButton" Content="保存" Style="{ThemeResource AccentButtonStyle}" Click="OnSaveEditorClick" /></StackPanel></Grid>
+                        <InfoBar x:Name="SendEditorErrorInfoBar" Visibility="Collapsed" Severity="Error" IsClosable="True" Margin="0,16,0,0" AutomationProperties.LiveSetting="Assertive" />
+                        <StackPanel Margin="0,28,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+                            <Border x:Name="EditorTypeRow" Style="{StaticResource SendEditorRow}"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="类型" Style="{StaticResource SendLabel}" /><StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"><ToggleButton x:Name="TextSendTypeButton" Content="文本" Click="OnTextTypeClick" /><ToggleButton x:Name="FileSendTypeButton" Content="文件" Click="OnFileTypeClick" /></StackPanel></Grid></Border>
+                            <Border x:Name="EditorTextRow" Style="{StaticResource SendEditorRow}"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="文本" Style="{StaticResource SendLabel}" VerticalAlignment="Top" Margin="0,6,0,0" /><StackPanel Grid.Column="1" Spacing="12"><TextBox x:Name="SendTextBox" Text="{x:Bind Draft.Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="要分享的内容" AutomationProperties.Name="要分享的文本" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="112" MaxHeight="260" /><Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><ToggleSwitch IsOn="{x:Bind Draft.HideTextByDefault, Mode=TwoWay}" Width="40" MinWidth="40" Height="32" MinHeight="32" VerticalAlignment="Center" OnContent="" OffContent="" AutomationProperties.Name="对方需要点击显示才能看到文本" /><TextBlock Grid.Column="1" Text="对方需要点击“显示”才能看到文本" TextWrapping="Wrap" VerticalAlignment="Center" /></Grid></StackPanel></Grid></Border>
+                            <Border x:Name="EditorFileRow" Style="{StaticResource SendEditorRow}"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="文件" Style="{StaticResource SendLabel}" /><Grid x:Name="FileEditorValues" Grid.Column="1" ColumnSpacing="12" RowSpacing="6" HorizontalAlignment="Left"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions><FontIcon x:Name="EditorFileIcon" Glyph="&#xE8A5;" FontSize="16" VerticalAlignment="Center" /><TextBlock x:Name="EditorFileName" Grid.Column="1" MaxWidth="180" Text="{x:Bind Draft.FileName, Mode=OneWay}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" /><TextBlock x:Name="EditorFileSize" Grid.Column="2" FontSize="12" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Button x:Name="ChooseFileButton" Grid.Column="3" Content="选择文件…" Click="OnChooseFileClick" /></Grid></Grid></Border>
+                            <Border Style="{StaticResource SendEditorRow}"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="删除时间" Style="{StaticResource SendLabel}" /><Grid x:Name="DeletionEditorValues" Grid.Column="1" ColumnSpacing="12" RowSpacing="6"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions><ComboBox x:Name="DeletionChoice" AutomationProperties.Name="删除时间" MinWidth="200" SelectionChanged="OnDeletionChanged" /><TextBlock x:Name="DeletionEditorHint" Grid.Column="1" Text="到时连同链接一起删除，最长 30 天" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></Grid></Grid></Border>
+                            <Border Style="{StaticResource SendEditorRow}"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="过期时间" Style="{StaticResource SendLabel}" /><Grid x:Name="ExpirationEditorValues" Grid.Column="1" ColumnSpacing="12" RowSpacing="6"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions><ComboBox x:Name="ExpirationChoice" AutomationProperties.Name="过期时间" MinWidth="200" SelectionChanged="OnExpirationChanged" /><TextBlock x:Name="ExpirationEditorHint" Grid.Column="1" Text="过期后打不开，到删除时间才会删除" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></Grid></Grid></Border>
+                            <Border Style="{StaticResource SendEditorRow}"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="最大访问次数" Style="{StaticResource SendLabel}" /><Grid x:Name="AccessEditorValues" Grid.Column="1" ColumnSpacing="12" RowSpacing="6"><Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions><TextBox x:Name="MaxAccessTextBox" Width="120" HorizontalAlignment="Left" MaxLength="4" PlaceholderText="不限" AutomationProperties.Name="最大访问次数" BeforeTextChanging="OnMaxAccessBeforeTextChanging" /><TextBlock x:Name="EditorAccessHint" Grid.Column="1" Text="留空表示不限次数" VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></Grid></Grid></Border>
+                            <Border Style="{StaticResource SendEditorRow}"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="访问密码" Style="{StaticResource SendLabel}" /><Grid x:Name="PasswordEditorValues" Grid.Column="1" ColumnSpacing="12" RowSpacing="6"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions><PasswordBox x:Name="SendPasswordBox" AutomationProperties.Name="访问密码" Password="{x:Bind Draft.Password, Mode=TwoWay}" PlaceholderText="可选" Width="280" HorizontalAlignment="Left" /><HyperlinkButton x:Name="RemovePasswordButton" Grid.Column="1" Content="移除密码" Click="OnRemovePasswordClick" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Center" Padding="0" /></Grid></Grid></Border>
+                            <Border Style="{StaticResource SendEditorRow}"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="隐藏我的邮箱" Style="{StaticResource SendLabel}" /><Grid Grid.Column="1" ColumnSpacing="12" HorizontalAlignment="Left"><Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><ToggleSwitch IsOn="{x:Bind Draft.HideEmail, Mode=TwoWay}" Width="40" MinWidth="40" Height="32" MinHeight="32" VerticalAlignment="Center" OnContent="" OffContent="" AutomationProperties.Name="隐藏我的邮箱" /><TextBlock Grid.Column="1" Text="{x:Bind HideEmailState(Draft.HideEmail), Mode=OneWay}" TextWrapping="Wrap" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></Grid></Grid></Border>
+                            <Border Style="{StaticResource SendEditorRow}"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="禁用此 Send" Style="{StaticResource SendLabel}" /><Grid Grid.Column="1" ColumnSpacing="12" HorizontalAlignment="Left"><Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><ToggleSwitch IsOn="{x:Bind Draft.Disabled, Mode=TwoWay}" Width="40" MinWidth="40" Height="32" MinHeight="32" VerticalAlignment="Center" OnContent="" OffContent="" AutomationProperties.Name="禁用此 Send" /><TextBlock Grid.Column="1" Text="{x:Bind DisabledState(Draft.Disabled), Mode=OneWay}" TextWrapping="Wrap" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></Grid></Grid></Border>
+                            <Border Style="{StaticResource SendEditorRow}"><Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="备注" Style="{StaticResource SendLabel}" VerticalAlignment="Top" Margin="0,6,0,0" /><TextBox x:Name="EditorNotesBox" Grid.Column="1" Text="{x:Bind Draft.Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="只有你自己能看到" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="78" /></Grid></Border>
                         </StackPanel>
-                        <StackPanel x:Name="RowActions"
-                                    Grid.Column="3" Orientation="Horizontal" Spacing="4"
-                                    Opacity="1"
-                                    IsHitTestVisible="True"
-                                    HorizontalAlignment="Right" VerticalAlignment="Center">
-                            <Button MinWidth="36" MinHeight="36" Padding="10,0"
-                                    AutomationProperties.Name="复制链接"
-                                    AutomationProperties.AutomationId="SendRowCopyLinkButton"
-                                    ToolTipService.ToolTip="复制链接"
-                                    Click="OnCopyLinkClick">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE8C8;" FontSize="14" />
-                                    <TextBlock Text="复制链接" />
-                                </StackPanel>
-                            </Button>
-                            <Button MinWidth="36" MinHeight="36" Padding="10,0"
-                                    AutomationProperties.Name="更多"
-                                    AutomationProperties.AutomationId="SendRowMoreButton"
-                                    ToolTipService.ToolTip="更多"
-                                    Click="OnMoreClick">
-                                <FontIcon Glyph="&#xE712;" FontSize="14" />
-                                <Button.Flyout>
-                                    <MenuFlyout>
-                                        <MenuFlyoutItem Text="编辑"
-                                                        IsEnabled="{x:Bind CanModify, Mode=OneTime}"
-                                                        Click="OnEditSendClick">
-                                            <MenuFlyoutItem.Icon>
-                                                <FontIcon Glyph="&#xE70F;" />
-                                            </MenuFlyoutItem.Icon>
-                                        </MenuFlyoutItem>
-                                        <MenuFlyoutItem Text="删除"
-                                                        IsEnabled="{x:Bind CanModify, Mode=OneTime}"
-                                                        Click="OnDeleteSendClick">
-                                            <MenuFlyoutItem.Icon>
-                                                <FontIcon Glyph="&#xE74D;" />
-                                            </MenuFlyoutItem.Icon>
-                                        </MenuFlyoutItem>
-                                    </MenuFlyout>
-                                </Button.Flyout>
-                            </Button>
-                        </StackPanel>
-                    </Grid>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-        </ListView>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+        <ScrollViewer x:Name="ReceivePane" Grid.Row="1" Visibility="Collapsed" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+            <StackPanel MaxWidth="640" Padding="40,40,40,48" HorizontalAlignment="Stretch">
+                <TextBlock Text="打开收到的 Send" FontSize="28" FontWeight="SemiBold" />
+                <TextBlock Text="粘贴别人发给你的 Send 链接。内容只在本机解密，不会存进你的密码库。" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <StackPanel Spacing="16" Margin="0,28,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,28,0,0">
+                    <TextBox x:Name="ReceivedLinkTextBox" Header="链接" FontFamily="Consolas" FontSize="13" PlaceholderText="https://…/#/send/…" Text="{x:Bind ViewModel.ReceivedLinkUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" KeyDown="OnReceiveKeyDown" />
+                    <PasswordBox x:Name="ReceivedPasswordBox" Header="访问密码（对方设置了才需要）" Width="280" HorizontalAlignment="Left" PlaceholderText="可选" Password="{x:Bind ViewModel.ReceivedLinkPassword, Mode=TwoWay}" KeyDown="OnReceiveKeyDown" />
+                    <TextBlock Text="访问密码不正确，请重试。" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Visibility="{x:Bind ViewModel.ReceivedWrongPassword, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+                    <Button Content="{x:Bind ViewModel.ReceiveButtonText, Mode=OneWay}" Style="{ThemeResource AccentButtonStyle}" IsEnabled="{x:Bind ViewModel.CanReceiveInput, Mode=OneWay}" Click="OnOpenReceivedClick" Margin="0,4,0,0" />
+                    <ProgressRing Width="20" Height="20" IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}" HorizontalAlignment="Left" />
+                </StackPanel>
+                <StackPanel Margin="0,40,0,0" Spacing="10" Visibility="{x:Bind ViewModel.HasReceivedText, Mode=OneWay, Converter={StaticResource BoolToVis}}"><TextBlock Text="{x:Bind ViewModel.LastReceived.Name, Mode=OneWay}" FontWeight="SemiBold" /><TextBlock Text="{x:Bind ViewModel.ReceivedSourceText, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind ViewModel.HasReceivedSource, Mode=OneWay, Converter={StaticResource BoolToVis}}" /><TextBlock Text="{x:Bind ViewModel.ReceivedExpirationText, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind ViewModel.HasReceivedExpiration, Mode=OneWay, Converter={StaticResource BoolToVis}}" /><Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,1" Padding="0,16,0,20"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><Button Content="显示" Command="{x:Bind ViewModel.RevealReceivedTextCommand}" Visibility="{x:Bind ViewModel.HasHiddenReceivedText, Mode=OneWay, Converter={StaticResource BoolToVis}}" HorizontalAlignment="Left" /><TextBlock Text="{x:Bind ViewModel.DisplayedReceivedText, Mode=OneWay}" Visibility="{x:Bind ViewModel.ShowReceivedTextContent, Mode=OneWay, Converter={StaticResource BoolToVis}}" TextWrapping="Wrap" FontSize="15" LineHeight="26" IsTextSelectionEnabled="True" /><Button Grid.Column="1" Visibility="{x:Bind ViewModel.ShowReceivedTextContent, Mode=OneWay, Converter={StaticResource BoolToVis}}" Style="{StaticResource SendIconButton}" Click="OnCopyReceivedTextClick" AutomationProperties.Name="复制文本" ToolTipService.ToolTip="复制文本"><FontIcon Glyph="&#xE8C8;" FontSize="16" /></Button></Grid></Border></StackPanel>
+                <StackPanel Margin="0,40,0,0" Spacing="12" Visibility="{x:Bind ViewModel.HasReceivedFile, Mode=OneWay, Converter={StaticResource BoolToVis}}"><TextBlock Text="{x:Bind ViewModel.ReceivedFileName, Mode=OneWay}" FontWeight="SemiBold" /><TextBlock Text="{x:Bind ViewModel.ReceivedSourceText, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind ViewModel.HasReceivedSource, Mode=OneWay, Converter={StaticResource BoolToVis}}" /><TextBlock Text="{x:Bind ViewModel.ReceivedExpirationText, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind ViewModel.HasReceivedExpiration, Mode=OneWay, Converter={StaticResource BoolToVis}}" /><StackPanel Orientation="Horizontal" Spacing="12"><Button x:Name="SaveReceivedFileButton" Content="下载" Click="OnSaveReceivedFileClick" /><ProgressRing x:Name="ReceivedFileSaveProgressRing" AutomationProperties.Name="正在保存收到的 Send 文件" AutomationProperties.LiveSetting="Polite" Width="20" Height="20" IsActive="False" Visibility="Collapsed" /></StackPanel></StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+        <InfoBar Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="24" MaxWidth="640" IsClosable="True" Severity="Success" IsOpen="{x:Bind ViewModel.HasCopyFeedback, Mode=OneWay}" Visibility="{x:Bind ViewModel.HasCopyFeedback, Mode=OneWay, Converter={StaticResource BoolToVis}}" Message="{x:Bind ViewModel.CopyFeedback, Mode=OneWay}" AutomationProperties.LiveSetting="Polite" />
     </Grid>
 </Page>

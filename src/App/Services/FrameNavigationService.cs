@@ -29,10 +29,10 @@ public sealed class FrameNavigationService : INavigationService
     public void GoToSend(string? tag = null) => NavigateContent(typeof(SendPage), tag);
     public void GoToGenerator() => NavigateContent(typeof(GeneratorPage));
     public void GoToSettings() => NavigateContent(typeof(SettingsPage));
-    public void GoToDevices() => NavigateContent(typeof(DevicesPage));
+    public void GoToDevices() => NavigateContent(typeof(SettingsPage), "devices");
     public void GoToSecurityReport() => NavigateContent(typeof(SecurityReportPage));
-    public void GoToImportExport() => NavigateContent(typeof(ImportExportPage));
-    public void GoToEmergencyAccess() => NavigateContent(typeof(EmergencyAccessPage));
+    public void GoToImportExport() => NavigateContent(typeof(SettingsPage), "import");
+    public void GoToEmergencyAccess() => NavigateContent(typeof(SettingsPage), "emergency");
 
     private void NavigateContent(Type pageType, string? tag = null)
     {
@@ -51,7 +51,7 @@ public sealed class FrameNavigationService : INavigationService
             }
         }
         // Only explicitly cacheable pages survive navigation, and only within this unlock session.
-        _contentFrame.CacheSize = 2;
+        _contentFrame.CacheSize = 5;
         _contentFrame.Navigate(pageType, tag);
         _contentFrame.BackStack.Clear();
         _contentFrame.ForwardStack.Clear();

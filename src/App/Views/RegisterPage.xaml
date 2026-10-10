@@ -1,231 +1,203 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Page
-    x:Class="App.Views.RegisterPage"
+<Page x:Class="App.Views.RegisterPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:converters="using:App.Converters"
     xmlns:vm="using:App.ViewModels">
     <Page.KeyboardAccelerators>
-        <KeyboardAccelerator Key="Enter"
-            Invoked="OnSubmitAccelerator" />
+        <KeyboardAccelerator Key="Enter" Invoked="OnSubmitAccelerator" />
     </Page.KeyboardAccelerators>
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="32" /><Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="10,4" /><Setter Property="CornerRadius" Value="4" />
+            <Setter Property="FontSize" Value="14" />
+        </Style>
+        <Style TargetType="PasswordBox">
+            <Setter Property="Height" Value="32" /><Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="10,4,36,4" /><Setter Property="CornerRadius" Value="4" />
+            <Setter Property="FontSize" Value="14" /><Setter Property="PasswordRevealMode" Value="Hidden" />
+        </Style>
+        <Style x:Key="RegistrationTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI Variable Display" />
+            <Setter Property="FontSize" Value="20" /><Setter Property="LineHeight" Value="28" />
+            <Setter Property="FontWeight" Value="SemiBold" /><Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="Wrap" /><Setter Property="AutomationProperties.HeadingLevel" Value="Level1" />
+        </Style>
+        <Style x:Key="RegistrationErrorStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" /><Setter Property="LineHeight" Value="16" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Setter Property="AutomationProperties.LiveSetting" Value="Polite" />
+        </Style>
     </Page.Resources>
-    <Grid x:Name="RegisterSurface"
-        Padding="40,28,40,28"
-        Background="{ThemeResource LayerFillColorDefaultBrush}">
-        <VisualStateManager.VisualStateGroups>
-            <VisualStateGroup>
-                <VisualState x:Name="WideForm">
-                    <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="400" />
-                    </VisualState.StateTriggers>
-                </VisualState>
-                <VisualState x:Name="NarrowForm">
-                    <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="0" />
-                    </VisualState.StateTriggers>
-                    <VisualState.Setters>
-                        <Setter Target="RegisterSurface.Padding" Value="16,12,16,20" />
-                    </VisualState.Setters>
-                </VisualState>
-            </VisualStateGroup>
-        </VisualStateManager.VisualStateGroups>
-        <ScrollViewer VerticalScrollBarVisibility="Auto"
-            HorizontalScrollBarVisibility="Disabled">
-            <StackPanel x:Name="RegisterForm"
-                MaxWidth="400"
-                MinWidth="0"
-                Spacing="0"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Top"
-                Margin="0,0,0,0">
-                <Border Width="48"
-                    Height="48"
-                    CornerRadius="12"
-                    HorizontalAlignment="Left"
-                    Background="{ThemeResource AccentFillColorDefaultBrush}">
-                    <FontIcon Glyph="&#xE72E;"
-                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                        FontSize="24"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center" />
-                </Border>
-                <StackPanel x:Name="RegisterEditingPanel"
-                    Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <TextBlock Text="创建账户"
-                        Margin="0,16,0,0"
-                        Style="{ThemeResource TitleTextBlockStyle}"
-                        AutomationProperties.HeadingLevel="Level1"
-                        TextWrapping="Wrap"
-                        HorizontalAlignment="Left"
-                        TextAlignment="Left" />
-                    <TextBlock Text="选择服务器并创建你的保险库。"
-                        Margin="0,4,0,0"
-                        FontSize="14"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        HorizontalAlignment="Left"
-                        TextAlignment="Left"
-                        TextWrapping="Wrap" />
-                    <InfoBar x:Name="RegisterErrorInfoBar"
-                        Margin="0,18,0,0"
-                        IsOpen="{x:Bind ViewModel.HasOperationError, Mode=OneWay}"
-                        IsClosable="False"
-                        AutomationProperties.LiveSetting="Polite"
-                        Severity="Error"
-                        Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" />
-                    <ContentControl x:Name="RegisterInputPanel"
-                        Margin="0,18,0,0"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch"
-                        IsEnabled="{x:Bind ViewModel.CanEditForm, Mode=OneWay}">
-                        <StackPanel Spacing="14">
-                            <ComboBox x:Name="ServerOptionBox"
-                                AutomationProperties.AutomationId="RegisterServerOptionBox"
-                                Header="注册到"
-                                HorizontalAlignment="Stretch"
-                                MinHeight="40"
-                                SelectedIndex="{x:Bind ViewModel.SelectedServerOptionIndex, Mode=TwoWay}">
-                                <ComboBoxItem Content="Bitwarden.com (US)" />
-                                <ComboBoxItem Content="Bitwarden.com (EU)" />
-                                <ComboBoxItem Content="自托管" />
-                            </ComboBox>
-                            <TextBox x:Name="ServerUrlTextBox"
-                                AutomationProperties.AutomationId="RegisterServerUrlTextBox"
-                                Header="服务器地址"
-                                PlaceholderText="https://vault.example.com"
-                                Text="{x:Bind ViewModel.ServerUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                MinHeight="40"
-                                Visibility="{x:Bind ViewModel.ShowCustomServerUrl, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                            <TextBox x:Name="EmailTextBox"
-                                AutomationProperties.AutomationId="RegisterEmailTextBox"
-                                Header="邮箱地址"
-                                PlaceholderText="you@example.com"
-                                Text="{x:Bind ViewModel.Email, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                MinHeight="40"
-                                InputScope="EmailSmtpAddress" />
-                            <TextBox x:Name="NameTextBox"
-                                AutomationProperties.AutomationId="RegisterNameTextBox"
-                                Header="姓名（可选）"
-                                PlaceholderText="你的姓名"
-                                Text="{x:Bind ViewModel.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                MinHeight="40" />
-                            <PasswordBox x:Name="MasterPasswordBox"
-                                AutomationProperties.AutomationId="RegisterMasterPasswordBox"
-                                Header="主密码"
-                                MinHeight="40"
-                                Password="{x:Bind ViewModel.MasterPassword, Mode=TwoWay}" />
-                            <TextBlock Text="主密码用于解锁保险库。请妥善保存，服务器无法替你找回。"
-                                Style="{StaticResource CaptionSecondaryTextBlockStyle}"
-                                TextWrapping="Wrap" />
-                            <PasswordBox x:Name="ConfirmPasswordBox"
-                                AutomationProperties.AutomationId="RegisterConfirmPasswordBox"
-                                Header="确认主密码"
-                                MinHeight="40"
-                                Password="{x:Bind ViewModel.ConfirmPassword, Mode=TwoWay}" />
-                            <TextBox x:Name="MasterPasswordHintTextBox"
-                                AutomationProperties.AutomationId="RegisterMasterPasswordHintTextBox"
-                                Header="主密码提示（可选）"
-                                PlaceholderText="不要包含主密码或可推断主密码的信息"
-                                Text="{x:Bind ViewModel.MasterPasswordHint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                MinHeight="40" />
-                            <Button x:Name="RegisterSubmitButton"
-                                AutomationProperties.AutomationId="RegisterSubmitButton"
-                                Margin="0,4,0,0"
-                                Click="OnRegisterClick"
-                                Style="{ThemeResource AccentButtonStyle}"
-                                IsEnabled="{x:Bind Not(ViewModel.IsBusy), Mode=OneWay}"
-                                MinHeight="40"
-                                FontWeight="SemiBold"
-                                HorizontalAlignment="Stretch">
-                                <StackPanel Orientation="Horizontal"
-                                    Spacing="8"
-                                    HorizontalAlignment="Center">
-                                    <ProgressRing Width="16"
-                                        Height="16"
-                                        IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
-                                        Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                    <TextBlock Text="{x:Bind RegisterButtonText(ViewModel.IsBusy), Mode=OneWay}" />
+    <Grid x:Name="RegisterSurface" Background="{ThemeResource WardenLayerBrush}">
+        <ScrollViewer x:Name="RegisterScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch"
+            SizeChanged="OnRegisterViewportSizeChanged">
+            <Grid x:Name="RegisterContentRoot" Padding="24,32">
+                <StackPanel x:Name="RegisterForm" MaxWidth="360" HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                    <Border Width="48" Height="48" CornerRadius="10" HorizontalAlignment="Center">
+                        <Border.Background><ImageBrush ImageSource="ms-appx:///Assets/Square150x150Logo.png" Stretch="UniformToFill" /></Border.Background>
+                    </Border>
+                    <StackPanel x:Name="RegisterEditingPanel"
+                        Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock Text="创建账户" Margin="0,16,0,0" Style="{StaticResource RegistrationTitleStyle}" />
+                        <Button x:Name="ChangeRegistrationServerButton"
+                            AutomationProperties.AutomationId="ChangeRegistrationServerButton" AutomationProperties.Name="更改注册服务器"
+                            Background="Transparent" BorderThickness="0" IsEnabled="{x:Bind ViewModel.CanEditForm, Mode=OneWay}"
+                            HorizontalAlignment="Center" Height="20" MinHeight="20" Padding="0" Margin="0,4,0,0"
+                            Click="OnChangeServerClick" ToolTipService.ToolTip="更改服务器">
+                            <TextBlock Text="{x:Bind RegistrationServerTextValue(ViewModel.ServerUrl), Mode=OneWay}"
+                                Foreground="{ThemeResource WardenSecondaryTextBrush}" FontSize="14" LineHeight="20"
+                                TextAlignment="Center" TextWrapping="Wrap" />
+                        </Button>
+                        <ContentControl x:Name="RegisterInputPanel" Margin="0,28,0,0" HorizontalContentAlignment="Stretch"
+                            IsEnabled="{x:Bind ViewModel.CanEditForm, Mode=OneWay}">
+                            <StackPanel Spacing="16">
+                                <StackPanel x:Name="RegistrationServerPanel" Spacing="16" Visibility="Collapsed">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="服务器" />
+                                        <ComboBox x:Name="ServerOptionBox" AutomationProperties.AutomationId="RegisterServerOptionBox"
+                                            AutomationProperties.Name="服务器" HorizontalAlignment="Stretch" Height="32" MinHeight="32"
+                                            SelectedIndex="{x:Bind ViewModel.SelectedServerOptionIndex, Mode=TwoWay}">
+                                            <ComboBoxItem Content="bitwarden.com" /><ComboBoxItem Content="bitwarden.eu" />
+                                            <ComboBoxItem Content="自托管" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Spacing="6" Visibility="{x:Bind ViewModel.ShowCustomServerUrl, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <TextBlock Text="服务器地址" />
+                                        <TextBox x:Name="ServerUrlTextBox" AutomationProperties.AutomationId="RegisterServerUrlTextBox"
+                                            AutomationProperties.Name="服务器地址" FontFamily="{StaticResource MonospaceFontFamily}"
+                                            PlaceholderText="https://vault.home.lan"
+                                            Text="{x:Bind ViewModel.ServerUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock Text="Vaultwarden 或自建的 Bitwarden 服务器" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                                    </StackPanel>
                                 </StackPanel>
-                            </Button>
-                            <HyperlinkButton x:Name="BackToLoginButton"
-                                AutomationProperties.AutomationId="BackToLoginButton"
-                                Content="已有账户？登录"
-                                HorizontalAlignment="Left"
-                                Click="OnBackToLoginClick" />
+                                <InfoBar x:Name="RegisterErrorInfoBar" IsOpen="{x:Bind ViewModel.HasOperationError, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.HasOperationError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    IsClosable="False" AutomationProperties.LiveSetting="Polite" Severity="Error"
+                                    Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" />
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="邮箱" />
+                                    <TextBox x:Name="EmailTextBox" AutomationProperties.AutomationId="RegisterEmailTextBox"
+                                        AutomationProperties.Name="邮箱" PlaceholderText="name@example.com"
+                                        Text="{x:Bind ViewModel.Email, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" InputScope="EmailSmtpAddress" />
+                                </StackPanel>
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="名称（可选）" />
+                                    <TextBox x:Name="NameTextBox" AutomationProperties.AutomationId="RegisterNameTextBox"
+                                        AutomationProperties.Name="名称（可选）" Text="{x:Bind ViewModel.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="主密码" />
+                                    <Grid>
+                                        <PasswordBox x:Name="MasterPasswordBox" AutomationProperties.AutomationId="RegisterMasterPasswordBox"
+                                            AutomationProperties.Name="主密码" Password="{x:Bind ViewModel.MasterPassword, Mode=TwoWay}"
+                                            PasswordChanged="OnMasterPasswordChanged" />
+                                        <ToggleButton x:Name="RevealMasterPasswordButton" AutomationProperties.Name="显示主密码"
+                                            Background="Transparent" BorderThickness="0" Width="32" Height="32" MinWidth="32" MinHeight="32"
+                                            Padding="0" HorizontalAlignment="Right" Checked="OnRevealMasterPasswordChanged" Unchecked="OnRevealMasterPasswordChanged"
+                                            ToolTipService.ToolTip="显示主密码">
+                                            <FontIcon x:Name="RevealMasterPasswordIcon" Glyph="&#xE890;" FontSize="16" />
+                                        </ToggleButton>
+                                        <Border x:Name="MasterPasswordErrorUnderline" Height="2" VerticalAlignment="Bottom"
+                                            Background="{ThemeResource SystemFillColorCriticalBrush}" Visibility="Collapsed" IsHitTestVisible="False" />
+                                    </Grid>
+                                    <TextBlock x:Name="MasterPasswordErrorText" Style="{StaticResource RegistrationErrorStyle}" />
+                                    <Grid x:Name="PasswordStrengthRow" ColumnSpacing="12" Visibility="Collapsed">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="136" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                        <Grid ColumnSpacing="4" Height="4" VerticalAlignment="Center">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                            <Border x:Name="StrengthSegment1" CornerRadius="2" /><Border x:Name="StrengthSegment2" Grid.Column="1" CornerRadius="2" />
+                                            <Border x:Name="StrengthSegment3" Grid.Column="2" CornerRadius="2" /><Border x:Name="StrengthSegment4" Grid.Column="3" CornerRadius="2" />
+                                        </Grid>
+                                        <TextBlock x:Name="StrengthLabel" Grid.Column="1" FontSize="12" LineHeight="16" FontWeight="SemiBold" />
+                                        <TextBlock Grid.Column="2" Text="至少 12 个字符" FontSize="12" LineHeight="16" Foreground="{ThemeResource WardenSecondaryTextBrush}" />
+                                    </Grid>
+                                </StackPanel>
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="确认主密码" />
+                                    <Grid>
+                                        <PasswordBox x:Name="ConfirmPasswordBox" AutomationProperties.AutomationId="RegisterConfirmPasswordBox"
+                                            AutomationProperties.Name="确认主密码" Password="{x:Bind ViewModel.ConfirmPassword, Mode=TwoWay}"
+                                            PasswordChanged="OnConfirmPasswordChanged" />
+                                        <ToggleButton x:Name="RevealConfirmPasswordButton" AutomationProperties.Name="显示确认主密码"
+                                            Background="Transparent" BorderThickness="0" Width="32" Height="32" MinWidth="32" MinHeight="32"
+                                            Padding="0" HorizontalAlignment="Right" Checked="OnRevealConfirmPasswordChanged" Unchecked="OnRevealConfirmPasswordChanged"
+                                            ToolTipService.ToolTip="显示确认主密码">
+                                            <FontIcon x:Name="RevealConfirmPasswordIcon" Glyph="&#xE890;" FontSize="16" />
+                                        </ToggleButton>
+                                        <Border x:Name="ConfirmPasswordErrorUnderline" Height="2" VerticalAlignment="Bottom"
+                                            Background="{ThemeResource SystemFillColorCriticalBrush}" Visibility="Collapsed" IsHitTestVisible="False" />
+                                    </Grid>
+                                    <TextBlock x:Name="ConfirmPasswordErrorText" Style="{StaticResource RegistrationErrorStyle}" />
+                                </StackPanel>
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="主密码提示（可选）" />
+                                    <Grid>
+                                        <TextBox x:Name="MasterPasswordHintTextBox" AutomationProperties.AutomationId="RegisterMasterPasswordHintTextBox"
+                                            AutomationProperties.Name="主密码提示（可选）"
+                                            Text="{x:Bind ViewModel.MasterPasswordHint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                            TextChanged="OnMasterPasswordHintChanged" />
+                                        <Border x:Name="PasswordHintErrorUnderline" Height="2" VerticalAlignment="Bottom"
+                                            Background="{ThemeResource SystemFillColorCriticalBrush}" Visibility="Collapsed" IsHitTestVisible="False" />
+                                    </Grid>
+                                    <TextBlock x:Name="PasswordHintErrorText" Style="{StaticResource RegistrationErrorStyle}" />
+                                    <TextBlock x:Name="PasswordHintDescription" Text="忘记主密码时可以发到你的邮箱，不能包含主密码本身"
+                                        Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                                </StackPanel>
+                                <CheckBox x:Name="CheckPasswordBreachesBox"
+                                    AutomationProperties.AutomationId="CheckPasswordBreachesBox"
+                                    IsChecked="{x:Bind ViewModel.CheckPasswordBreaches, Mode=TwoWay}">
+                                    <TextBlock Text="检查主密码是否出现在已知数据泄露中" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <Button x:Name="RegisterSubmitButton" AutomationProperties.AutomationId="RegisterSubmitButton"
+                                    Click="OnRegisterClick" Style="{ThemeResource AccentButtonStyle}" IsEnabled="{x:Bind Not(ViewModel.IsBusy), Mode=OneWay}"
+                                    Opacity="{x:Bind RegisterButtonOpacity(ViewModel.IsBusy), Mode=OneWay}" Height="32" MinHeight="32" FontWeight="SemiBold"
+                                    HorizontalAlignment="Stretch" Content="{x:Bind RegisterButtonText(ViewModel.IsBusy), Mode=OneWay}" />
+                            </StackPanel>
+                        </ContentControl>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,0">
+                            <TextBlock Text="已有账户？" VerticalAlignment="Center" Foreground="{ThemeResource WardenSecondaryTextBrush}" />
+                            <HyperlinkButton x:Name="BackToLoginButton" AutomationProperties.AutomationId="BackToLoginButton"
+                                Content="登录" Height="32" MinHeight="32" Padding="10,0" FontWeight="SemiBold"
+                                IsEnabled="{x:Bind ViewModel.CanEditForm, Mode=OneWay}" Click="OnBackToLoginClick" />
                         </StackPanel>
-                    </ContentControl>
+                    </StackPanel>
+                    <StackPanel x:Name="RegisterEmailVerificationPanel" Margin="0,16,0,0"
+                        Visibility="{x:Bind ViewModel.IsAwaitingEmailVerification, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock Text="检查邮箱以继续" Style="{StaticResource RegistrationTitleStyle}" />
+                        <TextBlock Text="服务器已接受验证请求。若该地址可用于注册，请按邮件中的链接在 Web Vault 完成流程，然后返回登录。"
+                            Margin="0,4,0,0" Foreground="{ThemeResource WardenSecondaryTextBrush}" TextAlignment="Center" TextWrapping="Wrap" />
+                        <StackPanel Spacing="16" Margin="0,28,0,0">
+                            <TextBlock Text="{x:Bind ViewModel.RegisteredEmail, Mode=OneWay}" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" />
+                            <TextBlock Text="{x:Bind ViewModel.RegisteredServerUrl, Mode=OneWay}" Style="{StaticResource CaptionSecondaryTextBlockStyle}" TextAlignment="Center" />
+                            <Button x:Name="RegisterContinueToLoginButton" AutomationProperties.AutomationId="RegisterContinueToLoginButton"
+                                Content="验证完成后登录" Click="OnContinueToLoginClick" Style="{ThemeResource AccentButtonStyle}"
+                                HorizontalAlignment="Stretch" Height="32" MinHeight="32" />
+                            <Button AutomationProperties.AutomationId="RegisterEditEmailButton" Content="修改邮箱" Click="OnResumeEditingClick"
+                                HorizontalAlignment="Stretch" Height="32" MinHeight="32" />
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel x:Name="RegisterOutcomeUncertainPanel" Margin="0,16,0,0"
+                        Visibility="{x:Bind ViewModel.IsOutcomeUncertain, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock Text="注册结果待确认" Style="{StaticResource RegistrationTitleStyle}" />
+                        <TextBlock Text="提交期间连接中断，服务器可能已经完成注册。应用不会自动重试，请先尝试登录；若无法登录，再返回修改信息。"
+                            Margin="0,4,0,0" Foreground="{ThemeResource WardenSecondaryTextBrush}" TextAlignment="Center" TextWrapping="Wrap" />
+                        <StackPanel Spacing="16" Margin="0,28,0,0">
+                            <TextBlock Text="{x:Bind ViewModel.RegisteredEmail, Mode=OneWay}" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" />
+                            <TextBlock Text="{x:Bind ViewModel.RegisteredServerUrl, Mode=OneWay}" Style="{StaticResource CaptionSecondaryTextBlockStyle}" TextAlignment="Center" />
+                            <Button x:Name="RegisterUncertainLoginButton" AutomationProperties.AutomationId="RegisterUncertainLoginButton"
+                                Content="尝试登录" Click="OnContinueToLoginClick" Style="{ThemeResource AccentButtonStyle}"
+                                HorizontalAlignment="Stretch" Height="32" MinHeight="32" />
+                            <Button AutomationProperties.AutomationId="RegisterUncertainEditButton" Content="修改信息" Click="OnResumeEditingClick"
+                                HorizontalAlignment="Stretch" Height="32" MinHeight="32" />
+                        </StackPanel>
+                    </StackPanel>
                 </StackPanel>
-                <StackPanel x:Name="RegisterEmailVerificationPanel"
-                    Margin="0,16,0,0"
-                    Spacing="12"
-                    Visibility="{x:Bind ViewModel.IsAwaitingEmailVerification, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <TextBlock Text="检查邮箱以继续"
-                        Style="{ThemeResource TitleTextBlockStyle}"
-                        AutomationProperties.HeadingLevel="Level1"
-                        TextWrapping="Wrap"
-                        HorizontalAlignment="Left"
-                        TextAlignment="Left" />
-                    <TextBlock Text="服务器已接受验证请求。若该地址可用于注册，请按邮件中的链接在 Web Vault 完成流程，然后返回登录。"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        TextAlignment="Left"
-                        TextWrapping="Wrap" />
-                    <TextBlock Text="{x:Bind ViewModel.RegisteredEmail, Mode=OneWay}"
-                        FontWeight="SemiBold"
-                        TextAlignment="Left"
-                        TextWrapping="Wrap" />
-                    <TextBlock Text="{x:Bind ViewModel.RegisteredServerUrl, Mode=OneWay}"
-                        Style="{StaticResource CaptionSecondaryTextBlockStyle}"
-                        TextWrapping="Wrap" />
-                    <Button x:Name="RegisterContinueToLoginButton"
-                        AutomationProperties.AutomationId="RegisterContinueToLoginButton"
-                        Content="验证完成后登录"
-                        Click="OnContinueToLoginClick"
-                        Style="{ThemeResource AccentButtonStyle}"
-                        HorizontalAlignment="Stretch"
-                        MinHeight="40" />
-                    <Button AutomationProperties.AutomationId="RegisterEditEmailButton"
-                        Content="修改邮箱"
-                        Click="OnResumeEditingClick"
-                        HorizontalAlignment="Stretch"
-                        MinHeight="40" />
-                </StackPanel>
-                <StackPanel x:Name="RegisterOutcomeUncertainPanel"
-                    Margin="0,16,0,0"
-                    Spacing="12"
-                    Visibility="{x:Bind ViewModel.IsOutcomeUncertain, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <TextBlock Text="注册结果待确认"
-                        Style="{ThemeResource TitleTextBlockStyle}"
-                        AutomationProperties.HeadingLevel="Level1"
-                        TextWrapping="Wrap"
-                        HorizontalAlignment="Left"
-                        TextAlignment="Left" />
-                    <TextBlock Text="提交期间连接中断，服务器可能已经完成注册。应用不会自动重试，请先尝试登录；若无法登录，再返回修改信息。"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        TextAlignment="Left"
-                        TextWrapping="Wrap" />
-                    <TextBlock Text="{x:Bind ViewModel.RegisteredEmail, Mode=OneWay}"
-                        FontWeight="SemiBold"
-                        TextAlignment="Left"
-                        TextWrapping="Wrap" />
-                    <TextBlock Text="{x:Bind ViewModel.RegisteredServerUrl, Mode=OneWay}"
-                        Style="{StaticResource CaptionSecondaryTextBlockStyle}"
-                        TextWrapping="Wrap" />
-                    <Button x:Name="RegisterUncertainLoginButton"
-                        AutomationProperties.AutomationId="RegisterUncertainLoginButton"
-                        Content="尝试登录"
-                        Click="OnContinueToLoginClick"
-                        Style="{ThemeResource AccentButtonStyle}"
-                        HorizontalAlignment="Stretch"
-                        MinHeight="40" />
-                    <Button AutomationProperties.AutomationId="RegisterUncertainEditButton"
-                        Content="修改信息"
-                        Click="OnResumeEditingClick"
-                        HorizontalAlignment="Stretch"
-                        MinHeight="40" />
-                </StackPanel>
-            </StackPanel>
+            </Grid>
         </ScrollViewer>
     </Grid>
 </Page>

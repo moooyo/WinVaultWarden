@@ -13,6 +13,46 @@ namespace App.Tests;
 public class SendViewModelTests
 {
     [Fact]
+    public async Task ReceivedHiddenText_IsNotProjectedUntilExplicitlyRevealedAndIsClearedOnLock()
+    {
+        var service = new FakeSendUiService
+        {
+            ScriptedReceived = new SendReceivedResult(true, false, SendType.Text, "Hidden note", "private text", null, null,
+                new SendAccessResult { TextHidden = true }),
+        };
+        var vm = await LoadedVmAsync(service);
+        vm.ReceivedLinkUrl = "https://vault.example/#/send/access/seed";
+
+        await vm.OpenReceivedLinkCommand.ExecuteAsync(null);
+
+        Assert.True(vm.HasHiddenReceivedText);
+        Assert.Empty(vm.DisplayedReceivedText);
+        vm.RevealReceivedTextCommand.Execute(null);
+        Assert.Equal("private text", vm.DisplayedReceivedText);
+        vm.ClearSensitive();
+        Assert.Empty(vm.DisplayedReceivedText);
+        Assert.False(vm.ReceivedTextRevealed);
+    }
+
+    [Fact]
+    public async Task Search_FindsDecryptedTextAndFileNameAndCombinesWithTypeFilter()
+    {
+        var service = new FakeSendUiService();
+        service.Sends[0] = service.Sends[0] with { FileName = "deployment-notes.pdf" };
+        service.Sends[1] = service.Sends[1] with { TextContent = "DEPLOYMENT token" };
+        var vm = await LoadedVmAsync(service);
+
+        vm.SearchQuery = "deployment";
+        Assert.Equal(2, vm.FilteredItems.Count);
+        vm.SelectFilterByTag("send:file");
+        Assert.Equal("s1", Assert.Single(vm.FilteredItems).Id);
+        vm.SearchQuery = "missing";
+        Assert.True(vm.ShowEmpty);
+        vm.SearchQuery = string.Empty;
+        Assert.Equal("s1", Assert.Single(vm.FilteredItems).Id);
+    }
+
+    [Fact]
     public async Task FilterWithNoMatches_ShowsEmptyUntilReturningToAll()
     {
         var service = new FakeSendUiService();

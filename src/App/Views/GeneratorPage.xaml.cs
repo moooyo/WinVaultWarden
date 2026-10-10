@@ -1,4 +1,5 @@
 using App.Services;
+using App.ViewModels;
 using Core.Session;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -12,6 +13,7 @@ public sealed partial class GeneratorPage : Page
     private bool _historyOpen;
     private readonly VaultSession _session;
     private readonly IAppLifecycleCoordinator _lifecycle;
+    public GeneratorViewModel ViewModel => Workspace.ViewModel;
 
     public GeneratorPage()
     {
@@ -22,8 +24,20 @@ public sealed partial class GeneratorPage : Page
 
     private void OnLayoutSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        GuidanceRail.Visibility = e.NewSize.Width >= 960 ? Visibility.Visible : Visibility.Collapsed;
-        PageLayout.Padding = new Thickness(e.NewSize.Width < 640 ? 20 : 32);
+        PageLayout.Padding = e.NewSize.Width < 540 ? new Thickness(24,32,24,40) : new Thickness(40,40,40,48);
+    }
+
+    public void SelectMode(string mode) => ViewModel.Mode = mode switch
+    {
+        "passphrase" => GeneratorMode.Passphrase,
+        "username" => GeneratorMode.Username,
+        _ => GeneratorMode.Password,
+    };
+
+    private void OnNewLoginRequested(object? sender, EventArgs e)
+    {
+        if (ViewModel.CanCopy && !ViewModel.IsUsernameMode)
+            global::App.App.Services.GetRequiredService<INavigationService>().GoToVault("vault:new-generated");
     }
 
     private async void OnHistoryRequested(object? sender, EventArgs e)

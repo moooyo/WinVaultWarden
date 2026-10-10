@@ -20,7 +20,7 @@ public class FieldRowXamlTests
     }
 
     [Fact]
-    public void RevealButton_HasInitialShowAccessibleName()
+    public void RevealButton_ExplainsRequiredVerification()
     {
         var doc = Load();
         var reveal = doc.Descendants().FirstOrDefault(e =>
@@ -28,7 +28,7 @@ public class FieldRowXamlTests
 
         Assert.NotNull(reveal);
         Assert.Equal("显示", reveal!.Attribute("AutomationProperties.Name")?.Value);
-        Assert.Equal("显示", reveal.Attribute("ToolTipService.ToolTip")?.Value);
+        Assert.Equal("显示（需 Windows Hello）", reveal.Attribute("ToolTipService.ToolTip")?.Value);
     }
 
     [Fact]
@@ -40,8 +40,25 @@ public class FieldRowXamlTests
         Assert.Equal("字段，复制", copy.Attribute("AutomationProperties.Name")?.Value);
 
         var source = ReadCodeBehind();
-        Assert.Contains("$\"{label}，复制\"", source);
-        Assert.Contains("$\"{label}，{(_revealed ? \"隐藏\" : \"显示\")}\"", source);
+        Assert.Contains("$\"复制{label}\"", source);
+        Assert.Contains("$\"已复制{label}\"", source);
+        Assert.Contains("$\"{(_revealed ? \"隐藏\" : \"显示\")}{label}\"", source);
+    }
+
+    [Fact]
+    public void FieldRow_UsesFlatLabelValueAndActionColumns()
+    {
+        var document = Load();
+        var border = document.Descendants().Single(element => element.Attribute(X + "Name")?.Value == "RowBorder");
+        var label = document.Descendants().Single(element => element.Attribute(X + "Name")?.Value == "LabelColumn");
+        var actions = document.Descendants().Single(element => element.Attribute(X + "Name")?.Value == "ActionsPanel");
+
+        Assert.Equal("0,0,0,1", border.Attribute("BorderThickness")?.Value);
+        Assert.Null(border.Attribute("Background"));
+        Assert.Equal("112", label.Attribute("Width")?.Value);
+        Assert.Equal("2", actions.Attribute("Grid.Column")?.Value);
+        Assert.Contains(document.Descendants(), element => element.Attribute(X + "Name")?.Value == "CopyFeedback"
+            && element.Attribute("AutomationProperties.LiveSetting")?.Value == "Polite");
     }
 
     private static string ReadCodeBehind()

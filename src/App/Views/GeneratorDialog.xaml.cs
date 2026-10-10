@@ -12,6 +12,7 @@ public sealed partial class GeneratorDialog : ContentDialog
     public GeneratorDialog()
     {
         InitializeComponent();
+        Workspace.UseDialogLayout();
         Opened += (_, _) => ApplyResponsiveWidth();
         SizeChanged += (_, _) => ApplyResponsiveWidth();
     }

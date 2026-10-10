@@ -22,20 +22,25 @@ public class ImportExportPageXamlTests
     private static string LoadPageCode() =>
         File.ReadAllText(RepoRootFile(Path.Combine("src", "App", "Views", "ImportExportPage.xaml.cs")));
 
-    private static string LoadMainWindowCode() => File.ReadAllText(RepoRootFile(Path.Combine("src", "App", "MainWindow.xaml.cs")));
+    private static string LoadSettingsPageCode() =>
+        File.ReadAllText(RepoRootFile(Path.Combine("src", "App", "Views", "SettingsPage.xaml.cs")));
 
     private static string LoadFrameNavServiceCode() =>
         File.ReadAllText(RepoRootFile(Path.Combine("src", "App", "Services", "FrameNavigationService.cs")));
 
-    // ── 导出区 ───────────────────────────────────────────────────────────────
+    // Export controls retain the format, policy, and authentication boundaries.
 
     [Fact]
-    public void ExportSection_HasWarningInfoBar()
+    public void ExportSection_ExplainsPlaintextFormatAndOnlyOffersSupportedFormats()
     {
         var doc = LoadXaml();
-        var infoBar = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "InfoBar"
-            && e.Attribute("Severity")?.Value == "Warning");
-        Assert.NotNull(infoBar);
+        var combo = doc.Descendants().Single(e =>
+            e.Attribute("AutomationProperties.AutomationId")?.Value == "ExportFormatCombo");
+
+        Assert.Equal(new[] { ".json · 不加密", ".csv · 不加密" },
+            combo.Elements().Select(e => e.Attribute("Content")?.Value).ToArray());
+        Assert.Contains(doc.Descendants(), e => e.Name.LocalName == "TextBlock"
+            && e.Attribute("Text")?.Value == "不加密：任何拿到文件的人都能看到全部密码");
     }
 
     [Fact]
@@ -99,7 +104,7 @@ public class ImportExportPageXamlTests
         Assert.Contains(statuses, e => (e.Attribute("IsOpen")?.Value ?? string.Empty).Contains("HasFailedStatus"));
     }
 
-    // ── 导入区 ───────────────────────────────────────────────────────────────
+    // Import controls keep the preview gate and shared operation state.
 
     [Fact]
     public void ImportSection_HasChooseFileButton()
@@ -184,14 +189,34 @@ public class ImportExportPageXamlTests
     }
 
     [Fact]
-    public void Page_DisablesHorizontalScrollingAndAvoidsFixedMinimumWidths()
+    public void Page_UsesSettingsRowsWithBoundedContentAndCompactFormatControls()
     {
         var doc = LoadXaml();
         var scrollViewer = doc.Descendants().Single(e => e.Name.LocalName == "ScrollViewer");
+        var container = scrollViewer.Elements().Single();
 
         Assert.Equal("Disabled", scrollViewer.Attribute("HorizontalScrollMode")?.Value);
         Assert.Equal("Disabled", scrollViewer.Attribute("HorizontalScrollBarVisibility")?.Value);
-        Assert.DoesNotContain(doc.Descendants(), e => e.Attribute("MinWidth") is not null);
+        Assert.Null(container.Attribute("MaxWidth"));
+        Assert.Equal("680", container.Elements().Single().Attribute("MaxWidth")?.Value);
+        Assert.Equal("40,40,40,48", container.Attribute("Padding")?.Value);
+        Assert.Null(container.Attribute("Width"));
+        Assert.Null(container.Attribute("MinWidth"));
+        Assert.All(doc.Descendants().Where(e => e.Name.LocalName == "ComboBox"), combo =>
+        {
+            Assert.Equal("180", combo.Attribute("MinWidth")?.Value);
+            Assert.Equal("32", combo.Attribute("Height")?.Value);
+            Assert.Equal("1", combo.Attribute("Grid.Column")?.Value);
+        });
+        Assert.DoesNotContain(doc.Descendants(), e =>
+            e.Attribute("Style")?.Value == "{StaticResource CardBorderStyle}");
+
+        var rowStyle = doc.Descendants().Single(e =>
+            e.Attribute("{http://schemas.microsoft.com/winfx/2006/xaml}Key")?.Value == "TransferRowStyle");
+        Assert.Contains(rowStyle.Elements(), e =>
+            e.Attribute("Property")?.Value == "BorderThickness" && e.Attribute("Value")?.Value == "0,0,0,1");
+        Assert.Contains(rowStyle.Elements(), e =>
+            e.Attribute("Property")?.Value == "MinHeight" && e.Attribute("Value")?.Value == "52");
     }
 
     [Fact]
@@ -222,24 +247,34 @@ public class ImportExportPageXamlTests
         Assert.DoesNotContain("MinWidth", code, StringComparison.Ordinal);
     }
 
-    // ── 导航 ─────────────────────────────────────────────────────────────────
+    [Fact]
+    public void PageCode_RequiresMasterPasswordBeforeExportAndTracksSensitivePickerWrites()
+    {
+        var code = LoadPageCode();
+        var passwordVerification = code.IndexOf("ViewModel.VerifyMasterPasswordAsync(", StringComparison.Ordinal);
+        var export = code.IndexOf("ViewModel.ExportToText(format)", StringComparison.Ordinal);
+
+        Assert.True(passwordVerification >= 0 && passwordVerification < export);
+        Assert.Contains("DialogHelper.ShowTrackedAsync(", code);
+        Assert.Contains("passwordBox.Password = string.Empty;", code);
+        Assert.Contains("FilePickerHelper.PickSaveAsync(picker, operation.Token)", code);
+        Assert.Contains("FilePickerHelper.CommitSensitiveAsync(", code);
+        Assert.Contains("_session.IsUnlocked(sessionLease)", code);
+    }
+
+    // Import/export is a settings section rather than a top-level content page.
 
     [Fact]
-    public void MainWindow_IoCase_NavigatesToImportExportPage()
+    public void SettingsNavigation_OpensImportExportInsideItsContentFrame()
     {
-        // P2-2:io 分支经 INavigationService 下沉导航。校验行为契约不变:
-        // 1) io case 调用 _nav.GoToImportExport();
-        // 2) FrameNavigationService.GoToImportExport 映射到 typeof(ImportExportPage)。
-        var code = LoadMainWindowCode();
-        var ioCaseIndex = code.IndexOf("case \"io\":", StringComparison.Ordinal);
-        Assert.True(ioCaseIndex >= 0, "case \"io\": not found in MainWindow.xaml.cs");
-
-        var snippet = code.Substring(ioCaseIndex, Math.Min(200, code.Length - ioCaseIndex));
-        Assert.Contains("_nav.GoToImportExport()", snippet);
-
         var navCode = LoadFrameNavServiceCode();
-        var goToIndex = navCode.IndexOf("GoToImportExport", StringComparison.Ordinal);
-        Assert.True(goToIndex >= 0, "GoToImportExport not found in FrameNavigationService.cs");
-        Assert.Contains("typeof(ImportExportPage)", navCode.Substring(goToIndex, Math.Min(120, navCode.Length - goToIndex)));
+        Assert.Contains("GoToImportExport() => NavigateContent(typeof(SettingsPage), \"import\")", navCode);
+
+        var settingsCode = LoadSettingsPageCode();
+        var sectionIndex = settingsCode.IndexOf("case \"import\":", StringComparison.Ordinal);
+        Assert.True(sectionIndex >= 0, "The import settings section must remain reachable.");
+        var section = settingsCode.Substring(sectionIndex, Math.Min(180, settingsCode.Length - sectionIndex));
+        Assert.Contains("ShowSectionPage(typeof(ImportExportPage))", section);
+        Assert.Contains("SettingsContentFrame.Navigate(pageType)", settingsCode);
     }
 }

@@ -601,6 +601,7 @@ public sealed class VaultUiService : IVaultUiService
                 Attachments = attachments,
                 Username = cipher.Login?.Username,
                 Password = includeSensitive ? cipher.Login?.Password : null,
+                PasswordRevisionDate = cipher.Login?.PasswordRevisionDate,
                 TotpSecret = includeSensitive ? cipher.Login?.Totp : null,
                 Uri = cipher.Login?.Uris.FirstOrDefault()?.Uri,
                 Uris = cipher.Login?.Uris

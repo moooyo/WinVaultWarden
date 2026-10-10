@@ -32,6 +32,39 @@ public sealed class LoopbackSsoAuthorizationServiceTests
     }
 
     [Fact]
+    public void BuildAuthorizationUri_PreservesInlineOrganizationIdentifier()
+    {
+        var uri = LoopbackSsoAuthorizationService.BuildAuthorizationUri(
+            new ServerEndpoint("https://vault.example/base"), "http://localhost:8065",
+            "state-value", "challenge-value", "me@example.com", "  family & work  ");
+        var query = ParseSsoFragment(uri);
+        Assert.Equal("family & work", query["identifier"]);
+        Assert.Equal("state-value", query["state"]);
+        Assert.Equal("challenge-value", query["codeChallenge"]);
+    }
+
+    [Fact]
+    public async Task ReopenPendingBrowser_ReusesOriginalPkceRequestAndStopsAfterCancellation()
+    {
+        var launcher = new RecordingLauncher();
+        var service = new LoopbackSsoAuthorizationService(launcher, TimeSpan.FromSeconds(10));
+        using var cancellation = new CancellationTokenSource();
+        var authorization = service.AuthorizeAsync(ServerEndpoints.ForSelfHosted("https://vault.example"),
+            "me@example.com", "family", null, cancellation.Token);
+        for (var attempt = 0; attempt < 100 && launcher.Uris.Count == 0; attempt++)
+            await Task.Yield();
+
+        Assert.True(await service.ReopenPendingBrowserAsync());
+        Assert.Equal(2, launcher.Uris.Count);
+        Assert.Equal(launcher.Uris[0], launcher.Uris[1]);
+        Assert.Equal("family", ParseSsoFragment(launcher.Uris[0])["identifier"]);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => authorization);
+        Assert.False(await service.ReopenPendingBrowserAsync());
+        Assert.Equal(2, launcher.Uris.Count);
+    }
+
+    [Fact]
     public async Task AuthorizeAsync_AcceptsExactStateWithIdentifierAndReturnsPkceMaterial()
     {
         var launcher = new CallbackLauncher(async uri =>
@@ -134,6 +167,17 @@ public sealed class LoopbackSsoAuthorizationServiceTests
 
     private static string Base64Url(ReadOnlySpan<byte> value) =>
         Convert.ToBase64String(value).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    private sealed class RecordingLauncher : IExternalUriLauncher
+    {
+        public List<Uri> Uris { get; } = [];
+        public Task<bool> LaunchAsync(Uri uri, CancellationToken ct = default)
+        {
+            ct.ThrowIfCancellationRequested();
+            Uris.Add(uri);
+            return Task.FromResult(true);
+        }
+    }
+
     private sealed class CallbackLauncher(Func<Uri, Task> callback) : IExternalUriLauncher
     {
         public Uri? LaunchedUri { get; private set; }

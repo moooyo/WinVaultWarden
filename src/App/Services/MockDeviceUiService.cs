@@ -5,6 +5,9 @@ namespace App.Services;
 public interface IDeviceUiService
 {
     IReadOnlyList<DeviceItem> GetDevices();
+
+    Task<IReadOnlyList<DeviceItem>> RefreshAsync(CancellationToken ct = default) =>
+        Task.FromResult(GetDevices());
 }
 
 public sealed class MockDeviceUiService : IDeviceUiService

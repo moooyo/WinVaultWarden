@@ -29,6 +29,15 @@ public sealed partial class VaultPage : Page
     private ScrollViewer? _listScrollViewer;
     private bool _hasEnteredWorkspace;
     private bool _syncingEditorTypeSelection;
+    private bool _confirmingLeave;
+    private bool _sensitiveActionPending;
+    private int _selectionRequestVersion;
+    private Func<Task<UiOperationResult>>? _undoAction;
+    private DispatcherTimer? _toastTimer;
+    private Button? _copiedRowButton;
+    private string? _copiedRowGlyph;
+    private long _copiedRowVersion;
+    private HealthReport? _detailHealthReport;
 
     // 响应式布局阈值:>= 800 DIP 显示双栏(列表+详情);更窄时按是否有详情/编辑态在
     // NarrowList / NarrowDetail 之间切换,窄详情态显示"返回列表"入口。
@@ -43,6 +52,15 @@ public sealed partial class VaultPage : Page
         AttachSubscriptions();
         Loaded += OnWorkspaceLoaded;
         Unloaded += OnWorkspaceUnloaded;
+        KeyDown += OnVaultKeyDown;
+        ActualThemeChanged += (_, _) =>
+        {
+            RefreshRowVisuals();
+            UpdateDetailStatus();
+            if (CipherList is not null)
+                foreach (var icon in Descendants<FontIcon>(CipherList).Where(icon => icon.Name == "RowIssueGlyph"))
+                    UpdateRowIssue(icon);
+        };
         UpdateDetailTemplate();
     }
 
@@ -59,11 +77,18 @@ public sealed partial class VaultPage : Page
     private void OnWorkspaceLoaded(object sender, RoutedEventArgs e)
     {
         AttachSubscriptions();
+        UpdateVaultLayoutState();
+        if (ViewModel.AutoSelectFirstResult && !ViewModel.IsEditing && ViewModel.SelectedItem is null)
+            ViewModel.SelectedItem = ViewModel.FilteredItems.FirstOrDefault();
         ViewModel.RefreshEditorBindings(Bindings.Update);
         _listScrollViewer = FindDescendant<ScrollViewer>(CipherList);
         if (_listScrollViewer is not null)
             _listScrollViewer.ViewChanged += OnListViewChanged;
         QueueRestoreWorkspacePosition();
+        if (global::App.App.Services.GetService<IClipboardService>() is IClipboardStatus clipboard)
+            clipboard.Changed += OnClipboardChanged;
+        global::App.App.Services.GetRequiredService<SecurityReportViewModel>().PropertyChanged += OnSecurityReportChanged;
+        _ = RefreshDetailSecurityAsync();
     }
 
     private void OnWorkspaceUnloaded(object sender, RoutedEventArgs e)
@@ -75,6 +100,15 @@ public sealed partial class VaultPage : Page
         ViewModel.FoldersChanged -= OnVaultFoldersChanged;
         ViewModel.SelectionRebindRequested -= OnSelectionRebindRequested;
         _subscriptionsAttached = false;
+        if (global::App.App.Services.GetService<IClipboardService>() is IClipboardStatus clipboard)
+            clipboard.Changed -= OnClipboardChanged;
+        _toastTimer?.Stop();
+        _undoAction = null;
+        VaultToast.Visibility = Visibility.Collapsed;
+        VaultUndoButton.Visibility = Visibility.Collapsed;
+        ResetRowCopyFeedback();
+        _detailHealthReport = null;
+        global::App.App.Services.GetRequiredService<SecurityReportViewModel>().PropertyChanged -= OnSecurityReportChanged;
     }
 
     private static T? FindDescendant<T>(DependencyObject parent) where T : DependencyObject
@@ -137,7 +171,7 @@ public sealed partial class VaultPage : Page
                 return;
             ViewModel.ReturnToResults();
         }
-        _ = VaultSearchBox.Focus(FocusState.Keyboard);
+        FocusSearch();
         e.Handled = true;
     }
 
@@ -173,7 +207,7 @@ public sealed partial class VaultPage : Page
                 if (ViewModel.Detail is not null || ViewModel.IsEditing)
                     return;
                 if (context.SearchHadFocus)
-                    _ = VaultSearchBox.Focus(FocusState.Programmatic);
+                    FocusSearch();
                 else if (context.FocusedItemId is { } id
                          && ViewModel.FilteredItems.FirstOrDefault(candidate => candidate.Id == id) is { } focusedItem
                          && CipherList.ContainerFromItem(focusedItem) is Control container)
@@ -193,7 +227,9 @@ public sealed partial class VaultPage : Page
     // 只有显式"返回列表"才清空选择(见 OnVaultNarrowBackClick),避免窄宽切换丢数据。
     private void UpdateVaultLayoutState()
     {
-        var state = VaultLayoutRoot.ActualWidth >= VaultWideThreshold
+        var windowWidth = XamlRoot?.Size.Width ?? VaultLayoutRoot.ActualWidth;
+        ViewModel.AutoSelectFirstResult = windowWidth >= VaultWideThreshold;
+        var state = windowWidth >= VaultWideThreshold
             ? "Wide"
             : ViewModel.Detail is not null || ViewModel.IsEditing
                 ? "NarrowDetail"
@@ -203,6 +239,8 @@ public sealed partial class VaultPage : Page
         VaultNarrowBackButton.Visibility =
             state == "NarrowDetail" ? Visibility.Visible : Visibility.Collapsed;
         VisualStateManager.GoToState(this, state, true);
+        if (state == "Wide")
+            VaultListColumn.Width = new GridLength(windowWidth >= 1680 ? 380 : windowWidth < 1000 ? 300 : 344);
 
         if (previousState == "NarrowList" && state == "NarrowDetail")
             QueueNarrowDetailFocus();
@@ -210,9 +248,9 @@ public sealed partial class VaultPage : Page
             QueueNarrowListFocus();
     }
 
-    private void OnVaultNarrowBackClick(object sender, RoutedEventArgs e)
+    private async void OnVaultNarrowBackClick(object sender, RoutedEventArgs e)
     {
-        if (!ViewModel.CanCancelEditor)
+        if (!await ConfirmLeaveEditorAsync())
             return;
 
         _pendingListFocusItem = ViewModel.SelectedItem;
@@ -256,7 +294,12 @@ public sealed partial class VaultPage : Page
     }
 
     /// <summary>供 NotificationsHost 在收到 VaultChanged 推送后从 UI 线程调用，刷新列表快照。</summary>
-    public void RefreshVaultList() => ViewModel.RefreshFromSnapshot();
+    public void RefreshVaultList()
+    {
+        ViewModel.RefreshFromSnapshot();
+        if (IsLoaded)
+            _ = RefreshDetailSecurityAsync();
+    }
 
     public static Visibility VisibleIfTrue(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
 
@@ -278,8 +321,27 @@ public sealed partial class VaultPage : Page
 
     // 多选模式下把 ListView 的勾选/取消精确同步进 VM 的选中集。
     // 此前 CipherList 只单向绑定 SelectedItem、无此接线,逐项勾选完全不被记录,批量操作全程禁用(R4)。
-    private void OnCipherSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void OnCipherSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (!ViewModel.IsSelectionMode && !ViewModel.IsRebuildingItems && !_isRebindingSelection)
+        {
+            var requested = CipherList.SelectedItem as CipherListItem;
+            if (!ReferenceEquals(requested, ViewModel.SelectedItem))
+            {
+                var requestVersion = ++_selectionRequestVersion;
+                var previous = ViewModel.SelectedItem;
+                if (ViewModel.IsEditing && !await ConfirmLeaveEditorAsync())
+                {
+                    _isRebindingSelection = true;
+                    try { CipherList.SelectedItem = previous; }
+                    finally { _isRebindingSelection = false; }
+                    return;
+                }
+                if (requestVersion != _selectionRequestVersion)
+                    return;
+                ViewModel.SelectedItem = requested;
+            }
+        }
         if (!ViewModel.IsSelectionMode && !ViewModel.IsRebuildingItems && ViewModel.SelectedItem is { } selectedItem)
         {
             ViewModel.RememberWorkspaceContext(
@@ -296,6 +358,7 @@ public sealed partial class VaultPage : Page
         foreach (var added in e.AddedItems)
             if (added is CipherListItem item)
                 ViewModel.SetItemSelected(item.Id, selected: true);
+        RefreshRowVisuals();
     }
 
     private void OnSelectionRebindRequested(object? sender, EventArgs e)
@@ -346,8 +409,12 @@ public sealed partial class VaultPage : Page
             state.IsFocusWithin = isFocusWithin.Value;
 
         var show = ShouldShowRowActions(state.IsPointerOver, state.IsFocusWithin);
+        show &= root.DataContext is CipherListItem { IsDeleted: false };
         panel.Opacity = show ? 1 : 0;
         panel.IsHitTestVisible = show;
+        if (root.FindName("RowStatusIcons") is FrameworkElement status)
+            status.Opacity = show ? 0 : 1;
+        UpdateRowVisual(root, state.IsPointerOver);
     }
 
     private static bool IsWithinRow(DependencyObject? element, Grid row)
@@ -402,7 +469,10 @@ public sealed partial class VaultPage : Page
     {
         if (RowItem(sender) is not { } item)
             return;
-        await ViewModel.CopyPrimaryAsync(item.Id, PromptMasterPasswordAsync);
+        var result = item.Kind == VaultItemKind.Identity
+            ? await ViewModel.CopyFieldAsync(item.Id, "email", PromptMasterPasswordAsync)
+            : await ViewModel.CopyPrimaryAsync(item.Id, PromptMasterPasswordAsync);
+        ShowRowCopyResult(sender, result);
     }
 
     // 主密码重提示对话框:仅采集主密码并返回给条目级门禁校验(通过则门禁自行缓存授权);
@@ -421,7 +491,7 @@ public sealed partial class VaultPage : Page
             PrimaryButtonText = "确认",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = XamlRoot,
+            XamlRoot = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot,
         };
         try
         {
@@ -442,7 +512,8 @@ public sealed partial class VaultPage : Page
     {
         if (ViewModel.SelectedItem is not { } item)
             return;
-        await ViewModel.UnlockDetailAsync(item.Id, PromptMasterPasswordAsync);
+        if (await VerifySensitiveActionAsync("显示敏感字段"))
+            await ViewModel.UnlockDetailAsync(item.Id, PromptMasterPasswordAsync);
     }
 
     private async void OnCopyProtectedPasswordClick(object sender, RoutedEventArgs e)
@@ -461,6 +532,8 @@ public sealed partial class VaultPage : Page
     {
         if (RowItem(sender) is { } item)
         {
+            if (!await ConfirmLeaveEditorAsync() || !await VerifySensitiveActionAsync("编辑条目"))
+                return;
             var authorized = await ViewModel.BeginEditAsync(item.Id, PromptMasterPasswordAsync);
             if (authorized.IsSuccess)
                 SyncEditorTypeSelection();
@@ -471,6 +544,8 @@ public sealed partial class VaultPage : Page
     {
         if (RowItem(sender) is { } item)
         {
+            if (!await ConfirmLeaveEditorAsync() || !await VerifySensitiveActionAsync("创建条目副本"))
+                return;
             var authorized = await ViewModel.BeginCloneAsync(item.Id, PromptMasterPasswordAsync);
             if (authorized.IsSuccess)
                 SyncEditorTypeSelection();
@@ -486,20 +561,19 @@ public sealed partial class VaultPage : Page
     private async void OnRowArchiveClick(object sender, RoutedEventArgs e)
     {
         if (RowItem(sender) is { } item)
-            await ViewModel.ArchiveAsync(item.Id);
+            await ArchiveWithUndoAsync(item);
     }
 
     private async void OnRowUnarchiveClick(object sender, RoutedEventArgs e)
     {
         if (RowItem(sender) is { } item)
-            await ViewModel.UnarchiveAsync(item.Id);
+            await UnarchiveWithUndoAsync(item);
     }
 
     private async void OnRowSoftDeleteClick(object sender, RoutedEventArgs e)
     {
-        if (RowItem(sender) is { } item
-            && await ConfirmAsync("移到回收站", $"确定要将“{item.Name}”移到回收站吗?", "删除"))
-            await ViewModel.SoftDeleteAsync(item.Id);
+        if (RowItem(sender) is { } item)
+            await DeleteWithUndoAsync(item);
     }
 
     private async void OnRowRestoreClick(object sender, RoutedEventArgs e)
@@ -515,14 +589,43 @@ public sealed partial class VaultPage : Page
             await ViewModel.PermanentDeleteAsync(item.Id);
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
         AttachSubscriptions();
         if (_hasEnteredWorkspace)
             ViewModel.RefreshFromSnapshot();
         _hasEnteredWorkspace = true;
-        RestoreWorkspaceContext(e.Parameter as string);
+        var route = e.Parameter as string;
+        if (route == "vault:new-generated")
+        {
+            if (await ConfirmLeaveEditorAsync())
+            {
+                RestoreWorkspaceContext("vault:allitems");
+                await BeginNewLoginAsync(global::App.App.Services.GetRequiredService<GeneratorViewModel>().GeneratedPassword);
+            }
+        }
+        else if (route?.StartsWith("vault:change-password:", StringComparison.Ordinal) == true)
+        {
+            if (await ConfirmLeaveEditorAsync())
+            {
+                RestoreWorkspaceContext("vault:item:" + route["vault:change-password:".Length..]);
+                await ChangePasswordAsync(route["vault:change-password:".Length..]);
+            }
+        }
+        else if (route?.StartsWith("vault:edit:", StringComparison.Ordinal) == true)
+        {
+            var itemId = route["vault:edit:".Length..];
+            if (await ConfirmLeaveEditorAsync())
+            {
+                RestoreWorkspaceContext("vault:item:" + itemId);
+                if (await VerifySensitiveActionAsync("编辑条目")
+                    && (await ViewModel.BeginEditAsync(itemId, PromptMasterPasswordAsync)).IsSuccess)
+                    SyncEditorTypeSelection();
+            }
+        }
+        else
+            RestoreWorkspaceContext(route);
         UpdateVaultLayoutState();
     }
 
@@ -535,9 +638,28 @@ public sealed partial class VaultPage : Page
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(VaultViewModel.Detail))
+        {
             UpdateDetailTemplate();
+            RefreshRowVisuals();
+            UpdateDetailStatus();
+            AnimateDetail();
+            foreach (var field in Descendants<FieldRow>(this))
+                BindFieldAuthorization(field);
+        }
+        if (e.PropertyName == nameof(VaultViewModel.SearchText))
+            foreach (var block in Descendants<TextBlock>(CipherList).Where(block => block.Name == "RowNameText"))
+                ApplySearchHighlight(block);
+        if (e.PropertyName is nameof(VaultViewModel.IsSelectionMode) or nameof(VaultViewModel.SelectedCount))
+            RefreshRowVisuals();
         if (e.PropertyName is nameof(VaultViewModel.Detail) or nameof(VaultViewModel.IsEditing))
             UpdateVaultLayoutState();
+        if (e.PropertyName == nameof(VaultViewModel.EditorDraft))
+            LoginPasswordEditor.PasswordRevealMode = PasswordRevealMode.Peek;
+        if (e.PropertyName == nameof(VaultViewModel.IsEditing) && !ViewModel.IsEditing)
+        {
+            LoginPasswordEditor.PasswordRevealMode = PasswordRevealMode.Peek;
+            GeneratedPasswordHint.Visibility = Visibility.Collapsed;
+        }
         if (e.PropertyName == nameof(VaultViewModel.WorkspaceContext))
         {
             if (ViewModel.Filters.Count == 0)
@@ -580,7 +702,14 @@ public sealed partial class VaultPage : Page
 
     private void OnAddPassportClick(object sender, RoutedEventArgs e) => BeginAdd(VaultItemKind.Passport);
 
-    private void BeginAdd(VaultItemKind kind)
+    private async void BeginAdd(VaultItemKind kind)
+    {
+        if (!await ConfirmLeaveEditorAsync())
+            return;
+        BeginNewItemCore(kind);
+    }
+
+    private void BeginNewItemCore(VaultItemKind kind)
     {
         RememberWorkspaceContext();
         ViewModel.BeginAdd(kind);
@@ -597,8 +726,23 @@ public sealed partial class VaultPage : Page
 
     private async void OnSaveCipherEditorClick(object sender, RoutedEventArgs e)
     {
-        if ((await ViewModel.SaveDraftAsync()).IsSuccess)
+        var name = ViewModel.EditorDraft?.Name.Trim();
+        var isNew = ViewModel.CanChangeEditorType;
+        var passwordChanged = ViewModel.HasEditorPasswordChange;
+        var result = await ViewModel.SaveDraftAsync();
+        if (result.IsSuccess)
+        {
+            if (passwordChanged && !string.IsNullOrEmpty(result.Value))
+            {
+                _detailHealthReport = null;
+                global::App.App.Services.GetRequiredService<SecurityReportViewModel>().MarkPasswordChanged(result.Value);
+                _ = RefreshDetailSecurityAsync();
+            }
             UpdateDetailTemplate();
+            ShowToast(isNew ? $"已创建“{name}”" : $"已保存“{name}”");
+        }
+        else if (string.IsNullOrWhiteSpace(ViewModel.EditorDraft?.Name))
+            CipherEditorNameBox.Focus(FocusState.Programmatic);
     }
 
     private async void OnAbandonPendingCipherCreateClick(object sender, RoutedEventArgs e)
@@ -740,6 +884,8 @@ public sealed partial class VaultPage : Page
     {
         if (ViewModel.SelectedItem is { } item)
         {
+            if (!await ConfirmLeaveEditorAsync() || !await VerifySensitiveActionAsync("编辑条目"))
+                return;
             var authorized = await ViewModel.BeginEditAsync(item.Id, PromptMasterPasswordAsync);
             if (authorized.IsSuccess)
                 SyncEditorTypeSelection();
@@ -1023,20 +1169,19 @@ public sealed partial class VaultPage : Page
     {
         if (ViewModel.SelectedItem is not { } item)
             return;
-        if (await ConfirmAsync("移到回收站", $"确定要将“{item.Name}”移到回收站吗?", "删除"))
-            await ViewModel.SoftDeleteAsync(item.Id);
+        await DeleteWithUndoAsync(item);
     }
 
     private async void OnArchiveCipherClick(object sender, RoutedEventArgs e)
     {
         if (ViewModel.SelectedItem is { } item)
-            await ViewModel.ArchiveAsync(item.Id);
+            await ArchiveWithUndoAsync(item);
     }
 
     private async void OnUnarchiveCipherClick(object sender, RoutedEventArgs e)
     {
         if (ViewModel.SelectedItem is { } item)
-            await ViewModel.UnarchiveAsync(item.Id);
+            await UnarchiveWithUndoAsync(item);
     }
 
     private async void OnRestoreCipherClick(object sender, RoutedEventArgs e)
@@ -1324,6 +1469,639 @@ public sealed partial class VaultPage : Page
         ViewModel.FacetUri = false;
         ViewModel.FacetFavoriteOnly = false;
         ViewModel.SearchText = string.Empty;
+    }
+
+    public void ApplySearch(string text) => ViewModel.SearchText = text ?? string.Empty;
+
+    public void FocusSearch() => global::App.App.MainWindow?.FocusVaultSearch();
+
+    public void BeginNewItem(VaultItemKind kind = VaultItemKind.Login) => BeginAdd(kind);
+
+    public async Task BeginNewLoginAsync(string password)
+    {
+        if (!await ConfirmLeaveEditorAsync())
+            return;
+        BeginNewItemCore(VaultItemKind.Login);
+        if (ViewModel.EditorDraft is not { } draft)
+            return;
+        draft.Login.Password = password;
+        LoginPasswordEditor.PasswordRevealMode = PasswordRevealMode.Visible;
+    }
+
+    public async Task ChangePasswordAsync(string itemId, string? generatedPassword = null)
+    {
+        if (!await ConfirmLeaveEditorAsync() || !await VerifySensitiveActionAsync("更换密码"))
+            return;
+        var result = await ViewModel.BeginEditAsync(itemId, PromptMasterPasswordAsync);
+        if (!result.IsSuccess || ViewModel.EditorDraft is not { IsLogin: true } draft)
+            return;
+        draft.Login.Password = generatedPassword
+            ?? global::App.App.Services.GetRequiredService<GeneratorViewModel>().GenerateCredentialForLogin();
+        SyncEditorTypeSelection();
+        LoginPasswordEditor.PasswordRevealMode = PasswordRevealMode.Visible;
+        GeneratedPasswordHint.Visibility = Visibility.Visible;
+    }
+
+    public async Task<bool> ConfirmLeaveEditorAsync()
+    {
+        if (!ViewModel.IsEditing)
+            return true;
+        if (!ViewModel.CanCancelEditor || _confirmingLeave)
+            return false;
+        if (!ViewModel.HasUnsavedEditorChanges)
+        {
+            ViewModel.CancelEdit();
+            return true;
+        }
+        _confirmingLeave = true;
+        try
+        {
+            if (!await ConfirmAsync("放弃未保存的更改？", "你所做的更改尚未保存。", "放弃更改"))
+                return false;
+            ViewModel.CancelEdit();
+            return true;
+        }
+        finally { _confirmingLeave = false; }
+    }
+
+    public bool MoveSearchSelection(int direction)
+    {
+        if (ViewModel.IsEditing || ViewModel.FilteredItems.Count == 0 || _sensitiveActionPending)
+            return false;
+        var currentIndex = ViewModel.SelectedItem is { } selected ? ViewModel.FilteredItems.IndexOf(selected) : -1;
+        var nextIndex = Math.Clamp(currentIndex + direction, 0, ViewModel.FilteredItems.Count - 1);
+        ViewModel.SelectedItem = ViewModel.FilteredItems[nextIndex];
+        CipherList.ScrollIntoView(ViewModel.SelectedItem);
+        return true;
+    }
+
+    public void AcceptSearchResult()
+    {
+        if (ViewModel.IsEditing || ViewModel.FilteredItems.Count == 0)
+            return;
+        ViewModel.SelectedItem ??= ViewModel.FilteredItems[0];
+        CipherList.ScrollIntoView(ViewModel.SelectedItem);
+        if (CipherList.ContainerFromItem(ViewModel.SelectedItem) is Control row)
+            row.Focus(FocusState.Keyboard);
+        else
+            CipherList.Focus(FocusState.Keyboard);
+    }
+
+    public static string FavoriteGlyph(bool favorite) => favorite ? "\uE735" : "\uE734";
+
+    public static Visibility VisibleForLogin(VaultItemKind kind) =>
+        kind == VaultItemKind.Login ? Visibility.Visible : Visibility.Collapsed;
+
+    public static string PrimaryCopyGlyph(VaultItemKind kind) => kind switch
+    {
+        VaultItemKind.Login or VaultItemKind.Ssh => "\uE72E",
+        VaultItemKind.Card => "\uE8C7",
+        VaultItemKind.Identity => "\uE715",
+        _ => "\uE8C8",
+    };
+
+    private async Task<bool> VerifySensitiveActionAsync(string message, CancellationToken ct = default)
+    {
+        if (_sensitiveActionPending)
+            return false;
+        _sensitiveActionPending = true;
+        try
+        {
+            if (global::App.App.MainWindow is not { } window)
+                return false;
+            var verifier = global::App.App.Services.GetRequiredService<ISensitiveActionVerificationService>();
+            return await verifier.VerifyAsync(WinRT.Interop.WindowNative.GetWindowHandle(window), message, PromptMasterPasswordAsync, ct);
+        }
+        catch (OperationCanceledException exception) when (UiExceptionPolicy.IsGenuineCancellation(exception, ct)) { return false; }
+        catch (OperationCanceledException exception) when (Api.RequestTimeoutClassifier.IsTimeout(exception))
+        {
+            ViewModel.OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return false;
+        }
+        finally { _sensitiveActionPending = false; }
+    }
+
+    private void OnCopyStripLoaded(object sender, RoutedEventArgs e)
+    {
+        DetailCopyStrip.AuthorizeSensitiveActionAsync = async (_, reveal, ct) =>
+        {
+            var id = ViewModel.Detail?.Id;
+            if (id is null || ViewModel.Detail?.IsDeleted != false)
+                return false;
+            if (!reveal)
+                return await ViewModel.AuthorizeFieldCopyAsync(id, PromptMasterPasswordAsync, ct);
+            if (reveal && !await VerifySensitiveActionAsync("显示敏感字段", ct))
+                return false;
+            if (ViewModel.Detail?.Id != id)
+                return false;
+            if (ViewModel.Detail.SensitiveUnlocked)
+                return true;
+            var authorized = await ViewModel.UnlockDetailAsync(id, PromptMasterPasswordAsync, ct);
+            return authorized.IsSuccess && ViewModel.Detail?.Id == id;
+        };
+        DetailCopyStrip.ReadAuthorizedDetail = () => ViewModel.Detail is { } detail
+            ? ViewModel.ReadAuthorizedDetail(detail.Id)
+            : null;
+    }
+
+    private void OnCopyStripCopied(object? sender, CopyStripCopiedEventArgs e)
+    {
+        ViewModel.RecordRecentUse(e.ItemId);
+        UpdateDetailStatus();
+    }
+
+    private async void OnOpenWebsiteClick(object sender, RoutedEventArgs e)
+    {
+        var id = ViewModel.Detail?.Id;
+        if (id is null || !Uri.TryCreate(ViewModel.DetailWebsite, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            return;
+        try
+        {
+            if (await Windows.System.Launcher.LaunchUriAsync(uri))
+            {
+                ViewModel.RecordRecentUse(id);
+                UpdateDetailStatus();
+                if (ViewModel.Detail?.Id == id)
+                    DetailCopyStrip.BeginRelay();
+            }
+            else
+                ViewModel.OperationError = "无法打开网站。请检查默认浏览器设置。";
+        }
+        catch (Exception exception) when (exception is System.Runtime.InteropServices.ExternalException or InvalidOperationException)
+        {
+            ViewModel.OperationError = "无法打开网站。请稍后重试。";
+        }
+    }
+
+    private async void OnDetailFavoriteClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedItem is { } item)
+            await ViewModel.ToggleFavoriteAsync(item.Id);
+    }
+
+    private async void OnDetailCloneClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedItem is not { } item || !await VerifySensitiveActionAsync("创建条目副本"))
+            return;
+        if ((await ViewModel.BeginCloneAsync(item.Id, PromptMasterPasswordAsync)).IsSuccess)
+            SyncEditorTypeSelection();
+    }
+
+    private void OnDetailHeaderSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var compact = e.NewSize.Width < 520;
+        Grid.SetColumn(DetailHeaderActions, compact ? 1 : 2);
+        Grid.SetRow(DetailHeaderActions, compact ? 1 : 0);
+        Grid.SetColumnSpan(DetailHeaderActions, compact ? 2 : 1);
+        OpenWebsiteLabel.Visibility = e.NewSize.Width < 440 ? Visibility.Collapsed : Visibility.Visible;
+        DetailStatusText.MaxWidth = Math.Max(100, e.NewSize.Width - 240);
+    }
+
+    private void OnDetailScrollSizeChanged(object sender, SizeChangedEventArgs e) =>
+        DetailBodyPanel.Width = Math.Min(920, Math.Max(0, e.NewSize.Width - 80));
+
+    private void OnEditorHeaderSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var compact = e.NewSize.Width < 520;
+        Grid.SetRow(EditorHeaderActions, compact ? 1 : 0);
+        Grid.SetColumn(EditorHeaderActions, compact ? 1 : 2);
+        Grid.SetColumnSpan(EditorHeaderActions, compact ? 2 : 1);
+    }
+
+    public static Visibility NewDraftVisibility(bool editing, bool isNew) =>
+        editing && isNew ? Visibility.Visible : Visibility.Collapsed;
+
+    public static string DraftName(string? name, VaultItemKind kind) => !string.IsNullOrWhiteSpace(name)
+        ? name : $"未命名{kind switch { VaultItemKind.Login => "登录", VaultItemKind.Card => "支付卡", VaultItemKind.Identity => "身份", VaultItemKind.Note => "安全笔记", VaultItemKind.Ssh => "SSH 密钥", _ => "条目" }}";
+
+    private void OnFieldUsed(object? sender, EventArgs e)
+    {
+        if (ViewModel.Detail is { } detail)
+        {
+            ViewModel.RecordRecentUse(detail.Id);
+            UpdateDetailStatus();
+        }
+    }
+
+    private void OnFieldRowLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is FieldRow field)
+            BindFieldAuthorization(field);
+    }
+
+    private void BindFieldAuthorization(FieldRow field)
+    {
+        field.IsReadOnly = ViewModel.Detail?.IsDeleted == true;
+        var itemId = ViewModel.Detail?.Id;
+        field.AuthorizeItemAsync = ct => itemId is null
+            ? Task.FromResult(false)
+            : ViewModel.AuthorizeFieldCopyAsync(itemId, PromptMasterPasswordAsync, ct);
+    }
+
+    private void OnRowNameLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBlock block)
+            ApplySearchHighlight(block);
+    }
+
+    private void OnRowLoaded(object sender, RoutedEventArgs e) => UpdateRowActionVisibility(sender);
+
+    private void RefreshRowVisuals()
+    {
+        if (CipherList is null)
+            return;
+        foreach (var row in Descendants<Grid>(CipherList).Where(row => row.Name == "RowRoot"))
+        {
+            var hovered = _rowActionStates.TryGetValue(row, out var state) && state.IsPointerOver;
+            UpdateRowVisual(row, hovered);
+        }
+    }
+
+    private void UpdateRowVisual(Grid row, bool hovered)
+    {
+        if (row.DataContext is not CipherListItem item)
+            return;
+        var selected = ViewModel.IsSelectionMode ? ViewModel.IsSelected(item.Id) : ViewModel.SelectedItem?.Id == item.Id;
+        var dark = ActualTheme == ElementTheme.Dark;
+        var alpha = selected ? dark ? (byte)18 : (byte)15 : hovered ? dark ? (byte)11 : (byte)9 : (byte)0;
+        row.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(alpha,
+            dark ? (byte)255 : (byte)0, dark ? (byte)255 : (byte)0, dark ? (byte)255 : (byte)0));
+        if (row.FindName("RowSelectionIndicator") is FrameworkElement indicator)
+            indicator.Visibility = selected ? Visibility.Visible : Visibility.Collapsed;
+        if (row.FindName("RowNameText") is TextBlock name)
+            name.FontWeight = selected ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal;
+    }
+
+    private void ApplySearchHighlight(TextBlock block)
+    {
+        block.TextHighlighters.Clear();
+        var query = ViewModel.SearchText.Trim();
+        if (query.Length == 0)
+            return;
+        var index = block.Text.IndexOf(query, StringComparison.CurrentCultureIgnoreCase);
+        if (index < 0)
+            return;
+        var highlighter = new Microsoft.UI.Xaml.Documents.TextHighlighter
+        {
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(ActualTheme == ElementTheme.Dark
+                ? Windows.UI.Color.FromArgb(61, 96, 205, 255) : Windows.UI.Color.FromArgb(41, 0, 95, 184)),
+        };
+        highlighter.Ranges.Add(new Microsoft.UI.Xaml.Documents.TextRange { StartIndex = index, Length = query.Length });
+        block.TextHighlighters.Add(highlighter);
+    }
+
+    private static IEnumerable<T> Descendants<T>(DependencyObject parent) where T : DependencyObject
+    {
+        var count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent);
+        for (var index = 0; index < count; index++)
+        {
+            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, index);
+            if (child is T match)
+                yield return match;
+            foreach (var descendant in Descendants<T>(child))
+                yield return descendant;
+        }
+    }
+
+    private void AnimateDetail()
+    {
+        if (!IsLoaded || !new Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
+            return;
+        var animation = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+        {
+            From = 0,
+            To = 1,
+            Duration = new Duration(TimeSpan.FromMilliseconds(180)),
+        };
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(animation, DetailViewPanel);
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(animation, "Opacity");
+        var storyboard = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        storyboard.Children.Add(animation);
+        storyboard.Begin();
+    }
+
+    private async Task RefreshDetailSecurityAsync()
+    {
+        try
+        {
+            var report = await global::App.App.Services.GetRequiredService<IVaultHealthUiService>().AnalyzeOfflineAsync();
+            if (!IsLoaded)
+                return;
+            _detailHealthReport = report;
+            UpdateDetailStatus();
+            foreach (var icon in Descendants<FontIcon>(CipherList).Where(icon => icon.Name == "RowIssueGlyph"))
+                UpdateRowIssue(icon);
+        }
+        catch (OperationCanceledException exception) when (UiExceptionPolicy.IsGenuineCancellation(exception)) { }
+        catch (OperationCanceledException exception) when (Api.RequestTimeoutClassifier.IsTimeout(exception))
+        {
+            ViewModel.OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+        }
+        catch (VaultHealthUiException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    private void OnSecurityReportChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        UpdateDetailStatus();
+        foreach (var icon in Descendants<FontIcon>(CipherList).Where(icon => icon.Name == "RowIssueGlyph"))
+            UpdateRowIssue(icon);
+    }
+
+    private (string Text, string Glyph, string Brush, bool ChangePassword) GetIssue(CipherListItem item)
+    {
+        if (item.IsDeleted || item.IsArchived || item.Kind != VaultItemKind.Login)
+            return (string.Empty, string.Empty, "TextFillColorSecondaryBrush", false);
+        var reports = global::App.App.Services.GetRequiredService<SecurityReportViewModel>();
+        var exposed = reports.ExposedItems.FirstOrDefault(finding => finding.Item.CipherId == item.Id);
+        if (exposed is not null)
+            return ($"密码出现在 {exposed.BreachCount} 次已知数据泄露中" + (reports.ExposedChecked ? string.Empty : " · 待复查"), "\uEA39", "SystemFillColorCriticalBrush", true);
+        var reused = _detailHealthReport?.Reused.FirstOrDefault(group => group.Items.Any(entry => entry.CipherId == item.Id));
+        if (reused is not null)
+            return ($"与“{reused.Items.FirstOrDefault(entry => entry.CipherId != item.Id)?.Name}”用的是同一个密码", "\uE7BA", "SystemFillColorCautionBrush", true);
+        if (_detailHealthReport?.Weak.Any(finding => finding.Item.CipherId == item.Id) == true)
+            return ("密码较弱，建议更换", "\uE7BA", "SystemFillColorCautionBrush", true);
+        return (string.Empty, string.Empty, "TextFillColorSecondaryBrush", false);
+    }
+
+    private void OnRowIssueLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is FontIcon icon)
+            UpdateRowIssue(icon);
+    }
+
+    private void UpdateRowIssue(FontIcon icon)
+    {
+        if (icon.DataContext is not CipherListItem item)
+            return;
+        var issue = GetIssue(item);
+        icon.Visibility = string.IsNullOrEmpty(issue.Text) ? Visibility.Collapsed : Visibility.Visible;
+        icon.Glyph = issue.Glyph;
+        icon.Foreground = ThemeBrushResolver.Resolve(this, issue.Brush);
+        ToolTipService.SetToolTip(icon, issue.Text);
+    }
+
+    private void UpdateDetailStatus()
+    {
+        if (DetailStatusText is null || ViewModel.SelectedItem is not { } item || ViewModel.Detail is not { } detail)
+            return;
+        var issue = GetIssue(item);
+        var facts = new List<string>();
+        if (!string.IsNullOrEmpty(issue.Text))
+            facts.Add(issue.Text);
+        else if (detail.IsDeleted)
+            facts.Add("在回收站中");
+        else if (detail is LoginDetail login && !string.IsNullOrEmpty(login.Password))
+        {
+            var score = global::App.App.Services.GetRequiredService<Crypto.PasswordStrength.PasswordStrengthEvaluator>().Evaluate(login.Password).Score;
+            facts.Add(score >= 4 ? "密码很强" : score >= 3 ? "密码强度良好" : "密码强度一般");
+        }
+        else if (detail is CardDetail card)
+            facts.Add(string.Join(" · ", new[] { card.Brand, card.Expiry }.Where(value => !string.IsNullOrWhiteSpace(value))));
+        if (detail.IsArchived)
+            facts.Add("已归档");
+        if (!detail.IsDeleted && detail is LoginDetail loginDetails)
+        {
+            if (item.HasTotp) facts.Add("已开启两步验证");
+            if (loginDetails.HasPasskeys) facts.Add("存有通行密钥");
+            if (loginDetails.PasswordRevisionDate is { } changedAt)
+            {
+                var now = DateTimeOffset.UtcNow;
+                var years = now.Year - changedAt.Year;
+                if (changedAt.AddYears(years) > now)
+                    years--;
+                if (years >= 2)
+                    facts.Add($"{years} 年没换过密码");
+            }
+        }
+        if (!detail.IsDeleted)
+            facts.Add(RecentUseText(ViewModel.GetLastUsedAt(item.Id)));
+        DetailStatusText.Text = string.Join(" · ", facts.Where(value => !string.IsNullOrWhiteSpace(value)));
+        DetailStatusIcon.Glyph = issue.Glyph;
+        DetailStatusIcon.Visibility = string.IsNullOrEmpty(issue.Glyph) ? Visibility.Collapsed : Visibility.Visible;
+        DetailStatusIcon.Foreground = ThemeBrushResolver.Resolve(this, issue.Brush);
+        ChangePasswordButton.Visibility = issue.ChangePassword && item.CanModify ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static string RecentUseText(DateTimeOffset? lastUsed)
+    {
+        if (lastUsed is null)
+            return "还没用过";
+        var elapsed = DateTimeOffset.UtcNow - lastUsed.Value;
+        if (elapsed.TotalMinutes < 1) return "刚刚用过";
+        if (elapsed.TotalHours < 1) return $"{(int)elapsed.TotalMinutes} 分钟前用过";
+        if (elapsed.TotalDays < 1) return $"{(int)elapsed.TotalHours} 小时前用过";
+        if (elapsed.TotalDays < 2) return "昨天用过";
+        if (elapsed.TotalDays < 30) return $"{(int)elapsed.TotalDays} 天前用过";
+        if (elapsed.TotalDays < 365) return $"{(int)(elapsed.TotalDays / 30)} 个月前用过";
+        return $"{(int)(elapsed.TotalDays / 365)} 年前用过";
+    }
+
+    private async void OnChangePasswordClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedItem is { } item)
+            await ChangePasswordAsync(item.Id);
+    }
+
+    private void OnGenerateLoginPasswordClick(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.CanEditEditorDraft || ViewModel.EditorDraft is not { } draft)
+            return;
+        draft.Login.Password = global::App.App.Services.GetRequiredService<GeneratorViewModel>().GenerateCredentialForLogin();
+        LoginPasswordEditor.PasswordRevealMode = PasswordRevealMode.Visible;
+    }
+
+    private async void OnRowCopyUsernameClick(object sender, RoutedEventArgs e)
+    {
+        if (RowItem(sender) is { } item)
+            ShowRowCopyResult(sender, await ViewModel.CopyFieldAsync(item.Id, "username", PromptMasterPasswordAsync));
+    }
+
+    private async void OnRowCopyTotpClick(object sender, RoutedEventArgs e)
+    {
+        if (RowItem(sender) is { } item)
+            ShowRowCopyResult(sender, await ViewModel.CopyFieldAsync(item.Id, "totp", PromptMasterPasswordAsync));
+    }
+
+    private void ShowRowCopyResult(object sender, UiOperationResult result)
+    {
+        if (!result.IsSuccess)
+        {
+            if (result.Status == UiOperationStatus.Failed)
+                ViewModel.OperationError = result.Error ?? "复制失败，请重试。";
+            return;
+        }
+        ResetRowCopyFeedback();
+        if (sender is Button { Content: FontIcon icon } button)
+        {
+            _copiedRowButton = button;
+            _copiedRowGlyph = icon.Glyph;
+            _copiedRowVersion = (global::App.App.Services.GetService<IClipboardService>() as IClipboardStatus)?.WriteVersion ?? 0;
+            icon.Glyph = "\uE73E";
+            icon.Foreground = ThemeBrushResolver.Resolve(this, "SystemFillColorSuccessBrush");
+        }
+    }
+
+    private void OnClipboardChanged(object? sender, EventArgs e) => DispatcherQueue.TryEnqueue(() =>
+    {
+        var status = global::App.App.Services.GetService<IClipboardService>() as IClipboardStatus;
+        if (status?.HasContent != true || status.WriteVersion != _copiedRowVersion)
+            ResetRowCopyFeedback();
+    });
+
+    private void ResetRowCopyFeedback()
+    {
+        if (_copiedRowButton?.Content is FontIcon icon && _copiedRowGlyph is not null)
+        {
+            icon.Glyph = _copiedRowGlyph;
+            icon.ClearValue(FontIcon.ForegroundProperty);
+        }
+        _copiedRowButton = null;
+        _copiedRowGlyph = null;
+        _copiedRowVersion = 0;
+    }
+
+    private void OnRowRightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
+    {
+        if (sender is Grid row && row.FindName("RowMoreButton") is Button { Flyout: { } flyout })
+        {
+            flyout.ShowAt(row);
+            e.Handled = true;
+        }
+    }
+
+    private async void OnNewFromSearchClick(object sender, RoutedEventArgs e)
+    {
+        var name = ViewModel.SearchText.Trim();
+        if (!await ConfirmLeaveEditorAsync())
+            return;
+        ViewModel.SearchText = string.Empty;
+        BeginNewItemCore(VaultItemKind.Login);
+        if (ViewModel.EditorDraft is { } draft)
+            draft.Name = name;
+    }
+
+    private void OnClearSearchClick(object sender, RoutedEventArgs e) => ViewModel.SearchText = string.Empty;
+
+    private async void OnVaultKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Handled || _sensitiveActionPending || _confirmingLeave)
+            return;
+        var key = e.Key;
+        if (key == Windows.System.VirtualKey.Escape)
+        {
+            if (!string.IsNullOrEmpty(ViewModel.SearchText))
+                ViewModel.SearchText = string.Empty;
+            else if (ViewModel.IsEditing)
+                await ConfirmLeaveEditorAsync();
+            else
+                return;
+            e.Handled = true;
+            return;
+        }
+        if (XamlRoot is null || Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot).Count > 0)
+            return;
+        var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot);
+        if (focused is TextBox or PasswordBox or AutoSuggestBox or RichEditBox || ViewModel.IsEditing)
+            return;
+        var control = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control)
+            & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
+        if (control && key == Windows.System.VirtualKey.F)
+        {
+            FocusSearch();
+            e.Handled = true;
+        }
+        else if (control && key == Windows.System.VirtualKey.C && !HasSelectedText(this))
+        {
+            if (ViewModel.SelectedItem is { IsDeleted: false } item)
+            {
+                if (ViewModel.Detail?.Id == item.Id && item.Kind is VaultItemKind.Login or VaultItemKind.Card or VaultItemKind.Identity or VaultItemKind.Ssh)
+                    await DetailCopyStrip.CopyPrimaryAsync();
+                else
+                    await ViewModel.CopyPrimaryAsync(item.Id, PromptMasterPasswordAsync);
+            }
+            e.Handled = true;
+        }
+        else if (key == Windows.System.VirtualKey.F2 && ViewModel.SelectedItem is { IsDeleted: false })
+        {
+            OnEditCipherClick(sender, e);
+            e.Handled = true;
+        }
+        else if (key == Windows.System.VirtualKey.Delete && ViewModel.SelectedItem is { IsDeleted: false })
+        {
+            OnDeleteCipherClick(sender, e);
+            e.Handled = true;
+        }
+        else if (key is Windows.System.VirtualKey.Up or Windows.System.VirtualKey.Down)
+            e.Handled = MoveSearchSelection(key == Windows.System.VirtualKey.Up ? -1 : 1);
+    }
+
+    private static bool HasSelectedText(DependencyObject parent)
+    {
+        if (parent is TextBlock { SelectedText.Length: > 0 } or RichTextBlock { SelectedText.Length: > 0 })
+            return true;
+        var count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent);
+        for (var index = 0; index < count; index++)
+            if (HasSelectedText(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, index)))
+                return true;
+        return false;
+    }
+
+    private void ShowToast(string message, Func<Task<UiOperationResult>>? undo = null)
+    {
+        VaultToastText.Text = message;
+        VaultToast.Visibility = Visibility.Visible;
+        _undoAction = undo;
+        VaultUndoButton.Visibility = undo is null ? Visibility.Collapsed : Visibility.Visible;
+        _toastTimer?.Stop();
+        _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(undo is null ? 5 : 8) };
+        _toastTimer.Tick += (_, _) =>
+        {
+            _toastTimer.Stop();
+            VaultToast.Visibility = Visibility.Collapsed;
+            _undoAction = null;
+        };
+        _toastTimer.Start();
+    }
+
+    private async Task DeleteWithUndoAsync(CipherListItem item)
+    {
+        if (item.IsDeleted || !await ConfirmLeaveEditorAsync())
+            return;
+        if ((await ViewModel.SoftDeleteAsync(item.Id)).IsSuccess)
+            ShowToast($"已将“{item.Name}”移到回收站", () => ViewModel.RestoreAsync(item.Id));
+    }
+
+    private async Task ArchiveWithUndoAsync(CipherListItem item)
+    {
+        if (!await ConfirmLeaveEditorAsync())
+            return;
+        if ((await ViewModel.ArchiveAsync(item.Id)).IsSuccess)
+            ShowToast($"已归档“{item.Name}”", () => ViewModel.UnarchiveAsync(item.Id));
+    }
+
+    private async Task UnarchiveWithUndoAsync(CipherListItem item)
+    {
+        if (!await ConfirmLeaveEditorAsync())
+            return;
+        if ((await ViewModel.UnarchiveAsync(item.Id)).IsSuccess)
+            ShowToast($"已取消归档“{item.Name}”", () => ViewModel.ArchiveAsync(item.Id));
+    }
+
+    private async void OnUndoClick(object sender, RoutedEventArgs e)
+    {
+        if (_undoAction is not { } undo)
+            return;
+        _undoAction = null;
+        var result = await undo();
+        if (result.IsSuccess)
+            ShowToast("已撤销");
+        else
+        {
+            VaultToast.Visibility = Visibility.Collapsed;
+            ViewModel.OperationError = result.Error ?? "无法撤销，请同步后重试。";
+        }
     }
 
     private sealed record OrganizationTransferDialogResult(

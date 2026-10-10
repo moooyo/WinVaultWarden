@@ -35,11 +35,12 @@
     <SelfContained>true</SelfContained>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.2.0" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
     <!-- Preserve global-qualified generated Binding accessors when App.App shadows its namespace. -->
     <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.1" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="QRCoder" Version="1.8.0" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
@@ -52,5 +53,11 @@
     <ProjectReference Include="..\Vault\Vault.csproj" />
   </ItemGroup>
   <!-- 把浏览器 Native Messaging Host(AOT 单文件)随 App 一起进便携版(portable)输出/发布目录；MSIX 不携带。 -->
+  <Target Name="IncludeWindowsAppSdkVersionMetadata" BeforeTargets="GetAssemblyAttributes">
+    <ItemGroup>
+      <_WardenWindowsAppSdk Include="@(PackageReference)" Condition="'%(PackageReference.Identity)' == 'Microsoft.WindowsAppSDK'" />
+      <AssemblyMetadata Include="WindowsAppSDKVersion" Value="%(_WardenWindowsAppSdk.Version)" />
+    </ItemGroup>
+  </Target>
   <Import Project="BrowserNativeHost.Publish.targets" />
 </Project>

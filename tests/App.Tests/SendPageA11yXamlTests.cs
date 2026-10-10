@@ -18,16 +18,12 @@ public class SendPageA11yXamlTests
     }
 
     [Fact]
-    public void DeleteDateCell_BindsAccessibleLabel()
+    public void ShareLinkAndTextCopyButtons_HaveAccessibleNames()
     {
         var doc = Load();
-        var dateCell = doc.Descendants().FirstOrDefault(e =>
-            e.Name.LocalName == "TextBlock"
-            && e.Attribute("Text")?.Value == "{x:Bind RetentionLabel}");
-
-        Assert.NotNull(dateCell);
-        Assert.Equal(
-            "{x:Bind DeleteDateAccessibleLabel}",
-            dateCell!.Attribute("AutomationProperties.Name")?.Value);
+        var copyButtons = doc.Descendants().Where(e => e.Name.LocalName == "Button"
+            && e.Attribute("Click")?.Value is "OnCopyLinkClick" or "OnCopyTextClick" or "OnCopyReceivedTextClick").ToArray();
+        Assert.Equal(3, copyButtons.Length);
+        Assert.All(copyButtons, button => Assert.False(string.IsNullOrWhiteSpace(button.Attribute("AutomationProperties.Name")?.Value)));
     }
 }

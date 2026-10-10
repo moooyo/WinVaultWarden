@@ -1477,6 +1477,7 @@ public sealed class VaultDecryptor
             : display.Trim()[0].ToString().ToUpperInvariant();
         return new AccountInfo(profile.Id, email, endpoints, initial, string.Empty)
         {
+            Name = profile.Name ?? string.Empty,
             UserIsClaimedByOrganization = ResolveUserIsClaimedByOrganization(profile),
         };
     }

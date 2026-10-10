@@ -17,7 +17,7 @@ public sealed class PwnedPasswordsClient : IPwnedPasswordsClient
     public async Task<int> GetBreachCountAsync(string password, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(password)) return 0;
-        var sha1 = Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(password))); // 大写 hex
+        var sha1 = Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(password)));
         var prefix = sha1[..5];
         var suffix = sha1[5..];
 
@@ -25,26 +25,37 @@ public sealed class PwnedPasswordsClient : IPwnedPasswordsClient
             new Uri($"https://api.pwnedpasswords.com/range/{prefix}"));
         req.Headers.Add("Add-Padding", "true");
         using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-        // 429/5xx/网络失败必须抛给调用方,绝不能悄悄折算为零命中。
+        // Failed requests must remain distinguishable from a successful check with no matches.
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
-        foreach (var line in body.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        var hasValidRange = false;
+        var hasMatchingSuffix = false;
+        var breachCount = 0;
+        foreach (var rawLine in body.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
-            var parts = line.Trim().Split(':');
-            if (parts.Length == 2 && string.Equals(parts[0], suffix, StringComparison.OrdinalIgnoreCase))
+            var line = rawLine.Trim();
+            if (line.Length == 0)
+                continue;
+            if (line.Length < 37 || line[35] != ':'
+                || !line.Take(35).All(char.IsAsciiHexDigit)
+                || !int.TryParse(line.AsSpan(36), NumberStyles.None, CultureInfo.InvariantCulture, out var count)
+                || count < 0)
+                throw new InvalidDataException("HIBP response contained an invalid range record.");
+
+            hasValidRange = true;
+            if (line.AsSpan(0, 35).Equals(suffix, StringComparison.OrdinalIgnoreCase))
             {
-                return int.TryParse(
-                    parts[1],
-                    NumberStyles.None,
-                    CultureInfo.InvariantCulture,
-                    out var count)
-                    ? count
-                    : throw new InvalidDataException(
-                        "HIBP response contained an invalid breach count.");
+                if (hasMatchingSuffix)
+                    throw new InvalidDataException("HIBP response contained a duplicate range record.");
+                hasMatchingSuffix = true;
+                breachCount = count;
             }
         }
-        // 成功 200 响应中未命中该 suffix:确定未泄露,返回零。
-        return 0;
+        if (!hasValidRange)
+            throw new InvalidDataException("HIBP response did not contain any valid range records.");
+
+        // Valid zero-count padding and valid ranges without a matching suffix are clean results.
+        return breachCount;
     }
 }

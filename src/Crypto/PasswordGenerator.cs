@@ -44,7 +44,7 @@ public static class PasswordGenerator
     private const string Special = "!@#$%^&*";
 
     private const string UppercaseUnmistakable = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-    private const string LowercaseUnmistakable = "abcdefghijkmnpqrstuvwxyz";
+    private const string LowercaseUnmistakable = "abcdefghijkmnopqrstuvwxyz";
     private const string NumbersUnmistakable = "23456789";
     private const string UsernameCharacters = "abcdefghijklmnopqrstuvwxyz1234567890";
     private const int UsernameRandomPartLength = 8;
@@ -119,7 +119,7 @@ public static class PasswordGenerator
             .ToArray();
 
         if (options.IncludeNumber)
-            words[^1] += RandomNumberGenerator.GetInt32(10).ToString();
+            words[RandomNumberGenerator.GetInt32(words.Length)] += RandomNumberGenerator.GetInt32(10).ToString();
 
         return string.Join(options.Separator, words);
     }

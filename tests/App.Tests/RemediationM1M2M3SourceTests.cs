@@ -21,12 +21,17 @@ public sealed class RemediationM1M2M3SourceTests
     }
 
     [Fact]
-    public void TotpSetup_Step2ClearSensitive_ClearsOtpauthText()
+    public void TotpSetup_Step2ClearSensitive_ClearsTheQrAndSetupSecret()
     {
-        // step2 ShowTrackedAsync 的 clearSensitive 还须清除 otpauthText.Text，
-        // 其 URI 中含 secret，不能残留在已关闭对话框里。
         var src = ReadSettings();
-        Assert.Contains("otpauthText.Text = string.Empty", src);
+        var panel = Read("Views", "TotpSetupCredentialsPanel.cs");
+        Assert.Contains("credentialsPanel.ClearSensitive()", src);
+        Assert.Contains("otpauth = string.Empty", src);
+        Assert.Contains("secret = string.Empty", src);
+        Assert.Contains("_qrImage.Source = null", panel);
+        Assert.Contains("_secretText.Text = string.Empty", panel);
+        Assert.Contains("_secret = string.Empty", panel);
+        Assert.DoesNotContain("TotpSetupOtpauthText", src);
     }
 
     [Fact]

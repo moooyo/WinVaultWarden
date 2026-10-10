@@ -144,15 +144,21 @@ public class CipherEditorXamlTests
     public void VaultPage_LoginTemplate_ShowsPasskeySummaryWhenPresent()
     {
         var document = LoadVaultPageXaml();
-        var passkeyCard = document.Descendants()
-            .FirstOrDefault(element => element.Attribute("Header")?.Value == "Passkey");
+        var passkeyCard = document.Descendants(Xaml + "Border")
+            .Single(element => element.Attribute("Visibility")?.Value?.Contains("HasPasskeys") == true);
 
-        Assert.NotNull(passkeyCard);
-        Assert.Contains("HasPasskeys", passkeyCard!.Attribute("Visibility")?.Value);
-        Assert.Contains(passkeyCard.Descendants().Where(element => element.Name.LocalName == "FieldRow"),
-            row => row.Attribute("Label")?.Value == "RP ID" && row.Attribute("Value")?.Value?.Contains("RpId") == true);
-        Assert.Contains(passkeyCard.Descendants().Where(element => element.Name.LocalName == "FieldRow"),
-            row => row.Attribute("Value")?.Value?.Contains("DisplayName") == true);
+        Assert.Contains(passkeyCard.Descendants(Xaml + "ItemsControl"),
+            element => element.Attribute("ItemsSource")?.Value?.Contains("Passkeys") == true);
+        Assert.Contains(passkeyCard.Descendants(Xaml + "TextBlock"),
+            row => row.Attribute("Text")?.Value?.Contains("DisplaySummary") == true);
+        Assert.Contains(passkeyCard.Descendants(Xaml + "TextBlock"),
+            row => row.Attribute("Text")?.Value?.Contains("MetadataSummary") == true);
+
+        var passkey = new App.ViewModels.Models.PasskeyDetail(
+            "example.com", "account@example.com", "Example Account", true, null);
+        Assert.Contains("example.com", passkey.DisplaySummary);
+        Assert.Contains("Example Account", passkey.DisplaySummary);
+        Assert.Contains("可发现", passkey.MetadataSummary);
     }
 
     [Fact]
@@ -162,14 +168,16 @@ public class CipherEditorXamlTests
         var folderBox = RequireByName(document, "CipherEditorFolderBox");
 
         Assert.Contains("FolderFilters", folderBox.Attribute("ItemsSource")?.Value);
-        // AOT 安全:用编译绑定的 ItemTemplate + SelectedItem 取代反射式 DisplayMemberPath/SelectedValuePath。
+        // A compiled item template avoids reflective DisplayMemberPath and SelectedValuePath.
         Assert.Null(folderBox.Attribute("DisplayMemberPath"));
         Assert.Null(folderBox.Attribute("SelectedValuePath"));
         Assert.Contains("EditorSelectedFolder", folderBox.Attribute("SelectedItem")?.Value);
         // The typed template displays the current folder label.
         var templateText = folderBox.Descendants().First(e => e.Name.LocalName == "TextBlock");
         Assert.Contains("Label", templateText.Attribute("Text")?.Value);
-        Assert.Equal("Stretch", folderBox.Attribute("HorizontalAlignment")?.Value);
+        Assert.Equal("Left", folderBox.Attribute("HorizontalAlignment")?.Value);
+        Assert.Equal("240", folderBox.Attribute("Width")?.Value);
+        AssertFlatFieldLabel(folderBox, "文件夹");
     }
 
     [Fact]
@@ -200,13 +208,15 @@ public class CipherEditorXamlTests
         Assert.NotNull(removeButton.Attribute("Click"));
         Assert.Contains("EditorDisplayDraft.CustomFields", customFields.Attribute("ItemsSource")?.Value);
 
-        var textBoxes = customFields.Descendants(Xaml + "TextBox").ToArray();
-        Assert.Contains(textBoxes, textBox => textBox.Attribute("Header")?.Value == "名称"
-            && textBox.Attribute("Text")?.Value?.Contains("Name") == true
-            && textBox.Attribute("HorizontalAlignment")?.Value == "Stretch");
-        Assert.Contains(textBoxes, textBox => textBox.Attribute("Header")?.Value == "值"
-            && textBox.Attribute("Text")?.Value?.Contains("Value") == true
-            && textBox.Attribute("HorizontalAlignment")?.Value == "Stretch");
+        var nameBox = customFields.Descendants(Xaml + "TextBox").Single(textBox =>
+            textBox.Attribute("Text")?.Value?.Contains("Binding Name,") == true);
+        var valueBox = RequireByName(document, "CustomFieldTextValueBox");
+        Assert.Contains("Mode=TwoWay", nameBox.Attribute("Text")?.Value);
+        Assert.Contains("TextValue, Mode=TwoWay", valueBox.Attribute("Text")?.Value);
+        Assert.Equal("Stretch", nameBox.Attribute("HorizontalAlignment")?.Value);
+        Assert.Equal("Stretch", valueBox.Attribute("HorizontalAlignment")?.Value);
+        AssertFlatFieldLabel(nameBox, "名称");
+        AssertFlatFieldLabel(valueBox, "值");
     }
 
     [Fact]
@@ -266,7 +276,7 @@ public class CipherEditorXamlTests
     }
 
     [Fact]
-    public void VaultPage_EditorInputs_StretchHorizontally()
+    public void VaultPage_EditorInputs_StretchExceptCompactPlacementPickers()
     {
         var document = LoadVaultPageXaml();
         var editorPanel = RequireByName(document, "CipherEditorPanel");
@@ -306,7 +316,24 @@ public class CipherEditorXamlTests
         var inputs = editorPanel.Descendants(Xaml + controlName).ToArray();
 
         Assert.NotEmpty(inputs);
-        Assert.All(inputs, input => Assert.Equal("Stretch", input.Attribute("HorizontalAlignment")?.Value));
+        Assert.All(inputs, input =>
+        {
+            if (input.Attribute(X + "Name")?.Value is "CipherEditorDestinationBox" or "CipherEditorFolderBox")
+            {
+                Assert.Equal("Left", input.Attribute("HorizontalAlignment")?.Value);
+                Assert.Equal("240", input.Attribute("Width")?.Value);
+                Assert.Equal("1", input.Attribute("Grid.Column")?.Value);
+            }
+            else
+                Assert.Equal("Stretch", input.Attribute("HorizontalAlignment")?.Value);
+        });
+    }
+
+    private static void AssertFlatFieldLabel(XElement input, string label)
+    {
+        Assert.Null(input.Attribute("Header"));
+        Assert.Equal("1", input.Attribute("Grid.Column")?.Value);
+        Assert.Contains(input.Parent!.Elements(Xaml + "TextBlock"), element => element.Attribute("Text")?.Value == label);
     }
 
     private static XDocument LoadVaultPageXaml()
@@ -371,8 +398,8 @@ public class CipherEditorXamlTests
         Assert.Null(panel.Attribute("DataContext"));
 
         // Editable fields bind via x:Bind to ViewModel.EditorDisplayDraft.
-        var nameBox = panel.Descendants(Xaml + "TextBox")
-            .First(tb => tb.Attribute("Header")?.Value == "项目名称（必填）");
+        var nameBox = RequireByName(document, "CipherEditorNameBox");
+        Assert.Contains(panel, nameBox.Ancestors());
         Assert.Contains("x:Bind", nameBox.Attribute("Text")?.Value);
         Assert.Contains("ViewModel.EditorDisplayDraft.Name", nameBox.Attribute("Text")?.Value);
         Assert.Contains("TwoWay", nameBox.Attribute("Text")?.Value);
@@ -387,7 +414,8 @@ public class CipherEditorXamlTests
         var uriItems = panel.Descendants(Xaml + "ItemsControl").Single(element =>
             element.Attribute("ItemsSource")?.Value?.Contains("EditorDisplayDraft.Login.Uris") == true);
         var uriBox = uriItems.Descendants(Xaml + "TextBox")
-            .First(tb => tb.Attribute("Header")?.Value == "网站地址");
+            .Single(tb => tb.Attribute("Text")?.Value?.Contains("Binding Uri,") == true);
+        AssertFlatFieldLabel(uriBox, "网站地址");
         Assert.Contains("Binding Uri, Mode=TwoWay", uriBox.Attribute("Text")?.Value);
         Assert.DoesNotContain("Uris[0]", uriBox.Attribute("Text")?.Value);
         var matching = uriItems.Descendants(Xaml + "Expander").Single();

@@ -8,13 +8,55 @@ namespace App.Services;
 /// An application-owned clipboard format protects external content, while an in-memory write
 /// identity prevents an expired timer from clearing a newer application write.
 /// </summary>
-public sealed class ClipboardService : IClipboardService
+public sealed class ClipboardService : IClipboardService, IClipboardStatus
 {
     private const string OwnershipFormat = "WinVaultWarden.VaultClipboard";
 
     private readonly object _gate = new();
     private DispatcherQueueTimer? _clearTimer;
     private ClipboardWrite? _latestWrite;
+
+    public long WriteVersion { get; private set; }
+    public DateTimeOffset? ClearAt { get; private set; }
+    public int TotalSeconds { get; private set; }
+    public bool HasContent => _latestWrite is not null;
+    public DateTimeOffset? LastClearedAt { get; private set; }
+    public string Label { get; private set; } = "内容";
+    public event EventHandler? Changed;
+
+    public void SetLabel(string label)
+    {
+        Label = string.IsNullOrWhiteSpace(label) ? "内容" : label;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public ClipboardService()
+    {
+        Clipboard.ContentChanged += OnClipboardContentChanged;
+    }
+
+    private void OnClipboardContentChanged(object? sender, object args)
+    {
+        lock (_gate)
+        {
+            if (_latestWrite is null)
+                return;
+            try
+            {
+                if (Clipboard.GetContent().Contains(OwnershipFormat))
+                    return;
+                StopTimerNoLock();
+                _latestWrite = null;
+                ClearAt = null;
+                LastClearedAt = null;
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.WriteRedacted("ClipboardOwnershipChanged", ex);
+            }
+        }
+    }
 
     private sealed class ClipboardWrite { }
 
@@ -36,16 +78,22 @@ public sealed class ClipboardService : IClipboardService
         {
             if (!Clipboard.SetContentWithOptions(package, new ClipboardContentOptions
             {
-                IsAllowedInHistory = false,
+                IsAllowedInHistory = !AppPreferences.Current.ExcludeClipboardHistory,
                 IsRoamable = false,
             }))
                 throw new InvalidOperationException("The protected clipboard write was not accepted.");
 
             StopTimerNoLock();
             _latestWrite = write;
+            WriteVersion++;
+            LastClearedAt = null;
+            Label = "内容";
 
             var seconds = autoClearSeconds
                 ?? ClipboardClearPolicy.SecondsForIndex(AppPreferences.Current.ClearClipboardIndex);
+            TotalSeconds = seconds;
+            ClearAt = seconds > 0 ? DateTimeOffset.UtcNow.AddSeconds(seconds) : null;
+            Changed?.Invoke(this, EventArgs.Empty);
             if (seconds <= 0)
                 return;
 
@@ -83,8 +131,7 @@ public sealed class ClipboardService : IClipboardService
             if (!ReferenceEquals(_latestWrite, write))
                 return;
 
-            if (TryClearIfOwnedNoLock("ClipboardTimedClear"))
-                _latestWrite = null;
+            CompleteClearNoLock("ClipboardTimedClear");
         }
     }
 
@@ -93,9 +140,19 @@ public sealed class ClipboardService : IClipboardService
         lock (_gate)
         {
             StopTimerNoLock();
-            if (TryClearIfOwnedNoLock(operation))
-                _latestWrite = null;
+            CompleteClearNoLock(operation);
         }
+    }
+
+    private void CompleteClearNoLock(string operation)
+    {
+        var hadContent = _latestWrite is not null;
+        if (!TryClearIfOwnedNoLock(operation, out var cleared))
+            return;
+        _latestWrite = null;
+        ClearAt = null;
+        LastClearedAt = hadContent && cleared ? DateTimeOffset.UtcNow : null;
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private void StopTimerNoLock()
@@ -104,13 +161,17 @@ public sealed class ClipboardService : IClipboardService
         _clearTimer = null;
     }
 
-    private static bool TryClearIfOwnedNoLock(string operation)
+    private static bool TryClearIfOwnedNoLock(string operation, out bool cleared)
     {
+        cleared = false;
         try
         {
             var current = Clipboard.GetContent();
             if (current.Contains(OwnershipFormat))
+            {
                 Clipboard.Clear();
+                cleared = true;
+            }
             return true;
         }
         catch (Exception ex)

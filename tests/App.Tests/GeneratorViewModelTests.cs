@@ -26,10 +26,11 @@ public class GeneratorViewModelTests
     {
         var vm = new GeneratorViewModel();
 
-        Assert.Equal(14, vm.GeneratedPassword.Length);
+        Assert.Equal(20, vm.GeneratedPassword.Length);
         Assert.Contains(vm.GeneratedPassword, char.IsLower);
         Assert.Contains(vm.GeneratedPassword, char.IsUpper);
         Assert.Contains(vm.GeneratedPassword, char.IsDigit);
+        Assert.Contains(vm.GeneratedPassword, character => "!@#$%^&*".Contains(character));
     }
 
     [Fact]
@@ -55,7 +56,7 @@ public class GeneratorViewModelTests
         };
 
         Assert.True(vm.IncludeLowercase);
-        Assert.Equal(14, vm.GeneratedPassword.Length);
+        Assert.Equal(20, vm.GeneratedPassword.Length);
     }
 
     [Fact]
@@ -74,10 +75,11 @@ public class GeneratorViewModelTests
 
         vm.RegenerateCommand.Execute(null);
 
-        Assert.Equal(5, vm.GeneratedPassword.Length);
-        Assert.Equal(0, vm.MinNumbers);
-        Assert.Equal(3, vm.MinSpecial);
-        Assert.True(vm.GeneratedPassword.Count(c => "!@#$%^&*".Contains(c)) >= 3);
+        Assert.Equal(8, vm.GeneratedPassword.Length);
+        Assert.Equal(1, vm.MinNumbers);
+        Assert.Equal(5, vm.MinSpecial);
+        Assert.Contains(vm.GeneratedPassword, char.IsDigit);
+        Assert.Equal(5, vm.GeneratedPassword.Count(c => "!@#$%^&*".Contains(c)));
     }
 
     [Fact]
@@ -96,9 +98,9 @@ public class GeneratorViewModelTests
 
         vm.RegenerateCommand.Execute(null);
 
-        Assert.Equal(5, vm.GeneratedPassword.Length);
-        Assert.Equal(0, vm.MinNumbers);
-        Assert.Equal(3, vm.MinSpecial);
+        Assert.Equal(8, vm.GeneratedPassword.Length);
+        Assert.Equal(1, vm.MinNumbers);
+        Assert.Equal(5, vm.MinSpecial);
         Assert.Equal(vm.MinNumbers, vm.MinNumbersValue);
         Assert.Equal(vm.MinSpecial, vm.MinSpecialValue);
     }
@@ -109,9 +111,9 @@ public class GeneratorViewModelTests
     }
 
     [Fact]
-    public void ModeSwitch_RestoresEachModesUnchangedValue()
+    public void ModeSwitch_GeneratesFreshValuesAndPreservesEachModesOptions()
     {
-        var vm = new GeneratorViewModel();
+        var vm = new GeneratorViewModel { UsernameIncludeNumber = true };
         var password = vm.GeneratedPassword;
         vm.Mode = GeneratorMode.Passphrase;
         var passphrase = vm.GeneratedPassword;
@@ -119,11 +121,14 @@ public class GeneratorViewModelTests
         var username = vm.GeneratedPassword;
 
         vm.Mode = GeneratorMode.Password;
-        Assert.Equal(password, vm.GeneratedPassword);
+        Assert.NotEqual(password, vm.GeneratedPassword);
+        Assert.Equal(20, vm.GeneratedPassword.Length);
         vm.Mode = GeneratorMode.Passphrase;
-        Assert.Equal(passphrase, vm.GeneratedPassword);
+        Assert.NotEqual(passphrase, vm.GeneratedPassword);
+        Assert.Equal(4, vm.GeneratedPassword.Split('-').Length);
         vm.Mode = GeneratorMode.Username;
-        Assert.Equal(username, vm.GeneratedPassword);
+        Assert.NotEqual(username, vm.GeneratedPassword);
+        Assert.Matches(@"\d{4}$", vm.GeneratedPassword);
     }
 
     [Fact]
@@ -269,11 +274,11 @@ public class GeneratorViewModelTests
 
         vm.Length = 5;
 
-        Assert.Equal(3, vm.MinNumbers);
-        Assert.Equal(0, vm.MinSpecial);
+        Assert.Equal(5, vm.MinNumbers);
+        Assert.Equal(1, vm.MinSpecial);
         Assert.Contains(nameof(vm.MinNumbersValue), changed);
         Assert.Contains(nameof(vm.MinSpecialValue), changed);
-        Assert.Equal(5, vm.GeneratedPassword.Length);
+        Assert.Equal(8, vm.GeneratedPassword.Length);
     }
 
     [Fact]
@@ -455,7 +460,7 @@ public class GeneratorViewModelTests
 
         vm.Mode = GeneratorMode.Passphrase;
 
-        Assert.Equal(6, vm.GeneratedPassword.Split('-').Length);
+        Assert.Equal(4, vm.GeneratedPassword.Split('-').Length);
     }
 
     [Fact]
@@ -544,7 +549,7 @@ public class GeneratorViewModelTests
     }
 
     [Fact]
-    public void History_CapsAtTwenty()
+    public void History_CapsAtFiveMostRecentDistinctValues()
     {
         var clipboard = new RecordingClipboard();
         var vm = new GeneratorViewModel(clipboard);
@@ -555,7 +560,63 @@ public class GeneratorViewModelTests
             vm.CopyCommand.Execute(null);
         }
 
-        Assert.Equal(20, vm.History.Count);
+        Assert.Equal(5, vm.History.Count);
+        Assert.Equal(vm.GeneratedPassword, vm.History[0].Value);
+        Assert.Equal(5, vm.History.Select(item => item.Value).Distinct().Count());
+    }
+
+    [Fact]
+    public void CopyingOlderHistoryValue_MovesItToFrontAndPreservesItsMode()
+    {
+        var vm = new GeneratorViewModel(new RecordingClipboard()) { Mode = GeneratorMode.Passphrase };
+        vm.CopyCommand.Execute(null);
+        var original = vm.History[0];
+        vm.Mode = GeneratorMode.Password;
+        vm.CopyCommand.Execute(null);
+
+        vm.CopyHistoryItemCommand.Execute(original);
+
+        Assert.Equal(2, vm.History.Count);
+        Assert.Equal(original.Value, vm.History[0].Value);
+        Assert.Equal(GeneratorMode.Passphrase, vm.History[0].Mode);
+        Assert.True(vm.History[0].CreatedAt >= original.CreatedAt);
+    }
+
+    [Fact]
+    public void LastSelectedCharacterSet_IsNotToggleableAndRemainsUsable()
+    {
+        var vm = new GeneratorViewModel
+        {
+            IncludeUppercase = false,
+            IncludeNumbers = false,
+            IncludeSpecial = false,
+        };
+
+        Assert.False(vm.CanToggleLowercase);
+        Assert.True(vm.CanToggleUppercase);
+        Assert.True(vm.CanToggleNumbers);
+        Assert.True(vm.CanToggleSpecial);
+        Assert.All(vm.GeneratedPassword, character => Assert.InRange(character, 'a', 'z'));
+    }
+
+    [Fact]
+    public void GenerateCredentialForLogin_UsesPasswordOptionsInUsernameModeAndDoesNotCopy()
+    {
+        var clipboard = new RecordingClipboard();
+        var vm = new GeneratorViewModel(clipboard) { Length = 32, Mode = GeneratorMode.Username };
+        var username = vm.GeneratedPassword;
+
+        var password = vm.GenerateCredentialForLogin();
+
+        Assert.Equal(32, password.Length);
+        Assert.Contains(password, char.IsUpper);
+        Assert.Contains(password, char.IsLower);
+        Assert.Contains(password, char.IsDigit);
+        Assert.Equal(username, vm.GeneratedPassword);
+        Assert.Empty(vm.History);
+        Assert.Equal(0, clipboard.SecretCount);
+        vm.ClearSensitive();
+        Assert.Empty(vm.GenerateCredentialForLogin());
     }
 
     [Fact]
@@ -686,7 +747,7 @@ public class GeneratorViewModelTests
         var words = vm.GeneratedPassword.Split('-');
         Assert.Equal(8, words.Length);
         Assert.All(words, word => Assert.True(char.IsUpper(word[0])));
-        Assert.Contains(words[^1], char.IsDigit);
+        Assert.Single(words.Where(word => word.Any(char.IsDigit)));
 
         vm.Mode = GeneratorMode.Username;
         vm.RegenerateCommand.Execute(null);

@@ -132,8 +132,11 @@ public class GeneratorDialogXamlTests
     [Fact]
     public void StrengthMeter_IsConditionalAndUsesTheRealScore()
     {
-        var bar = Load().Descendants().Single(element => element.Name.LocalName == "ProgressBar");
-        Assert.Contains("ViewModel.StrengthFraction", bar.Attribute("Value")?.Value);
-        Assert.Contains("ViewModel.ShowStrength", bar.Parent!.Attribute("Visibility")?.Value);
+        var panel = Load().Descendants().Single(element =>
+            element.Attributes().Any(attribute => attribute.Name.LocalName == "Name" && attribute.Value == "StrengthPanel"));
+        Assert.Contains("ViewModel.ShowStrength", panel.Attribute("Visibility")?.Value);
+        Assert.Contains(panel.Descendants(), element =>
+            element.Name.LocalName == "TextBlock" && element.Attribute("Text")?.Value.Contains("ViewModel.StrengthLabel") == true);
+        Assert.Equal(4, panel.Descendants().Count(element => element.Name.LocalName == "Border"));
     }
 }
