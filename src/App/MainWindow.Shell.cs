@@ -42,6 +42,7 @@ public sealed partial class MainWindow
     private bool _sendRefreshQueued;
     private int _lastPendingRequestCount = -1;
     private NavigationViewItem? _compactActionItem;
+    private double _lastShellWidth;
 
     private void InitializeShell()
     {
@@ -565,6 +566,12 @@ public sealed partial class MainWindow
         if (Nav is null || AppNameText is null || TitleSearchHost is null) return;
         var width = ShellRoot.ActualWidth;
         var unlocked = !_isLoginWindow && Nav.Visibility == Visibility.Visible;
+        var wasWide = _lastShellWidth >= 1200;
+        _lastShellWidth = width;
+        if (width >= 1200 && !Nav.IsPaneOpen)
+            Nav.IsPaneOpen = true;
+        else if (width is > 0 and < 1200 && wasWide)
+            Nav.IsPaneOpen = false;
         var compact = width < 1200 && !Nav.IsPaneOpen;
         var narrow = width < 800;
         if (unlocked && width is > 0 and < 640)
