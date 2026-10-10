@@ -52,6 +52,9 @@
     <ProjectReference Include="..\Api\Api.csproj" />
     <ProjectReference Include="..\Vault\Vault.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="Assets\*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
   <!-- 把浏览器 Native Messaging Host(AOT 单文件)随 App 一起进便携版(portable)输出/发布目录；MSIX 不携带。 -->
   <Target Name="IncludeWindowsAppSdkVersionMetadata" BeforeTargets="GetAssemblyAttributes">
     <ItemGroup>
