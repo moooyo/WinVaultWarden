@@ -17,11 +17,12 @@ public class VaultPageRecycleBinXamlTests
     }
 
     [Fact]
-    public void TrashView_Has_InfoBar_Header_EmptyButton_EmptyState()
+    public void TrashView_Has_WorkspaceHeader_EmptyButton_EmptyState()
     {
         var xaml = LoadText();
-        Assert.Contains("回收站中的项目不计入密码库", xaml);
-        Assert.Contains("ViewModel.TrashHeader", xaml);
+        Assert.Contains("删除的条目会显示在这里，可恢复或永久删除。", xaml);
+        Assert.Contains("ViewModel.WorkspaceTitle", xaml);
+        Assert.Contains("ViewModel.FilteredItems.Count", xaml);
         Assert.Contains("ViewModel.CanEmptyRecycleBin", xaml);
         Assert.Contains("OnEmptyRecycleBinClick", xaml);
         Assert.Contains("ViewModel.IsTrashEmpty", xaml);

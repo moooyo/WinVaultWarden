@@ -27,7 +27,7 @@ public class SendEditorDialogXamlTests
             element => element.Attribute("MinWidth") is not null || element.Attribute("MaxWidth") is not null);
         Assert.Equal("640", ResourceValue(document, "ContentDialogMaxWidth"));
         Assert.Equal("960", ResourceValue(document, "ContentDialogMaxHeight"));
-        // Task 13: 固定 Width="520" 已移除,改为按 XamlRoot 可用宽度在 code-behind clamp。
+        // Clamp the form to the available XamlRoot width in code-behind.
         Assert.Null(form.Attribute("Width"));
         Assert.Equal("SendEditorContent", form.Attribute(X + "Name")?.Value);
         Assert.Null(form.Attribute("Padding"));
@@ -60,11 +60,12 @@ public class SendEditorDialogXamlTests
     }
 
     [Fact]
-    public void Dialog_HasDisabledToggle_BoundToDraftDisabled()
+    public void Dialog_HasDisabledCheckBox_BoundToDraftDisabled()
     {
         var doc = LoadDialogXaml();
-        var toggle = doc.Descendants(Xaml + "ToggleSwitch").Single();
-        Assert.Contains("Draft.Disabled", toggle.Attribute("IsOn")?.Value);
+        var checkbox = doc.Descendants(Xaml + "CheckBox")
+            .Single(element => element.Attribute("IsChecked")?.Value?.Contains("Draft.Disabled") == true);
+        Assert.Equal("{x:Bind Draft.Disabled, Mode=TwoWay}", checkbox.Attribute("IsChecked")?.Value);
     }
 
     [Fact]
@@ -123,8 +124,7 @@ public class SendEditorDialogXamlTests
     [Fact]
     public void DialogHasInlineRetryableErrorAndPrimaryDeferralHandler()
     {
-        // 保存在 Primary deferral 内完成:失败时 args.Cancel=true 保留对话框、经内联 InfoBar 展示可重试错误,
-        // 且区分 Failed 与 Busy/Cancelled。
+        // Save within the primary-button deferral and keep retryable failures in the dialog.
         var xaml = XamlText();
         var code = CodeBehindText();
         Assert.Contains("SendEditorErrorInfoBar", xaml);
@@ -136,7 +136,7 @@ public class SendEditorDialogXamlTests
     [Fact]
     public void RadioButtons_BindCheckedStateToDraftType()
     {
-        // 单选按钮的 IsChecked 绑定真实草稿类型(OneWay),编辑既有文件 Send 时初始化不会把 File 误显为 Text。
+        // One-way bindings preserve the existing Send type during initialization.
         var document = LoadDialogXaml();
         var radios = document.Descendants(Xaml + "RadioButton").ToList();
         Assert.Equal(2, radios.Count);
@@ -145,7 +145,7 @@ public class SendEditorDialogXamlTests
             .ToList();
         Assert.Contains(checkedBindings, v => v.Contains("Draft.IsText"));
         Assert.Contains(checkedBindings, v => v.Contains("Draft.IsFile"));
-        // 不得再有硬编码 IsChecked="True" 覆盖真实类型。
+        // A hard-coded checked state must not override the draft type.
         Assert.DoesNotContain(checkedBindings, v => v == "True");
     }
 

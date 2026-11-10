@@ -1,3 +1,4 @@
+using App.Controls;
 using App.ViewModels;
 using Core.Models;
 using Core.Services;
@@ -7,7 +8,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
 using System.ComponentModel;
 
 namespace App.Views;
@@ -16,11 +16,13 @@ public sealed partial class RegisterPage : Page
 {
     private readonly PasswordStrengthEvaluator _strengthEvaluator;
     private bool _isInitialized;
+    private readonly KeyEventHandler _capsLockKeyUpHandler;
 
     public RegisterViewModel ViewModel { get; }
 
     public RegisterPage()
     {
+        _capsLockKeyUpHandler = OnAuthKeyUp;
         ViewModel = global::App.App.Services.GetRequiredService<RegisterViewModel>();
         _strengthEvaluator = global::App.App.Services.GetRequiredService<PasswordStrengthEvaluator>();
         ViewModel.ConfigurePasswordBreachCheck(
@@ -41,6 +43,9 @@ public sealed partial class RegisterPage : Page
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         ActualThemeChanged += OnActualThemeChanged;
+        GotFocus += OnAuthFocusChanged;
+        LostFocus += OnAuthFocusChanged;
+        AddHandler(UIElement.KeyUpEvent, _capsLockKeyUpHandler, true);
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
     }
 
@@ -60,6 +65,7 @@ public sealed partial class RegisterPage : Page
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         UpdateStrength();
+        UpdateCapsLockWarnings();
         if (ViewModel.IsEditing)
         {
             DispatcherQueue.TryEnqueue(
@@ -78,6 +84,10 @@ public sealed partial class RegisterPage : Page
         Loaded -= OnLoaded;
         Unloaded -= OnUnloaded;
         ActualThemeChanged -= OnActualThemeChanged;
+        GotFocus -= OnAuthFocusChanged;
+        LostFocus -= OnAuthFocusChanged;
+        RemoveHandler(UIElement.KeyUpEvent, _capsLockKeyUpHandler);
+        UpdateCapsLockWarnings();
         ViewModel.ClearSensitive();
     }
 
@@ -89,6 +99,7 @@ public sealed partial class RegisterPage : Page
             DispatcherQueue.TryEnqueue(() =>
             {
                 ResetPasswordPresentation();
+                UpdateCapsLockWarnings();
                 if (!ViewModel.IsEditing)
                     FocusRegistrationHandoffAction();
             });
@@ -189,6 +200,33 @@ public sealed partial class RegisterPage : Page
     }
 
     private void OnActualThemeChanged(FrameworkElement sender, object args) => UpdateStrength();
+
+    private void OnAuthFocusChanged(object sender, RoutedEventArgs args)
+    {
+        if (_isInitialized)
+            DispatcherQueue.TryEnqueue(UpdateCapsLockWarnings);
+    }
+
+    private void OnAuthKeyUp(object sender, KeyRoutedEventArgs args) => UpdateCapsLockWarnings();
+
+    private void UpdateCapsLockWarnings()
+    {
+        StackPanel? activeWarning = null;
+        if (_isInitialized && IsLoaded && XamlRoot is not null && ViewModel.IsEditing
+            && (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.CapitalLock)
+                & Windows.UI.Core.CoreVirtualKeyStates.Locked) != 0)
+        {
+            var focused = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+            while (focused is not null && focused is not PasswordBox)
+                focused = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(focused);
+            if (focused == MasterPasswordBox)
+                activeWarning = MasterPasswordCapsWarning;
+            else if (focused == ConfirmPasswordBox)
+                activeWarning = ConfirmPasswordCapsWarning;
+        }
+        MasterPasswordCapsWarning.Visibility = activeWarning == MasterPasswordCapsWarning ? Visibility.Visible : Visibility.Collapsed;
+        ConfirmPasswordCapsWarning.Visibility = activeWarning == ConfirmPasswordCapsWarning ? Visibility.Visible : Visibility.Collapsed;
+    }
 
     private void OnMasterPasswordChanged(object sender, RoutedEventArgs e)
     {
@@ -298,22 +336,20 @@ public sealed partial class RegisterPage : Page
         if (!_isInitialized)
             return;
         var hasPassword = MasterPasswordBox.Password.Length > 0;
-        PasswordStrengthRow.Visibility = hasPassword ? Visibility.Visible : Visibility.Collapsed;
-        if (!hasPassword)
-            return;
-
-        var score = _strengthEvaluator.Evaluate(MasterPasswordBox.Password).Score;
-        var segmentsFilled = Math.Clamp(score, 1, 4);
+        var score = hasPassword ? _strengthEvaluator.Evaluate(MasterPasswordBox.Password).Score : 0;
+        var segmentsFilled = hasPassword ? Math.Clamp(score, 1, 4) : 0;
         var brushKey = score <= 1 ? "SystemFillColorCriticalBrush"
             : score == 2 ? "SystemFillColorCautionBrush" : "SystemFillColorSuccessBrush";
-        var filledBrush = (Brush)Application.Current.Resources[brushKey];
-        var emptyBrush = (Brush)Application.Current.Resources["DividerStrokeColorDefaultBrush"];
+        var filledBrush = ThemeBrushResolver.Resolve(this, brushKey);
+        var emptyBrush = ThemeBrushResolver.Resolve(this, "WardenSurfaceStrokeBrush");
         Border[] segments = [StrengthSegment1, StrengthSegment2, StrengthSegment3, StrengthSegment4];
         for (var index = 0; index < segments.Length; index++)
             segments[index].Background = index < segmentsFilled ? filledBrush : emptyBrush;
 
-        StrengthLabel.Text = score switch { <= 1 => "弱", 2 => "中等", 3 => "强", _ => "非常强" };
+        StrengthLabel.Text = hasPassword
+            ? score switch { <= 1 => "弱", 2 => "中等", 3 => "强", _ => "非常强" }
+            : string.Empty;
         StrengthLabel.Foreground = filledBrush;
-        AutomationProperties.SetName(StrengthLabel, $"密码强度：{StrengthLabel.Text}");
+        AutomationProperties.SetName(StrengthLabel, hasPassword ? $"密码强度：{StrengthLabel.Text}" : string.Empty);
     }
 }

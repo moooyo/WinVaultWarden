@@ -34,6 +34,9 @@ public partial record CustomField { }
 public sealed partial record PasswordHistoryItem { }
 
 [WinRT.GeneratedBindableCustomProperty]
+public sealed partial record LoginUriDetail { }
+
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial record PasskeyDetail { }
 
 [WinRT.GeneratedBindableCustomProperty]

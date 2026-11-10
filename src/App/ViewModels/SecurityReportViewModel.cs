@@ -53,6 +53,8 @@ public sealed record SecurityIssueRow(
     string ResultLabel,
     string Severity)
 {
+    public bool IsIgnored { get; init; }
+    public bool CanIgnore => !IsIgnored && Category != "breach";
     public string Subtitle => string.IsNullOrWhiteSpace(Username)
         ? Reason
         : $"{Username} · {Reason}";
@@ -63,13 +65,15 @@ public sealed class SecurityIssueGroup(
     string category,
     string title,
     string description,
-    IEnumerable<SecurityIssueRow> items)
+    IEnumerable<SecurityIssueRow> items,
+    bool showHeader = true)
 {
     public string Category { get; } = category;
     public string Title { get; } = title;
     public string Description { get; } = description;
     public ObservableCollection<SecurityIssueRow> Items { get; } = new(items);
     public int Count => Items.Count;
+    public bool ShowHeader { get; } = showHeader;
 }
 
 public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
@@ -81,6 +85,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         StringComparer.Create(CultureInfo.GetCultureInfo("zh-CN"), ignoreCase: true);
     private readonly IVaultHealthUiService _service;
     private readonly Dictionary<(string Category, string CipherId), SecurityIssueRow> _baselineIssues = new();
+    private readonly HashSet<(string Category, string CipherId)> _ignoredIssueKeys = new();
     private readonly HashSet<string> _pendingExposureRechecks = new(StringComparer.Ordinal);
     private HealthReport? _offlineSnapshot;
     private IReadOnlyList<ExposedFinding> _exposureSnapshot = [];
@@ -88,6 +93,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     private List<SecurityIssueRow> _currentIssues = [];
     private List<SecurityIssueRow> _overviewIssues = [];
     private List<SecurityIssueRow> _resolvedIssues = [];
+    private List<SecurityIssueRow> _ignoredRows = [];
     private bool _offlineBaselineCaptured;
     private bool _exposureBaselineCaptured;
     private bool _hasRequestedExposureCheck;
@@ -123,6 +129,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         "weak" => "弱密码",
         "http" => "不安全的网址",
         "done" => "本次已处理",
+        "ignored" => "已忽略的提醒",
         _ => "安全报告",
     };
 
@@ -132,6 +139,8 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
             ? "没有需要处理的问题"
             : $"还有 {_overviewIssues.Count} 项需要处理",
         "done" => $"已处理 {_resolvedIssues.Count} 项",
+        "ignored" => $"{_ignoredRows.Count} 项 · 不计入问题数，列表里也不再标出",
+        "breach" when !_hasExposureSnapshot => string.Empty,
         _ => $"{_currentIssues.Count(item => item.Category == Category)} 项 · {GetCategoryDescription(Category)}",
     };
 
@@ -141,6 +150,8 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         {
             if (ShowOfflineLoading || IsCheckingExposed)
                 return "正在检查…";
+            if (!_hasExposureSnapshot)
+                return ExposureState == ExposureCheckState.Failed ? "泄露检查失败" : "还没有检查过泄露";
             if (_lastCheckedAt is not { } checkedAt)
                 return "尚未检查";
 
@@ -157,15 +168,28 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         }
     }
 
-    public bool ShowPriority => Category == "all" && PriorityIssue is not null;
+    public bool ShowPriority => Category == "all" && _hasExposureSnapshot && PriorityIssue is not null;
     public bool HasVisibleIssues => Category == "done"
         ? ResolvedItems.Count > 0
         : ShowPriority || IssueGroups.Count > 0;
     public bool HasResolvedItems => ResolvedItems.Count > 0;
+    public bool ShowResolvedHeader => Category == "all";
+    public bool ShowFirstExposureCheck => (Category is "all" or "breach")
+        && ShowOfflineContent && !_hasExposureSnapshot && !IsCheckingExposed;
+    public bool ShowExposureReminder => (Category is "all" or "breach")
+        && ShowOfflineContent && !ExposedChecked && !ShowFirstExposureCheck && !IsCheckingExposed;
+    public bool ShowEmptyMessage => !HasVisibleIssues && !ShowFirstExposureCheck
+        && !IsCheckingExposed;
+    public string FirstExposureCheckDescription =>
+        "检查时只把每个密码哈希值的前 5 位发给 Have I Been Pwned，密码本身不会离开这台电脑。"
+        + (Category == "all" ? "弱密码和重复密码在本机就能算出，已经显示在下面。" : string.Empty);
+    public string ExposureProgressText =>
+        "正在检查密码是否泄露 · 只发送密码哈希的前 5 位，不会上传密码";
 
     public string EmptyMessage => Category switch
     {
         "done" => "这次还没有处理过条目，可以从“概览”里的第一项开始。",
+        "ignored" => "没有忽略的提醒。确定某个问题不用管，可以在报告里点“忽略”。",
         "breach" when IsCheckingExposed => "正在检查暴露密码…",
         "breach" when ExposureState == ExposureCheckState.Failed => "暴露密码检查失败，请重试。",
         "breach" when _exposureSnapshotNeedsRefresh => "请重新检查暴露密码，确认最近的修改。",
@@ -176,6 +200,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         "all" when ExposureState == ExposureCheckState.Failed => "离线检查未发现问题，暴露密码检查失败，请重试。",
         "all" when _exposureSnapshotNeedsRefresh => "离线检查未发现问题，请重新检查暴露密码。",
         "all" when !ExposedChecked => "离线检查未发现问题，暴露密码尚未检查。",
+        "all" when IgnoredCount > 0 => "没有需要处理的问题。已忽略的提醒可以在“已忽略”中恢复。",
         "all" => "所有条目都通过了检查。",
         _ => "这一类没有需要处理的条目。",
     };
@@ -238,12 +263,18 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     public int TotalIssueCount => ReusedCount + WeakCount + UnsecuredCount + ExposedCount;
     public int OverviewIssueCount => _overviewIssues.Count;
     public int ResolvedCount => _resolvedIssues.Count;
+    public int IgnoredCount => _ignoredRows.Count;
+
+    /// <summary>Reports a hidden session reminder while always keeping breaches visible.</summary>
+    public bool IsIssueIgnored(string category, string cipherId) =>
+        category != "breach" && !_isClearingSensitive && _ignoredIssueKeys.Contains((category, cipherId));
 
     /// <summary>Returns item counts for persistent navigation, independent of the selected report projection.</summary>
     public int GetCategoryIssueCount(string category) => category switch
     {
         "all" => OverviewIssueCount,
         "done" => ResolvedCount,
+        "ignored" => IgnoredCount,
         _ => _currentIssues.Count(item => item.Category == category),
     };
     public bool HasAnyIssue => TotalIssueCount > 0;
@@ -277,10 +308,21 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     [NotifyPropertyChangedFor(nameof(ShowOfflineContent))]
     [NotifyPropertyChangedFor(nameof(LastCheckedText))]
     [NotifyPropertyChangedFor(nameof(EmptyMessage))]
+    [NotifyPropertyChangedFor(nameof(ShowFirstExposureCheck))]
+    [NotifyPropertyChangedFor(nameof(ShowExposureReminder))]
+    [NotifyPropertyChangedFor(nameof(ShowEmptyMessage))]
     public partial DataPageState OfflineState { get; set; } = DataPageState.Loading;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OfflineProgressText))]
     public partial int OfflineProgress { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OfflineProgressText))]
+    public partial int OfflineProgressTotal { get; set; } = 100;
+
+    public string OfflineProgressText =>
+        $"正在分析密码库 · 已完成 {Math.Min(OfflineProgress, OfflineProgressTotal)} / {OfflineProgressTotal}";
 
     [ObservableProperty]
     public partial string? OfflineError { get; set; }
@@ -300,7 +342,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
 
     partial void OnCategoryChanged(string value)
     {
-        if (value is not ("all" or "breach" or "reuse" or "weak" or "http" or "done"))
+        if (value is not ("all" or "breach" or "reuse" or "weak" or "http" or "done" or "ignored"))
         {
             Category = "all";
             return;
@@ -345,11 +387,15 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         var token = requestCts.Token;
         OfflineState = DataPageState.Loading;
         OfflineProgress = 0;
+        OfflineProgressTotal = 100;
         OfflineError = null;
         var progress = new Progress<HealthAnalysisProgress>(value =>
         {
             if (IsCurrentOfflineRequest(requestId, token) && ShowOfflineLoading)
+            {
+                OfflineProgressTotal = Math.Max(1, value.Total);
                 OfflineProgress = value.Completed;
+            }
         });
 
         try
@@ -360,7 +406,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
 
             if (!IsCurrentOfflineRequest(requestId, token))
                 return UiOperationResult<HealthReport>.Cancelled();
-            OfflineProgress = 100;
+            OfflineProgress = OfflineProgressTotal;
             if (!IsCurrentOfflineRequest(requestId, token))
                 return UiOperationResult<HealthReport>.Cancelled();
             OfflineState = report.Reused.Count + report.Weak.Count + report.Unsecured.Count == 0
@@ -451,6 +497,27 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
 
     [RelayCommand]
     private Task RetryOfflineAsync() => RefreshReportsAsync();
+
+    /// <summary>Hides one confirmed non-breach finding for the current unlocked session.</summary>
+    [RelayCommand]
+    private void IgnoreIssue(SecurityIssueRow? issue)
+    {
+        if (_isClearingSensitive || issue is null || !issue.CanIgnore
+            || !_currentIssues.Any(row => row.Category == issue.Category && row.CipherId == issue.CipherId))
+            return;
+        if (_ignoredIssueKeys.Add((issue.Category, issue.CipherId)))
+            SourcesChanged();
+    }
+
+    /// <summary>Restores a session-scoped reminder without changing the vault item.</summary>
+    [RelayCommand]
+    private void RestoreIssue(SecurityIssueRow? issue)
+    {
+        if (_isClearingSensitive || issue is null)
+            return;
+        if (_ignoredIssueKeys.Remove((issue.Category, issue.CipherId)))
+            SourcesChanged();
+    }
 
     /// <summary>Invalidates callbacks before cancelling the active offline request.</summary>
     public void CancelOfflineAnalysis()
@@ -577,6 +644,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         _sourceUpdateDepth++;
         try
         {
+            _ignoredIssueKeys.RemoveWhere(key => key.CipherId == cipherId);
             var needsExposureRecheck = _hasRequestedExposureCheck || _hasExposureSnapshot;
             if (needsExposureRecheck)
                 _pendingExposureRechecks.Add(cipherId);
@@ -620,7 +688,12 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         foreach (var finding in _offlineSnapshot?.Weak ?? Array.Empty<WeakFinding>())
             rows.Add((CreateRow(finding.Item, "weak", "密码过于简单或容易被猜到"), 0));
         foreach (var finding in _offlineSnapshot?.Unsecured ?? Array.Empty<UnsecuredFinding>())
-            rows.Add((CreateRow(finding.Item, "http", "登录网址使用未加密的 HTTP 连接"), 0));
+        {
+            var reason = Uri.TryCreate(finding.Uri, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Host)
+                ? $"{uri.Host} 没有用 HTTPS"
+                : "登录网址使用未加密的 HTTP 连接";
+            rows.Add((CreateRow(finding.Item, "http", reason), 0));
+        }
 
         return rows.OrderBy(item => Array.IndexOf(IssueCategories, item.Row.Category))
             .ThenByDescending(item => item.BreachCount)
@@ -638,7 +711,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         return new SecurityIssueRow(item.CipherId, name, username,
             StringInfo.GetNextTextElement(name.Trim()).ToUpperInvariant(), reason,
             string.IsNullOrWhiteSpace(username) ? description : $"{description} · {username}",
-            category, category == "http" ? "修改网址" : "更换密码", string.Empty,
+            category, category == "http" ? "编辑网址" : "更换密码", string.Empty,
             category == "breach" ? "critical" : "warning");
     }
 
@@ -646,9 +719,22 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     {
         var generation = Interlocked.Increment(ref _projectionGeneration);
         bool IsCurrent() => generation == Volatile.Read(ref _projectionGeneration);
-        _currentIssues = CreateIssueRows();
+        var allIssues = CreateIssueRows();
+        var activeKeys = allIssues.Select(row => (row.Category, row.CipherId)).ToHashSet();
+        _ignoredIssueKeys.RemoveWhere(key => !activeKeys.Contains(key));
+        _ignoredRows = allIssues.Where(row => _ignoredIssueKeys.Contains((row.Category, row.CipherId)))
+            .OrderBy(row => row.Name, NameComparer)
+            .ThenBy(row => row.CipherId, StringComparer.Ordinal)
+            .Select(row => row with
+            {
+                IsIgnored = true,
+                Username = string.Empty,
+                Reason = $"{GetCategoryTitle(row.Category)} · {row.Reason}",
+                ActionLabel = "恢复提醒",
+            }).ToList();
+        _currentIssues = allIssues.Where(row => !_ignoredIssueKeys.Contains((row.Category, row.CipherId))).ToList();
         _overviewIssues = _currentIssues.DistinctBy(item => item.CipherId).ToList();
-        var currentIds = _overviewIssues.Select(item => item.CipherId).ToHashSet(StringComparer.Ordinal);
+        var currentIds = allIssues.Select(item => item.CipherId).ToHashSet(StringComparer.Ordinal);
 
         // Only a successful check can clear its own baseline category. Unknown exposure is never a clean result.
         _resolvedIssues = _offlineBaselineCaptured
@@ -666,12 +752,16 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         PriorityIssue = Category == "all" ? _overviewIssues.FirstOrDefault() : null;
         if (!IsCurrent())
             return;
-        var visibleRows = Category == "all" ? _overviewIssues.Skip(1)
+        var visibleRows = Category == "all" ? ShowPriority ? _overviewIssues.Skip(1) : _overviewIssues
             : Category == "done" ? Enumerable.Empty<SecurityIssueRow>()
+            : Category == "ignored" ? _ignoredRows
             : _currentIssues.Where(item => item.Category == Category);
-        var groups = visibleRows.GroupBy(item => item.Category)
+        List<SecurityIssueGroup> groups = Category == "ignored"
+            ? _ignoredRows.Count == 0 ? []
+                : new List<SecurityIssueGroup> { new("ignored", string.Empty, string.Empty, _ignoredRows, false) }
+            : visibleRows.GroupBy(item => item.Category)
             .Select(group => new SecurityIssueGroup(group.Key, GetCategoryTitle(group.Key),
-                GetCategoryDescription(group.Key), group)).ToList();
+                GetCategoryDescription(group.Key), group, Category == "all")).ToList();
         if (!ReplaceItems(IssueGroups, groups, IsCurrent)
             || !ReplaceItems(ResolvedItems, Category is "all" or "done" ? _resolvedIssues : [], IsCurrent))
             return;
@@ -680,7 +770,9 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         {
             nameof(PageTitle), nameof(CategorySummary), nameof(LastCheckedText), nameof(ShowPriority),
             nameof(HasVisibleIssues), nameof(HasResolvedItems), nameof(EmptyMessage),
-            nameof(OverviewIssueCount), nameof(ResolvedCount),
+            nameof(OverviewIssueCount), nameof(ResolvedCount), nameof(IgnoredCount),
+            nameof(ShowResolvedHeader), nameof(ShowFirstExposureCheck), nameof(ShowExposureReminder),
+            nameof(FirstExposureCheckDescription), nameof(ShowEmptyMessage),
         })
         {
             if (!IsCurrent())
@@ -778,10 +870,12 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
             _offlineSnapshot = null;
             _exposureSnapshot = [];
             _baselineIssues.Clear();
+            _ignoredIssueKeys.Clear();
             _pendingExposureRechecks.Clear();
             _currentIssues = [];
             _overviewIssues = [];
             _resolvedIssues = [];
+            _ignoredRows = [];
             _offlineBaselineCaptured = false;
             _exposureBaselineCaptured = false;
             _hasRequestedExposureCheck = false;
@@ -801,6 +895,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
             ExposedError = null;
             OfflineError = null;
             OfflineProgress = 0;
+            OfflineProgressTotal = 100;
             OfflineState = DataPageState.Loading;
             Category = "all";
         }

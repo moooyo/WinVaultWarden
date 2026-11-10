@@ -32,7 +32,7 @@ public sealed partial class SendEditorDialog : ContentDialog
     public DateTimeOffset CustomDeletionMinDate => DateTimeOffset.Now;
     public DateTimeOffset CustomDeletionMaxDate => DateTimeOffset.Now.AddDays(31);
 
-    // 保存在 Primary deferral 内完成:接收调用方提供的 save 委托(创建/更新),失败保留对话框并内联报错。
+    // Complete the caller-provided save operation inside the primary-button deferral and keep failures inline.
     public SendEditorDialog(
         SendEditorDraft draft,
         bool isEditMode,
@@ -58,7 +58,7 @@ public sealed partial class SendEditorDialog : ContentDialog
         SizeChanged += (_, _) => ApplyResponsiveWidth();
     }
 
-    // 按 XamlRoot 可用宽度钳制内容宽度,避免高 DPI/窄窗口下对话框水平裁切。
+    // Clamp the form to the XamlRoot width to avoid horizontal clipping at high DPI or narrow sizes.
     private void ApplyResponsiveWidth()
     {
         var rootWidth = XamlRoot?.Size.Width ?? 0;
@@ -127,7 +127,7 @@ public sealed partial class SendEditorDialog : ContentDialog
         Bindings?.Update();
     }
 
-    // 选择文件:只读取名称/长度构造可重开 SendFileSource(超限在构造前抛出),绝不读取整份明文字节。
+    // Record only the selected file name and length; encryption reopens the source without caching plaintext.
     private async void OnChooseFileClick(object sender, RoutedEventArgs e)
     {
         var picker = CreateFilePicker();
@@ -167,7 +167,7 @@ public sealed partial class SendEditorDialog : ContentDialog
         };
         picker.FileTypeFilter.Add("*");
 
-        // WinUI 3 桌面应用:必须把 picker 关联到本窗口的 HWND。
+        // Attach the desktop picker to this window's HWND.
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
         return picker;
@@ -179,8 +179,8 @@ public sealed partial class SendEditorDialog : ContentDialog
         SendEditorErrorInfoBar.IsOpen = true;
     }
 
-    // Primary 保存:deferral 内完成上传/写入。失败(Failed)保留对话框并展示可重试错误;Busy/Cancelled 同样保留
-    // 对话框但不显示错误(瞬态);成功才关闭。全程注册到瞬态登记表,使锁屏/登出能取消并清空敏感值。
+    // Keep the dialog open for failed, busy, or cancelled saves and close only after success.
+    // Transient tracking cancels the save and clears sensitive values during lock or sign-out.
     private async void OnPrimaryButtonClick(
         ContentDialog sender,
         ContentDialogButtonClickEventArgs args)
@@ -210,7 +210,7 @@ public sealed partial class SendEditorDialog : ContentDialog
             }
             if (!result.IsSuccess)
             {
-                // Busy/Cancelled:保留对话框而不显示错误(瞬态);草稿与已选文件源保持不变以便重试。
+                // Busy or cancelled operations preserve the draft and file source for a retry.
                 args.Cancel = true;
                 return;
             }

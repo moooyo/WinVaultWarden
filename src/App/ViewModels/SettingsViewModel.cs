@@ -63,8 +63,8 @@ public partial class SettingsViewModel : ObservableObject
     public bool IsAboutSection => SelectedSectionIndex == 3;
 
     public string BrowserIntegrationDescription => BrowserIntegrationSupported
-        ? "允许已配对的浏览器扩展请求填充，保险库需保持解锁。"
-        : "此安装方式暂不支持浏览器集成；仅便携版可用。";
+        ? "允许已配对的浏览器扩展使用和保存通行密钥；密码库需要保持解锁。"
+        : "此安装方式暂不支持连接浏览器扩展；仅便携版可用。";
 
     public string TrayBehaviorDescription => CanConfigureTrayBehavior
         ? "保留系统托盘入口，可从托盘重新打开窗口。"

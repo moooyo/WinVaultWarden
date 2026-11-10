@@ -63,6 +63,8 @@ public interface IVaultWriteApiClient : IAuthenticatedApiRole
         Task.FromException(new NotSupportedException("Bulk cipher unarchiving is not supported by this API client."));
     Task BulkMoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default);
     Task CreateFolderAsync(FolderRequest request, CancellationToken ct = default);
+    Task<FolderDto> CreateFolderWithResponseAsync(FolderRequest request, CancellationToken ct = default) =>
+        Task.FromException<FolderDto>(new NotSupportedException("Folder creation responses are not supported by this API client."));
     Task UpdateFolderAsync(string folderId, FolderRequest request, CancellationToken ct = default);
     Task DeleteFolderAsync(string folderId, CancellationToken ct = default);
     Task ImportCiphersAsync(ImportRequest request, CancellationToken ct = default);

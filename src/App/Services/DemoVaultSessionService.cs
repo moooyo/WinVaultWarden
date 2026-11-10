@@ -97,7 +97,7 @@ public sealed class DemoVaultSessionService : IDemoVaultSessionService
             Notes = "本地演示登录条目，不会上传到服务器。",
             CreationDate = DemoDate(18, 9, 30),
             RevisionDate = DemoDate(23, 15, 45),
-            Login = new CipherLogin("octocat@example.com", "demo-password-123", "506999", (CipherLoginUri[])[new CipherLoginUri("https://github.com", null)]),
+            Login = new CipherLogin("octocat@example.com", "demo-password-123", "JBSWY3DPEHPK3PXP", (CipherLoginUri[])[new CipherLoginUri("https://github.com", null)]),
             Fields =
             (CipherField[])[
                 new CipherField("Recovery code", "ABCD-EFGH", CipherFieldType.Hidden),

@@ -54,7 +54,23 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="Assets\*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- The native review driver is excluded from all ordinary and Release builds. -->
+  <PropertyGroup Condition="'$(NativeUiReview)' == 'true' and '$(Configuration)' == 'Debug'">
+    <StartupObject>App.NativeUiReview.NativeUiReviewProgram</StartupObject>
+    <DefineConstants>$(DefineConstants);NATIVE_UI_REVIEW</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(NativeUiReview)' == 'true' and '$(Configuration)' == 'Debug'">
+    <Compile Include="..\..\tools\NativeUiReview\*.cs" Link="NativeUiReview\%(Filename)%(Extension)" />
+    <AssemblyMetadata Include="NativeUiReview" Value="true" />
+  </ItemGroup>
+  <Target Name="WriteNativeUiReviewMarker" AfterTargets="Build" Condition="'$(NativeUiReview)' == 'true' and '$(Configuration)' == 'Debug'">
+    <WriteLinesToFile File="$(TargetDir)native-ui-review.marker" Lines="WinVaultWarden isolated synthetic native UI review" Overwrite="true" />
+  </Target>
+  <Target Name="ValidateNativeUiReviewConfiguration" BeforeTargets="PrepareForBuild" Condition="'$(NativeUiReview)' == 'true' and '$(Configuration)' != 'Debug'">
+    <Error Text="NativeUiReview is available only in explicitly opted-in Debug builds." />
+  </Target>
   <!-- 把浏览器 Native Messaging Host(AOT 单文件)随 App 一起进便携版(portable)输出/发布目录；MSIX 不携带。 -->
   <Target Name="IncludeWindowsAppSdkVersionMetadata" BeforeTargets="GetAssemblyAttributes">
     <ItemGroup>

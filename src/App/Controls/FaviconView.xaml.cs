@@ -87,11 +87,12 @@ public sealed partial class FaviconView : UserControl
         TileBorder.CornerRadius = new CornerRadius(TileSize >= 56 ? 10 : TileSize >= 40 ? 8 : 6);
         GlyphIcon.Glyph = FallbackGlyph ?? string.Empty;
         GlyphIcon.FontSize = IconSize;
-        IconImage.Width = IconImage.Height = Math.Max(IconSize, TileSize * .625);
+        IconImage.Width = IconImage.Height = IconSize;
         var name = string.IsNullOrWhiteSpace(DisplayName) ? Domain ?? string.Empty : DisplayName;
         var letter = Kind == VaultItemKind.Login && !string.IsNullOrWhiteSpace(name);
         LetterText.Text = letter ? StringInfo.GetNextTextElement(name.Trim()).ToUpperInvariant() : string.Empty;
         LetterText.FontSize = TileSize >= 56 ? 24 : TileSize >= 48 ? 20 : 14;
+        LetterText.FontFamily = (FontFamily)Application.Current.Resources[TileSize >= 56 ? "WardenDisplayFontFamily" : "WardenTextFontFamily"];
         LetterText.Visibility = letter ? Visibility.Visible : Visibility.Collapsed;
         GlyphIcon.Visibility = letter ? Visibility.Collapsed : Visibility.Visible;
         var dark = ActualTheme == ElementTheme.Dark;

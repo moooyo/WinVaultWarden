@@ -34,7 +34,7 @@ public sealed class ResponsiveLayoutXamlTests
         Assert.Contains("previousState == \"NarrowList\" && state == \"NarrowDetail\"", source);
         Assert.Contains("VaultNarrowBackButton.Focus(FocusState.Programmatic)", source);
         Assert.Contains("if (!await ConfirmLeaveEditorAsync())", source);
-        Assert.Contains("if (!ViewModel.CanCancelEditor || _confirmingLeave)", source);
+        Assert.Contains("if (!ViewModel.CanCancelEditor || _confirmingLeave", source);
         Assert.Contains("if (!ViewModel.HasUnsavedEditorChanges)", source);
         Assert.Contains("CipherList.ContainerFromItem(item)", source);
         Assert.Contains("CipherList.Focus(FocusState.Programmatic)", source);

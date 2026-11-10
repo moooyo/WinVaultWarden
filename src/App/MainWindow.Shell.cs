@@ -42,10 +42,13 @@ public sealed partial class MainWindow
     private bool _sendRefreshQueued;
     private int _lastPendingRequestCount = -1;
     private NavigationViewItem? _compactActionItem;
+    private NavigationViewItem? _folderGroupHeader;
+    private Button? _folderAddButton;
     private double _lastShellWidth;
 
     private void InitializeShell()
     {
+        Nav.Loaded += (_, _) => UpdateResponsiveShell();
         _clipboardStatus = global::App.App.Services.GetRequiredService<IClipboardService>() as IClipboardStatus;
         _sensitiveActions = global::App.App.Services.GetRequiredService<ISensitiveActionVerificationService>();
         if (_clipboardStatus is not null)
@@ -76,6 +79,7 @@ public sealed partial class MainWindow
         ShellRoot.ActualThemeChanged += (_, _) => UpdateThemeIcon();
         global::App.App.Services.GetRequiredService<SecurityReportViewModel>().PropertyChanged += OnReportChanged;
         global::App.App.Services.GetRequiredService<GeneratorViewModel>().History.CollectionChanged += OnGeneratorHistoryChanged;
+        global::App.App.Services.GetRequiredService<VaultViewModel>().PropertyChanged += OnVaultOperationChanged;
         Closed += (_, _) =>
         {
             _statusTimer?.Stop();
@@ -86,8 +90,12 @@ public sealed partial class MainWindow
             requests.PendingRequestsChanged -= OnPendingRequestsChanged;
             global::App.App.Services.GetRequiredService<SecurityReportViewModel>().PropertyChanged -= OnReportChanged;
             global::App.App.Services.GetRequiredService<GeneratorViewModel>().History.CollectionChanged -= OnGeneratorHistoryChanged;
+            global::App.App.Services.GetRequiredService<VaultViewModel>().PropertyChanged -= OnVaultOperationChanged;
             if (_cachedSendPage is not null)
+            {
                 _cachedSendPage.ViewModel.Items.CollectionChanged -= OnSendItemsChanged;
+                _cachedSendPage.ContextChanged -= OnSendContextChanged;
+            }
         };
     }
 
@@ -95,6 +103,17 @@ public sealed partial class MainWindow
         DispatcherQueue.TryEnqueue(UpdateNavigationCounts);
 
     private void OnPendingRequestsChanged() => DispatcherQueue.TryEnqueue(UpdateNavigationCounts);
+
+    private void OnVaultOperationChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(VaultViewModel.CanCancelEditor))
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_folderAddButton is not null)
+                    _folderAddButton.IsEnabled = IsVaultUnlocked()
+                        && global::App.App.Services.GetRequiredService<VaultViewModel>().CanCancelEditor;
+            });
+    }
 
     private void OnSendItemsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
@@ -106,6 +125,13 @@ public sealed partial class MainWindow
             if (_shellPage == "send") RefreshShellNavigation();
         });
     }
+
+    private void OnSendContextChanged(object? sender, EventArgs e) => DispatcherQueue.TryEnqueue(() =>
+    {
+        if (IsVaultUnlocked() && ReferenceEquals(sender, _cachedSendPage)
+            && ReferenceEquals(sender, ContentFrame.Content))
+            RefreshShellNavigation();
+    });
 
     private void OnGeneratorHistoryChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
@@ -133,11 +159,16 @@ public sealed partial class MainWindow
             _lastSyncAt = null;
             _cachedVaultPage = null;
             if (_cachedSendPage is not null)
+            {
                 _cachedSendPage.ViewModel.Items.CollectionChanged -= OnSendItemsChanged;
+                _cachedSendPage.ContextChanged -= OnSendContextChanged;
+            }
             _cachedSendPage = null;
             _historyCopyButtons.Clear();
             Nav.MenuItems.Clear();
             Nav.FooterMenuItems.Clear();
+            _folderGroupHeader = null;
+            _folderAddButton = null;
             AccountNameText.Text = string.Empty;
             NoticeText.Text = string.Empty;
             ClipboardStatusText.Text = string.Empty;
@@ -164,9 +195,13 @@ public sealed partial class MainWindow
         if (ContentFrame.Content is SendPage currentSend && !ReferenceEquals(currentSend, _cachedSendPage))
         {
             if (_cachedSendPage is not null)
+            {
                 _cachedSendPage.ViewModel.Items.CollectionChanged -= OnSendItemsChanged;
+                _cachedSendPage.ContextChanged -= OnSendContextChanged;
+            }
             _cachedSendPage = currentSend;
             currentSend.ViewModel.Items.CollectionChanged += OnSendItemsChanged;
+            currentSend.ContextChanged += OnSendContextChanged;
         }
         if (changed && (_shellPage == "send" || page == "send"))
         {
@@ -182,6 +217,8 @@ public sealed partial class MainWindow
             _historyCopyButtons.Clear();
             Nav.MenuItems.Clear();
             Nav.FooterMenuItems.Clear();
+            _folderGroupHeader = null;
+            _folderAddButton = null;
             switch (page)
             {
                 case "vault":
@@ -211,12 +248,13 @@ public sealed partial class MainWindow
                 case "reports":
                     AddContextItem("概览", "reports:all", "\uEA18");
                     AddContextHeader("需要处理");
-                    AddContextItem("已泄露", "reports:breach", "\uEA39");
+                    AddContextItem("已泄露", "reports:breach", "\uE783");
                     AddContextItem("重复使用", "reports:reuse", "\uE8EE");
                     AddContextItem("弱密码", "reports:weak", "\uE7BA");
-                    AddContextItem("不安全的网站", "reports:http", "\uE774");
+                    AddContextItem("不安全的网址", "reports:http", "\uE785");
                     AddContextHeader("进展");
                     AddContextItem("本次已处理", "reports:done", "\uE73E");
+                    AddContextItem("已忽略", "reports:ignored", "\uE890");
                     if (changed) _contextTag = "reports:all";
                     break;
                 case "settings":
@@ -281,10 +319,80 @@ public sealed partial class MainWindow
 
     private void AddVaultGroup(string label, NavigationViewItem group)
     {
-        if (group.MenuItems.Count == 0) return;
-        AddContextHeader(label);
+        if (group == FoldersNavItem)
+            AddFolderGroupHeader(label);
+        else if (group.MenuItems.Count > 0)
+            AddContextHeader(label);
         foreach (var child in group.MenuItems.OfType<NavigationViewItem>())
-            AddContextItem(child.Content as string ?? string.Empty, child.Tag as string ?? string.Empty, (child.Icon as FontIcon)?.Glyph ?? "\uE8B7");
+        {
+            var folderName = child.Content as string ?? string.Empty;
+            var tag = child.Tag as string ?? string.Empty;
+            var item = AddContextItem(folderName, tag, (child.Icon as FontIcon)?.Glyph ?? "\uE8B7");
+            if (group == FoldersNavItem && tag.StartsWith("vault:folder:", StringComparison.Ordinal))
+                item.ContextFlyout = CreateFolderContextMenu(tag["vault:folder:".Length..], folderName);
+        }
+    }
+
+    private void AddFolderGroupHeader(string label)
+    {
+        var content = new Grid { MinHeight = 24, ColumnSpacing = 8 };
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        content.Children.Add(new TextBlock
+        {
+            Text = label, FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            LineHeight = 24, VerticalAlignment = VerticalAlignment.Center,
+        });
+        var add = new Button
+        {
+            Width = 24, Height = 24, MinWidth = 24, MinHeight = 24,
+            Padding = new Thickness(4), Style = (Style)Application.Current.Resources["IconButtonStyle"],
+            Content = new FontIcon { Glyph = "\uE710", FontSize = 14 },
+        };
+        ToolTipService.SetToolTip(add, "新建文件夹");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(add, "新建文件夹");
+        add.IsEnabled = global::App.App.Services.GetRequiredService<VaultViewModel>().CanCancelEditor;
+        _folderAddButton = add;
+        add.Click += async (_, _) => await InvokeFolderActionAsync("create");
+        Grid.SetColumn(add, 1);
+        content.Children.Add(add);
+        _folderGroupHeader = new NavigationViewItem
+        {
+            Content = content, Tag = "shell:folder-header", SelectsOnInvoked = false, IsTabStop = false,
+            Style = (Style)Application.Current.Resources["WardenNavigationHeaderStyle"],
+        };
+        Nav.MenuItems.Add(_folderGroupHeader);
+    }
+
+    private MenuFlyout CreateFolderContextMenu(string folderId, string folderName)
+    {
+        var menu = new MenuFlyout();
+        var rename = new MenuFlyoutItem { Text = "重命名", Icon = new FontIcon { Glyph = "\uE8AC" } };
+        rename.Click += async (_, _) => await InvokeFolderActionAsync("rename", folderId, folderName);
+        var delete = new MenuFlyoutItem { Text = "删除文件夹", Icon = new FontIcon { Glyph = "\uE74D" } };
+        delete.Click += async (_, _) => await InvokeFolderActionAsync("delete", folderId, folderName);
+        menu.Items.Add(rename);
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(delete);
+        return menu;
+    }
+
+    private async Task InvokeFolderActionAsync(string action, string? folderId = null, string? folderName = null)
+    {
+        if (!IsVaultUnlocked() || !Nav.IsEnabled || ContentFrame.Content is not VaultPage vault)
+            return;
+        switch (action)
+        {
+            case "create":
+                await vault.CreateFolderAsync();
+                break;
+            case "rename" when folderId is not null && folderName is not null:
+                await vault.RenameFolderAsync(folderId, folderName);
+                break;
+            case "delete" when folderId is not null && folderName is not null:
+                await vault.DeleteFolderAsync(folderId, folderName);
+                break;
+        }
     }
 
     private void AddGeneratorHistory()
@@ -359,11 +467,13 @@ public sealed partial class MainWindow
         }
         else if (_shellPage == "reports")
         {
-            SetContextCount("reports:breach", "已泄露", report.GetCategoryIssueCount("breach"));
+            SetContextCount("reports:breach", "已泄露", report.ShowExposedCount
+                ? report.GetCategoryIssueCount("breach").ToString() : "—");
             SetContextCount("reports:reuse", "重复使用", report.GetCategoryIssueCount("reuse"));
             SetContextCount("reports:weak", "弱密码", report.GetCategoryIssueCount("weak"));
-            SetContextCount("reports:http", "不安全的网站", report.GetCategoryIssueCount("http"));
+            SetContextCount("reports:http", "不安全的网址", report.GetCategoryIssueCount("http"));
             SetContextCount("reports:done", "本次已处理", report.ResolvedCount);
+            SetContextCount("reports:ignored", "已忽略", report.GetCategoryIssueCount("ignored"));
         }
         else if (_shellPage == "settings" && FindNavigationItem("settings:devices") is { } devices)
         {
@@ -379,20 +489,30 @@ public sealed partial class MainWindow
             SetNavigationCount(item, label, count);
     }
 
-    private static void SetNavigationCount(NavigationViewItem item, string label, int count)
+    private void SetContextCount(string tag, string label, string count)
+    {
+        if (FindNavigationItem(tag) is { } item)
+            SetNavigationCount(item, label, count);
+    }
+
+    private static void SetNavigationCount(NavigationViewItem item, string label, int count) =>
+        SetNavigationCount(item, label, count.ToString());
+
+    private static void SetNavigationCount(NavigationViewItem item, string label, string count)
     {
         item.MinHeight = item.Height = 34;
         item.Margin = new Thickness(0, 1, 0, 1);
-        var grid = new Grid { Width = 160 };
+        item.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        var grid = new Grid { ColumnSpacing = 8, HorizontalAlignment = HorizontalAlignment.Stretch };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.Children.Add(new TextBlock { Text = label, TextTrimming = TextTrimming.CharacterEllipsis });
-        var countText = new TextBlock { Text = count.ToString(), Style = (Style)Application.Current.Resources["WardenCountTextStyle"] };
+        var countText = new TextBlock { Text = count, Style = (Style)Application.Current.Resources["WardenCountTextStyle"] };
         Grid.SetColumn(countText, 1);
         grid.Children.Add(countText);
         item.Content = grid;
         ToolTipService.SetToolTip(item, label);
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, $"{label} {count}");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, count == "—" ? $"{label} 尚未检查" : $"{label} {count}");
     }
 
     private async Task<bool> NavigateContextTagAsync(string tag)
@@ -568,11 +688,16 @@ public sealed partial class MainWindow
         var unlocked = !_isLoginWindow && Nav.Visibility == Visibility.Visible;
         var wasWide = _lastShellWidth >= 1200;
         _lastShellWidth = width;
-        if (width >= 1200 && !Nav.IsPaneOpen)
-            Nav.IsPaneOpen = true;
-        else if (width is > 0 and < 1200 && wasWide)
-            Nav.IsPaneOpen = false;
+        if (unlocked && Nav.IsLoaded)
+        {
+            if (width >= 1200 && !Nav.IsPaneOpen)
+                Nav.IsPaneOpen = true;
+            else if (width is > 0 and < 1200 && wasWide)
+                Nav.IsPaneOpen = false;
+        }
         var compact = width < 1200 && !Nav.IsPaneOpen;
+        if (_folderGroupHeader is not null)
+            _folderGroupHeader.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         var narrow = width < 800;
         if (unlocked && width is > 0 and < 640)
             DispatcherQueue.TryEnqueue(() => ResizeClientDip(640, Math.Max(480, ShellRoot.ActualHeight)));

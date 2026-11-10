@@ -41,7 +41,7 @@ public class FieldRowXamlTests
 
         var source = ReadCodeBehind();
         Assert.Contains("$\"复制{label}\"", source);
-        Assert.Contains("$\"已复制{label}\"", source);
+        Assert.Contains("$\"已{action}\"", source);
         Assert.Contains("$\"{(_revealed ? \"隐藏\" : \"显示\")}{label}\"", source);
     }
 

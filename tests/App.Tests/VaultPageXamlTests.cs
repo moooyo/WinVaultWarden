@@ -69,10 +69,16 @@ public class VaultPageXamlTests
     {
         var document = LoadXaml();
 
-        // Selection mode must remain reachable from the command bar.
-        var enter = document.Descendants(Xaml + "AppBarButton")
-            .Single(b => b.Attribute("Label")?.Value == "选择");
-        Assert.Contains("ToggleSelectionModeCommand", enter.Attribute("Command")?.Value ?? "");
+        // Selection mode remains reachable from the compact list toolbar.
+        var enter = document.Descendants(Xaml + "Button")
+            .Single(button => button.Attribute(XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml") + "Name")?.Value == "EnterSelectionButton");
+        Assert.Equal("OnEnterSelectionClick", enter.Attribute("Click")?.Value);
+        Assert.Equal("选择多个条目", enter.Attribute("AutomationProperties.Name")?.Value);
+        var source = LoadCodeBehind();
+        var start = source.IndexOf("private async void OnEnterSelectionClick", StringComparison.Ordinal);
+        var end = source.IndexOf("\n    private ", start + 1, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start);
+        Assert.Contains("ViewModel.ToggleSelectionModeCommand.Execute(", source[start..end]);
 
         // Keep the visual selection synchronized with the view model.
         var list = document.Descendants(Xaml + "ListView")

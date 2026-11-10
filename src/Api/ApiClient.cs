@@ -354,6 +354,35 @@ public sealed class ApiClient :
     public async Task CreateFolderAsync(FolderRequest request, CancellationToken ct = default)
         => await SendWriteAsync(HttpMethod.Post, "api/folders", request, ApiJsonContext.Default.FolderRequest, ct);
 
+    public async Task<FolderDto> CreateFolderWithResponseAsync(FolderRequest request, CancellationToken ct = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Post, Url("api/folders"))
+        {
+            Content = JsonContent.Create(request, ApiJsonContext.Default.FolderRequest),
+        };
+        using var response = await SendControlAsync(message, ct);
+        if (response.IsSuccessStatusCode)
+        {
+            try
+            {
+                var folder = await ReadJson(response, ApiJsonContext.Default.FolderDto, ct);
+                if (string.IsNullOrWhiteSpace(folder.Id))
+                    throw new InvalidDataException("The created folder response did not contain an ID.");
+                return folder;
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                throw new FolderCreateSuccessResponseReadException(response.StatusCode, exception);
+            }
+        }
+
+        var error = await ReadJsonOrNull(response, ApiJsonContext.Default.WriteErrorResponse, ct);
+        var errorMessage = string.IsNullOrWhiteSpace(error?.Message)
+            ? response.ReasonPhrase ?? "Vault write failed."
+            : error.Message;
+        throw new VaultWriteException(response.StatusCode, errorMessage, error?.ValidationErrors);
+    }
+
     public async Task UpdateFolderAsync(string folderId, FolderRequest request, CancellationToken ct = default)
         => await SendWriteAsync(HttpMethod.Put, $"api/folders/{folderId}", request, ApiJsonContext.Default.FolderRequest, ct);
 

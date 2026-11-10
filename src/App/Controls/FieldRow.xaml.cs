@@ -46,6 +46,8 @@ public sealed partial class FieldRow : UserControl
 
     public string CopyButtonText { get => (string)GetValue(CopyButtonTextProperty); set => SetValue(CopyButtonTextProperty, value); }
     public static readonly DependencyProperty CopyButtonTextProperty = RegisterString(nameof(CopyButtonText), string.Empty);
+    public bool ShowCopyButtonText { get => (bool)GetValue(ShowCopyButtonTextProperty); set => SetValue(ShowCopyButtonTextProperty, value); }
+    public static readonly DependencyProperty ShowCopyButtonTextProperty = RegisterBoolean(nameof(ShowCopyButtonText), true);
     public string EmptyValueText { get => (string)GetValue(EmptyValueTextProperty); set => SetValue(EmptyValueTextProperty, value); }
     public static readonly DependencyProperty EmptyValueTextProperty = RegisterString(nameof(EmptyValueText), "未设置");
     public string Label { get => (string)GetValue(LabelProperty); set => SetValue(LabelProperty, value); }
@@ -53,6 +55,9 @@ public sealed partial class FieldRow : UserControl
     public string Value { get => (string)GetValue(ValueProperty); set => SetValue(ValueProperty, value); }
     public static readonly DependencyProperty ValueProperty = DependencyProperty.Register(nameof(Value), typeof(string), typeof(FieldRow),
         new PropertyMetadata(string.Empty, (d, _) => ((FieldRow)d).ResetField()));
+    /// <summary>Overrides non-secret display text without changing the value used for authorization or copying.</summary>
+    public string DisplayValue { get => (string)GetValue(DisplayValueProperty); set => SetValue(DisplayValueProperty, value); }
+    public static readonly DependencyProperty DisplayValueProperty = RegisterString(nameof(DisplayValue), string.Empty);
     public bool IsSecret { get => (bool)GetValue(IsSecretProperty); set => SetValue(IsSecretProperty, value); }
     public static readonly DependencyProperty IsSecretProperty = DependencyProperty.Register(nameof(IsSecret), typeof(bool), typeof(FieldRow),
         new PropertyMetadata(false, (d, _) => ((FieldRow)d).ResetField()));
@@ -64,8 +69,13 @@ public sealed partial class FieldRow : UserControl
     public static readonly DependencyProperty IsReadOnlyProperty = RegisterBoolean(nameof(IsReadOnly), false);
     public bool IsMultiline { get => (bool)GetValue(IsMultilineProperty); set => SetValue(IsMultilineProperty, value); }
     public static readonly DependencyProperty IsMultilineProperty = RegisterBoolean(nameof(IsMultiline), false);
+    /// <summary>Places the date after its value in a password-history row.</summary>
+    public bool IsTrailingLabel { get => (bool)GetValue(IsTrailingLabelProperty); set => SetValue(IsTrailingLabelProperty, value); }
+    public static readonly DependencyProperty IsTrailingLabelProperty = RegisterBoolean(nameof(IsTrailingLabel), false);
     public event EventHandler? FieldUsed;
     public Func<CancellationToken, Task<bool>>? AuthorizeItemAsync { get; set; }
+    /// <summary>Lets a modal host verify each reveal without nesting fallback dialogs.</summary>
+    internal Func<CancellationToken, Task<bool>>? VerifyRevealOverrideAsync { get; set; }
 
     private static DependencyProperty RegisterString(string name, string value) => DependencyProperty.Register(
         name, typeof(string), typeof(FieldRow), new PropertyMetadata(value, (d, _) => ((FieldRow)d).Render()));
@@ -88,33 +98,47 @@ public sealed partial class FieldRow : UserControl
             return;
         var empty = string.IsNullOrEmpty(Value);
         var readOnly = IsReadOnly || IsDeletedContext(this);
-        var multiline = IsMultiline || Value?.Contains('\n') == true;
+        var multiline = IsMultiline || !IsSecret && Value?.Contains('\n') == true;
         var hasLabel = !string.IsNullOrWhiteSpace(Label);
-        LabelColumn.Width = new GridLength(hasLabel ? 112 : 0);
-        RowGrid.ColumnSpacing = hasLabel ? 16 : 0;
-        RowBorder.BorderThickness = hasLabel ? new Thickness(0, 0, 0, 1) : new Thickness(0);
+        var hasLabelColumn = IsTrailingLabel || hasLabel || !multiline;
+        LabelColumn.Width = IsTrailingLabel ? new GridLength(1, GridUnitType.Star) : new GridLength(hasLabelColumn ? 112 : 0);
+        ValueColumn.Width = IsTrailingLabel ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
+        Grid.SetColumn(LabelText, IsTrailingLabel ? 1 : 0);
+        Grid.SetColumn(ValuePanel, IsTrailingLabel ? 0 : 1);
+        RowGrid.ColumnSpacing = IsTrailingLabel ? 12 : hasLabelColumn ? 16 : 0;
+        RowBorder.BorderThickness = hasLabelColumn ? new Thickness(0, 0, 0, 1) : new Thickness(0);
+        RowBorder.MinHeight = IsTrailingLabel ? 44 : 0;
         LabelText.Text = Label ?? string.Empty;
-        ValueText.Inlines.Clear();
-        ValueText.Text = empty ? EmptyValueText : IsSecret && !_revealed ? "••••••••••••" : Value;
-        ValueText.FontFamily = IsSecret ? (FontFamily)Application.Current.Resources["MonospaceFontFamily"] : FontFamily;
+        LabelText.Visibility = hasLabelColumn ? Visibility.Visible : Visibility.Collapsed;
+        LabelText.FontSize = IsTrailingLabel ? 12 : 14;
+        LabelText.LineHeight = IsTrailingLabel ? 16 : 20;
+        LabelText.TextWrapping = IsTrailingLabel ? TextWrapping.NoWrap : TextWrapping.Wrap;
+        var displayText = empty ? EmptyValueText : IsSecret && !_revealed ? "••••••••"
+            : !IsSecret && !string.IsNullOrEmpty(DisplayValue) ? DisplayValue : Value;
+        ValueText.FontFamily = IsSecret && _revealed ? (FontFamily)Application.Current.Resources["MonospaceFontFamily"] : FontFamily;
         ValueText.CharacterSpacing = IsSecret ? (_revealed ? 20 : 140) : 0;
         ValueText.TextWrapping = multiline ? TextWrapping.Wrap : TextWrapping.NoWrap;
         ValueText.TextTrimming = multiline ? TextTrimming.None : TextTrimming.CharacterEllipsis;
-        ValueText.LineHeight = multiline ? 26 : 20;
-        ValueText.MaxWidth = multiline ? hasLabel ? 560 : 600 : double.PositiveInfinity;
+        ValueText.MaxLines = multiline ? 0 : 1;
+        ValueText.LineHeight = multiline && !hasLabelColumn ? 26 : 20;
+        ValueText.MaxWidth = multiline ? hasLabelColumn ? 560 : 600 : double.PositiveInfinity;
         ValueText.HorizontalAlignment = HorizontalAlignment.Left;
-        RowGrid.Padding = new Thickness(0, multiline ? 14 : 8, 0, multiline ? 14 : 8);
-        LabelText.VerticalAlignment = multiline ? VerticalAlignment.Top : VerticalAlignment.Center;
+        RowGrid.MinHeight = IsTrailingLabel || multiline ? 0 : 48;
+        RowGrid.Padding = !IsTrailingLabel && multiline && hasLabelColumn ? new Thickness(0, 14, 0, 14) : new Thickness(0);
+        LabelText.VerticalAlignment = !IsTrailingLabel && multiline ? VerticalAlignment.Top : VerticalAlignment.Center;
+        ActionsPanel.VerticalAlignment = !IsTrailingLabel && multiline ? VerticalAlignment.Top : VerticalAlignment.Center;
+        ToolTipService.SetToolTip(ValueText, !empty && (IsSecret && _revealed || !IsSecret && !string.IsNullOrEmpty(DisplayValue)) ? Value : null);
         if (ShowOpen && !empty && Uri.TryCreate(Value, UriKind.Absolute, out var uri)
             && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
         {
-            ValueText.Text = string.Empty;
-            ValueText.Inlines.Add(new Run { Text = uri.IsDefaultPort ? uri.Host : uri.Authority });
-            ValueText.Inlines.Add(new Run
-            {
-                Text = (uri.PathAndQuery == "/" ? string.Empty : uri.PathAndQuery) + uri.Fragment,
-                Foreground = ThemeBrushResolver.Resolve(this, "TextFillColorSecondaryBrush"),
-            });
+            PrimaryValueRun.Text = uri.IsDefaultPort ? uri.Host : uri.Authority;
+            SecondaryValueRun.Text = (uri.PathAndQuery == "/" ? string.Empty : uri.PathAndQuery) + uri.Fragment;
+            SecondaryValueRun.Foreground = ThemeBrushResolver.Resolve(this, "TextFillColorSecondaryBrush");
+        }
+        else
+        {
+            PrimaryValueRun.Text = displayText;
+            SecondaryValueRun.Text = string.Empty;
         }
         RevealIcon.Glyph = _revealed ? "\uED1A" : "\uE890";
         RevealButton.Visibility = IsSecret && !readOnly ? Visibility.Visible : Visibility.Collapsed;
@@ -123,16 +147,26 @@ public sealed partial class FieldRow : UserControl
         CopyButton.IsEnabled = RevealButton.IsEnabled = OpenButton.IsEnabled = !empty;
         CopyButton.IsEnabled &= !_copyBusy && !_revealBusy;
         RevealButton.IsEnabled &= !_revealBusy && !_copyBusy;
-        var label = string.IsNullOrWhiteSpace(Label) ? (ShowOpen ? "网址" : "字段") : Label;
+        var label = IsTrailingLabel ? "旧密码" : string.IsNullOrWhiteSpace(Label) ? (ShowOpen ? "网址" : "字段") : Label;
         AutomationProperties.SetName(CopyButton, $"复制{label}");
         AutomationProperties.SetName(RevealButton, $"{(_revealed ? "隐藏" : "显示")}{label}");
         AutomationProperties.SetName(OpenButton, $"在浏览器中打开{label}");
         ToolTipService.SetToolTip(CopyButton, $"复制{label}");
         ToolTipService.SetToolTip(RevealButton, _revealed ? "隐藏" : "显示（需 Windows Hello）");
         CopyLabel.Text = CopyButtonText ?? string.Empty;
-        CopyLabel.Visibility = string.IsNullOrWhiteSpace(CopyButtonText) ? Visibility.Collapsed : Visibility.Visible;
+        CopyLabel.Visibility = ShowCopyButtonText && !string.IsNullOrWhiteSpace(CopyButtonText) ? Visibility.Visible : Visibility.Collapsed;
         Visibility = HideWhenEmpty && empty ? Visibility.Collapsed : Visibility.Visible;
         UpdateCopyState();
+    }
+
+    /// <summary>Keeps an OpenSSH key's type and comment readable while omitting its encoded payload.</summary>
+    public static string SummarizeSshPublicKey(string? value)
+    {
+        var text = value ?? string.Empty;
+        var parts = text.Split(' ');
+        if (parts.Length >= 3)
+            return parts[0] + " … " + string.Join(' ', parts.Skip(2));
+        return text.Length > 32 ? text[..14] + "…" + text[^14..] : text;
     }
 
     internal static bool IsDeletedContext(DependencyObject element)
@@ -165,9 +199,10 @@ public sealed partial class FieldRow : UserControl
         var copied = _clipboardStatus is { HasContent: true } && _copiedVersion != 0 && _copiedVersion == _clipboardStatus.WriteVersion;
         CopyIcon.Glyph = copied ? "\uE73E" : "\uE8C8";
         CopyIcon.Foreground = ThemeBrushResolver.Resolve(this, copied ? "SystemFillColorSuccessBrush" : "TextFillColorSecondaryBrush");
-        var label = string.IsNullOrWhiteSpace(Label) ? (ShowOpen ? "网址" : "字段") : Label;
-        AutomationProperties.SetName(CopyButton, copied ? $"已复制{label}" : $"复制{label}");
-        ToolTipService.SetToolTip(CopyButton, copied ? $"已复制{label}" : $"复制{label}");
+        var label = IsTrailingLabel ? "旧密码" : string.IsNullOrWhiteSpace(Label) ? (ShowOpen ? "网址" : "字段") : Label;
+        var action = string.IsNullOrWhiteSpace(CopyButtonText) ? $"复制{label}" : CopyButtonText;
+        AutomationProperties.SetName(CopyButton, copied ? $"已{action}" : action);
+        ToolTipService.SetToolTip(CopyButton, copied ? $"已{action}" : action);
     }
 
     private async void OnReveal(object sender, RoutedEventArgs e)
@@ -179,6 +214,7 @@ public sealed partial class FieldRow : UserControl
             Render();
             return;
         }
+        var restoreKeyboardFocus = RevealButton.FocusState == FocusState.Keyboard;
         var version = _viewVersion;
         var value = Value;
         using var cancellation = new CancellationTokenSource();
@@ -190,7 +226,11 @@ public sealed partial class FieldRow : UserControl
         {
             if (!await AuthorizeCurrentItemAsync(version, value, operationToken)) return;
             var itemName = (DataContext as CipherDetail)?.Name;
-            if (!await VerifyRevealAsync(this, Label, itemName, operationToken)
+            var verifyOverride = VerifyRevealOverrideAsync;
+            var verified = verifyOverride is null
+                ? await VerifyRevealAsync(this, Label, itemName, operationToken)
+                : await verifyOverride(operationToken);
+            if (!verified
                 || !await AuthorizeCurrentItemAsync(version, value, operationToken)) return;
             var lifecycle = global::App.App.Services?.GetService<IAppLifecycleCoordinator>();
             if (lifecycle?.TryRunSensitive(() =>
@@ -214,6 +254,8 @@ public sealed partial class FieldRow : UserControl
             _operationCancellation = null;
             _revealBusy = false;
             Render();
+            if (restoreKeyboardFocus && IsCurrentOperation(version, value, operationToken))
+                RevealButton.Focus(FocusState.Keyboard);
         }
     }
 
@@ -262,6 +304,7 @@ public sealed partial class FieldRow : UserControl
     private async void OnCopy(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrEmpty(Value) || IsReadOnly || IsDeletedContext(this) || _copyBusy || _revealBusy) return;
+        var restoreKeyboardFocus = CopyButton.FocusState == FocusState.Keyboard;
         var version = _viewVersion;
         var value = Value;
         using var cancellation = new CancellationTokenSource();
@@ -278,7 +321,7 @@ public sealed partial class FieldRow : UserControl
             {
                 if (!IsCurrentOperation(version, value, operationToken)) return false;
                 clipboard.SetText(Value);
-                (clipboard as IClipboardStatus)?.SetLabel(string.IsNullOrWhiteSpace(Label) ? "内容" : Label);
+                (clipboard as IClipboardStatus)?.SetLabel(IsTrailingLabel ? "旧密码" : string.IsNullOrWhiteSpace(Label) ? "内容" : Label);
                 return true;
             }) != true) return;
             _copiedVersion = _clipboardStatus?.WriteVersion ?? 0;
@@ -300,6 +343,8 @@ public sealed partial class FieldRow : UserControl
             _operationCancellation = null;
             _copyBusy = false;
             Render();
+            if (restoreKeyboardFocus && IsCurrentOperation(version, value, operationToken))
+                CopyButton.Focus(FocusState.Keyboard);
         }
     }
 

@@ -40,7 +40,7 @@
                 </CheckBox>
                 <TextBlock x:Name="LockedNotice" Text="密码库已锁定。批准前需要先用 Windows Hello 解锁。" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" FontSize="12" Visibility="Collapsed" />
                 <TextBlock x:Name="ExpiryNotice" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Typography.NumeralAlignment="Tabular" TextWrapping="Wrap" />
-                <InfoBar x:Name="FailureNotice" IsOpen="False" IsClosable="False" Severity="Error" Visibility="Collapsed" />
+                <InfoBar x:Name="FailureNotice" IsOpen="False" IsClosable="False" Severity="Error" Background="{ThemeResource WardenCriticalBackgroundBrush}" Visibility="Collapsed" />
             </StackPanel>
         </ScrollViewer>
         <Border x:Name="RequestFooter" Grid.Row="2" Padding="24,20" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">

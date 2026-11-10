@@ -118,6 +118,9 @@ public sealed partial class SettingsTwoFactorPage : Page
         LoadingRing.Visibility = Visibility.Visible;
         MethodsContent.Visibility = Visibility.Collapsed;
         LoadErrorBar.IsOpen = false;
+        StatusText.Text = "正在加载…";
+        StatusIcon.Glyph = "\uE8FD";
+        StatusIcon.Foreground = ThemeBrushResolver.Resolve(this, "TextFillColorSecondaryBrush");
         var result = await _viewModel.LoadProvidersAsync(_loadCancellation.Token);
         if (!_isActive)
             return;
@@ -130,6 +133,8 @@ public sealed partial class SettingsTwoFactorPage : Page
                 LoadErrorBar.Message = result.Status == UiOperationStatus.Busy ? "另一项安全操作仍在结束，请稍后重试。" : result.Error ?? "无法加载两步登录设置。";
                 LoadErrorBar.IsOpen = true;
                 StatusText.Text = "无法加载";
+                StatusIcon.Glyph = "\uEA39";
+                StatusIcon.Foreground = ThemeBrushResolver.Resolve(this, "SystemFillColorCriticalBrush");
             }
             return;
         }
@@ -156,6 +161,13 @@ public sealed partial class SettingsTwoFactorPage : Page
         ProviderRows.Children.Add(CreateRow("\uE192", "通行密钥或安全密钥",
             _webAuthnSnapshot?.Credentials.Count > 0 ? $"· 已添加 {_webAuthnSnapshot.Credentials.Count} 个" : string.Empty,
             "YubiKey、Windows Hello 等 FIDO2 设备", "添加…", _manageWebAuthn!));
+        var yubiKeyEnabled = IsProviderEnabled(TwoFactorProviderType.YubiKey);
+        ProviderRows.Children.Add(CreateRow("\uE765", "YubiKey OTP",
+            yubiKeyEnabled ? "· 已开启" : string.Empty,
+            "轻触 YubiKey 输入一次性密码；在网页版中管理",
+            yubiKeyEnabled ? "关闭" : "打开网页版", yubiKeyEnabled
+                ? () => _disableProvider!(_providers.Where(provider => provider.Type == (int)TwoFactorProviderType.YubiKey).ToArray())
+                : OpenWebVaultAsync));
         ProviderRows.Children.Add(CreateRow("\uEA18", "Duo",
             IsProviderEnabled(TwoFactorProviderType.Duo) ? "· 已开启" : string.Empty,
             "需要 Duo 管理后台里的应用信息，在网页版中设置", "打开网页版", OpenWebVaultAsync));
@@ -163,6 +175,7 @@ public sealed partial class SettingsTwoFactorPage : Page
             && provider.Type != (int)TwoFactorProviderType.Authenticator
             && provider.Type != (int)TwoFactorProviderType.Email
             && provider.Type != (int)TwoFactorProviderType.WebAuthn
+            && provider.Type != (int)TwoFactorProviderType.YubiKey
             && provider.Type != (int)TwoFactorProviderType.Duo
             && provider.Type != (int)TwoFactorProviderType.Remember))
         {
@@ -210,19 +223,41 @@ public sealed partial class SettingsTwoFactorPage : Page
         var icon = new Border
         {
             Width = 32, Height = 32, CornerRadius = new CornerRadius(6),
-            Background = ThemeBrushResolver.Resolve(this, "CardBackgroundFillColorDefaultBrush"),
+            Background = ThemeBrushResolver.Resolve(this, "WardenTileBrush"),
             Child = new FontIcon { Glyph = glyph, FontSize = 16, Foreground = ThemeBrushResolver.Resolve(this, "TextFillColorSecondaryBrush") },
         };
         AutomationProperties.SetAccessibilityView(icon, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
         grid.Children.Add(icon);
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        var heading = new TextBlock { Text = string.IsNullOrEmpty(badge) ? title : $"{title} {badge}", TextWrapping = TextWrapping.Wrap, Foreground = ThemeBrushResolver.Resolve(this, "TextFillColorPrimaryBrush") };
+        var heading = new Grid
+        {
+            ColumnSpacing = string.IsNullOrEmpty(badge) ? 0 : 8,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        heading.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        heading.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        heading.Children.Add(new TextBlock
+        {
+            Text = title, TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = ThemeBrushResolver.Resolve(this, "TextFillColorPrimaryBrush"),
+        });
+        if (!string.IsNullOrEmpty(badge))
+        {
+            var status = new TextBlock
+            {
+                Text = badge, FontSize = 12, LineHeight = 16,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Foreground = ThemeBrushResolver.Resolve(this, "TextFillColorSecondaryBrush"),
+            };
+            Grid.SetColumn(status, 1);
+            heading.Children.Add(status);
+        }
         text.Children.Add(heading);
         text.Children.Add(new TextBlock
         {
             Text = description, FontSize = 12, LineHeight = 16,
             Foreground = ThemeBrushResolver.Resolve(this, "TextFillColorSecondaryBrush"),
-            TextWrapping = TextWrapping.Wrap,
+            TextTrimming = TextTrimming.CharacterEllipsis,
         });
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);

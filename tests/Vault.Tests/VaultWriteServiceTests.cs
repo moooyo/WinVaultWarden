@@ -29,6 +29,9 @@ public partial class VaultWriteServiceTests
         public string? CreateResponseId { get; set; }
         public TaskCompletionSource? CreateEntered { get; set; }
         public TaskCompletionSource? CreateRelease { get; set; }
+        public FolderDto? FolderCreateResponse { get; set; } = new("created-folder", null, null);
+        public Exception? FolderCreateFailure { get; set; }
+        public Action? BeforeFolderCreateCompletion { get; set; }
 
         public Task CreateCipherAsync(CipherRequest request, CancellationToken ct = default)
         {
@@ -105,6 +108,16 @@ public partial class VaultWriteServiceTests
 
         public Task CreateFolderAsync(FolderRequest request, CancellationToken ct = default)
         { Calls.Add("folder-create"); LastFolder = request; return Task.CompletedTask; }
+
+        public Task<FolderDto> CreateFolderWithResponseAsync(FolderRequest request, CancellationToken ct = default)
+        {
+            Calls.Add("folder-create-response");
+            LastFolder = request;
+            BeforeFolderCreateCompletion?.Invoke();
+            return FolderCreateFailure is null
+                ? Task.FromResult(FolderCreateResponse!)
+                : Task.FromException<FolderDto>(FolderCreateFailure);
+        }
 
         public Task UpdateFolderAsync(string folderId, FolderRequest request, CancellationToken ct = default)
         { Calls.Add("folder-update"); LastId = folderId; LastFolder = request; return Task.CompletedTask; }

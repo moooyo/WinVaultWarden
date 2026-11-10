@@ -64,6 +64,10 @@ public interface IVaultWriteService
     // folderId 为 null/空 → 新建文件夹;否则 → 重命名。
     Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default);
 
+    /// <summary>Creates a folder and returns its server ID after refreshing the current session.</summary>
+    Task<string> CreateFolderAndGetIdAsync(string name, CancellationToken ct = default) =>
+        Task.FromException<string>(new NotSupportedException("Folder creation results are not supported by this vault writer."));
+
     Task DeleteFolderAsync(string folderId, CancellationToken ct = default);
 
     // 批量:ids 为空 → 直接返回(不发请求)。folderId null/空 → 移到根。

@@ -71,7 +71,7 @@ public sealed partial class TotpField : UserControl
     {
         if (RowGrid is null) return;
         RowBorder.BorderThickness = IsCompact ? new Thickness(0) : new Thickness(0, 0, 0, 1);
-        RowGrid.Padding = IsCompact ? new Thickness(0) : new Thickness(0, 8, 0, 8);
+        RowGrid.Padding = new Thickness(0);
         RowGrid.MinHeight = IsCompact ? 32 : 48;
         RowGrid.ColumnSpacing = IsCompact ? 0 : 16;
         LabelColumn.Width = new GridLength(IsCompact ? 0 : 112);

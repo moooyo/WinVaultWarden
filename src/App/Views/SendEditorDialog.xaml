@@ -120,8 +120,10 @@
                                  Password="{x:Bind Draft.Password, Mode=TwoWay}" />
                     <TextBlock Text="编辑时留空会保留已有密码；替换受密码保护的文件时，请重新输入密码。"
                                TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <ToggleSwitch Header="停用此 Send" IsOn="{x:Bind Draft.Disabled, Mode=TwoWay}"
-                                  OffContent="启用" OnContent="已停用" />
+                    <CheckBox IsChecked="{x:Bind Draft.Disabled, Mode=TwoWay}"
+                              AutomationProperties.Name="禁用此 Send" MinHeight="32">
+                        <TextBlock Text="禁用此 Send · 任何人都打不开链接" TextWrapping="Wrap" />
+                    </CheckBox>
                     <CheckBox IsChecked="{x:Bind Draft.HideEmail, Mode=TwoWay}">
                         <TextBlock Text="对接收者隐藏我的电子邮箱地址" TextWrapping="Wrap" />
                     </CheckBox>

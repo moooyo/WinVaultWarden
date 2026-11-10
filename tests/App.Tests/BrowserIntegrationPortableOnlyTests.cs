@@ -124,7 +124,7 @@ public class SettingsViewModelBrowserGateTests : AppPreferencesTestBase
 }
 
 /// <summary>
-/// XAML 结构断言：浏览器集成开关在不支持时通过绑定 disabled，描述改为"仅便携版支持"。
+/// XAML contracts keep the browser extension connection gated by portable-build support.
 /// </summary>
 public class SettingsPageBrowserIntegrationXamlTests
 {
@@ -141,27 +141,28 @@ public class SettingsPageBrowserIntegrationXamlTests
     }
 
     [Fact]
-    public void BrowserIntegrationCard_HasPortableOnlyDescription()
+    public void BrowserExtensionIntegrationCard_HasPortableOnlyDescription()
     {
         var doc = LoadXaml();
         var card = doc.Descendants().Single(element =>
             element.Name.LocalName == "SettingsCard"
             && element.Descendants().Any(descendant =>
                 descendant.Name.LocalName == "ToggleSwitch"
-                && descendant.Attribute("IsOn")?.Value.Contains("ViewModel.AllowBrowserIntegration", StringComparison.Ordinal) == true));
+                && descendant.Attribute("AutomationProperties.AutomationId")?.Value == "BrowserExtensionIntegrationToggle"));
         Assert.Contains("ViewModel.BrowserIntegrationDescription", card.Attribute("Description")?.Value);
     }
 
     [Fact]
-    public void BrowserIntegrationToggle_IsEnabled_BoundToBrowserIntegrationSupported()
+    public void BrowserExtensionIntegrationToggle_IsEnabled_BoundToBrowserIntegrationSupported()
     {
         var doc = LoadXaml();
         var toggle = doc.Descendants()
             .FirstOrDefault(e => e.Name.LocalName == "ToggleSwitch"
-                && e.Attributes().Any(a => a.Name.LocalName == "IsOn"
-                    && a.Value.Contains("AllowBrowserIntegration")));
+                && e.Attribute("AutomationProperties.AutomationId")?.Value == "BrowserExtensionIntegrationToggle");
         Assert.NotNull(toggle);
-        var isEnabled = toggle!.Attributes()
+        Assert.Equal("连接浏览器扩展", toggle!.Attribute("AutomationProperties.Name")?.Value);
+        Assert.Equal("{x:Bind ViewModel.AllowBrowserIntegration, Mode=TwoWay}", toggle.Attribute("IsOn")?.Value);
+        var isEnabled = toggle.Attributes()
             .FirstOrDefault(a => a.Name.LocalName == "IsEnabled");
         Assert.NotNull(isEnabled);
         Assert.Contains("BrowserIntegrationSupported", isEnabled!.Value, StringComparison.Ordinal);

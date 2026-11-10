@@ -24,7 +24,7 @@ public class LoginPageTypographyXamlTests
         document.Descendants().Single(element => element.Attribute(X + "Name")?.Value == name);
 
     [Fact]
-    public void FormTitle_UsesCenteredV3DisplayTypography()
+    public void FormTitle_UsesCenteredDisplayTypography()
     {
         var title = Named(Load(), "LoginTitle");
         Assert.Contains("ViewModel.FormTitle", title.Attribute("Text")?.Value);
@@ -36,7 +36,7 @@ public class LoginPageTypographyXamlTests
     }
 
     [Fact]
-    public void Form_UsesV3ColumnAndDistinctLockAvatar()
+    public void Form_UsesCenteredColumnAndDistinctLockAvatar()
     {
         var document = Load();
         var form = Named(document, "LoginForm");
@@ -52,12 +52,12 @@ public class LoginPageTypographyXamlTests
     }
 
     [Fact]
-    public void FormSubtitle_UsesV3BodyTextAndNoTextFallsBelowTwelveDip()
+    public void FormSubtitle_UsesBodyTextAndNoTextFallsBelowTwelveDip()
     {
         var document = Load();
         var subtitle = Named(document, "LoginSubtitle");
         Assert.Contains("ViewModel.FormSubtitle", subtitle.Attribute("Text")?.Value);
-        Assert.Equal("13", subtitle.Attribute("FontSize")?.Value);
+        Assert.Equal("14", subtitle.Attribute("FontSize")?.Value);
         Assert.Equal("Center", subtitle.Attribute("TextAlignment")?.Value);
         Assert.DoesNotContain(document.Descendants(), element =>
             double.TryParse(element.Attribute("FontSize")?.Value, NumberStyles.Float,

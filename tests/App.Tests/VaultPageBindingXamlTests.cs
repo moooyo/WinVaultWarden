@@ -52,10 +52,22 @@ public class VaultPageBindingXamlTests
     }
 
     [Fact]
-    public void LoginTemplate_HasPasswordHistorySection()
+    public void LoginTemplate_HasPasswordHistorySummaryAndDialogAction()
     {
-        var xaml = Xaml();
-        Assert.Contains("PasswordHistory", xaml);
-        Assert.Contains("HasPasswordHistory", xaml);
+        var document = XDocument.Parse(Xaml());
+        var template = document.Descendants().Single(element => element.Name.LocalName == "DataTemplate"
+            && element.Attribute("{http://schemas.microsoft.com/winfx/2006/xaml}Key")?.Value == "LoginTemplate");
+        var history = template.Descendants().Single(element => element.Name.LocalName == "Grid"
+            && element.Attribute("Visibility")?.Value?.Contains("HasPasswordHistory") == true);
+        Assert.Contains(history.Descendants(), element => element.Name.LocalName == "TextBlock"
+            && element.Attribute("Text")?.Value == "{Binding PasswordHistorySummary}");
+        Assert.Contains(history.Descendants(), element => element.Name.LocalName == "TextBlock"
+            && element.Attribute("Text")?.Value == "{Binding LatestPasswordHistoryText}");
+        Assert.Contains(history.Descendants(), element => element.Name.LocalName == "Button"
+            && element.Attribute("Click")?.Value == "OnPasswordHistoryClick"
+            && element.Attribute("AutomationProperties.Name")?.Value == "查看密码历史");
+        Assert.DoesNotContain(template.Descendants(), element => element.Name.LocalName == "Expander");
+        Assert.DoesNotContain(template.Descendants(), element => element.Name.LocalName == "ItemsControl"
+            && element.Attribute("ItemsSource")?.Value == "{Binding PasswordHistory}");
     }
 }

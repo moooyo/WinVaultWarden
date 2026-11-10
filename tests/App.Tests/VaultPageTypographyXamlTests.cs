@@ -22,21 +22,25 @@ public class VaultPageTypographyXamlTests
             && e.Attribute("Text")?.Value == text);
 
     [Fact]
-    public void OptionalSectionsUseFlatRowsAndHideEmptyGroups()
+    public void OptionalSectionsUseFlatRowsAndOrderCustomFieldsAttachmentsThenNotes()
     {
         var doc = Load();
-        Assert.Contains(doc.Descendants(), element => element.Name.LocalName == "FieldRow"
+        var notes = doc.Descendants().Single(element => element.Name.LocalName == "FieldRow"
             && element.Attribute("Label")?.Value == "备注"
             && element.Attribute("IsMultiline")?.Value == "True"
             && element.Attribute("Value")?.Value?.Contains("ViewModel.Detail.Notes") == true);
+        var sections = new Dictionary<string, XElement>();
         foreach (var property in new[] { "HasAttachments", "HasCustomFields" })
         {
             var section = doc.Descendants().Single(element => element.Name.LocalName == "Border"
                 && element.Attribute("Visibility")?.Value?.Contains($"Detail.{property}") == true);
+            sections.Add(property, section);
             Assert.Equal("0,1,0,0", section.Attribute("BorderThickness")?.Value);
             Assert.Contains(section.Descendants(), element => element.Name.LocalName == "ItemsControl");
             Assert.DoesNotContain(section.Descendants(), element => element.Name.LocalName == "Expander");
         }
+        Assert.True(XNode.CompareDocumentOrder(sections["HasCustomFields"], sections["HasAttachments"]) < 0);
+        Assert.True(XNode.CompareDocumentOrder(sections["HasAttachments"], notes) < 0);
         Assert.DoesNotContain(doc.Descendants(), element => element.Name.LocalName == "Expander"
             && element.Attribute("Header")?.Value == "项目历史");
     }

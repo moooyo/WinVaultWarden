@@ -171,11 +171,10 @@ public sealed partial class EmergencyAccessPage : Page
         {
             Header = "联系人邮箱",
             PlaceholderText = "联系人邮箱",
-            MinWidth = 320,
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(emailBox, "InviteEmailBox");
 
-        var typeCombo = new ComboBox { MinWidth = 200, Header = "访问权限" };
+        var typeCombo = new ComboBox { MinWidth = 180, Header = "访问权限" };
         typeCombo.Items.Add(new ComboBoxItem { Content = "查看", Tag = EmergencyAccessType.View });
         typeCombo.Items.Add(new ComboBoxItem { Content = "接管", Tag = EmergencyAccessType.Takeover });
         typeCombo.SelectedIndex = 0;
@@ -321,7 +320,7 @@ public sealed partial class EmergencyAccessPage : Page
         if ((sender as FrameworkElement)?.Tag is not EmergencyContact item)
             return;
 
-        var typeCombo = new ComboBox { MinWidth = 200, Header = "访问权限" };
+        var typeCombo = new ComboBox { MinWidth = 180, Header = "访问权限" };
         typeCombo.Items.Add(new ComboBoxItem { Content = "查看", Tag = EmergencyAccessType.View });
         typeCombo.Items.Add(new ComboBoxItem { Content = "接管", Tag = EmergencyAccessType.Takeover });
         typeCombo.SelectedIndex = item.Type == EmergencyAccessType.Takeover ? 1 : 0;
@@ -442,7 +441,7 @@ public sealed partial class EmergencyAccessPage : Page
 
     private async Task ShowTakeoverDialogAsync(GrantedAccess item)
     {
-        var pwBox = new PasswordBox { Header = "新主密码（为对方设置）", MinWidth = 320 };
+        var pwBox = new PasswordBox { Header = "新主密码（为对方设置）" };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(pwBox, "TakeoverNewPasswordBox");
 
         var confirmBox = new PasswordBox { Header = "确认新主密码" };

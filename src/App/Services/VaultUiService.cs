@@ -278,6 +278,25 @@ public sealed class VaultUiService : IVaultUiService
         return _writeService.SaveFolderAsync(folderId, name, ct);
     }
 
+    public Task<string> CreateFolderAndGetIdAsync(string name, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (IsDemo)
+        {
+            var lease = _session!.CaptureLease();
+            var id = Guid.NewGuid().ToString("N");
+            if (!_session.TryRunIfUnlocked(lease, () =>
+                {
+                    ct.ThrowIfCancellationRequested();
+                    _session.UpsertFolder(new Folder { Id = id, Name = name, RevisionDate = Now });
+                }))
+                throw new OperationCanceledException("The editor folder session expired.", lease.CancellationToken);
+            return Task.FromResult(id);
+        }
+
+        return _writeService.CreateFolderAndGetIdAsync(name, ct);
+    }
+
     public Task DeleteFolderAsync(string folderId, CancellationToken ct = default)
     {
         if (IsDemo)
@@ -614,7 +633,7 @@ public sealed class VaultUiService : IVaultUiService
                     ? (cipher.PasswordHistory ?? Array.Empty<Core.Models.PasswordHistoryEntry>())
                         .Select(h => new PasswordHistoryItem(
                             h.Password,
-                            h.LastUsedDate is { } d ? d.LocalDateTime.ToString("yyyy/M/d HH:mm:ss") : "—"))
+                            FormatPasswordHistoryDate(h.LastUsedDate)))
                         .ToList()
                     : Array.Empty<PasswordHistoryItem>(),
             },
@@ -868,6 +887,18 @@ public sealed class VaultUiService : IVaultUiService
         418 => JoinNonEmpty(" ", cipher.Identity?.FirstName, cipher.Identity?.MiddleName, cipher.Identity?.LastName),
         _ => null,
     };
+
+    private static string FormatPasswordHistoryDate(DateTimeOffset? value)
+    {
+        if (value is not { } timestamp)
+            return "—";
+        var local = timestamp.LocalDateTime;
+        var today = DateTime.Today;
+        var date = local.Date == today ? "今天"
+            : local.ToString(local.Year == today.Year ? "M 月 d 日" : "yyyy 年 M 月 d 日",
+                System.Globalization.CultureInfo.InvariantCulture);
+        return $"{date} {local.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture)}";
+    }
 
     private static IReadOnlyList<PasskeyDetail> MapPasskeys(IReadOnlyList<CipherFido2Credential>? credentials) =>
         (credentials ?? Array.Empty<CipherFido2Credential>())

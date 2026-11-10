@@ -38,6 +38,21 @@ public sealed partial class VaultPage : Page
     private string? _copiedRowGlyph;
     private long _copiedRowVersion;
     private HealthReport? _detailHealthReport;
+    private HashSet<CipherListItem> _detailHealthItems = new(ReferenceEqualityComparer.Instance);
+    private bool _folderInteractionPending;
+    private CipherEditorDraft? _editorInitialFocusDraft;
+    private Core.Session.VaultSessionLease? _editorInitialFocusLease;
+    private DependencyObject? _editorInitialFocusOrigin;
+    private int _editorInitialFocusVersion;
+    private MenuFlyout? _uriMatchFlyout;
+    private long _uriMatchMenuVersion;
+
+    private sealed record UriMatchSelection(
+        CipherEditorDraft Draft,
+        LoginUriEditorDraft Uri,
+        Core.Session.VaultSessionLease Lease,
+        long Version,
+        int MatchIndex);
 
     // 响应式布局阈值:>= 800 DIP 显示双栏(列表+详情);更窄时按是否有详情/编辑态在
     // NarrowList / NarrowDetail 之间切换,窄详情态显示"返回列表"入口。
@@ -81,6 +96,7 @@ public sealed partial class VaultPage : Page
         if (ViewModel.AutoSelectFirstResult && !ViewModel.IsEditing && ViewModel.SelectedItem is null)
             ViewModel.SelectedItem = ViewModel.FilteredItems.FirstOrDefault();
         ViewModel.RefreshEditorBindings(Bindings.Update);
+        TryApplyEditorInitialFocus();
         _listScrollViewer = FindDescendant<ScrollViewer>(CipherList);
         if (_listScrollViewer is not null)
             _listScrollViewer.ViewChanged += OnListViewChanged;
@@ -93,6 +109,9 @@ public sealed partial class VaultPage : Page
 
     private void OnWorkspaceUnloaded(object sender, RoutedEventArgs e)
     {
+        CloseUriMatchFlyout();
+        CancelEditorFolderInteraction();
+        CancelEditorInitialFocus();
         if (_listScrollViewer is not null)
             _listScrollViewer.ViewChanged -= OnListViewChanged;
         _listScrollViewer = null;
@@ -108,6 +127,7 @@ public sealed partial class VaultPage : Page
         VaultUndoButton.Visibility = Visibility.Collapsed;
         ResetRowCopyFeedback();
         _detailHealthReport = null;
+        _detailHealthItems.Clear();
         global::App.App.Services.GetRequiredService<SecurityReportViewModel>().PropertyChanged -= OnSecurityReportChanged;
     }
 
@@ -241,6 +261,9 @@ public sealed partial class VaultPage : Page
         VisualStateManager.GoToState(this, state, true);
         if (state == "Wide")
             VaultListColumn.Width = new GridLength(windowWidth >= 1680 ? 380 : windowWidth < 1000 ? 300 : 344);
+        var compactList = state == "Wide" && windowWidth < 1000;
+        VaultTypeFilterBox.Width = compactList ? 86 : 100;
+        SortComboBox.Width = compactList ? 86 : 102;
 
         if (previousState == "NarrowList" && state == "NarrowDetail")
             QueueNarrowDetailFocus();
@@ -410,6 +433,7 @@ public sealed partial class VaultPage : Page
 
         var show = ShouldShowRowActions(state.IsPointerOver, state.IsFocusWithin);
         show &= root.DataContext is CipherListItem { IsDeleted: false };
+        show &= !ViewModel.IsSelectionMode;
         panel.Opacity = show ? 1 : 0;
         panel.IsHitTestVisible = show;
         if (root.FindName("RowStatusIcons") is FrameworkElement status)
@@ -654,10 +678,20 @@ public sealed partial class VaultPage : Page
         if (e.PropertyName is nameof(VaultViewModel.Detail) or nameof(VaultViewModel.IsEditing))
             UpdateVaultLayoutState();
         if (e.PropertyName == nameof(VaultViewModel.EditorDraft))
-            LoginPasswordEditor.PasswordRevealMode = PasswordRevealMode.Peek;
+        {
+            CloseUriMatchFlyout();
+            CancelEditorFolderInteraction();
+            ResetEditorSecretActions();
+            CancelEditorInitialFocus();
+        }
+        if (e.PropertyName == nameof(VaultViewModel.IsEditing) && ViewModel.IsEditing)
+            QueueEditorInitialFocus();
         if (e.PropertyName == nameof(VaultViewModel.IsEditing) && !ViewModel.IsEditing)
         {
-            LoginPasswordEditor.PasswordRevealMode = PasswordRevealMode.Peek;
+            CloseUriMatchFlyout();
+            CancelEditorFolderInteraction();
+            CancelEditorInitialFocus();
+            ResetEditorSecretActions();
             GeneratedPasswordHint.Visibility = Visibility.Collapsed;
         }
         if (e.PropertyName == nameof(VaultViewModel.WorkspaceContext))
@@ -682,6 +716,78 @@ public sealed partial class VaultPage : Page
         if (ViewModel.CanEditEditorDraft
             && (sender as FrameworkElement)?.DataContext is LoginUriEditorDraft uri)
             ViewModel.EditorDraft?.Login.Uris.Remove(uri);
+    }
+
+    private void OnUriMatchFlyoutOpening(object sender, object e)
+    {
+        if (sender is not MenuFlyout flyout)
+            return;
+        flyout.Items.Clear();
+        if (!IsLoaded || !ViewModel.IsEditing || !ViewModel.CanEditEditorDraft
+            || ViewModel.EditorDraft is not { IsLogin: true } draft
+            || flyout.Target is not Button { Tag: LoginUriEditorDraft uri }
+            || !draft.Login.Uris.Contains(uri) || !TryCaptureExpectedLease(out var lease))
+            return;
+
+        if (_uriMatchFlyout is { } previous && !ReferenceEquals(previous, flyout))
+            previous.Hide();
+        _uriMatchFlyout = flyout;
+        var version = ++_uriMatchMenuVersion;
+        if (uri.MatchIndex < 0)
+        {
+            flyout.Items.Add(new MenuFlyoutItem { Text = uri.MatchSummary, IsEnabled = false });
+            flyout.Items.Add(new MenuFlyoutSeparator());
+        }
+        string[] labels = ["默认", "基础域名", "主机", "开头匹配", "完全匹配", "正则表达式", "不匹配"];
+        for (var index = 0; index < labels.Length; index++)
+        {
+            var item = new ToggleMenuFlyoutItem
+            {
+                Text = labels[index],
+                IsChecked = uri.MatchIndex == index,
+                Tag = new UriMatchSelection(draft, uri, lease, version, index),
+            };
+            item.Click += OnUriMatchItemClick;
+            flyout.Items.Add(item);
+        }
+    }
+
+    private void OnUriMatchItemClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleMenuFlyoutItem { Tag: UriMatchSelection selection })
+            return;
+        bool IsCurrent() => selection.Version == _uriMatchMenuVersion && IsLoaded
+            && ViewModel.IsEditing && ViewModel.CanEditEditorDraft
+            && ReferenceEquals(ViewModel.EditorDraft, selection.Draft) && selection.Draft.IsLogin
+            && selection.Draft.Login.Uris.Contains(selection.Uri);
+        if (!IsCurrent())
+            return;
+        var services = global::App.App.Services;
+        var session = services.GetRequiredService<Vault.VaultSession>();
+        services.GetRequiredService<IAppLifecycleCoordinator>().TryRunSensitive(
+            () => session.TryRunIfUnlocked(selection.Lease, () =>
+            {
+                if (IsCurrent())
+                    selection.Uri.MatchIndex = selection.MatchIndex;
+            }));
+    }
+
+    private void OnUriMatchFlyoutClosed(object sender, object e)
+    {
+        if (sender is not MenuFlyout flyout)
+            return;
+        flyout.Items.Clear();
+        if (ReferenceEquals(_uriMatchFlyout, flyout))
+            _uriMatchFlyout = null;
+    }
+
+    private void CloseUriMatchFlyout()
+    {
+        _uriMatchMenuVersion++;
+        var flyout = _uriMatchFlyout;
+        _uriMatchFlyout = null;
+        flyout?.Hide();
+        flyout?.Items.Clear();
     }
 
     private void OnAddLoginClick(object sender, RoutedEventArgs e) => BeginAdd(VaultItemKind.Login);
@@ -715,11 +821,6 @@ public sealed partial class VaultPage : Page
         ViewModel.BeginAdd(kind);
         SyncEditorTypeSelection();
         VaultDetailScroll.ChangeView(null, 0, null, disableAnimation: true);
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            if (IsLoaded && ViewModel.IsEditing)
-                _ = CipherEditorNameBox.Focus(FocusState.Programmatic);
-        });
     }
 
     private void OnCancelCipherEditorClick(object sender, RoutedEventArgs e) => ViewModel.CancelEdit();
@@ -732,12 +833,13 @@ public sealed partial class VaultPage : Page
         var result = await ViewModel.SaveDraftAsync();
         if (result.IsSuccess)
         {
+            _detailHealthReport = null;
+            _detailHealthItems.Clear();
             if (passwordChanged && !string.IsNullOrEmpty(result.Value))
             {
-                _detailHealthReport = null;
                 global::App.App.Services.GetRequiredService<SecurityReportViewModel>().MarkPasswordChanged(result.Value);
-                _ = RefreshDetailSecurityAsync();
             }
+            _ = RefreshDetailSecurityAsync();
             UpdateDetailTemplate();
             ShowToast(isNew ? $"已创建“{name}”" : $"已保存“{name}”");
         }
@@ -1198,29 +1300,67 @@ public sealed partial class VaultPage : Page
             await ViewModel.PermanentDeleteAsync(item.Id);
     }
 
-    private async void OnAddFolderClick(object sender, RoutedEventArgs e)
+    private async void OnAddFolderClick(object sender, RoutedEventArgs e) => await CreateFolderAsync();
+
+    public Task CreateFolderAsync() => RunFolderInteractionAsync(async lease =>
     {
-        var name = await PromptTextAsync("新建文件夹", "文件夹名称", string.Empty);
-        if (!string.IsNullOrWhiteSpace(name))
-            await ViewModel.SaveFolderAsync(null, name!);
-    }
+        var name = await PromptTextAsync("新建文件夹", "文件夹名称", string.Empty, lease);
+        if (!string.IsNullOrWhiteSpace(name) && CanContinueFolderInteraction(lease))
+            await ViewModel.SaveFolderAsync(null, name);
+    });
 
     private async void OnRenameFolderClick(object sender, RoutedEventArgs e)
     {
         if (ViewModel.SelectedFilter is not { Kind: FilterKind.Folder } folder || folder.FolderId is null)
             return;
-        var name = await PromptTextAsync("重命名文件夹", "文件夹名称", folder.Label);
-        if (!string.IsNullOrWhiteSpace(name))
-            await ViewModel.SaveFolderAsync(folder.FolderId, name!);
+        await RenameFolderAsync(folder.FolderId, folder.Label);
     }
+
+    public Task RenameFolderAsync(string folderId, string folderName) => RunFolderInteractionAsync(async lease =>
+    {
+        if (ViewModel.FolderFilters.All(folder => folder.FolderId != folderId))
+            return;
+        var name = await PromptTextAsync("重命名文件夹", "文件夹名称", folderName, lease);
+        if (!string.IsNullOrWhiteSpace(name) && CanContinueFolderInteraction(lease)
+            && ViewModel.FolderFilters.Any(folder => folder.FolderId == folderId))
+            await ViewModel.SaveFolderAsync(folderId, name);
+    });
 
     private async void OnDeleteFolderClick(object sender, RoutedEventArgs e)
     {
         if (ViewModel.SelectedFilter is not { Kind: FilterKind.Folder } folder || folder.FolderId is null)
             return;
-        if (await ConfirmAsync("删除文件夹", $"确定要删除文件夹“{folder.Label}”吗?其中的项目会移出该文件夹。", "删除"))
-            await ViewModel.DeleteFolderAsync(folder.FolderId);
+        await DeleteFolderAsync(folder.FolderId, folder.Label);
     }
+
+    public Task DeleteFolderAsync(string folderId, string folderName) => RunFolderInteractionAsync(async lease =>
+    {
+        if (ViewModel.FolderFilters.All(folder => folder.FolderId != folderId))
+            return;
+        if (await DialogHelper.ConfirmAsync(XamlRoot, lease, "删除文件夹",
+                $"确定要删除文件夹“{folderName}”吗？其中的条目会移出该文件夹。", "删除")
+            && CanContinueFolderInteraction(lease)
+            && ViewModel.FolderFilters.Any(folder => folder.FolderId == folderId))
+            await ViewModel.DeleteFolderAsync(folderId);
+    });
+
+    private async Task RunFolderInteractionAsync(Func<Core.Session.VaultSessionLease, Task> action)
+    {
+        if (_folderInteractionPending || XamlRoot is null || !ViewModel.CanStartVaultOperation
+            || !ViewModel.CanCancelEditor || !TryCaptureExpectedLease(out var lease))
+            return;
+        _folderInteractionPending = true;
+        try
+        {
+            if (await ConfirmLeaveEditorAsync() && CanContinueFolderInteraction(lease))
+                await action(lease);
+        }
+        finally { _folderInteractionPending = false; }
+    }
+
+    private bool CanContinueFolderInteraction(Core.Session.VaultSessionLease lease) =>
+        XamlRoot is not null && ViewModel.CanStartVaultOperation && ViewModel.CanCancelEditor
+        && global::App.App.Services.GetRequiredService<Vault.VaultSession>().IsUnlocked(lease);
 
     private Task<bool> ConfirmAsync(string title, string message, string primaryText) =>
         DialogHelper.ConfirmAsync(XamlRoot, title, message, primaryText);
@@ -1234,7 +1374,8 @@ public sealed partial class VaultPage : Page
             await ViewModel.EmptyRecycleBinCommand.ExecuteAsync(null);
     }
 
-    private async Task<string?> PromptTextAsync(string title, string placeholder, string initial)
+    private async Task<string?> PromptTextAsync(string title, string placeholder, string initial,
+        Core.Session.VaultSessionLease? expectedSession = null)
     {
         var input = new TextBox { PlaceholderText = placeholder, Text = initial };
         var dialog = new ContentDialog
@@ -1246,11 +1387,15 @@ public sealed partial class VaultPage : Page
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
         };
-        return await DialogHelper.ShowTrackedAsync(dialog) == ContentDialogResult.Primary ? input.Text : null;
+        var result = expectedSession is null ? await DialogHelper.ShowTrackedAsync(dialog)
+            : await DialogHelper.ShowTrackedAsync(dialog, expectedSession);
+        return result == ContentDialogResult.Primary ? input.Text : null;
     }
 
     private async void OnAddAttachmentClick(object sender, RoutedEventArgs e)
     {
+        if (ViewModel.IsEditing && (!ViewModel.CanManageEditorAttachments || !await ConfirmLeaveEditorAsync()))
+            return;
         if (ViewModel.SelectedItem is not { } item)
             return;
         try
@@ -1398,6 +1543,8 @@ public sealed partial class VaultPage : Page
 
     private async void OnDeleteAttachmentClick(object sender, RoutedEventArgs e)
     {
+        if (ViewModel.IsEditing && (!ViewModel.CanManageEditorAttachments || !await ConfirmLeaveEditorAsync()))
+            return;
         if (ViewModel.SelectedItem is not { } item
             || (sender as FrameworkElement)?.DataContext is not AttachmentItem attachment)
             return;
@@ -1506,23 +1653,76 @@ public sealed partial class VaultPage : Page
     {
         if (!ViewModel.IsEditing)
             return true;
-        if (!ViewModel.CanCancelEditor || _confirmingLeave)
+        if (!ViewModel.CanCancelEditor || _confirmingLeave || XamlRoot is null
+            || ViewModel.EditorDraft is not { } draft || !TryCaptureExpectedLease(out var lease))
             return false;
         if (!ViewModel.HasUnsavedEditorChanges)
-        {
-            ViewModel.CancelEdit();
-            return true;
-        }
+            return TryCancelExpectedEditor(draft, lease);
         _confirmingLeave = true;
         try
         {
-            if (!await ConfirmAsync("放弃未保存的更改？", "你所做的更改尚未保存。", "放弃更改"))
+            if (!await DialogHelper.ConfirmAsync(XamlRoot, lease,
+                    "放弃未保存的更改？", "你所做的更改尚未保存。", "放弃更改"))
                 return false;
-            ViewModel.CancelEdit();
-            return true;
+            return TryCancelExpectedEditor(draft, lease);
         }
         finally { _confirmingLeave = false; }
     }
+
+    private bool TryCancelExpectedEditor(CipherEditorDraft draft, Core.Session.VaultSessionLease lease)
+    {
+        var services = global::App.App.Services;
+        var session = services.GetRequiredService<Vault.VaultSession>();
+        var lifecycle = services.GetRequiredService<IAppLifecycleCoordinator>();
+        var cancelled = false;
+        lifecycle.TryRunSensitive(() => session.TryRunIfUnlocked(lease, () =>
+        {
+            if (!ViewModel.IsEditing || !ViewModel.CanCancelEditor
+                || !ReferenceEquals(ViewModel.EditorDraft, draft))
+                return;
+            ViewModel.CancelEdit();
+            cancelled = true;
+        }));
+        return cancelled;
+    }
+
+    public bool CanHandleEscape => IsLoaded && XamlRoot is not null
+        && !_sensitiveActionPending && !_confirmingLeave && !_folderInteractionPending
+        && !HasOpenVaultPopup() && TryCaptureExpectedLease(out _)
+        && (ViewModel.IsEditing || ViewModel.IsSelectionMode || !string.IsNullOrEmpty(ViewModel.SearchText));
+
+    public async Task<bool> HandleEscapeAsync()
+    {
+        if (!CanHandleEscape)
+            return false;
+        if (ViewModel.IsEditing)
+        {
+            await ConfirmLeaveEditorAsync();
+            return true;
+        }
+        if (!TryCaptureExpectedLease(out var lease))
+            return false;
+        var services = global::App.App.Services;
+        var session = services.GetRequiredService<Vault.VaultSession>();
+        var lifecycle = services.GetRequiredService<IAppLifecycleCoordinator>();
+        var handled = false;
+        lifecycle.TryRunSensitive(() => session.TryRunIfUnlocked(lease, () =>
+        {
+            if (!IsLoaded || ViewModel.IsEditing || HasOpenVaultPopup())
+                return;
+            if (!string.IsNullOrEmpty(ViewModel.SearchText))
+                ViewModel.SearchText = string.Empty;
+            else if (ViewModel.IsSelectionMode && ViewModel.CanStartVaultOperation)
+                ViewModel.ToggleSelectionModeCommand.Execute(null);
+            else
+                return;
+            handled = true;
+        }));
+        return handled;
+    }
+
+    private bool HasOpenVaultPopup() => XamlRoot is not null
+        && Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot).Any(popup => popup.IsOpen);
 
     public bool MoveSearchSelection(int direction)
     {
@@ -1560,7 +1760,8 @@ public sealed partial class VaultPage : Page
         _ => "\uE8C8",
     };
 
-    private async Task<bool> VerifySensitiveActionAsync(string message, CancellationToken ct = default)
+    private async Task<bool> VerifySensitiveActionAsync(string message, CancellationToken ct = default,
+        Func<CancellationToken, Task<string?>>? prompt = null)
     {
         if (_sensitiveActionPending)
             return false;
@@ -1570,7 +1771,8 @@ public sealed partial class VaultPage : Page
             if (global::App.App.MainWindow is not { } window)
                 return false;
             var verifier = global::App.App.Services.GetRequiredService<ISensitiveActionVerificationService>();
-            return await verifier.VerifyAsync(WinRT.Interop.WindowNative.GetWindowHandle(window), message, PromptMasterPasswordAsync, ct);
+            return await verifier.VerifyAsync(WinRT.Interop.WindowNative.GetWindowHandle(window), message,
+                prompt ?? PromptMasterPasswordAsync, ct);
         }
         catch (OperationCanceledException exception) when (UiExceptionPolicy.IsGenuineCancellation(exception, ct)) { return false; }
         catch (OperationCanceledException exception) when (Api.RequestTimeoutClassifier.IsTimeout(exception))
@@ -1664,9 +1866,80 @@ public sealed partial class VaultPage : Page
     private void OnEditorHeaderSizeChanged(object sender, SizeChangedEventArgs e)
     {
         var compact = e.NewSize.Width < 520;
+        EditorHeaderGrid.RowSpacing = compact ? 12 : 0;
         Grid.SetRow(EditorHeaderActions, compact ? 1 : 0);
         Grid.SetColumn(EditorHeaderActions, compact ? 1 : 2);
         Grid.SetColumnSpan(EditorHeaderActions, compact ? 2 : 1);
+    }
+
+    private void QueueEditorInitialFocus()
+    {
+        CancelEditorInitialFocus();
+        if (ViewModel.EditorDraft is not { } draft || !TryCaptureExpectedLease(out var lease))
+            return;
+        _editorInitialFocusDraft = draft;
+        _editorInitialFocusLease = lease;
+        _editorInitialFocusOrigin = XamlRoot is null ? null
+            : Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+        CipherEditorNameBox.LayoutUpdated += OnEditorNameLayoutUpdated;
+        var version = _editorInitialFocusVersion;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (version == _editorInitialFocusVersion)
+                TryApplyEditorInitialFocus();
+        });
+    }
+
+    private void OnEditorNameLoaded(object sender, RoutedEventArgs e) => TryApplyEditorInitialFocus();
+
+    private void OnEditorNameLayoutUpdated(object? sender, object e) => TryApplyEditorInitialFocus();
+
+    private void CancelEditorInitialFocus()
+    {
+        _editorInitialFocusVersion++;
+        CipherEditorNameBox.LayoutUpdated -= OnEditorNameLayoutUpdated;
+        _editorInitialFocusDraft = null;
+        _editorInitialFocusLease = null;
+        _editorInitialFocusOrigin = null;
+    }
+
+    private void TryApplyEditorInitialFocus()
+    {
+        if (_editorInitialFocusDraft is not { } draft || _editorInitialFocusLease is not { } lease)
+            return;
+        var services = global::App.App.Services;
+        var session = services.GetRequiredService<Vault.VaultSession>();
+        if (!ViewModel.IsEditing || !ReferenceEquals(ViewModel.EditorDraft, draft) || !session.IsUnlocked(lease))
+        {
+            CancelEditorInitialFocus();
+            return;
+        }
+        if (!IsLoaded || XamlRoot is null)
+            return;
+        var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+        if (focused is not null && (IsDescendantOf(focused, CipherEditorPanel)
+            || ReferenceEquals(focused, VaultNarrowBackButton)
+            || !ReferenceEquals(focused, _editorInitialFocusOrigin)
+                && focused is Control { FocusState: FocusState.Keyboard or FocusState.Pointer }))
+        {
+            CancelEditorInitialFocus();
+            return;
+        }
+        if (_sensitiveActionPending || _confirmingLeave || _folderInteractionPending || HasOpenVaultPopup()
+            || !ViewModel.CanEditEditorDraft || CipherEditorPanel.Visibility != Visibility.Visible
+            || !CipherEditorNameBox.IsLoaded || CipherEditorNameBox.ActualWidth <= 0 || CipherEditorNameBox.ActualHeight <= 0)
+            return;
+        var focusedName = false;
+        var accepted = services.GetRequiredService<IAppLifecycleCoordinator>()
+            .TryRunSensitive(() => session.TryRunIfUnlocked(lease, () =>
+            {
+                if (!IsLoaded || !ViewModel.IsEditing || !ViewModel.CanEditEditorDraft
+                    || !ReferenceEquals(ViewModel.EditorDraft, draft) || HasOpenVaultPopup())
+                    return;
+                focusedName = CipherEditorNameBox.Focus(FocusState.Programmatic);
+            }));
+        if (focusedName || !accepted)
+            CancelEditorInitialFocus();
     }
 
     public static Visibility NewDraftVisibility(bool editing, bool isNew) =>
@@ -1688,6 +1961,249 @@ public sealed partial class VaultPage : Page
     {
         if (sender is FieldRow field)
             BindFieldAuthorization(field);
+    }
+
+    private async void OnPasswordHistoryClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.Detail is not LoginDetail { HasPasswordHistory: true, IsDeleted: false } login
+            || !TryCaptureExpectedLease(out var lease))
+            return;
+        if (!await VerifySensitiveActionAsync("查看密码历史")
+            || !await ViewModel.AuthorizeFieldCopyAsync(login.Id, PromptMasterPasswordAsync)
+            || !ReferenceEquals(ViewModel.Detail, login)
+            || !global::App.App.Services.GetRequiredService<Vault.VaultSession>().IsUnlocked(lease))
+            return;
+        var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+        using var historyCancellation = CancellationTokenSource.CreateLinkedTokenSource(lease.CancellationToken);
+        bool HistoryContextIsCurrent() => !historyCancellation.IsCancellationRequested && IsLoaded && session.IsUnlocked(lease)
+            && ReferenceEquals(ViewModel.Detail, login) && ViewModel.SelectedItem?.Id == login.Id;
+        var rows = new List<FieldRow>();
+        var content = new StackPanel { Spacing = 16 };
+        var dialog = new ContentDialog
+        {
+            Title = "密码历史", CloseButtonText = "关闭",
+            DefaultButton = ContentDialogButton.None, XamlRoot = XamlRoot,
+        };
+        using var passwordPrompt = new DialogPasswordPrompt(dialog, content, HistoryContextIsCurrent);
+        async Task<bool> AuthorizeHistoryItemAsync(CancellationToken ct)
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, historyCancellation.Token);
+            return HistoryContextIsCurrent() && !linked.IsCancellationRequested
+                && await ViewModel.AuthorizeFieldCopyAsync(login.Id, passwordPrompt.PromptAsync, linked.Token)
+                && HistoryContextIsCurrent() && !linked.IsCancellationRequested;
+        }
+        async Task<bool> VerifyHistoryRevealAsync(CancellationToken ct)
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, historyCancellation.Token);
+            return HistoryContextIsCurrent() && !linked.IsCancellationRequested
+                && await VerifySensitiveActionAsync($"WinVaultWarden 想要显示“{login.Name}”的旧密码。", linked.Token, passwordPrompt.PromptAsync)
+                && HistoryContextIsCurrent() && !linked.IsCancellationRequested;
+        }
+        content.Children.Add(new TextBlock
+        {
+            Text = $"“{login.Name}”以前用过的密码，最多保留 5 个。改回旧密码前，先确认它没有出现在数据泄露里。",
+            FontSize = 14, LineHeight = 20, TextWrapping = TextWrapping.Wrap,
+            Foreground = ThemeBrushResolver.Resolve(this, "TextFillColorSecondaryBrush"),
+        });
+        var historyItems = new StackPanel { Spacing = 0 };
+        foreach (var entry in login.PasswordHistory.Take(5))
+        {
+            var row = new FieldRow
+            {
+                Label = $"{entry.DateLabel} 换掉", Value = entry.Password,
+                IsSecret = true, IsTrailingLabel = true,
+            };
+            row.AuthorizeItemAsync = AuthorizeHistoryItemAsync;
+            row.VerifyRevealOverrideAsync = VerifyHistoryRevealAsync;
+            row.FieldUsed += OnFieldUsed;
+            rows.Add(row);
+            historyItems.Children.Add(row);
+        }
+        var historyScroll = new ScrollViewer
+        {
+            Content = historyItems, MaxHeight = 420,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        };
+        content.Children.Add(historyScroll);
+        void ApplyHistoryWidth()
+        {
+            var width = ResponsiveDialogSizing.Clamp(XamlRoot.Size.Width, preferredWidth: 520);
+            dialog.Resources["ContentDialogMaxWidth"] = width;
+            dialog.Resources["ContentDialogMinWidth"] = 0d;
+            passwordPrompt.Content.Width = Math.Max(0, width - 48);
+            historyScroll.MaxHeight = Math.Max(0, Math.Min(420, XamlRoot.Size.Height - 240));
+        }
+        ApplyHistoryWidth();
+        dialog.Opened += (_, _) => ApplyHistoryWidth();
+        dialog.SizeChanged += (_, _) => ApplyHistoryWidth();
+        void ClearHistory()
+        {
+            historyCancellation.Cancel();
+            passwordPrompt.ClearSensitive();
+            foreach (var row in rows)
+            {
+                row.Value = string.Empty;
+                row.AuthorizeItemAsync = null;
+                row.VerifyRevealOverrideAsync = null;
+                row.FieldUsed -= OnFieldUsed;
+            }
+            content.Children.Clear();
+            historyItems.Children.Clear();
+        }
+        void CloseInvalidHistory()
+        {
+            if (HistoryContextIsCurrent())
+                return;
+            ClearHistory();
+            dialog.Hide();
+        }
+        void OnHistoryContextChanged(object? changedSender, PropertyChangedEventArgs args)
+        {
+            if (string.IsNullOrEmpty(args.PropertyName)
+                || args.PropertyName is nameof(VaultViewModel.Detail) or nameof(VaultViewModel.SelectedItem))
+                CloseInvalidHistory();
+        }
+        void OnHistoryHostUnloaded(object unloadedSender, RoutedEventArgs args) => CloseInvalidHistory();
+        ViewModel.PropertyChanged += OnHistoryContextChanged;
+        Unloaded += OnHistoryHostUnloaded;
+        try
+        {
+            if (HistoryContextIsCurrent())
+                await DialogHelper.ShowTrackedAsync(dialog, lease, ClearHistory, historyCancellation.Token);
+        }
+        finally
+        {
+            ViewModel.PropertyChanged -= OnHistoryContextChanged;
+            Unloaded -= OnHistoryHostUnloaded;
+            ClearHistory();
+            dialog.Hide();
+        }
+    }
+
+    private void OnAttachmentLabelLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBlock { DataContext: AttachmentItem attachment } label)
+            label.Text = ViewModel.Detail?.Attachments.FirstOrDefault()?.Id == attachment.Id ? "附件" : string.Empty;
+    }
+
+    private void OnEditorFolderFlyoutOpening(object sender, object e)
+    {
+        EditorFolderFlyout.Items.Clear();
+        if (_folderInteractionPending || !IsLoaded || !ViewModel.IsEditing
+            || ViewModel.EditorDraft is not { } draft || !ViewModel.CanEditEditorDraft
+            || !TryCaptureExpectedLease(out var lease))
+            return;
+        var version = ++_editorFolderInteractionVersion;
+        void AddFolder(FilterNode? folder)
+        {
+            var item = new ToggleMenuFlyoutItem
+            {
+                Text = folder?.Label ?? "无文件夹", IsChecked = folder?.FolderId == draft.FolderId,
+            };
+            item.Click += (_, _) =>
+            {
+                if (CanContinueEditorFolderInteraction(draft, lease, version)
+                    && (folder is null || ViewModel.FolderFilters.Any(current => current.FolderId == folder.FolderId)))
+                    ViewModel.EditorSelectedFolder = folder;
+            };
+            EditorFolderFlyout.Items.Add(item);
+        }
+        AddFolder(null);
+        EditorFolderFlyout.Items.Add(new MenuFlyoutSeparator());
+        foreach (var folder in ViewModel.FolderFilters)
+            AddFolder(folder);
+        EditorFolderFlyout.Items.Add(new MenuFlyoutSeparator());
+        var create = new MenuFlyoutItem { Text = "新建文件夹…", Icon = new FontIcon { Glyph = "\uE8F4" } };
+        AutomationProperties.SetAutomationId(create, "VaultEditorCreateFolderMenuItem");
+        create.Click += async (_, _) => await CreateFolderFromEditorAsync(draft, lease, version);
+        EditorFolderFlyout.Items.Add(create);
+    }
+
+    private void OnRevealEditorSecretClick(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.IsEditing || !ViewModel.CanEditEditorDraft || sender is not Button button
+            || EditorPasswordBox(button) is not { } box)
+            return;
+        box.PasswordRevealMode = box.PasswordRevealMode == PasswordRevealMode.Visible
+            ? PasswordRevealMode.Hidden : PasswordRevealMode.Visible;
+        UpdateEditorRevealButton(button, box);
+    }
+
+    private static PasswordBox? EditorPasswordBox(Button button) =>
+        button.Parent is Grid { Parent: Grid row } ? FindDescendant<PasswordBox>(row) : null;
+
+    private static void UpdateEditorRevealButton(Button button, PasswordBox box)
+    {
+        var revealed = box.PasswordRevealMode == PasswordRevealMode.Visible;
+        if (button.Content is FontIcon icon)
+            icon.Glyph = revealed ? "\uED1A" : "\uE890";
+        AutomationProperties.SetName(button, revealed ? "隐藏敏感字段" : "显示敏感字段");
+        ToolTipService.SetToolTip(button, revealed ? "隐藏" : "显示");
+    }
+
+    private void ResetEditorSecretActions()
+    {
+        LoginPasswordEditor.PasswordRevealMode = PasswordRevealMode.Hidden;
+        TotpSecretEditor.PasswordRevealMode = PasswordRevealMode.Hidden;
+        foreach (var button in Descendants<Button>(CipherEditorPanel).Where(button => button.Tag as string == "EditorReveal"))
+        {
+            if (EditorPasswordBox(button) is not { } box)
+                continue;
+            box.PasswordRevealMode = PasswordRevealMode.Hidden;
+            UpdateEditorRevealButton(button, box);
+        }
+    }
+
+    private void OnEditorAddActionsSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var wrap = e.NewSize.Width < 250;
+        Grid.SetRow(EditorAddAttachmentButton, wrap ? 1 : 0);
+        Grid.SetColumn(EditorAddAttachmentButton, wrap ? 0 : 2);
+        Grid.SetColumnSpan(EditorAddAttachmentButton, wrap ? 2 : 1);
+    }
+
+    private void OnAddTextCustomFieldClick(object sender, RoutedEventArgs e) => AddCustomField(CipherEditorFieldType.Text);
+
+    private void OnAddHiddenCustomFieldClick(object sender, RoutedEventArgs e) => AddCustomField(CipherEditorFieldType.Hidden);
+
+    private void AddCustomField(CipherEditorFieldType type)
+    {
+        if (!IsLoaded || !ViewModel.IsEditing || !ViewModel.CanEditEditorDraft
+            || ViewModel.EditorDraft is not { } draft || !TryCaptureExpectedLease(out var lease))
+            return;
+        var services = global::App.App.Services;
+        var session = services.GetRequiredService<Vault.VaultSession>();
+        var lifecycle = services.GetRequiredService<IAppLifecycleCoordinator>();
+        CustomFieldEditorDraft? field = null;
+        var accepted = lifecycle.TryRunSensitive(() => session.TryRunIfUnlocked(lease, () =>
+        {
+            if (!IsLoaded || !ViewModel.IsEditing || !ViewModel.CanEditEditorDraft
+                || !ReferenceEquals(ViewModel.EditorDraft, draft))
+                return;
+            var count = draft.CustomFields.Count;
+            ViewModel.AddCustomFieldCommand.Execute(null);
+            if (draft.CustomFields.Count <= count)
+                return;
+            field = draft.CustomFields.LastOrDefault();
+            if (field is not null)
+                field.Type = type;
+        }));
+        if (!accepted || field is null)
+            return;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!IsLoaded || !session.IsUnlocked(lease))
+                return;
+            lifecycle.TryRunSensitive(() => session.TryRunIfUnlocked(lease, () =>
+            {
+                if (!IsLoaded || !ViewModel.IsEditing || !ViewModel.CanEditEditorDraft
+                    || !ReferenceEquals(ViewModel.EditorDraft, draft) || !draft.CustomFields.Contains(field))
+                    return;
+                var input = Descendants<TextBox>(CustomFieldsEditorItems)
+                    .FirstOrDefault(box => box.Name == "CustomFieldNameBox" && ReferenceEquals(box.DataContext, field));
+                input?.Focus(FocusState.Programmatic);
+            }));
+        });
     }
 
     private void BindFieldAuthorization(FieldRow field)
@@ -1713,8 +2229,7 @@ public sealed partial class VaultPage : Page
             return;
         foreach (var row in Descendants<Grid>(CipherList).Where(row => row.Name == "RowRoot"))
         {
-            var hovered = _rowActionStates.TryGetValue(row, out var state) && state.IsPointerOver;
-            UpdateRowVisual(row, hovered);
+            UpdateRowActionVisibility(row);
         }
     }
 
@@ -1785,10 +2300,16 @@ public sealed partial class VaultPage : Page
     {
         try
         {
-            var report = await global::App.App.Services.GetRequiredService<IVaultHealthUiService>().AnalyzeOfflineAsync();
-            if (!IsLoaded)
+            if (!TryCaptureExpectedLease(out var lease))
+                return;
+            var analyzedItems = new HashSet<CipherListItem>(ViewModel.Items, ReferenceEqualityComparer.Instance);
+            var report = await global::App.App.Services.GetRequiredService<IVaultHealthUiService>()
+                .AnalyzeOfflineAsync(ct: lease.CancellationToken);
+            if (!IsLoaded || !global::App.App.Services.GetRequiredService<Vault.VaultSession>().IsUnlocked(lease)
+                || !analyzedItems.SetEquals(ViewModel.Items))
                 return;
             _detailHealthReport = report;
+            _detailHealthItems = analyzedItems;
             UpdateDetailStatus();
             foreach (var icon in Descendants<FontIcon>(CipherList).Where(icon => icon.Name == "RowIssueGlyph"))
                 UpdateRowIssue(icon);
@@ -1815,13 +2336,19 @@ public sealed partial class VaultPage : Page
             return (string.Empty, string.Empty, "TextFillColorSecondaryBrush", false);
         var reports = global::App.App.Services.GetRequiredService<SecurityReportViewModel>();
         var exposed = reports.ExposedItems.FirstOrDefault(finding => finding.Item.CipherId == item.Id);
-        if (exposed is not null)
+        if (exposed is not null && !reports.IsIssueIgnored("breach", item.Id))
             return ($"密码出现在 {exposed.BreachCount} 次已知数据泄露中" + (reports.ExposedChecked ? string.Empty : " · 待复查"), "\uEA39", "SystemFillColorCriticalBrush", true);
-        var reused = _detailHealthReport?.Reused.FirstOrDefault(group => group.Items.Any(entry => entry.CipherId == item.Id));
+        var reused = reports.IsIssueIgnored("reuse", item.Id) ? null
+            : _detailHealthReport?.Reused.FirstOrDefault(group => group.Items.Any(entry => entry.CipherId == item.Id));
         if (reused is not null)
             return ($"与“{reused.Items.FirstOrDefault(entry => entry.CipherId != item.Id)?.Name}”用的是同一个密码", "\uE7BA", "SystemFillColorCautionBrush", true);
-        if (_detailHealthReport?.Weak.Any(finding => finding.Item.CipherId == item.Id) == true)
+        if (!reports.IsIssueIgnored("weak", item.Id)
+            && _detailHealthReport?.Weak.Any(finding => finding.Item.CipherId == item.Id) == true)
             return ("密码较弱，建议更换", "\uE7BA", "SystemFillColorCautionBrush", true);
+        if (!reports.IsIssueIgnored("http", item.Id)
+            && _detailHealthReport?.Unsecured.Any(finding => finding.Item.CipherId == item.Id
+                && Uri.TryCreate(finding.Uri, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttp) == true)
+            return ("这个网站没有使用 HTTPS", "\uE7BA", "SystemFillColorCautionBrush", false);
         return (string.Empty, string.Empty, "TextFillColorSecondaryBrush", false);
     }
 
@@ -1847,6 +2374,8 @@ public sealed partial class VaultPage : Page
         if (DetailStatusText is null || ViewModel.SelectedItem is not { } item || ViewModel.Detail is not { } detail)
             return;
         var issue = GetIssue(item);
+        var statusGlyph = issue.Glyph;
+        var statusBrush = issue.Brush;
         var facts = new List<string>();
         if (!string.IsNullOrEmpty(issue.Text))
             facts.Add(issue.Text);
@@ -1856,6 +2385,11 @@ public sealed partial class VaultPage : Page
         {
             var score = global::App.App.Services.GetRequiredService<Crypto.PasswordStrength.PasswordStrengthEvaluator>().Evaluate(login.Password).Score;
             facts.Add(score >= 4 ? "密码很强" : score >= 3 ? "密码强度良好" : "密码强度一般");
+            if (_detailHealthReport is not null && _detailHealthItems.Contains(item))
+            {
+                statusGlyph = "\uE930";
+                statusBrush = "SystemFillColorSuccessBrush";
+            }
         }
         else if (detail is CardDetail card)
             facts.Add(string.Join(" · ", new[] { card.Brand, card.Expiry }.Where(value => !string.IsNullOrWhiteSpace(value))));
@@ -1876,11 +2410,15 @@ public sealed partial class VaultPage : Page
             }
         }
         if (!detail.IsDeleted)
+        {
+            if (detail.Reprompt)
+                facts.Add(detail.SensitiveUnlocked ? "已验证主密码" : "需要主密码重新验证");
             facts.Add(RecentUseText(ViewModel.GetLastUsedAt(item.Id)));
+        }
         DetailStatusText.Text = string.Join(" · ", facts.Where(value => !string.IsNullOrWhiteSpace(value)));
-        DetailStatusIcon.Glyph = issue.Glyph;
-        DetailStatusIcon.Visibility = string.IsNullOrEmpty(issue.Glyph) ? Visibility.Collapsed : Visibility.Visible;
-        DetailStatusIcon.Foreground = ThemeBrushResolver.Resolve(this, issue.Brush);
+        DetailStatusIcon.Glyph = statusGlyph;
+        DetailStatusIcon.Visibility = string.IsNullOrEmpty(statusGlyph) ? Visibility.Collapsed : Visibility.Visible;
+        DetailStatusIcon.Foreground = ThemeBrushResolver.Resolve(this, statusBrush);
         ChangePasswordButton.Visibility = issue.ChangePassword && item.CanModify ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -1910,6 +2448,9 @@ public sealed partial class VaultPage : Page
             return;
         draft.Login.Password = global::App.App.Services.GetRequiredService<GeneratorViewModel>().GenerateCredentialForLogin();
         LoginPasswordEditor.PasswordRevealMode = PasswordRevealMode.Visible;
+        foreach (var button in Descendants<Button>(CipherEditorPanel).Where(button => button.Tag as string == "EditorReveal"))
+            if (EditorPasswordBox(button) is { } box)
+                UpdateEditorRevealButton(button, box);
     }
 
     private async void OnRowCopyUsernameClick(object sender, RoutedEventArgs e)
@@ -1984,6 +2525,28 @@ public sealed partial class VaultPage : Page
 
     private void OnClearSearchClick(object sender, RoutedEventArgs e) => ViewModel.SearchText = string.Empty;
 
+    private async void OnSearchAllItemsClick(object sender, RoutedEventArgs e)
+    {
+        if (!await ConfirmLeaveEditorAsync())
+            return;
+        var search = ViewModel.SearchText;
+        ViewModel.SelectFilterByTag("vault:allitems");
+        ViewModel.SearchText = search;
+        FocusSearch();
+    }
+
+    private async void OnEmptyImportClick(object sender, RoutedEventArgs e)
+    {
+        if (global::App.App.MainWindow is { } window)
+            await window.OpenImportExportAsync();
+    }
+
+    private async void OnEnterSelectionClick(object sender, RoutedEventArgs e)
+    {
+        if (await ConfirmLeaveEditorAsync() && ViewModel.CanStartVaultOperation)
+            ViewModel.ToggleSelectionModeCommand.Execute(null);
+    }
+
     private async void OnVaultKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
         if (e.Handled || _sensitiveActionPending || _confirmingLeave)
@@ -1991,13 +2554,10 @@ public sealed partial class VaultPage : Page
         var key = e.Key;
         if (key == Windows.System.VirtualKey.Escape)
         {
-            if (!string.IsNullOrEmpty(ViewModel.SearchText))
-                ViewModel.SearchText = string.Empty;
-            else if (ViewModel.IsEditing)
-                await ConfirmLeaveEditorAsync();
-            else
+            if (!CanHandleEscape)
                 return;
             e.Handled = true;
+            await HandleEscapeAsync();
             return;
         }
         if (XamlRoot is null || Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot).Count > 0)

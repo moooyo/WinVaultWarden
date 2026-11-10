@@ -1,6 +1,7 @@
 using App.Services;
 using App.ViewModels;
 using Core.Abstractions;
+using Core.Enums;
 using Core.Services;
 using Core.Session;
 using System.Security.Cryptography;
@@ -36,9 +37,11 @@ public sealed partial class LoginPage : Page
     private bool _isFullLocalResetConfirmationOpen;
     private CancellationTokenSource? _fullLocalResetConfirmationCancellation;
     private LoginStage? _helloAutoPromptedForStage;
+    private readonly KeyEventHandler _capsLockKeyUpHandler;
 
     public LoginPage()
     {
+        _capsLockKeyUpHandler = OnAuthKeyUp;
         ViewModel = global::App.App.Services.GetRequiredService<LoginViewModel>();
         ViewModel.SetSuccessHandler(TryAcceptSuccessfulSession);
 
@@ -53,6 +56,10 @@ public sealed partial class LoginPage : Page
         RememberEmailBox.IsChecked = AppPreferences.Current.RememberEmail;
         _initializingPreferenceControls = false;
         Loaded += OnLoaded;
+        ActualThemeChanged += OnAuthThemeChanged;
+        GotFocus += OnAuthFocusChanged;
+        LostFocus += OnAuthFocusChanged;
+        AddHandler(UIElement.KeyUpEvent, _capsLockKeyUpHandler, true);
         LoginForm.SizeChanged += OnLoginFormSizeChanged;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         _deviceApprovalTimer.Tick += OnDeviceApprovalTimerTick;
@@ -244,12 +251,71 @@ public sealed partial class LoginPage : Page
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         LoginForm.SizeChanged -= OnLoginFormSizeChanged;
         Loaded -= OnLoaded;
+        ActualThemeChanged -= OnAuthThemeChanged;
+        GotFocus -= OnAuthFocusChanged;
+        LostFocus -= OnAuthFocusChanged;
+        RemoveHandler(UIElement.KeyUpEvent, _capsLockKeyUpHandler);
+        UpdateCapsLockWarnings();
         ViewModel.Deactivate();
     }
 
     public void RequestWindowFit() => QueueFitWindowToContent();
 
     private void OnLoginFormSizeChanged(object sender, SizeChangedEventArgs e) => QueueFitWindowToContent();
+
+    private void OnServerOptionsSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var options = ServerOptionBox.Items.OfType<ListBoxItem>().ToArray();
+        if (options.Length == 0 || e.NewSize.Width <= 0)
+            return;
+
+        const double spacing = 4;
+        var width = Math.Max(0, (e.NewSize.Width - spacing * (options.Length - 1)) / options.Length);
+        for (var index = 0; index < options.Length; index++)
+        {
+            options[index].Width = width;
+            options[index].Margin = new Thickness(0, 0, index == options.Length - 1 ? 0 : spacing, 0);
+        }
+    }
+
+    private void OnAuthThemeChanged(FrameworkElement sender, object args) => UpdateInlineAuthError();
+
+    private void OnAuthFocusChanged(object sender, RoutedEventArgs args)
+    {
+        if (!_isDeactivated)
+            DispatcherQueue.TryEnqueue(UpdateCapsLockWarnings);
+    }
+
+    private void OnAuthKeyUp(object sender, KeyRoutedEventArgs args) => UpdateCapsLockWarnings();
+
+    private void UpdateCapsLockWarnings()
+    {
+        StackPanel? activeWarning = null;
+        if (!_isDeactivated && IsLoaded && XamlRoot is not null
+            && !_isSsoFormOpen && !_isTwoFactorPickerOpen && _helloEnrollmentLease is null
+            && (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.CapitalLock)
+                & Windows.UI.Core.CoreVirtualKeyStates.Locked) != 0)
+        {
+            var focused = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+            while (focused is not null && focused is not PasswordBox)
+                focused = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(focused);
+            activeWarning = focused switch
+            {
+                PasswordBox input when input == MasterPasswordBox && ViewModel.IsPasswordStage => MasterPasswordCapsWarning,
+                PasswordBox input when input == UnlockPasswordBox && ViewModel.IsUnlockStage
+                    && !(_preferHelloUnlock && ViewModel.ShowHelloUnlock) => UnlockPasswordCapsWarning,
+                PasswordBox input when input == NewMasterPasswordBox && ViewModel.IsPasswordChangeRequiredStage => NewMasterPasswordCapsWarning,
+                PasswordBox input when input == ConfirmNewMasterPasswordBox && ViewModel.IsPasswordChangeRequiredStage => ConfirmNewMasterPasswordCapsWarning,
+                _ => null,
+            };
+        }
+        foreach (var warning in new[]
+        {
+            MasterPasswordCapsWarning, UnlockPasswordCapsWarning,
+            NewMasterPasswordCapsWarning, ConfirmNewMasterPasswordCapsWarning,
+        })
+            warning.Visibility = warning == activeWarning ? Visibility.Visible : Visibility.Collapsed;
+    }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -879,6 +945,11 @@ public sealed partial class LoginPage : Page
         var isLocked = ViewModel.ShowUnlockPanel || ViewModel.IsPinUnlockStage;
         var helloPrimary = isLocked && _preferHelloUnlock && ViewModel.ShowHelloUnlock;
         LoginForm.MaxWidth = isLocked ? 320 : 360;
+        var provider = ViewModel.TwoFactorProviderOptions.ElementAtOrDefault(ViewModel.SelectedTwoFactorProviderIndex)?.Type;
+        var fullWidthCode = ViewModel.IsRecoveryCodeMode
+            || provider is (int)TwoFactorProviderType.YubiKey or (int)TwoFactorProviderType.RecoveryCode;
+        TwoFactorCodeTextBox.Width = fullWidthCode ? double.NaN : 200;
+        TwoFactorCodeTextBox.HorizontalAlignment = fullWidthCode ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         var usesAppIcon = ViewModel.IsAccountStage || ViewModel.IsPasswordStage;
         LoginAppIcon.Visibility = !isLocked && usesAppIcon ? Visibility.Visible : Visibility.Collapsed;
         LoginStepIcon.Visibility = !isLocked && !usesAppIcon ? Visibility.Visible : Visibility.Collapsed;
@@ -927,6 +998,7 @@ public sealed partial class LoginPage : Page
             && ViewModel.Status is "请输入 PIN 解锁。" or "请输入主密码解锁。";
         LoginStatusInfoBar.Visibility = ViewModel.HasStatus && !redundantUnlockPrompt && !inlineError
             ? Visibility.Visible : Visibility.Collapsed;
+        UpdateCapsLockWarnings();
     }
 
     private bool UpdateInlineAuthError()
@@ -1048,6 +1120,9 @@ public sealed partial class LoginPage : Page
         or nameof(LoginViewModel.FormSubtitle)
         or nameof(LoginViewModel.StepText)
         or nameof(LoginViewModel.PrimaryButtonText)
+        or nameof(LoginViewModel.SelectedTwoFactorProviderIndex)
+        or nameof(LoginViewModel.IsRecoveryCodeMode)
+        or nameof(LoginViewModel.TwoFactorProviderOptions)
         or nameof(LoginViewModel.IsSsoPending)
         or nameof(LoginViewModel.ShowCancelSso)
         or nameof(LoginViewModel.ShowSavedAccounts)

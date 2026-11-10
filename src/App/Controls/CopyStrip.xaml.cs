@@ -42,11 +42,14 @@ public sealed partial class CopyStrip : UserControl
         public bool Mono { get; } = mono;
         public bool Add { get; } = add;
         public Grid Root { get; } = new() { MinHeight = 92 };
+        public Grid ValueRow { get; } = new();
         public Button Button { get; } = new();
-        public TextBlock LabelText { get; } = new() { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        public TextBlock ValueText { get; } = new() { FontSize = 20, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, LineHeight = 32 };
+        public TextBlock LabelText { get; } = new() { FontSize = 12, LineHeight = 16, LineStackingStrategy = LineStackingStrategy.BlockLineHeight, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        public TextBlock ValueText { get; } = new() { FontSize = 20, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1, VerticalAlignment = VerticalAlignment.Center, LineHeight = 32, LineStackingStrategy = LineStackingStrategy.BlockLineHeight, IsHitTestVisible = false };
+        public List<Run> ValueRuns { get; } = [];
         public FontIcon CopyIcon { get; } = new() { Glyph = "\uE8C8", FontSize = 14, Opacity = 0 };
         public FontIcon DoneIcon { get; } = new() { Glyph = "\uE73E", FontSize = 12, Visibility = Visibility.Collapsed };
+        public FontIcon AddIcon { get; } = new() { Glyph = "\uE710", FontSize = 16 };
         public Button Reveal { get; } = new() { Width = 32, Height = 32, Visibility = Visibility.Collapsed };
         public FontIcon RevealIcon { get; } = new() { Glyph = "\uE890", FontSize = 16 };
         public ProgressBar Progress { get; } = new() { Minimum = 0, Maximum = 100, Height = 2, MinHeight = 2, Visibility = Visibility.Collapsed, IsHitTestVisible = false };
@@ -54,8 +57,9 @@ public sealed partial class CopyStrip : UserControl
         public TotpField? Totp { get; set; }
         public StackPanel HeaderCountdown { get; } = new() { Orientation = Orientation.Horizontal, Spacing = 6, Visibility = Visibility.Collapsed };
         public ProgressRing HeaderRing { get; } = new() { Width = 16, Height = 16, MinWidth = 16, MinHeight = 16, Minimum = 0, Maximum = 30, IsIndeterminate = false };
-        public TextBlock HeaderSeconds { get; } = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        public TextBlock HeaderSeconds { get; } = new() { FontSize = 12, LineHeight = 16, LineStackingStrategy = LineStackingStrategy.BlockLineHeight, MinWidth = 14, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         public bool Hovered { get; set; }
+        public bool Focused { get; set; }
     }
 
     public CopyStrip()
@@ -184,12 +188,15 @@ public sealed partial class CopyStrip : UserControl
             cell.Root.Children.Add(cell.Button);
             cell.Root.PointerEntered += (_, _) => { cell.Hovered = true; UpdateFeedback(); };
             cell.Root.PointerExited += (_, _) => { cell.Hovered = false; UpdateFeedback(); };
+            cell.Root.GotFocus += (_, _) => { cell.Focused = true; UpdateFeedback(); };
+            cell.Root.LostFocus += (_, _) => { cell.Focused = false; UpdateFeedback(); };
+            cell.Root.SizeChanged += (_, _) => UpdateFeedback();
             cell.Root.Children.Add(cell.Flash);
-            var content = new Grid { Margin = new Thickness(12, 12, 12, 20), IsHitTestVisible = false };
+            var content = new Grid { Margin = new Thickness(12, 12, 12, 20) };
             content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(24) });
             content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(32) });
             content.RowSpacing = 6;
-            var labelRow = new Grid();
+            var labelRow = new Grid { IsHitTestVisible = false };
             labelRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             labelRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             labelRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -206,31 +213,38 @@ public sealed partial class CopyStrip : UserControl
             cell.HeaderCountdown.Children.Add(cell.HeaderSeconds);
             labelRow.Children.Add(cell.HeaderCountdown);
             content.Children.Add(labelRow);
-            var valueRow = new Grid { ColumnSpacing = 8 };
-            valueRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var valueRow = cell.ValueRow;
+            valueRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             valueRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             if (cell.Key == "totp" && !cell.Add)
             {
                 cell.Totp = new TotpField { IsCompact = true, IsReadOnly = true };
+                cell.Totp.IsHitTestVisible = false;
                 valueRow.Children.Add(cell.Totp);
-                cell.Root.SizeChanged += (_, _) => UpdateFeedback();
+            }
+            else if (cell.Add)
+            {
+                var addValue = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, IsHitTestVisible = false };
+                addValue.Children.Add(cell.AddIcon);
+                addValue.Children.Add(cell.ValueText);
+                valueRow.Children.Add(addValue);
             }
             else valueRow.Children.Add(cell.ValueText);
             if (cell.Secret && cell.Key != "totp" && !detail.IsDeleted)
             {
-                cell.ValueText.Margin = new Thickness(0, 0, 32, 0);
-                cell.Reveal.Style = (Style)Application.Current.Resources["IconButtonStyle"];
+                cell.Reveal.Style = (Style)Resources["CopyStripRevealStyle"];
                 cell.Reveal.Content = cell.RevealIcon;
-                cell.Reveal.HorizontalAlignment = HorizontalAlignment.Right;
-                cell.Reveal.VerticalAlignment = VerticalAlignment.Bottom;
-                cell.Reveal.Margin = new Thickness(0, 0, 12, 20);
+                cell.Reveal.HorizontalAlignment = HorizontalAlignment.Left;
+                cell.Reveal.VerticalAlignment = VerticalAlignment.Center;
                 cell.Reveal.Visibility = Visibility.Visible;
                 cell.Reveal.Click += async (_, _) => await RevealAsync(cell.Key);
+                Grid.SetColumn(cell.Reveal, 1);
+                valueRow.ColumnSpacing = 8;
+                valueRow.Children.Add(cell.Reveal);
             }
             Grid.SetRow(valueRow, 1);
             content.Children.Add(valueRow);
             cell.Root.Children.Add(content);
-            cell.Root.Children.Add(cell.Reveal);
             cell.Progress.Margin = new Thickness(12, 0, 12, 8);
             cell.Progress.VerticalAlignment = VerticalAlignment.Bottom;
             cell.Root.Children.Add(cell.Progress);
@@ -259,26 +273,20 @@ public sealed partial class CopyStrip : UserControl
                 continue;
             }
             var revealed = _revealed.Contains(cell.Key) && IsLoaded;
-            cell.ValueText.Inlines.Clear();
             cell.ValueText.CharacterSpacing = cell.Secret ? revealed ? 20 : 120 : 0;
             cell.ValueText.FontSize = cell.Add ? 15 : cell.Secret && revealed ? 18 : cell.Mono ? 15 : 20;
             cell.ValueText.FontWeight = cell.Add ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal;
             cell.ValueText.FontFamily = cell.Mono || cell.Secret && revealed ? monospace : FontFamily;
             cell.ValueText.Foreground = BrushFor(cell.Add ? "AccentTextFillColorPrimaryBrush" : "TextFillColorPrimaryBrush");
-            cell.ValueText.Text = cell.Add ? "+ 添加验证码" : string.IsNullOrEmpty(value)
-                ? cell.Secret && !detail.SensitiveUnlocked ? "••••••••••••" : "未设置"
-                : cell.Secret && !revealed ? Mask(cell.Key, value) : value;
-            if (revealed && cell.Key == "password" && value is not null)
-            {
-                cell.ValueText.Text = string.Empty;
-                foreach (var character in value)
-                    cell.ValueText.Inlines.Add(new Run
-                    {
-                        Text = character.ToString(),
-                        Foreground = BrushFor(char.IsDigit(character) ? "AccentTextFillColorPrimaryBrush"
-                            : char.IsLetter(character) ? "TextFillColorPrimaryBrush" : "SystemFillColorCautionBrush"),
-                    });
-            }
+            cell.AddIcon.Foreground = BrushFor("AccentTextFillColorPrimaryBrush");
+            var displayText = cell.Add ? "添加验证码" : string.IsNullOrEmpty(value)
+                ? cell.Secret && !detail.SensitiveUnlocked ? "••••••••" : "未设置"
+                : cell.Secret && !revealed ? Mask(cell.Key, value)
+                : cell.Key == "publicKey" ? FieldRow.SummarizeSshPublicKey(value) : value;
+            ToolTipService.SetToolTip(cell.Button, cell.Add ? "编辑此条目并保存验证码"
+                : $"点击复制{cell.Label}" + (cell.Key == "password" ? " · Ctrl+C" : string.Empty)
+                    + (cell.Key == "publicKey" && value is not null ? "\n" + value : string.Empty));
+            SetCellText(cell, displayText, revealed && cell.Key == "password" && value is not null);
             cell.RevealIcon.Glyph = revealed ? "\uED1A" : "\uE890";
             cell.Reveal.IsEnabled = !_busy;
             AutomationProperties.SetName(cell.Reveal, $"{(revealed ? "隐藏" : "显示")}{cell.Label}");
@@ -286,11 +294,33 @@ public sealed partial class CopyStrip : UserControl
         }
     }
 
+    private void SetCellText(Cell cell, string text, bool colorize)
+    {
+        // Keep native inline identities stable and erase unused runs when masking.
+        var requiredRuns = colorize ? text.Length : 1;
+        while (cell.ValueRuns.Count < requiredRuns)
+        {
+            var run = new Run();
+            cell.ValueRuns.Add(run);
+            cell.ValueText.Inlines.Add(run);
+        }
+        for (var index = 0; index < cell.ValueRuns.Count; index++)
+        {
+            var run = cell.ValueRuns[index];
+            run.Text = index >= requiredRuns ? string.Empty : colorize ? text[index].ToString() : text;
+            if (colorize && index < requiredRuns)
+                run.Foreground = BrushFor(char.IsDigit(text[index]) ? "AccentTextFillColorPrimaryBrush"
+                    : char.IsLetter(text[index]) ? "TextFillColorPrimaryBrush" : "SystemFillColorCautionBrush");
+            else
+                run.ClearValue(TextElement.ForegroundProperty);
+        }
+    }
+
     private static string Mask(string key, string value) => key switch
     {
         "number" => "•••• " + new string(value.Where(char.IsDigit).TakeLast(4).ToArray()),
         "cvv" => "•••",
-        _ => "••••••••••••",
+        _ => "••••••••",
     };
 
     private static string? ValueOf(CipherDetail detail, string key) => (detail, key) switch
@@ -418,6 +448,7 @@ public sealed partial class CopyStrip : UserControl
     {
         var active = _clipboardStatus is { HasContent: true } && _copiedVersion != 0 && _clipboardStatus.WriteVersion == _copiedVersion;
         var remaining = _clipboardStatus?.ClearAt is { } clearAt ? Math.Max(0, (int)Math.Ceiling((clearAt - DateTimeOffset.UtcNow).TotalSeconds)) : 0;
+        var totalSeconds = _clipboardStatus?.TotalSeconds ?? 0;
         foreach (var cell in _cells)
         {
             var copied = active && _copiedField == cell.Key;
@@ -428,13 +459,18 @@ public sealed partial class CopyStrip : UserControl
             cell.LabelText.Margin = new Thickness(copied ? 6 : 0, 0, 0, 0);
             cell.LabelText.FontWeight = copied || next ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal;
             cell.DoneIcon.Visibility = copied ? Visibility.Visible : Visibility.Collapsed;
-            cell.CopyIcon.Opacity = cell.Hovered && !copied && !cell.Add && Detail?.IsDeleted == false ? 1 : 0;
+            cell.CopyIcon.Opacity = (cell.Hovered || cell.Focused) && !copied && !cell.Add && Detail?.IsDeleted == false ? 1 : 0;
             cell.CopyIcon.Foreground = BrushFor("TextFillColorSecondaryBrush");
-            cell.Progress.Visibility = next || copied && _clipboardStatus?.TotalSeconds > 0 ? Visibility.Visible : Visibility.Collapsed;
+            cell.Progress.Visibility = next || copied ? Visibility.Visible : Visibility.Collapsed;
             cell.Progress.Foreground = color;
-            cell.Progress.Background = BrushFor("DividerStrokeColorDefaultBrush");
-            cell.Progress.Value = next ? 100 : _clipboardStatus?.TotalSeconds > 0 ? 100d * remaining / _clipboardStatus.TotalSeconds : 0;
-            cell.Flash.Background = BrushFor("AccentTextFillColorPrimaryBrush");
+            cell.Progress.Background = BrushFor(copied ? "DividerStrokeColorDefaultBrush" : "SubtleFillColorTransparentBrush");
+            cell.Progress.Value = next || copied && totalSeconds <= 0 ? 100
+                : totalSeconds > 0 ? 100d * remaining / totalSeconds : 0;
+            cell.Flash.Background = BrushFor("WardenCopyFlashBrush");
+            AutomationProperties.SetName(cell.Button, cell.Add ? "添加验证码" : copied ? $"已复制{cell.Label}" : $"复制{cell.Label}");
+            if (cell.Root.ActualWidth > 0)
+                cell.ValueText.MaxWidth = Math.Max(0, cell.Root.ActualWidth - 24
+                    - (cell.Reveal.Visibility == Visibility.Visible ? 40 : cell.Add ? 22 : 0));
             if (cell.Totp is not null)
             {
                 var inHeader = cell.Root.ActualWidth > 0 && cell.Root.ActualWidth < 194;
@@ -449,6 +485,7 @@ public sealed partial class CopyStrip : UserControl
                     var seconds = period - DateTimeOffset.UtcNow.ToUnixTimeSeconds() % period;
                     cell.HeaderRing.Maximum = period;
                     cell.HeaderRing.Value = seconds;
+                    cell.HeaderRing.Background = BrushFor("WardenSurfaceStrokeBrush");
                     cell.HeaderRing.Foreground = BrushFor(seconds <= 5 ? "SystemFillColorCautionBrush" : "TextFillColorSecondaryBrush");
                     cell.HeaderSeconds.Text = seconds.ToString();
                     cell.HeaderSeconds.Foreground = BrushFor("TextFillColorSecondaryBrush");
@@ -464,7 +501,7 @@ public sealed partial class CopyStrip : UserControl
     private static void Flash(Cell cell)
     {
         if (!new UISettings().AnimationsEnabled) return;
-        var animation = new DoubleAnimation { From = .16, To = 0, Duration = new Duration(TimeSpan.FromMilliseconds(650)) };
+        var animation = new DoubleAnimation { From = 1, To = 0, Duration = new Duration(TimeSpan.FromMilliseconds(650)) };
         Storyboard.SetTarget(animation, cell.Flash);
         Storyboard.SetTargetProperty(animation, "Opacity");
         var storyboard = new Storyboard();
@@ -476,8 +513,9 @@ public sealed partial class CopyStrip : UserControl
     {
         foreach (var cell in _cells)
         {
-            cell.ValueText.Text = string.Empty;
-            cell.ValueText.Inlines.Clear();
+            foreach (var run in cell.ValueRuns)
+                run.Text = string.Empty;
+            ToolTipService.SetToolTip(cell.Button, null);
             if (cell.Totp is not null) cell.Totp.Secret = string.Empty;
         }
     }

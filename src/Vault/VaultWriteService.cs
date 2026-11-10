@@ -1207,18 +1207,7 @@ public sealed class VaultWriteService : IVaultWriteService
     public async Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default)
     {
         var lease = _session.CaptureLease();
-        if (!_session.TryCopyUserKeyMaterial(lease, out var copiedKey) || copiedKey is null)
-            throw new InvalidOperationException("Vault is locked.");
-        FolderRequest request;
-        using (copiedKey)
-        {
-            request = new FolderRequest
-            {
-                Name = copiedKey.Legacy is { } legacy
-                    ? _encryptor.EncryptFolderName(name, legacy)
-                    : _encryptor.EncryptFolderName(name, copiedKey.V2!),
-            };
-        }
+        var request = CreateFolderRequest(lease, name);
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         _session.ThrowIfExpired(lease);
@@ -1230,6 +1219,54 @@ public sealed class VaultWriteService : IVaultWriteService
             await api.UpdateFolderAsync(folderId, request, linked.Token);
         _session.ThrowIfExpired(lease);
         await ResyncAsync(lease, ct);
+    }
+
+    public async Task<string> CreateFolderAndGetIdAsync(string name, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        var lease = _session.CaptureLease();
+        var request = CreateFolderRequest(lease, name);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        linked.Token.ThrowIfCancellationRequested();
+        _session.ThrowIfExpired(lease);
+        var api = _clients.GetAuthenticated<IVaultWriteApiClient>(lease);
+        _session.ThrowIfExpired(lease);
+        FolderDto folder;
+        try
+        {
+            folder = await api.CreateFolderWithResponseAsync(request, linked.Token);
+        }
+        catch (FolderCreateSuccessResponseReadException)
+        {
+            _session.TryMarkDataStale(lease);
+            throw;
+        }
+        _session.ThrowIfExpired(lease);
+        if (folder is null || string.IsNullOrWhiteSpace(folder.Id))
+        {
+            _session.TryMarkDataStale(lease);
+            throw new FolderCreateSuccessResponseReadException(
+                new InvalidDataException("The created folder response did not contain an ID."));
+        }
+        await ResyncAsync(lease, ct);
+        _session.ThrowIfExpired(lease);
+        linked.Token.ThrowIfCancellationRequested();
+        return folder.Id;
+    }
+
+    private FolderRequest CreateFolderRequest(VaultSessionLease lease, string name)
+    {
+        if (!_session.TryCopyUserKeyMaterial(lease, out var copiedKey) || copiedKey is null)
+            throw new InvalidOperationException("Vault is locked.");
+        using (copiedKey)
+        {
+            return new FolderRequest
+            {
+                Name = copiedKey.Legacy is { } legacy
+                    ? _encryptor.EncryptFolderName(name, legacy)
+                    : _encryptor.EncryptFolderName(name, copiedKey.V2!),
+            };
+        }
     }
 
     public async Task DeleteFolderAsync(string folderId, CancellationToken ct = default)

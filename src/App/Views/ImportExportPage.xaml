@@ -40,7 +40,7 @@
                              IsOpen="{x:Bind ViewModel.HasSucceededStatus, Mode=OneWay}"
                              Visibility="{x:Bind ViewModel.HasSucceededStatus, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                              Message="{x:Bind ViewModel.OperationMessage, Mode=OneWay}" />
-                    <InfoBar IsClosable="False" Severity="Warning" Title="导入已完成，需要同步" Margin="0,0,0,12"
+                    <InfoBar IsClosable="False" Severity="Warning" Background="{ThemeResource WardenCautionBackgroundBrush}" Title="导入已完成，需要同步" Margin="0,0,0,12"
                              AutomationProperties.AutomationId="OperationWarningInfoBar" AutomationProperties.LiveSetting="Polite"
                              IsOpen="{x:Bind ViewModel.HasWarningStatus, Mode=OneWay}"
                              Visibility="{x:Bind ViewModel.HasWarningStatus, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
@@ -50,7 +50,7 @@
                              IsOpen="{x:Bind ViewModel.HasCancelledStatus, Mode=OneWay}"
                              Visibility="{x:Bind ViewModel.HasCancelledStatus, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                              Message="{x:Bind ViewModel.OperationMessage, Mode=OneWay}" />
-                    <InfoBar IsClosable="False" Severity="Error" Title="操作失败" Margin="0,0,0,12"
+                    <InfoBar IsClosable="False" Severity="Error" Background="{ThemeResource WardenCriticalBackgroundBrush}" Title="操作失败" Margin="0,0,0,12"
                              AutomationProperties.AutomationId="OperationFailedInfoBar" AutomationProperties.LiveSetting="Assertive"
                              IsOpen="{x:Bind ViewModel.HasFailedStatus, Mode=OneWay}"
                              Visibility="{x:Bind ViewModel.HasFailedStatus, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
@@ -123,7 +123,7 @@
                 </StackPanel>
                 <StackPanel>
                     <TextBlock Text="导出" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,0,0,8" />
-                    <InfoBar x:Name="ExportPolicyInfoBar" IsClosable="False" Severity="Warning" Margin="0,0,0,12"
+                    <InfoBar x:Name="ExportPolicyInfoBar" IsClosable="False" Severity="Warning" Background="{ThemeResource WardenCautionBackgroundBrush}" Margin="0,0,0,12"
                              IsOpen="{x:Bind ViewModel.ShowExportPolicyInfo, Mode=OneWay}"
                              Visibility="{x:Bind ViewModel.ShowExportPolicyInfo, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                              Message="{x:Bind ViewModel.ExportPolicyNotice, Mode=OneWay}" />

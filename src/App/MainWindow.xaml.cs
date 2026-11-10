@@ -178,9 +178,9 @@ public sealed partial class MainWindow : Window
 
     private void UpdateCaptionPadding()
     {
-        // RightInset 是物理像素,转成 DIP(除以光栅缩放)。
+        // Native resizing can temporarily report a negative physical inset.
         var scale = WindowRasterizationScale();
-        RightPaddingColumn.Width = new GridLength(AppWindow.TitleBar.RightInset / scale);
+        RightPaddingColumn.Width = new GridLength(Math.Max(0, AppWindow.TitleBar.RightInset) / scale);
     }
 
     private void PopulateFolderNavigation()
@@ -361,24 +361,39 @@ public sealed partial class MainWindow : Window
         return _lifecycle.TryActivateSession(() =>
             session.TryRunIfUnlocked(lease, () =>
         {
+            var phase = "layout";
+            try
+            {
             ApplyVaultWindowLayout();
+            phase = "folders";
             PopulateFolderNavigation();
+            phase = "account";
             UpdateAccountContext();
+            phase = "visibility";
             LoginHost.Visibility = Visibility.Collapsed;
             Nav.Visibility = Visibility.Visible;
             SetShellSessionVisibility(true);
             Nav.SelectedItem = AllItemsNavItem;
+            phase = "navigate";
             _nav.GoToVault("vault:allitems");
+            phase = "background";
             _ = global::App.App.Services.GetRequiredService<Services.NotificationsHost>().StartAsync();
             _ = global::App.App.Services.GetRequiredService<DeviceApprovalWindowService>().ShowPendingRequestsAsync();
 
             if (AppPreferences.Current.AllowBrowserIntegration && !AboutInfo.IsPackaged)
                 global::App.App.Services.GetRequiredService<Services.PasskeyBridgeServer>().Start();
 
+            phase = "timeout";
             _timeout.Start();
             EnforceCurrentTimeoutPolicy();
             if (_timeout.IsArmed)
                 _idleTimer?.Start();
+            }
+            catch (Exception exception)
+            {
+                CrashLogger.WriteRedacted($"VaultActivation.{phase}", exception);
+                throw;
+            }
         }));
     }
 
@@ -485,6 +500,9 @@ public sealed partial class MainWindow : Window
         if (args.InvokedItemContainer is not NavigationViewItem item)
             return;
 
+        if (item.Tag as string == "shell:folder-header")
+            return;
+
         if (item.Tag as string == "shell:new")
         {
             (_shellPage == "send" ? NewSendButton.Flyout : NewVaultButton.Flyout)?.ShowAt(item);
@@ -501,6 +519,8 @@ public sealed partial class MainWindow : Window
             Nav.IsPaneOpen = false;
         UpdateNavigationContext();
     }
+
+    internal Task OpenImportExportAsync() => NavigateByTagAsync("io");
 
     private async Task NavigateByTagAsync(string? tag, bool preserveDraft = false)
     {

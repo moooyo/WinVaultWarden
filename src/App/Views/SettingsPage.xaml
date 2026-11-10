@@ -36,18 +36,18 @@
             <Setter Property="OffContent" Value="" />
         </Style>
     </Page.Resources>
-    <Grid x:Name="SettingsSurface" Background="{ThemeResource LayerFillColorDefaultBrush}">
+    <Grid x:Name="SettingsSurface" Background="{ThemeResource WardenLayerBrush}">
         <ScrollViewer x:Name="SettingsScrollViewer" HorizontalContentAlignment="Stretch" HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled">
             <Grid Padding="40,40,40,48" HorizontalAlignment="Stretch">
             <Border MaxWidth="680" HorizontalAlignment="Stretch">
                 <StackPanel>
                     <TextBlock AutomationProperties.HeadingLevel="Level1" x:Name="SectionTitle" Text="账户" FontFamily="{StaticResource WardenDisplayFontFamily}" FontSize="28" LineHeight="36" FontWeight="SemiBold" />
-                    <InfoBar Visibility="{x:Bind ViewModel.HasOperationError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" IsOpen="{x:Bind ViewModel.HasOperationError, Mode=OneWay}" IsClosable="False" Severity="Error" Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" Margin="0,12,0,0" />
+                    <InfoBar Visibility="{x:Bind ViewModel.HasOperationError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" IsOpen="{x:Bind ViewModel.HasOperationError, Mode=OneWay}" IsClosable="False" Severity="Error" Background="{ThemeResource WardenCriticalBackgroundBrush}" Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" Margin="0,12,0,0" />
                     <StackPanel x:Name="AccountSettingsSection">
-                        <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1" Padding="0,20" Margin="0,24,0,28">
+                        <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,20" Margin="0,24,0,28">
                             <Grid ColumnSpacing="16">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="56" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <Border Width="56" Height="56" CornerRadius="28" Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Center">
+                                <Border Width="56" Height="56" CornerRadius="28" Background="{ThemeResource WardenTileBrush}" VerticalAlignment="Center">
                                     <TextBlock Text="{x:Bind ViewModel.AccountInitial, Mode=OneWay}" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -62,8 +62,6 @@
                             <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
                                 <StackPanel>
                                     <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="名称" Description="{x:Bind ViewModel.AccountNameDescription, Mode=OneWay}"><Button AutomationProperties.AutomationId="EditProfileButton" Content="编辑…" Style="{StaticResource SettingsButtonStyle}" Click="OnEditProfileClick" /></tk:SettingsCard>
-                                    <tk:SettingsCard Style="{StaticResource CompactSettingsRowStyle}" Header="邮箱"><TextBlock Text="{x:Bind ViewModel.AccountEmail, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" /></tk:SettingsCard>
-                                    <tk:SettingsCard Style="{StaticResource CompactSettingsRowStyle}" Header="服务器"><TextBlock Text="{x:Bind ViewModel.AccountServer, Mode=OneWay}" FontFamily="Cascadia Code, Consolas" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" /></tk:SettingsCard>
                                     <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="加密方式" Description="{x:Bind ViewModel.KdfDescription, Mode=OneWay}"><Button AutomationProperties.AutomationId="ChangeKdfCard" Content="更改…" Style="{StaticResource SettingsButtonStyle}" Click="OnChangeKdfCardClick" /></tk:SettingsCard>
                                     <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="主密码" Description="修改后，其他设备都需要重新登录"><Button AutomationProperties.AutomationId="ChangePasswordCard" Content="更改…" Style="{StaticResource SettingsButtonStyle}" Click="OnChangePasswordCardClick" /></tk:SettingsCard>
                                 </StackPanel>
@@ -131,9 +129,19 @@
                         </StackPanel>
                     </StackPanel>
                     <StackPanel x:Name="SshSettingsSection" Visibility="Collapsed">
-                        <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,6,0,28"><FontIcon Glyph="&#xE711;" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Text="此版本尚未提供 SSH 代理" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+                        <Grid ColumnSpacing="10" Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE711;" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" AutomationProperties.AccessibilityView="Raw" />
+                            <TextBlock Grid.Column="1" Text="此版本尚未提供 SSH 代理" TextWrapping="Wrap" />
+                        </Grid>
+                        <Border MaxWidth="640" HorizontalAlignment="Left" Margin="0,16,0,28" Padding="14,12,12,12" CornerRadius="6" BorderThickness="1" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" Background="{ThemeResource WardenTileBrush}">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <FontIcon Glyph="&#xE946;" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" AutomationProperties.AccessibilityView="Raw" />
+                                <TextBlock Grid.Column="1" Text="密码库可保存 SSH 密钥。此版本尚未提供代理签名和程序授权，因此不会向 ssh、git 等程序加载任何密钥。" TextWrapping="Wrap" />
+                            </Grid>
+                        </Border>
                         <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Margin="0,0,0,32"><tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="启用 SSH 代理" Description="让 ssh、git 等程序使用密码库里的 SSH 密钥"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="关" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch Style="{StaticResource SettingsSwitchStyle}" IsEnabled="False" IsOn="False" AutomationProperties.Name="启用 SSH 代理，尚未提供" /></StackPanel></tk:SettingsCard></Border>
-                        <TextBlock Text="密码库仍可保存 SSH 密钥。当前版本未实现 Windows OpenSSH 管道、签名请求确认、程序授权及请求记录。" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
                     <StackPanel x:Name="PreferencesSettingsSection" Visibility="Collapsed" Margin="0,28,0,0">
                         <StackPanel Margin="0,0,0,32">
@@ -155,8 +163,15 @@
                             </StackPanel></Border>
                         </StackPanel>
                         <StackPanel Margin="0,0,0,32">
-                            <TextBlock Text="浏览器" Style="{StaticResource SettingsGroupTitleStyle}" />
-                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="浏览器集成" Description="{x:Bind ViewModel.BrowserIntegrationDescription, Mode=OneWay}" IsClickEnabled="True" Click="OnToggleSettingClick"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{x:Bind ToggleState(ViewModel.AllowBrowserIntegration), Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch Style="{StaticResource SettingsSwitchStyle}" IsEnabled="{x:Bind ViewModel.BrowserIntegrationSupported, Mode=OneTime}" IsOn="{x:Bind ViewModel.AllowBrowserIntegration, Mode=TwoWay}" AutomationProperties.Name="浏览器集成" /></StackPanel></tk:SettingsCard></Border>
+                            <TextBlock Text="通行密钥" Style="{StaticResource SettingsGroupTitleStyle}" />
+                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+                                <StackPanel>
+                                    <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="作为 Windows 的通行密钥提供程序" Description="此版本尚未提供。Windows 暂时无法将网站和应用的通行密钥请求交给 WinVaultWarden。">
+                                        <StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="关" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch Style="{StaticResource SettingsSwitchStyle}" IsEnabled="False" IsOn="False" AutomationProperties.AutomationId="WindowsPasskeyProviderToggle" AutomationProperties.Name="作为 Windows 的通行密钥提供程序，尚未提供" /></StackPanel>
+                                    </tk:SettingsCard>
+                                    <tk:SettingsCard Style="{StaticResource SettingsRowStyle}" Header="连接浏览器扩展" Description="{x:Bind ViewModel.BrowserIntegrationDescription, Mode=OneWay}" IsClickEnabled="True" Click="OnToggleSettingClick"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{x:Bind ToggleState(ViewModel.AllowBrowserIntegration), Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><ToggleSwitch Style="{StaticResource SettingsSwitchStyle}" IsEnabled="{x:Bind ViewModel.BrowserIntegrationSupported, Mode=OneTime}" IsOn="{x:Bind ViewModel.AllowBrowserIntegration, Mode=TwoWay}" AutomationProperties.AutomationId="BrowserExtensionIntegrationToggle" AutomationProperties.Name="连接浏览器扩展" /></StackPanel></tk:SettingsCard>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                         <StackPanel Margin="0,0,0,32">
                             <TextBlock Text="高级" Style="{StaticResource SettingsGroupTitleStyle}" />
@@ -167,10 +182,10 @@
                         </StackPanel>
                     </StackPanel>
                     <StackPanel x:Name="AboutSettingsSection" Visibility="Collapsed">
-                        <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1" Padding="0,20" Margin="0,24,0,28">
+                        <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,20" Margin="0,24,0,28">
                             <Grid ColumnSpacing="16">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="56" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <Border Width="56" Height="56" CornerRadius="12" Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Center"><Image Source="ms-appx:///Assets/Square44x44Logo.png" Width="40" Height="40" AutomationProperties.Name="WinVaultWarden" /></Border>
+                                <Border Width="56" Height="56" CornerRadius="12" Background="{ThemeResource WardenTileBrush}" VerticalAlignment="Center"><Image Source="ms-appx:///Assets/Square44x44Logo.png" Width="40" Height="40" AutomationProperties.Name="WinVaultWarden" /></Border>
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="WinVaultWarden" FontFamily="{StaticResource WardenDisplayFontFamily}" FontSize="20" FontWeight="SemiBold" LineHeight="28" /><TextBlock Text="{x:Bind ViewModel.VersionSummary}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Text="{x:Bind ViewModel.RuntimeSummary}" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
                             </Grid>
                         </Border>

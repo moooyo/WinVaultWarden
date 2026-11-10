@@ -3,7 +3,7 @@ using Xunit;
 
 namespace App.Tests;
 
-// Attachment rows retain metadata, guarded actions, and the v3 flat section layout.
+// Attachment rows retain metadata, guarded actions, and the flat section layout.
 public class VaultPageAttachmentXamlTests
 {
     private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
@@ -68,9 +68,9 @@ public class VaultPageAttachmentXamlTests
             Assert.Contains("CanBatchOperate", binding);
         }
 
-        var downloadButton = document.Descendants(Xaml + "Button")
+        var downloadButton = itemsControl.Descendants(Xaml + "Button")
             .Single(b => b.Attribute("Click")?.Value == "OnDownloadAttachmentClick");
-        var deleteButton = document.Descendants(Xaml + "Button")
+        var deleteButton = itemsControl.Descendants(Xaml + "Button")
             .Single(b => b.Attribute("Click")?.Value == "OnDeleteAttachmentClick");
         Assert.NotNull(downloadButton);
         Assert.NotNull(deleteButton);

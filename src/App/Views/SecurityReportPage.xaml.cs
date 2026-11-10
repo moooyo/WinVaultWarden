@@ -55,16 +55,27 @@ public sealed partial class SecurityReportPage : Page
     {
         if (sender is FrameworkElement { Tag: SecurityIssueRow row })
         {
+            if (row.IsIgnored)
+            {
+                ViewModel.RestoreIssueCommand.Execute(row);
+                return;
+            }
             var route = row.Category == "http" ? "vault:edit:" : "vault:change-password:";
             global::App.App.Services.GetRequiredService<INavigationService>().GoToVault(route + row.CipherId);
         }
     }
 
+    private void OnIgnoreItemClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: SecurityIssueRow row })
+            ViewModel.IgnoreIssueCommand.Execute(row);
+    }
+
     public static string CategoryIcon(string category) => category switch
     {
-        "breach" => "\uEA39",
+        "breach" => "\uE783",
         "reuse" => "\uE895",
-        "http" => "\uE774",
+        "http" => "\uE785",
         _ => "\uE7BA",
     };
 
@@ -88,7 +99,7 @@ public sealed partial class SecurityReportPage : Page
     private void UpdateSeverityIcon(FontIcon icon) => icon.Foreground = (icon.Tag as string) switch
     {
         "critical" or "breach" => CriticalBrushSource.Foreground,
-        "neutral" or "http" => SecondaryBrushSource.Foreground,
+        "neutral" => SecondaryBrushSource.Foreground,
         _ => CautionBrushSource.Foreground,
     };
 
@@ -106,6 +117,8 @@ public sealed partial class SecurityReportPage : Page
     }
 
     public static string FormatOpenItem(string name) => $"查看条目：{name}";
+    public static string FormatIgnoreItem(string name) => $"忽略提醒：{name}";
+    public static string FormatIssueAction(string action, string name) => $"{action}：{name}";
 
     /// <summary>Formats a group without exposing the reused password.</summary>
     public static string FormatReusedHeader(int count) => $"{count} 个条目共用同一密码";

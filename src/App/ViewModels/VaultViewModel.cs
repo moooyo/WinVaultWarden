@@ -102,6 +102,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     [NotifyPropertyChangedFor(nameof(CanTransferSelectedItem))]
     [NotifyPropertyChangedFor(nameof(CanManageSelectedItemCollections))]
     [NotifyPropertyChangedFor(nameof(ShowSensitiveUnlock))]
+    [NotifyPropertyChangedFor(nameof(CanManageEditorAttachments))]
     public partial CipherListItem? SelectedItem { get; set; }
 
     public bool CanModifySelectedItem => SelectedItem?.CanModify == true;
@@ -202,6 +203,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     [NotifyPropertyChangedFor(nameof(DetailLocation))]
     [NotifyPropertyChangedFor(nameof(DetailWebsite))]
     [NotifyPropertyChangedFor(nameof(HasDetailWebsite))]
+    [NotifyPropertyChangedFor(nameof(EditorPasskeys))]
+    [NotifyPropertyChangedFor(nameof(HasEditorPasskeys))]
     public partial CipherDetail? Detail { get; set; }
 
     [ObservableProperty]
@@ -238,12 +241,38 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             && uri.Scheme is "https" or "http") ?? string.Empty
         : string.Empty;
     public bool HasDetailWebsite => !string.IsNullOrEmpty(DetailWebsite);
+    public IReadOnlyList<PasskeyDetail> EditorPasskeys => Detail is LoginDetail login
+        ? login.Passkeys : Array.Empty<PasskeyDetail>();
+    public bool HasEditorPasskeys => EditorPasskeys.Count > 0;
     public string EmptyStateTitle => SelectedFilter?.Kind switch
     {
         FilterKind.Trash => "回收站是空的",
         FilterKind.Archive => "没有归档的条目",
-        _ => "这里还没有条目",
+        FilterKind.Favorites => "还没有收藏",
+        FilterKind.Totp => "还没有保存验证码的条目",
+        FilterKind.Folder => $"“{SelectedFilter.Label}”里还没有条目",
+        _ => "密码库还是空的",
     };
+    public string EmptyStateHint => SelectedFilter?.Kind switch
+    {
+        FilterKind.Trash => "删除的条目会显示在这里，可恢复或永久删除。",
+        FilterKind.Archive => "不常用但还想保留的条目可以归档，随时可以取消归档。",
+        FilterKind.Favorites => "在条目详情里点星标就能收藏，最常用的放在这里。",
+        FilterKind.Totp => "编辑登录条目，填入身份验证器密钥或 otpauth:// 链接。",
+        FilterKind.Folder => "在这里新建的条目会自动放进这个文件夹。也可以多选其他条目再移进来。",
+        _ => "新建第一个条目，或者从其他密码管理器导入。",
+    };
+    public bool ShowEmptyCreateAction => SelectedFilter?.Kind is null or FilterKind.AllItems or FilterKind.Folder;
+    public bool ShowEmptyImportAction => SelectedFilter?.Kind is null or FilterKind.AllItems;
+    public bool IsSearchScopeLimited => !string.IsNullOrWhiteSpace(SearchText)
+        && SelectedFilter?.Kind is not (null or FilterKind.AllItems);
+    public bool ShowSearchScopeNotice => IsSearchScopeLimited && FilteredItems.Count > 0;
+    public string SearchScopeText => $"只在“{WorkspaceTitle}”里搜索";
+    public bool ShowClearSearchAction => !string.IsNullOrWhiteSpace(SearchText);
+    public bool ShowClearRefinementAction => HasActiveRefinement && !ShowClearSearchAction;
+    public bool CanManageEditorAttachments => IsEditing && _editingId is not null
+        && SelectedItem is { IsDeleted: false, CanModify: true }
+        && CanEditEditorDraft && !HasUnsavedEditorChanges;
     public string NoResultsTitle => string.IsNullOrWhiteSpace(SearchText)
         ? "没有符合筛选条件的条目"
         : $"没有找到“{SearchText.Trim()}”";
@@ -389,6 +418,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNoSelectionPlaceholder))]
     [NotifyPropertyChangedFor(nameof(HasUnsavedEditorChanges))]
+    [NotifyPropertyChangedFor(nameof(CanManageEditorAttachments))]
     public partial bool IsEditing { get; set; }
 
     public bool HasUnsavedEditorChanges => IsEditing && EditorDraft is { } draft
@@ -413,6 +443,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     [NotifyPropertyChangedFor(nameof(CanSaveEditorDraft))]
     [NotifyPropertyChangedFor(nameof(HasValidEditorDraft))]
     [NotifyPropertyChangedFor(nameof(EditorDisplayDraft))]
+    [NotifyPropertyChangedFor(nameof(EditorFolderLabel))]
+    [NotifyPropertyChangedFor(nameof(CanManageEditorAttachments))]
     public partial CipherEditorDraft? EditorDraft { get; set; }
 
     // A non-null presentation source resets every bound field when the business draft is discarded.
@@ -430,6 +462,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     partial void OnEditorDraftChanged(CipherEditorDraft? oldValue, CipherEditorDraft? newValue)
     {
+        _editorDraftVersion++;
         if (newValue is null)
             _emptyEditorDisplayDraft = CipherEditorDraft.CreateDefault(VaultItemKind.Login);
         ObserveEditorDraft(newValue);
@@ -440,6 +473,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     {
         OnPropertyChanged(nameof(HasValidEditorDraft));
         OnPropertyChanged(nameof(HasUnsavedEditorChanges));
+        OnPropertyChanged(nameof(CanManageEditorAttachments));
+        OnPropertyChanged(nameof(EditorFolderLabel));
     }
 
     private void OnEditorCollectionRequirementChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -447,6 +482,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         ObserveEditorDraft(EditorDraft);
         OnPropertyChanged(nameof(HasValidEditorDraft));
         OnPropertyChanged(nameof(HasUnsavedEditorChanges));
+        OnPropertyChanged(nameof(CanManageEditorAttachments));
     }
 
     private void ObserveEditorDraft(CipherEditorDraft? draft)
@@ -487,6 +523,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         _editorPasswordBaseline = EditorDraft is { IsLogin: true } loginDraft
             ? FingerprintPassword(loginDraft.Login.Password) : null;
         OnPropertyChanged(nameof(HasUnsavedEditorChanges));
+        OnPropertyChanged(nameof(CanManageEditorAttachments));
     }
 
     private static byte[] FingerprintPassword(string? password)
@@ -657,6 +694,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         }
     }
 
+    public string EditorFolderLabel => EditorSelectedFolder?.Label ?? "无文件夹";
+
     [ObservableProperty]
     public partial string EditorError { get; set; } = string.Empty;
 
@@ -672,6 +711,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     [NotifyPropertyChangedFor(nameof(CanChangeEditorType))]
     [NotifyPropertyChangedFor(nameof(CanCheckPendingCipherCreate))]
     [NotifyPropertyChangedFor(nameof(CanAbandonPendingCipherCreate))]
+    [NotifyPropertyChangedFor(nameof(CanManageEditorAttachments))]
     public partial VaultOperationKind? CurrentOperation { get; set; }
 
     public bool IsBusy => CurrentOperation is not null;
@@ -936,6 +976,11 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(HasActiveRefinement));
         OnPropertyChanged(nameof(NoResultsTitle));
         OnPropertyChanged(nameof(NewSearchItemLabel));
+        OnPropertyChanged(nameof(IsSearchScopeLimited));
+        OnPropertyChanged(nameof(ShowSearchScopeNotice));
+        OnPropertyChanged(nameof(SearchScopeText));
+        OnPropertyChanged(nameof(ShowClearSearchAction));
+        OnPropertyChanged(nameof(ShowClearRefinementAction));
     }
 
     public void SelectFilterByTag(string? tag)
@@ -1024,6 +1069,12 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(ShowUnarchiveSelectionAction));
         OnPropertyChanged(nameof(WorkspaceTitle));
         OnPropertyChanged(nameof(EmptyStateTitle));
+        OnPropertyChanged(nameof(EmptyStateHint));
+        OnPropertyChanged(nameof(ShowEmptyCreateAction));
+        OnPropertyChanged(nameof(ShowEmptyImportAction));
+        OnPropertyChanged(nameof(IsSearchScopeLimited));
+        OnPropertyChanged(nameof(ShowSearchScopeNotice));
+        OnPropertyChanged(nameof(SearchScopeText));
     }
 
     private static string? TagForFilter(FilterNode? filter) => filter?.Kind switch
@@ -1098,6 +1149,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(ArchiveCount));
         OnPropertyChanged(nameof(IsArchiveEmpty));
         OnPropertyChanged(nameof(VisibleItemCountText));
+        OnPropertyChanged(nameof(ShowSearchScopeNotice));
+        OnPropertyChanged(nameof(ShowClearRefinementAction));
     }
 
     private void RestoreVisibleSelection(string? id)
@@ -2293,6 +2346,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             Filters.Add(filter);
         AddSupplementaryFilters();
         OnPropertyChanged(nameof(FolderFilters));
+        OnPropertyChanged(nameof(EditorFolderLabel));
         SelectFilterByTag(tag); // 复原选中(凭 tag),触发 ApplyFilter
     }
 

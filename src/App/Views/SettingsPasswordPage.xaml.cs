@@ -30,6 +30,9 @@ public sealed partial class SettingsPasswordPage : Page
         ActualThemeChanged += OnActualThemeChanged;
     }
 
+    private void OnPasswordContentSizeChanged(object sender, SizeChangedEventArgs e) =>
+        PasswordForm.Width = Math.Min(360, e.NewSize.Width);
+
     public void Initialize(SettingsViewModel viewModel, Action onCancel)
     {
         ArgumentNullException.ThrowIfNull(viewModel);

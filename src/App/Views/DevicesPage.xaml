@@ -19,7 +19,7 @@
             <Setter Property="Width" Value="32" />
             <Setter Property="Height" Value="32" />
             <Setter Property="CornerRadius" Value="6" />
-            <Setter Property="Background" Value="{ThemeResource ControlFillColorSecondaryBrush}" />
+            <Setter Property="Background" Value="{ThemeResource WardenTileBrush}" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style x:Key="DeviceSecondaryTextStyle" TargetType="TextBlock">
@@ -53,7 +53,7 @@
                                   IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
                                   Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                 </Grid>
-                <InfoBar x:Name="DevicesErrorInfoBar" IsClosable="False" Severity="Error" Margin="0,0,0,16"
+                <InfoBar x:Name="DevicesErrorInfoBar" IsClosable="False" Severity="Error" Background="{ThemeResource WardenCriticalBackgroundBrush}" Margin="0,0,0,16"
                          AutomationProperties.LiveSetting="Assertive"
                          IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
                          Message="{x:Bind ViewModel.Error, Mode=OneWay}"
@@ -139,7 +139,7 @@
                 <StackPanel Margin="0,0,0,32">
                     <TextBlock Text="已登录的设备" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" />
                     <InfoBar IsOpen="{x:Bind ViewModel.HasDeviceError, Mode=OneWay}" IsClosable="False"
-                             Severity="Error" Message="{x:Bind ViewModel.DeviceError, Mode=OneWay}"
+                             Severity="Error" Background="{ThemeResource WardenCriticalBackgroundBrush}" Message="{x:Bind ViewModel.DeviceError, Mode=OneWay}"
                              Visibility="{x:Bind ViewModel.HasDeviceError, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                     <Border BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
                         <StackPanel>

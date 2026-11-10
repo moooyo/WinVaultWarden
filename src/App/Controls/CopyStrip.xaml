@@ -41,10 +41,49 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="CopyStripRevealStyle" TargetType="Button" BasedOn="{StaticResource IconButtonStyle}">
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="RevealSurface.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
+                                            <Setter Target="RevealContent.Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="RevealSurface.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="RevealContent.Opacity" Value="0.4" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Border x:Name="RevealSurface" Background="{TemplateBinding Background}" CornerRadius="4">
+                                <ContentPresenter x:Name="RevealContent" Content="{TemplateBinding Content}"
+                                                  Foreground="{TemplateBinding Foreground}" Padding="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
     <StackPanel>
         <Grid x:Name="CellsGrid" ColumnSpacing="4" />
-        <TextBlock x:Name="FeedbackText" Visibility="Collapsed" Margin="12,6,12,0" FontSize="12"
+        <TextBlock x:Name="FeedbackText" Visibility="Collapsed" Margin="12,6,12,0" FontSize="12" LineHeight="16"
+                   LineStackingStrategy="BlockLineHeight"
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
                    AutomationProperties.LiveSetting="Polite" />
     </StackPanel>

@@ -644,7 +644,8 @@ public class GeneratorViewModelTests
     [Fact]
     public void PassphraseWordCountValue_ClampsToRange_SingleSource()
     {
-        var vm = new GeneratorViewModel { Mode = GeneratorMode.Passphrase };
+        // Dictionary words may contain hyphens; count using an unambiguous separator.
+        var vm = new GeneratorViewModel { Mode = GeneratorMode.Passphrase, PassphraseSeparator = " " };
 
         vm.PassphraseWordCountValue = 99;   // above max
         Assert.Equal(20, vm.PassphraseWordCount);
@@ -654,18 +655,18 @@ public class GeneratorViewModelTests
 
         vm.PassphraseWordCountValue = 8;    // in range
         Assert.Equal(8, vm.PassphraseWordCount);
-        Assert.Equal(8, vm.GeneratedPassword.Split('-').Length);
+        Assert.Equal(8, vm.GeneratedPassword.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
     }
 
     [Fact]
     public void PassphraseWordCount_Change_Regenerates_WithoutSelfReassign()
     {
-        var vm = new GeneratorViewModel { Mode = GeneratorMode.Passphrase };
+        var vm = new GeneratorViewModel { Mode = GeneratorMode.Passphrase, PassphraseSeparator = " " };
 
         vm.PassphraseWordCount = 5;
 
         Assert.Equal(5, vm.PassphraseWordCount);            // no clamp-driven mutation
-        Assert.Equal(5, vm.GeneratedPassword.Split('-').Length);
+        Assert.Equal(5, vm.GeneratedPassword.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
     }
 
     [Fact]

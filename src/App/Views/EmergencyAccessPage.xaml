@@ -55,7 +55,7 @@
                            MaxWidth="600" HorizontalAlignment="Left" TextWrapping="Wrap"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <StackPanel Margin="0,28,0,0">
-                    <InfoBar x:Name="EmergencyErrorBar" IsClosable="False" Severity="Error" Margin="0,0,0,12"
+                    <InfoBar x:Name="EmergencyErrorBar" IsClosable="False" Severity="Error" Background="{ThemeResource WardenCriticalBackgroundBrush}" Margin="0,0,0,12"
                              IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
                              Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                              Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" AutomationProperties.LiveSetting="Assertive" />
@@ -102,7 +102,7 @@
                                                 <Border Style="{StaticResource EmergencyRowStyle}">
                                                     <Grid ColumnSpacing="14">
                                                         <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                                        <Border Width="32" Height="32" CornerRadius="6" Background="{ThemeResource ControlFillColorSecondaryBrush}" VerticalAlignment="Center">
+                                                        <Border Width="32" Height="32" CornerRadius="6" Background="{ThemeResource WardenTileBrush}" VerticalAlignment="Center">
                                                             <Grid>
                                                                 <FontIcon Glyph="&#xE77B;" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                                           Visibility="{x:Bind local:EmergencyAccessPage.ShowDefaultContactIcon(Status)}" AutomationProperties.AccessibilityView="Raw" />
@@ -159,7 +159,7 @@
                                                 <Border Style="{StaticResource EmergencyRowStyle}">
                                                     <Grid ColumnSpacing="14">
                                                         <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                                        <Border Width="32" Height="32" CornerRadius="6" Background="{ThemeResource ControlFillColorSecondaryBrush}" VerticalAlignment="Center">
+                                                        <Border Width="32" Height="32" CornerRadius="6" Background="{ThemeResource WardenTileBrush}" VerticalAlignment="Center">
                                                             <FontIcon Glyph="&#xE77B;" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.AccessibilityView="Raw" />
                                                         </Border>
                                                         <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">

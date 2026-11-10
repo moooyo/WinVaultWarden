@@ -62,6 +62,8 @@ public interface IVaultUiService
     Task UnarchiveCipherAsync(string id, CancellationToken ct = default) =>
         Task.FromException(new NotSupportedException("Cipher unarchiving is not supported by this UI service."));
     Task SaveFolderAsync(string? folderId, string name, CancellationToken ct = default);
+    Task<string> CreateFolderAndGetIdAsync(string name, CancellationToken ct = default) =>
+        Task.FromException<string>(new NotSupportedException("Folder creation responses are not supported by this UI service."));
     Task DeleteFolderAsync(string folderId, CancellationToken ct = default);
     Task SyncAsync(CancellationToken ct = default);
     Task MoveCiphersAsync(IReadOnlyCollection<string> ids, string? folderId, CancellationToken ct = default);
@@ -411,6 +413,14 @@ public sealed class MockVaultUiService : IVaultUiService
                 _folders[index] = (folderId, name);
         }
         return Task.CompletedTask;
+    }
+
+    public Task<string> CreateFolderAndGetIdAsync(string name, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        var id = $"folder-{_nextId++}";
+        _folders.Add((id, name));
+        return Task.FromResult(id);
     }
 
     public Task DeleteFolderAsync(string folderId, CancellationToken ct = default)

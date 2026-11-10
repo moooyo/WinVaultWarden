@@ -45,13 +45,19 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     };
     public string ListCountLabel => $"{FilteredItems.Count}";
     public string EmptyTitle => !string.IsNullOrWhiteSpace(SearchQuery)
-        ? $"没有找到“{SearchQuery}”"
+        ? $"没有找到“{SearchQuery.Trim()}”"
         : SelectedFilterTag switch
         {
             "send:text" => "还没有文本 Send",
             "send:file" => "还没有文件 Send",
             _ => "还没有 Send",
         };
+    public string EmptyHint => !string.IsNullOrWhiteSpace(SearchQuery)
+        ? "名称、文本内容和文件名都会被搜索"
+        : "用链接安全地分享文本或文件，到期自动删除。";
+    public bool ShowSearchEmptyActions => !string.IsNullOrWhiteSpace(SearchQuery);
+    public bool ShowSearchAllEmptyAction => ShowSearchEmptyActions && SelectedFilterTag != "send:all";
+    public bool ShowCreateEmptyAction => !ShowSearchEmptyActions;
 
     [ObservableProperty]
     public partial string SelectedFilterTag { get; set; } = "send:all";
@@ -118,6 +124,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     public partial bool ReceivedWrongPassword { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ReceiveButtonText))]
     [NotifyPropertyChangedFor(nameof(ReceivedSourceText))]
     [NotifyPropertyChangedFor(nameof(HasReceivedSource))]
     [NotifyPropertyChangedFor(nameof(ReceivedExpirationText))]
@@ -154,7 +161,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     public bool HasCopyFeedback => !string.IsNullOrEmpty(CopyFeedback);
     public bool CanOpenReceivedLink => !IsBusy && !string.IsNullOrWhiteSpace(ReceivedLinkUrl);
     public bool CanReceiveInput => !IsBusy;
-    public string ReceiveButtonText => IsBusy ? "正在打开…" : "打开";
+    public string ReceiveButtonText => IsBusy ? "正在打开…" : LastReceived?.Ok == true ? "重新打开" : "打开";
     public bool IsAllFilter => SelectedFilterTag == "send:all";
     public bool IsTextFilter => SelectedFilterTag == "send:text";
     public bool IsFileFilter => SelectedFilterTag == "send:file";
@@ -435,6 +442,10 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(ListTitle));
         OnPropertyChanged(nameof(ListCountLabel));
         OnPropertyChanged(nameof(EmptyTitle));
+        OnPropertyChanged(nameof(EmptyHint));
+        OnPropertyChanged(nameof(ShowSearchEmptyActions));
+        OnPropertyChanged(nameof(ShowSearchAllEmptyAction));
+        OnPropertyChanged(nameof(ShowCreateEmptyAction));
         if (LoadState is DataPageState.Empty or DataPageState.Content)
             LoadState = FilteredItems.Count == 0 ? DataPageState.Empty : DataPageState.Content;
     }

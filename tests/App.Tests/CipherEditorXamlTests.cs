@@ -144,14 +144,15 @@ public class CipherEditorXamlTests
     public void VaultPage_LoginTemplate_ShowsPasskeySummaryWhenPresent()
     {
         var document = LoadVaultPageXaml();
-        var passkeyCard = document.Descendants(Xaml + "Border")
+        var passkeyItems = document.Descendants(Xaml + "ItemsControl")
             .Single(element => element.Attribute("Visibility")?.Value?.Contains("HasPasskeys") == true);
+        var secondarySection = passkeyItems.Ancestors(Xaml + "Border").First();
 
-        Assert.Contains(passkeyCard.Descendants(Xaml + "ItemsControl"),
-            element => element.Attribute("ItemsSource")?.Value?.Contains("Passkeys") == true);
-        Assert.Contains(passkeyCard.Descendants(Xaml + "TextBlock"),
+        Assert.Contains("HasSecondaryDetails", secondarySection.Attribute("Visibility")?.Value);
+        Assert.Contains("Passkeys", passkeyItems.Attribute("ItemsSource")?.Value);
+        Assert.Contains(passkeyItems.Descendants(Xaml + "TextBlock"),
             row => row.Attribute("Text")?.Value?.Contains("DisplaySummary") == true);
-        Assert.Contains(passkeyCard.Descendants(Xaml + "TextBlock"),
+        Assert.Contains(passkeyItems.Descendants(Xaml + "TextBlock"),
             row => row.Attribute("Text")?.Value?.Contains("MetadataSummary") == true);
 
         var passkey = new App.ViewModels.Models.PasskeyDetail(
@@ -162,22 +163,29 @@ public class CipherEditorXamlTests
     }
 
     [Fact]
-    public void VaultPage_FolderComboBox_BindsToFolderFiltersAndSelectedFolder()
+    public void VaultPage_FolderFlyout_ShowsCurrentFolderAndMapsSelection()
     {
         var document = LoadVaultPageXaml();
-        var folderBox = RequireByName(document, "CipherEditorFolderBox");
+        var folderButton = RequireByName(document, "CipherEditorFolderBox");
 
-        Assert.Contains("FolderFilters", folderBox.Attribute("ItemsSource")?.Value);
-        // A compiled item template avoids reflective DisplayMemberPath and SelectedValuePath.
-        Assert.Null(folderBox.Attribute("DisplayMemberPath"));
-        Assert.Null(folderBox.Attribute("SelectedValuePath"));
-        Assert.Contains("EditorSelectedFolder", folderBox.Attribute("SelectedItem")?.Value);
-        // The typed template displays the current folder label.
-        var templateText = folderBox.Descendants().First(e => e.Name.LocalName == "TextBlock");
-        Assert.Contains("Label", templateText.Attribute("Text")?.Value);
-        Assert.Equal("Left", folderBox.Attribute("HorizontalAlignment")?.Value);
-        Assert.Equal("240", folderBox.Attribute("Width")?.Value);
-        AssertFlatFieldLabel(folderBox, "文件夹");
+        Assert.Equal(Xaml + "Button", folderButton.Name);
+        Assert.Null(folderButton.Attribute("DisplayMemberPath"));
+        Assert.Null(folderButton.Attribute("SelectedValuePath"));
+        var label = folderButton.Descendants(Xaml + "TextBlock").Single();
+        Assert.Equal("{x:Bind ViewModel.EditorFolderLabel, Mode=OneWay}", label.Attribute("Text")?.Value);
+        var flyout = folderButton.Descendants(Xaml + "MenuFlyout").Single();
+        Assert.Equal("OnEditorFolderFlyoutOpening", flyout.Attribute("Opening")?.Value);
+        Assert.Equal("Left", folderButton.Attribute("HorizontalAlignment")?.Value);
+        Assert.Equal("240", folderButton.Attribute("Width")?.Value);
+        AssertFlatFieldLabel(folderButton, "文件夹");
+
+        var source = LoadVaultPageCodeBehind();
+        var start = source.IndexOf("private void OnEditorFolderFlyoutOpening", StringComparison.Ordinal);
+        var end = source.IndexOf("\n    private ", start + 1, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start);
+        var handler = source[start..end];
+        Assert.Contains("ViewModel.FolderFilters", handler);
+        Assert.Contains("ViewModel.EditorSelectedFolder =", handler);
     }
 
     [Fact]
@@ -215,8 +223,15 @@ public class CipherEditorXamlTests
         Assert.Contains("TextValue, Mode=TwoWay", valueBox.Attribute("Text")?.Value);
         Assert.Equal("Stretch", nameBox.Attribute("HorizontalAlignment")?.Value);
         Assert.Equal("Stretch", valueBox.Attribute("HorizontalAlignment")?.Value);
-        AssertFlatFieldLabel(nameBox, "名称");
-        AssertFlatFieldLabel(valueBox, "值");
+        Assert.Null(nameBox.Attribute("Header"));
+        Assert.Null(valueBox.Attribute("Header"));
+        var labelColumn = nameBox.Parent!;
+        Assert.Same(valueBox.Parent, labelColumn.Parent);
+        Assert.True(labelColumn.Attribute("Grid.Column")?.Value is null or "0");
+        Assert.Equal("1", valueBox.Attribute("Grid.Column")?.Value);
+        Assert.Contains(labelColumn.Descendants(Xaml + "ComboBox"),
+            element => element.Attribute(X + "Name")?.Value == "CustomFieldTypeBox"
+                && element.Ancestors(Xaml + "Flyout").Any());
     }
 
     [Fact]
@@ -336,19 +351,25 @@ public class CipherEditorXamlTests
         Assert.Contains(input.Parent!.Elements(Xaml + "TextBlock"), element => element.Attribute("Text")?.Value == label);
     }
 
-    private static XDocument LoadVaultPageXaml()
+    private static XDocument LoadVaultPageXaml() =>
+        XDocument.Load(FindVaultPageSource("VaultPage.xaml"));
+
+    private static string LoadVaultPageCodeBehind() =>
+        File.ReadAllText(FindVaultPageSource("VaultPage.xaml.cs"));
+
+    private static string FindVaultPageSource(string fileName)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var path = Path.Combine(directory.FullName, "src", "App", "Views", "VaultPage.xaml");
+            var path = Path.Combine(directory.FullName, "src", "App", "Views", fileName);
             if (File.Exists(path))
-                return XDocument.Load(path);
+                return path;
 
             directory = directory.Parent;
         }
 
-        throw new FileNotFoundException("Could not find VaultPage.xaml from the test output directory.");
+        throw new FileNotFoundException($"Could not find {fileName} from the test output directory.");
     }
 
     [Fact]
@@ -378,9 +399,23 @@ public class CipherEditorXamlTests
         var addButton = RequireByName(document, "AddCustomFieldButton");
         var removeButton = RequireByName(document, "RemoveCustomFieldButton");
 
-        // AddCustomFieldButton is outside a DataTemplate — uses x:Bind Command directly (AOT-safe).
-        Assert.Null(addButton.Attribute("Click"));
-        Assert.Contains("AddCustomFieldCommand", addButton.Attribute("Command")?.Value);
+        // The explicit Click handler dispatches the typed command without reflective bindings.
+        Assert.Equal("OnAddTextCustomFieldClick", addButton.Attribute("Click")?.Value);
+        Assert.Null(addButton.Attribute("Command"));
+        var source = LoadVaultPageCodeBehind();
+        var clickStart = source.IndexOf("private void OnAddTextCustomFieldClick", StringComparison.Ordinal);
+        var clickEnd = source.IndexOf("\n    private ", clickStart + 1, StringComparison.Ordinal);
+        Assert.True(clickStart >= 0 && clickEnd > clickStart);
+        Assert.Contains("AddCustomField(CipherEditorFieldType.Text)", source[clickStart..clickEnd]);
+        var addStart = source.IndexOf("private void AddCustomField(CipherEditorFieldType type)", StringComparison.Ordinal);
+        var addEnd = source.IndexOf("\n    private ", addStart + 1, StringComparison.Ordinal);
+        Assert.True(addStart >= 0 && addEnd > addStart);
+        var add = source[addStart..addEnd];
+        Assert.Contains("!ViewModel.IsEditing", add);
+        Assert.Contains("!ViewModel.CanEditEditorDraft", add);
+        Assert.Contains("ViewModel.EditorDraft is not { } draft", add);
+        Assert.Contains("ViewModel.AddCustomFieldCommand.Execute(null)", add);
+        Assert.Contains("ReferenceEquals(ViewModel.EditorDraft, draft)", add);
 
         // RemoveCustomFieldButton is inside a DataTemplate — uses Click handler (AOT-safe; was {Binding ElementName=Root}).
         Assert.Null(removeButton.Attribute("Command"));
@@ -418,11 +453,14 @@ public class CipherEditorXamlTests
         AssertFlatFieldLabel(uriBox, "网站地址");
         Assert.Contains("Binding Uri, Mode=TwoWay", uriBox.Attribute("Text")?.Value);
         Assert.DoesNotContain("Uris[0]", uriBox.Attribute("Text")?.Value);
-        var matching = uriItems.Descendants(Xaml + "Expander").Single();
-        Assert.Contains("MatchSummary", matching.Attribute("Header")?.Value);
-        Assert.NotEqual("True", matching.Attribute("IsExpanded")?.Value);
-        Assert.Contains(matching.Descendants(Xaml + "ComboBox"), element =>
-            element.Attribute("SelectedIndex")?.Value?.Contains("MatchIndex") == true);
+        Assert.Empty(uriItems.Descendants(Xaml + "Expander"));
+        var matching = uriItems.Descendants(Xaml + "Button").Single(element =>
+            element.Attribute("Tag")?.Value == "{x:Bind}");
+        Assert.Contains("MatchSummary", matching.Attribute("ToolTipService.ToolTip")?.Value);
+        Assert.Contains("x:Bind", matching.Attribute("ToolTipService.ToolTip")?.Value);
+        var flyout = matching.Descendants(Xaml + "MenuFlyout").Single();
+        Assert.Equal("OnUriMatchFlyoutOpening", flyout.Attribute("Opening")?.Value);
+        Assert.Equal("OnUriMatchFlyoutClosed", flyout.Attribute("Closed")?.Value);
     }
 
     [Fact]

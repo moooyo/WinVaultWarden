@@ -8,7 +8,7 @@
   <Grid x:Name="AppTitleBar" Height="48" Padding="16,0,0,0" ColumnSpacing="4">
    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition x:Name="RightPaddingColumn" Width="138"/></Grid.ColumnDefinitions>
    <StackPanel x:Name="BrandPanel" Orientation="Horizontal" Spacing="10" Margin="0,0,16,0" VerticalAlignment="Center">
-    <Image Source="ms-appx:///Assets/Square44x44Logo.png" Width="18" Height="18"/><TextBlock x:Name="AppNameText" Text="WinVaultWarden" FontSize="12" VerticalAlignment="Center"/>
+    <Border Width="18" Height="18" CornerRadius="4" Background="{ThemeResource WardenPrimaryTextBrush}" VerticalAlignment="Center"><FontIcon Glyph="&#xE72E;" FontSize="11" Foreground="{ThemeResource WardenLayerBrush}" AutomationProperties.AccessibilityView="Raw"/></Border><TextBlock x:Name="AppNameText" Text="WinVaultWarden" FontSize="12" VerticalAlignment="Center"/>
    </StackPanel>
    <StackPanel x:Name="TopTabs" Grid.Column="1" Orientation="Horizontal">
     <ToggleButton x:Name="VaultTab" Content="密码库" Tag="vault" Style="{StaticResource WardenTabButtonStyle}" Click="OnTopTabClick"/>

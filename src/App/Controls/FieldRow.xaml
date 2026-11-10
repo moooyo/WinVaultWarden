@@ -6,21 +6,24 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Border x:Name="RowBorder" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
-        <Grid x:Name="RowGrid" MinHeight="48" ColumnSpacing="16" Padding="0,8">
+        <Grid x:Name="RowGrid" MinHeight="48" ColumnSpacing="16" Padding="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="LabelColumn" Width="112" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="ValueColumn" Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock x:Name="LabelText" FontSize="14" VerticalAlignment="Center"
+            <TextBlock x:Name="LabelText" FontSize="14" LineHeight="20" LineStackingStrategy="BlockLineHeight" VerticalAlignment="Center"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-                <TextBlock x:Name="ValueText" FontSize="{x:Bind FontSize, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
-                <TextBlock x:Name="CopyFeedback" Visibility="Collapsed" FontSize="12" TextWrapping="Wrap"
+            <StackPanel x:Name="ValuePanel" Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                <!-- Adjacent Run elements avoid implicit whitespace in secret masks. -->
+                <TextBlock x:Name="ValueText" FontSize="{x:Bind FontSize, Mode=OneWay}" LineHeight="20"
+                           LineStackingStrategy="BlockLineHeight" TextTrimming="CharacterEllipsis"><Run x:Name="PrimaryValueRun" /><Run x:Name="SecondaryValueRun" /></TextBlock>
+                <TextBlock x:Name="CopyFeedback" Visibility="Collapsed" FontSize="12" LineHeight="16"
+                           LineStackingStrategy="BlockLineHeight" TextWrapping="Wrap"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            AutomationProperties.LiveSetting="Polite" />
             </StackPanel>
-            <StackPanel x:Name="ActionsPanel" Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <StackPanel x:Name="ActionsPanel" Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
                 <Button x:Name="RevealButton" Visibility="Collapsed" Click="OnReveal" Style="{StaticResource IconButtonStyle}"
                         Width="32" Height="32" AutomationProperties.Name="显示" ToolTipService.ToolTip="显示（需 Windows Hello）">
                     <FontIcon x:Name="RevealIcon" Glyph="&#xE890;" FontSize="16" />

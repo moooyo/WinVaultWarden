@@ -7,28 +7,36 @@
     <Page.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" /><conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <DataTemplate x:Key="IssueTemplate" x:DataType="vm:SecurityIssueRow">
-            <Grid MinHeight="56" ColumnSpacing="14" RowSpacing="8" Padding="0,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" SizeChanged="OnIssueRowSizeChanged">
+            <Grid MinHeight="56" ColumnSpacing="14" RowSpacing="8" BorderBrush="{ThemeResource WardenLineBrush}" BorderThickness="0,0,0,1" SizeChanged="OnIssueRowSizeChanged">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                <controls:FaviconView DisplayName="{x:Bind Name}" TileSize="32" VerticalAlignment="Center" />
-                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{x:Bind Subtitle}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Subtitle}" /></StackPanel>
+                <Button Grid.ColumnSpan="2" MinHeight="56" Padding="8,8" Margin="-8,0,0,0" HorizontalContentAlignment="Stretch" Tag="{x:Bind CipherId}" Click="OnOpenItemClick" Style="{StaticResource SubtleButtonStyle}" AutomationProperties.Name="{x:Bind local:SecurityReportPage.FormatOpenItem(Name)}">
+                    <Grid ColumnSpacing="14"><Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <controls:FaviconView DisplayName="{x:Bind Name}" TileSize="32" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"><TextBlock Text="{x:Bind Name}" Foreground="{ThemeResource WardenPrimaryTextBrush}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{x:Bind Subtitle}" FontSize="12" LineHeight="16" Foreground="{ThemeResource WardenSecondaryTextBrush}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Subtitle}" /></StackPanel>
+                    </Grid>
+                </Button>
                 <StackPanel x:Name="IssueActions" Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Right">
-                    <Button Content="查看" Height="32" Padding="12,0" Tag="{x:Bind CipherId}" Click="OnOpenItemClick" Style="{StaticResource SubtleButtonStyle}" AutomationProperties.Name="{x:Bind local:SecurityReportPage.FormatOpenItem(Name)}" />
-                    <Button Content="{x:Bind ActionLabel}" Height="32" Padding="12,0" Tag="{x:Bind}" Click="OnFixItemClick" />
+                    <Button Content="忽略" Height="32" Padding="12,0" Tag="{x:Bind}" Click="OnIgnoreItemClick" Visibility="{x:Bind CanIgnore, Converter={StaticResource BoolToVis}}" Style="{StaticResource SubtleButtonStyle}" Foreground="{ThemeResource WardenSecondaryTextBrush}" ToolTipService.ToolTip="不再提醒这一项，可以在“已忽略”里恢复" AutomationProperties.Name="{x:Bind local:SecurityReportPage.FormatIgnoreItem(Name)}" />
+                    <Button Content="{x:Bind ActionLabel}" Height="32" Padding="12,0" Tag="{x:Bind}" Click="OnFixItemClick" AutomationProperties.Name="{x:Bind local:SecurityReportPage.FormatIssueAction(ActionLabel, Name)}" />
                 </StackPanel>
             </Grid>
         </DataTemplate>
         <DataTemplate x:Key="PriorityTemplate" x:DataType="vm:SecurityIssueRow">
-            <Grid ColumnSpacing="16" RowSpacing="12" Padding="0,20" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1" SizeChanged="OnIssueRowSizeChanged">
+            <Grid ColumnSpacing="16" RowSpacing="12" Padding="0,20" BorderBrush="{ThemeResource WardenLineBrush}" BorderThickness="0,1" SizeChanged="OnIssueRowSizeChanged">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="48" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                <controls:FaviconView DisplayName="{x:Bind Name}" TileSize="48" VerticalAlignment="Center" />
-                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                    <TextBlock Text="{x:Bind Name}" FontFamily="{StaticResource WardenDisplayFontFamily}" FontSize="20" LineHeight="28" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                    <Grid ColumnSpacing="6"><Grid.ColumnDefinitions><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><FontIcon Glyph="{x:Bind local:SecurityReportPage.CategoryIcon(Category)}" Tag="{x:Bind Severity}" Loaded="OnSeverityIconLoaded" Unloaded="OnSeverityIconUnloaded" FontSize="16" VerticalAlignment="Top" Margin="0,2,0,0" /><TextBlock Grid.Column="1" Text="{x:Bind Reason}" TextWrapping="Wrap" /></Grid>
-                    <TextBlock Text="{x:Bind Description}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                </StackPanel>
+                <Button Grid.ColumnSpan="2" Padding="8,0" Margin="-8,0,0,0" HorizontalContentAlignment="Stretch" Tag="{x:Bind CipherId}" Click="OnOpenItemClick" Style="{StaticResource SubtleButtonStyle}" AutomationProperties.Name="{x:Bind local:SecurityReportPage.FormatOpenItem(Name)}">
+                    <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="48" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <controls:FaviconView DisplayName="{x:Bind Name}" TileSize="48" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Text="{x:Bind Name}" Foreground="{ThemeResource WardenPrimaryTextBrush}" FontFamily="{StaticResource WardenDisplayFontFamily}" FontSize="20" LineHeight="28" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <Grid ColumnSpacing="6"><Grid.ColumnDefinitions><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><FontIcon Glyph="{x:Bind local:SecurityReportPage.CategoryIcon(Category)}" Tag="{x:Bind Severity}" Loaded="OnSeverityIconLoaded" Unloaded="OnSeverityIconUnloaded" FontSize="16" VerticalAlignment="Top" Margin="0,2,0,0" AutomationProperties.AccessibilityView="Raw" /><TextBlock Grid.Column="1" Text="{x:Bind Reason}" Foreground="{ThemeResource WardenPrimaryTextBrush}" TextWrapping="Wrap" /></Grid>
+                            <TextBlock Text="{x:Bind Description}" FontSize="12" LineHeight="16" Foreground="{ThemeResource WardenSecondaryTextBrush}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </Button>
                 <StackPanel x:Name="IssueActions" Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Right">
-                    <Button Content="查看" Height="32" Padding="12,0" Tag="{x:Bind CipherId}" Click="OnOpenItemClick" Style="{StaticResource SubtleButtonStyle}" AutomationProperties.Name="{x:Bind local:SecurityReportPage.FormatOpenItem(Name)}" />
-                    <Button Content="{x:Bind ActionLabel}" Height="32" Padding="16,0" Tag="{x:Bind}" Click="OnFixItemClick" Style="{StaticResource AccentButtonStyle}" />
+                    <Button Content="忽略" Height="32" Padding="12,0" Tag="{x:Bind}" Click="OnIgnoreItemClick" Visibility="{x:Bind CanIgnore, Converter={StaticResource BoolToVis}}" Style="{StaticResource SubtleButtonStyle}" Foreground="{ThemeResource WardenSecondaryTextBrush}" ToolTipService.ToolTip="不再提醒这一项，可以在“已忽略”里恢复" AutomationProperties.Name="{x:Bind local:SecurityReportPage.FormatIgnoreItem(Name)}" />
+                    <Button Content="{x:Bind ActionLabel}" Height="32" Padding="16,0" Tag="{x:Bind}" Click="OnFixItemClick" Style="{StaticResource AccentButtonStyle}" AutomationProperties.Name="{x:Bind local:SecurityReportPage.FormatIssueAction(ActionLabel, Name)}" />
                 </StackPanel>
             </Grid>
         </DataTemplate>
@@ -38,21 +46,32 @@
         <Grid Visibility="Collapsed" AutomationProperties.AccessibilityView="Raw">
             <TextBlock x:Name="CriticalBrushSource" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
             <TextBlock x:Name="CautionBrushSource" Foreground="{ThemeResource SystemFillColorCautionBrush}" />
-            <TextBlock x:Name="SecondaryBrushSource" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock x:Name="SecondaryBrushSource" Foreground="{ThemeResource WardenSecondaryTextBrush}" />
         </Grid>
         <StackPanel MaxWidth="800" HorizontalAlignment="Stretch">
             <TextBlock Text="{x:Bind ViewModel.PageTitle, Mode=OneWay}" FontFamily="{StaticResource WardenDisplayFontFamily}" FontSize="28" LineHeight="36" FontWeight="SemiBold" />
             <TextBlock Margin="0,4,0,28" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"><Run Text="{x:Bind ViewModel.CategorySummary, Mode=OneWay}" FontWeight="SemiBold" /><Run Text="   " /><Run Text="{x:Bind ViewModel.LastCheckedText, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></TextBlock>
-            <StackPanel Spacing="12" Visibility="{x:Bind ViewModel.ShowOfflineLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}"><ProgressBar IsIndeterminate="True" AutomationProperties.Name="安全报告分析进度" /><TextBlock Text="正在检查密码库…" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
-            <InfoBar IsOpen="{x:Bind ViewModel.ShowOfflineError, Mode=OneWay}" IsClosable="False" Severity="Error" Title="无法完成检查" Message="{x:Bind ViewModel.OfflineError, Mode=OneWay}"><InfoBar.ActionButton><Button AutomationProperties.AutomationId="SecurityReportRetryButton" Content="重试" Command="{x:Bind ViewModel.RetryOfflineCommand}" /></InfoBar.ActionButton></InfoBar>
-            <StackPanel x:Name="OfflineContentPanel" Visibility="{x:Bind ViewModel.ShowOfflineContent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <StackPanel x:Name="ExposureNotice" Margin="0,0,0,24" Spacing="8" Visibility="{x:Bind ViewModel.ExposedChecked, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}">
-                    <TextBlock AutomationProperties.LiveSetting="Polite" Text="{x:Bind ViewModel.ExposureStatusMessage, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                    <ProgressBar IsIndeterminate="True" AutomationProperties.Name="正在检查暴露密码" Visibility="{x:Bind ViewModel.IsCheckingExposed, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
-                    <Button AutomationProperties.AutomationId="RunExposedCheckButton" Content="检查已泄露的密码" Command="{x:Bind ViewModel.RunExposedCheckCommand}" HorizontalAlignment="Left" />
+            <StackPanel Margin="0,-16,0,28" Spacing="8" Visibility="{x:Bind ViewModel.ShowOfflineLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}"><ProgressBar Minimum="0" Maximum="{x:Bind ViewModel.OfflineProgressTotal, Mode=OneWay}" Value="{x:Bind ViewModel.OfflineProgress, Mode=OneWay}" Height="3" MinHeight="3" AutomationProperties.Name="安全报告分析进度" /><TextBlock Text="{x:Bind ViewModel.OfflineProgressText, Mode=OneWay}" FontSize="12" LineHeight="16" Typography.NumeralAlignment="Tabular" Foreground="{ThemeResource WardenSecondaryTextBrush}" AutomationProperties.LiveSetting="Polite" /></StackPanel>
+            <InfoBar IsOpen="{x:Bind ViewModel.ShowOfflineError, Mode=OneWay}" IsClosable="False" Severity="Error" Background="{ThemeResource WardenCriticalBackgroundBrush}" Title="无法完成检查" Message="{x:Bind ViewModel.OfflineError, Mode=OneWay}"><InfoBar.ActionButton><Button AutomationProperties.AutomationId="SecurityReportRetryButton" Content="重试" Command="{x:Bind ViewModel.RetryOfflineCommand}" /></InfoBar.ActionButton></InfoBar>
+            <Grid x:Name="ExposureNotice" Visibility="{x:Bind ViewModel.ExposedChecked, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}">
+                <StackPanel Margin="0,-16,0,28" Spacing="8" Visibility="{x:Bind ViewModel.IsCheckingExposed, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <ProgressBar IsIndeterminate="True" Height="3" MinHeight="3" AutomationProperties.Name="正在检查暴露密码" />
+                    <TextBlock Text="{x:Bind ViewModel.ExposureProgressText, Mode=OneWay}" FontSize="12" LineHeight="16" Foreground="{ThemeResource WardenSecondaryTextBrush}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
                 </StackPanel>
-                <InfoBar AutomationProperties.AutomationId="ExposedErrorInfoBar" IsOpen="{x:Bind ViewModel.HasExposedError, Mode=OneWay}" Message="{x:Bind ViewModel.ExposedError, Mode=OneWay}" Severity="Error" IsClosable="False" Margin="0,0,0,16" />
-                <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1" Padding="0,16" Margin="0,0,0,32" Visibility="{x:Bind ViewModel.HasVisibleIssues, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}">
+                <Border AutomationProperties.AutomationId="FirstExposureCheckCard" Padding="20" Margin="0,0,0,32" CornerRadius="8" Background="{ThemeResource WardenLayerBrush}" BorderBrush="{ThemeResource WardenLineBrush}" BorderThickness="1" Visibility="{x:Bind ViewModel.ShowFirstExposureCheck, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="24" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <FontIcon Glyph="&#xEA18;" FontSize="24" Margin="0,2,0,0" VerticalAlignment="Top" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" AutomationProperties.AccessibilityView="Raw" />
+                        <StackPanel Grid.Column="1"><TextBlock Text="还没有检查过密码是否泄露" FontWeight="SemiBold" TextWrapping="Wrap" /><TextBlock Margin="0,4,0,0" Text="{x:Bind ViewModel.FirstExposureCheckDescription, Mode=OneWay}" Foreground="{ThemeResource WardenSecondaryTextBrush}" TextWrapping="Wrap" /><Button AutomationProperties.AutomationId="RunExposedCheckButton" Content="开始检查" Height="32" Padding="16,0" Margin="0,16,0,0" Command="{x:Bind ViewModel.RunExposedCheckCommand}" Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Left" /></StackPanel>
+                    </Grid>
+                </Border>
+                <StackPanel Margin="0,0,0,24" Spacing="8" Visibility="{x:Bind ViewModel.ShowExposureReminder, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <TextBlock AutomationProperties.LiveSetting="Polite" Text="{x:Bind ViewModel.ExposureStatusMessage, Mode=OneWay}" Foreground="{ThemeResource WardenSecondaryTextBrush}" TextWrapping="Wrap" />
+                    <Button Content="重新检查" Command="{x:Bind ViewModel.RunExposedCheckCommand}" HorizontalAlignment="Left" Height="32" Padding="12,0" />
+                </StackPanel>
+            </Grid>
+            <StackPanel x:Name="OfflineContentPanel" Visibility="{x:Bind ViewModel.ShowOfflineContent, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <InfoBar AutomationProperties.AutomationId="ExposedErrorInfoBar" IsOpen="{x:Bind ViewModel.HasExposedError, Mode=OneWay}" Message="{x:Bind ViewModel.ExposedError, Mode=OneWay}" Severity="Error" Background="{ThemeResource WardenCriticalBackgroundBrush}" IsClosable="False" Margin="0,0,0,16" />
+                <Border BorderBrush="{ThemeResource WardenLineBrush}" BorderThickness="0,1" Padding="0,16" Margin="0,0,0,32" Visibility="{x:Bind ViewModel.ShowEmptyMessage, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                     <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="20" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><FontIcon Glyph="{x:Bind local:SecurityReportPage.EmptyIcon(ViewModel.ExposedChecked), Mode=OneWay}" FontSize="20" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Grid.Column="1" Text="{x:Bind ViewModel.EmptyMessage, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" /></Grid>
                 </Border>
                 <StackPanel Margin="0,0,0,40" Visibility="{x:Bind ViewModel.ShowPriority, Mode=OneWay, Converter={StaticResource BoolToVis}}">
@@ -62,19 +81,19 @@
                 <ItemsControl ItemsSource="{x:Bind ViewModel.IssueGroups}" HorizontalContentAlignment="Stretch">
                     <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:SecurityIssueGroup">
                         <StackPanel Margin="0,0,0,32">
-                            <Grid Margin="0,0,0,10" ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <FontIcon Glyph="{x:Bind local:SecurityReportPage.CategoryIcon(Category)}" FontSize="16" Tag="{x:Bind Category}" Loaded="OnSeverityIconLoaded" Unloaded="OnSeverityIconUnloaded" />
-                                <TextBlock Grid.Column="1" Text="{x:Bind Title}" FontWeight="SemiBold" /><TextBlock Grid.Column="2" Text="{x:Bind Count}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                            <Grid Margin="0,0,0,10" ColumnSpacing="8" Visibility="{x:Bind ShowHeader, Converter={StaticResource BoolToVis}}"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <FontIcon Glyph="{x:Bind local:SecurityReportPage.CategoryIcon(Category)}" FontSize="16" Tag="{x:Bind Category}" Loaded="OnSeverityIconLoaded" Unloaded="OnSeverityIconUnloaded" AutomationProperties.AccessibilityView="Raw" />
+                                <TextBlock Grid.Column="1" Text="{x:Bind Title}" FontWeight="SemiBold" /><TextBlock Grid.Column="2" Text="{x:Bind Count}" Style="{StaticResource WardenCountTextStyle}" />
                                 <TextBlock Grid.Column="3" Text="{x:Bind Description}" Margin="8,0,0,0" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" VerticalAlignment="Center" />
                             </Grid>
-                            <ItemsControl ItemsSource="{x:Bind Items}" ItemTemplate="{StaticResource IssueTemplate}" HorizontalContentAlignment="Stretch" />
+                            <Border BorderBrush="{ThemeResource WardenLineBrush}" BorderThickness="0,1,0,0"><ItemsControl ItemsSource="{x:Bind Items}" ItemTemplate="{StaticResource IssueTemplate}" HorizontalContentAlignment="Stretch" /></Border>
                         </StackPanel>
                     </DataTemplate></ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <StackPanel Visibility="{x:Bind ViewModel.HasResolvedItems, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,10"><FontIcon Glyph="&#xE73E;" FontSize="16" Foreground="{ThemeResource SystemFillColorSuccessBrush}" /><TextBlock Text="本次已处理" FontWeight="SemiBold" /><TextBlock Text="{x:Bind ViewModel.ResolvedItems.Count, Mode=OneWay}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" /></StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,10" Visibility="{x:Bind ViewModel.ShowResolvedHeader, Mode=OneWay, Converter={StaticResource BoolToVis}}"><FontIcon Glyph="&#xE73E;" FontSize="16" Foreground="{ThemeResource SystemFillColorSuccessBrush}" AutomationProperties.AccessibilityView="Raw" /><TextBlock Text="本次已处理" FontWeight="SemiBold" /><TextBlock Text="{x:Bind ViewModel.ResolvedItems.Count, Mode=OneWay}" Style="{StaticResource WardenCountTextStyle}" /></StackPanel>
                     <ItemsControl ItemsSource="{x:Bind ViewModel.ResolvedItems}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:SecurityIssueRow">
-                        <Grid MinHeight="52" ColumnSpacing="14"><Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Grid MinHeight="52" ColumnSpacing="14" BorderBrush="{ThemeResource WardenLineBrush}" BorderThickness="0,0,0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                             <controls:FaviconView DisplayName="{x:Bind Name}" TileSize="32" VerticalAlignment="Center" />
                             <Grid Grid.Column="1" ColumnSpacing="10" VerticalAlignment="Center"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="2*" /></Grid.ColumnDefinitions><TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="1" Text="{x:Bind ResultLabel}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" VerticalAlignment="Center" /></Grid>
                         </Grid>

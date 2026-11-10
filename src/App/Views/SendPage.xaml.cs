@@ -18,9 +18,10 @@ public sealed partial class SendPage : Page
     public SendEditorDraft Draft { get; private set; } = SendEditorDraft.CreateDefault(SendType.Text);
     public bool IsReceiveView => _isReceive;
     public string CurrentFilterTag => _isReceive ? "send:receive" : ViewModel.SelectedFilterTag;
+    public event EventHandler? ContextChanged;
     public Visibility EmptyStateVisibility(bool isEmpty) => isEmpty && _draft is null ? Visibility.Visible : Visibility.Collapsed;
-    public string HideEmailState(bool isOn) => isOn ? "开 · 对方看不到是谁发送的" : "关";
-    public string DisabledState(bool isOn) => isOn ? "开 · 任何人都打不开链接" : "关";
+    public DateTimeOffset CustomDeletionMinDate => DateTimeOffset.Now;
+    public DateTimeOffset CustomDeletionMaxDate => DateTimeOffset.Now.AddDays(31);
     private ListView SendsList => SendContentList;
     private readonly AsyncOperationGate _receivedFileSaveGate = new();
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _availabilityTimer;
@@ -37,12 +38,15 @@ public sealed partial class SendPage : Page
     private SendEditorDraft? _detailDraft;
     private long _selectionRequest;
     private bool _isReceive;
+    private bool _narrowDetailVisible;
     private bool _changingSelection;
     private bool _initializingEditor;
     private bool _editorDirty;
     private EditorSnapshot? _editorBaseline;
     private bool _isSavingEditor;
     private readonly List<(Control Control, bool WasEnabled)> _editorEnabledStates = new();
+    private readonly HashSet<Grid> _sendRows = new();
+    private bool _sendRowSelectionRefreshQueued;
     private bool _hasNavigated;
 
     private sealed record PageRequest(
@@ -118,10 +122,18 @@ public sealed partial class SendPage : Page
                 UpdateStatusAction(_selectedItem);
             }
         };
-        MaxAccessTextBox.TextChanged += (_, _) => { if (!_initializingEditor && _draft is not null) _editorDirty = true; };
+        MaxAccessTextBox.TextChanged += (_, _) =>
+        {
+            if (!_initializingEditor && _draft is not null) _editorDirty = true;
+            UpdateEditorDirtyIndicator();
+        };
         EditorContent.SizeChanged += (_, _) => UpdateEditorValueLayout();
         SendEditorErrorInfoBar.Closed += (_, _) => SendEditorErrorInfoBar.Visibility = Visibility.Collapsed;
-        ActualThemeChanged += (_, _) => { if (_selectedItem is { } item) UpdateStatusAction(item); };
+        ActualThemeChanged += (_, _) =>
+        {
+            if (_selectedItem is { } item) UpdateStatusAction(item);
+            if (_draft is not null) UpdateEditorDateHint();
+        };
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -194,20 +206,62 @@ public sealed partial class SendPage : Page
         ReconcileFilteredSelection();
     }
 
+    private void OnClearSearchClick(object sender, RoutedEventArgs e)
+    {
+        if (_draft is not null || _isSavingEditor) return;
+        ApplySearch(string.Empty);
+        ContextChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnSearchAllSendsClick(object sender, RoutedEventArgs e)
+    {
+        if (_draft is not null || _isSavingEditor) return;
+        ViewModel.SelectFilterByTag("send:all");
+        ReconcileFilteredSelection();
+        ContextChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     private void ReconcileFilteredSelection()
     {
         if (_draft is not null || _isReceive) return;
         var matching = ViewModel.FilteredItems.FirstOrDefault(item => item.Id == _selectedItem?.Id);
-        if (matching is not null) { SendsList.SelectedItem = matching; return; }
+        if (matching is not null) { SetLoadedSelection(matching); return; }
         ResetSelectedDetail();
         if ((XamlRoot?.Size.Width ?? ActualWidth) >= 800)
             SendsList.SelectedItem = ViewModel.FilteredItems.FirstOrDefault();
         UpdateAdaptiveLayout();
     }
 
+    private void SetLoadedSelection(SendListItem item)
+    {
+        if (_narrowDetailVisible || (XamlRoot?.Size.Width ?? ActualWidth) >= 800
+            || _selectedItem?.Id != item.Id)
+        {
+            SendsList.SelectedItem = item;
+            return;
+        }
+
+        var refreshDetail = DetailScroll.Visibility != Visibility.Visible
+            || (_selectedItem is { } selected && (item with { DisplayTime = selected.DisplayTime }) != selected);
+        _changingSelection = true;
+        try
+        {
+            _selectedItem = item;
+            SendsList.SelectedItem = item;
+        }
+        finally
+        {
+            _changingSelection = false;
+        }
+        RefreshSendRowSelectionIndicators();
+        if (refreshDetail)
+            _ = RefreshSelectedDetailAsync(item, showNarrowDetail: false);
+    }
+
     private void ResetSelectedDetail()
     {
         Interlocked.Increment(ref _selectionRequest);
+        _narrowDetailVisible = false;
         _selectedItem = null;
         _detailDraft?.ClearSensitive();
         _detailDraft = null;
@@ -234,7 +288,10 @@ public sealed partial class SendPage : Page
     public void AcceptSearchResult()
     {
         if (_isReceive || _draft is not null || ViewModel.FilteredItems.Count == 0) return;
-        SendsList.SelectedIndex = 0;
+        if (SendsList.SelectedItem is not SendListItem item)
+            SendsList.SelectedIndex = 0;
+        else if (!_narrowDetailVisible)
+            _ = ReopenSelectedDetailAsync(item);
         SendsList.Focus(FocusState.Programmatic);
     }
 
@@ -263,10 +320,16 @@ public sealed partial class SendPage : Page
         if (_draft is not null) return;
         TryCommitPageRequest(request, () =>
         {
-        var item = ViewModel.FilteredItems.FirstOrDefault(item => item.Id == selectedId);
-        if (item is null && (XamlRoot?.Size.Width ?? ActualWidth) >= 800)
-            item = ViewModel.FilteredItems.FirstOrDefault();
-        if (item is not null) SendsList.SelectedItem = item;
+            var item = ViewModel.FilteredItems.FirstOrDefault(item => item.Id == selectedId);
+            if (item is null && (XamlRoot?.Size.Width ?? ActualWidth) >= 800)
+                item = ViewModel.FilteredItems.FirstOrDefault();
+            if (item is not null)
+                SetLoadedSelection(item);
+            else
+            {
+                ResetSelectedDetail();
+                UpdateAdaptiveLayout();
+            }
         });
     }
 
@@ -279,8 +342,28 @@ public sealed partial class SendPage : Page
     private void OnAddSendClick(object sender, RoutedEventArgs e) => BeginCreate();
     private void OnRetryClick(object sender, RoutedEventArgs e) => RefreshSendList();
 
+    private async void OnSendItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (_narrowDetailVisible || e.ClickedItem is not SendListItem item || item.Id != _selectedItem?.Id) return;
+        await ReopenSelectedDetailAsync(item);
+    }
+
+    private Task ReopenSelectedDetailAsync(SendListItem item) =>
+        RefreshSelectedDetailAsync(item, showNarrowDetail: true);
+
+    private async Task RefreshSelectedDetailAsync(SendListItem item, bool showNarrowDetail)
+    {
+        if (_isReceive || _draft is not null || !TryBeginPageRequest(out var request)) return;
+        if (!await CanNavigateAwayAsync()) return;
+        Task detailTask = Task.CompletedTask;
+        if (TryCommitPageRequest(request, () => detailTask = ShowDetailAsync(item, showNarrowDetail)))
+            await detailTask;
+    }
+
     private async void OnSendSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        RefreshSendRowSelectionIndicators();
+        QueueSendRowSelectionRefresh();
         if (_changingSelection || SendsList.SelectedItem is not SendListItem item) return;
         if (_selectedItem is { } selected && _draft is null
             && (item with { DisplayTime = selected.DisplayTime }) == selected) return;
@@ -301,9 +384,10 @@ public sealed partial class SendPage : Page
         })) await detailTask;
     }
 
-    private async Task ShowDetailAsync(SendListItem item)
+    private async Task ShowDetailAsync(SendListItem item, bool showNarrowDetail = true)
     {
         if (!TryBeginPageRequest(out var request)) return;
+        _narrowDetailVisible = showNarrowDetail;
         _selectedItem = item;
         ViewModel.SelectedMenuItem = null;
         _detailDraft?.ClearSensitive();
@@ -317,6 +401,8 @@ public sealed partial class SendPage : Page
         SelectedMoreButton.DataContext = item;
         SetShareLinkDisplay(item.Link);
         ShareLinkLabel.Text = "分享链接";
+        SetSelectedLinkCopyState(false);
+        CopySelectedLinkButton.IsEnabled = !string.IsNullOrEmpty(item.Link);
         ShareLinkProgress.Visibility = Visibility.Collapsed;
         _copiedLinkVersion = 0;
         DetailDeletion.Text = FormatDate(item.DeletionDateTime);
@@ -484,9 +570,9 @@ public sealed partial class SendPage : Page
         Bindings.Update();
         EditorGlyph.Glyph = draft.IsFile ? "\uE8A5" : "\uE8E4";
         SaveEditorButton.Content = item is null ? "创建并复制链接" : "保存";
+        ToolTipService.SetToolTip(SaveEditorButton, $"{SaveEditorButton.Content} · Ctrl+S");
         SendPasswordBox.PlaceholderText = draft.ExistingHasPassword ? "已设置 · 留空则保持不变" : "可选";
-        RemovePasswordButton.Visibility = draft.ExistingHasPassword ? Visibility.Visible : Visibility.Collapsed;
-        RemovePasswordButton.Content = "移除密码";
+        UpdatePasswordActions();
         MaxAccessTextBox.Text = draft.MaxAccessCount?.ToString() ?? string.Empty;
         EditorAccessHint.Text = item is null ? "留空表示不限次数" : $"已访问 {item.AccessCount} 次 · 留空表示不限";
         EditorTypeRow.Visibility = item is null ? Visibility.Visible : Visibility.Collapsed;
@@ -497,6 +583,9 @@ public sealed partial class SendPage : Page
         _initializingEditor = false;
         _editorDirty = false;
         _editorBaseline = CaptureEditorSnapshot();
+        UpdateEditorDirtyIndicator();
+        EditorNameError.Visibility = Visibility.Collapsed;
+        EditorTextError.Visibility = Visibility.Collapsed;
         draft.PropertyChanged += OnDraftChanged;
         SendEditorErrorInfoBar.IsOpen = false;
         SendEditorErrorInfoBar.Visibility = Visibility.Collapsed;
@@ -514,26 +603,49 @@ public sealed partial class SendPage : Page
     {
         DeletionChoice.Items.Clear();
         if (editing) DeletionChoice.Items.Add($"保持不变 · {FormatDate(draft.DeletionDate)}");
-        foreach (var label in new[] { "1 小时后", "1 天后", "2 天后", "3 天后", "7 天后", "30 天后" }) DeletionChoice.Items.Add(label);
+        foreach (var label in new[] { "1 小时后", "1 天后", "2 天后", "3 天后", "7 天后", "30 天后", "自定义" }) DeletionChoice.Items.Add(label);
         DeletionChoice.SelectedIndex = editing ? 0 : 4;
+        CustomDeletionEditorPanel.Visibility = Visibility.Collapsed;
         ExpirationChoice.Items.Clear();
         if (editing && draft.ExpirationDate is not null) ExpirationChoice.Items.Add($"保持不变 · {FormatDate(draft.ExpirationDate)}");
-        foreach (var label in new[] { "永不过期", "1 小时后", "1 天后", "2 天后", "3 天后", "7 天后" }) ExpirationChoice.Items.Add(label);
+        foreach (var label in new[] { "永不过期", "1 小时后", "1 天后", "2 天后", "3 天后", "7 天后", "自定义" }) ExpirationChoice.Items.Add(label);
         ExpirationChoice.SelectedIndex = 0;
+        CustomExpirationEditorPanel.Visibility = Visibility.Collapsed;
+        UpdateEditorDateHint();
     }
 
     private void OnDraftChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (!_initializingEditor) _editorDirty = true;
         if (e.PropertyName is nameof(SendEditorDraft.Name) or nameof(SendEditorDraft.Type)) UpdateDraftRow();
-        if (e.PropertyName == nameof(SendEditorDraft.Password) && _draft is { } draft)
-            RemovePasswordButton.Visibility = draft.ExistingHasPassword && string.IsNullOrEmpty(draft.Password) ? Visibility.Visible : Visibility.Collapsed;
+        if (e.PropertyName is nameof(SendEditorDraft.Password) or nameof(SendEditorDraft.RemovePassword))
+            UpdatePasswordActions();
+        if (e.PropertyName is nameof(SendEditorDraft.DeletionDate) or nameof(SendEditorDraft.DeletionDateLabel) or nameof(SendEditorDraft.ExpirationDate))
+            UpdateEditorDateHint();
+        if (e.PropertyName == nameof(SendEditorDraft.Name) && !string.IsNullOrWhiteSpace(_draft?.Name))
+            EditorNameError.Visibility = Visibility.Collapsed;
+        if (e.PropertyName == nameof(SendEditorDraft.Text) && !string.IsNullOrWhiteSpace(_draft?.Text))
+            EditorTextError.Visibility = Visibility.Collapsed;
+        UpdateEditorDirtyIndicator();
+    }
+
+    private void UpdateEditorDirtyIndicator() =>
+        EditorDirtyIndicator.Visibility = _draft is not null && _editorDirty && CaptureEditorSnapshot() != _editorBaseline
+            ? Visibility.Visible : Visibility.Collapsed;
+
+    private void UpdatePasswordActions()
+    {
+        var hasExistingPassword = _draft is { ExistingHasPassword: true } draft && string.IsNullOrEmpty(draft.Password);
+        var removing = hasExistingPassword && _draft!.RemovePassword;
+        PasswordActionGroup.Visibility = hasExistingPassword ? Visibility.Visible : Visibility.Collapsed;
+        RemovePasswordButton.Visibility = hasExistingPassword && !removing ? Visibility.Visible : Visibility.Collapsed;
+        RemovePasswordSummary.Visibility = removing ? Visibility.Visible : Visibility.Collapsed;
+        UndoRemovePasswordButton.Visibility = removing ? Visibility.Visible : Visibility.Collapsed;
     }
     private void OnRemovePasswordClick(object sender, RoutedEventArgs e)
     {
         if (_draft is null) return;
         _draft.RemovePassword = !_draft.RemovePassword;
-        RemovePasswordButton.Content = _draft.RemovePassword ? "保存后移除 · 撤销" : "移除密码";
     }
     private void OnTextTypeClick(object sender, RoutedEventArgs e) => SetEditorType(SendType.Text);
     private void OnFileTypeClick(object sender, RoutedEventArgs e) => SetEditorType(SendType.File);
@@ -556,6 +668,7 @@ public sealed partial class SendPage : Page
     private void UpdateDraftRow()
     {
         DraftRow.Visibility = _draft is not null && _editingItem is null ? Visibility.Visible : Visibility.Collapsed;
+        RefreshSendRowSelectionIndicators();
         if (_draft is null) return;
         DraftRowName.Text = string.IsNullOrWhiteSpace(_draft.Name)
             ? _draft.IsFile ? "新建文件 Send" : "新建文本 Send" : _draft.Name;
@@ -564,6 +677,13 @@ public sealed partial class SendPage : Page
     private void OnDeletionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_initializingEditor || _draft is null || DeletionChoice.SelectedItem is not string label) return;
+        CustomDeletionEditorPanel.Visibility = label == "自定义" ? Visibility.Visible : Visibility.Collapsed;
+        if (label == "自定义")
+        {
+            _draft.DeletionDateLabel = "自定义";
+            _draft.DeletionDate ??= DateTimeOffset.UtcNow.AddDays(7);
+            return;
+        }
         if (label.StartsWith("保持不变", StringComparison.Ordinal))
         {
             if (_editorBaseline is { } baseline)
@@ -579,12 +699,40 @@ public sealed partial class SendPage : Page
     private void OnExpirationChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_initializingEditor || _draft is null || ExpirationChoice.SelectedItem is not string label) return;
+        CustomExpirationEditorPanel.Visibility = label == "自定义" ? Visibility.Visible : Visibility.Collapsed;
+        if (label == "自定义")
+        {
+            _draft.SelectExpiration(SendExpirationSelection.CustomLabel, DateTimeOffset.UtcNow);
+            return;
+        }
         if (label.StartsWith("保持不变", StringComparison.Ordinal))
         {
             if (_editorBaseline is { } baseline) _draft.ExpirationDate = baseline.ExpirationDate;
             return;
         }
         _draft.ExpirationDate = label == "永不过期" ? null : RelativeDate(label);
+    }
+
+    private void OnCustomDeletionDateChanged(CalendarDatePicker sender, CalendarDatePickerDateChangedEventArgs args)
+    {
+        if (_initializingEditor || _isSavingEditor || _draft is null
+            || CustomDeletionEditorPanel.Visibility != Visibility.Visible || args.NewDate is not { } selectedDate) return;
+        _draft.SelectCustomDeletionDate(selectedDate, TimeZoneInfo.Local);
+    }
+
+    private void OnCustomExpirationDateChanged(CalendarDatePicker sender, CalendarDatePickerDateChangedEventArgs args)
+    {
+        if (_initializingEditor || _isSavingEditor || _draft is null
+            || CustomExpirationEditorPanel.Visibility != Visibility.Visible || args.NewDate is not { } selectedDate) return;
+        _draft.SelectCustomExpirationDate(selectedDate, TimeZoneInfo.Local);
+    }
+
+    private void UpdateEditorDateHint()
+    {
+        var invalid = _draft is { ExpirationDate: { } expiration } draft && expiration > draft.ToDeletionDate();
+        ExpirationEditorHint.Text = invalid ? "过期时间不能晚于删除时间" : "过期后打不开，到删除时间才会删除";
+        ExpirationEditorHint.Foreground = ThemeBrushResolver.Resolve(this,
+            invalid ? "SystemFillColorCriticalBrush" : "TextFillColorSecondaryBrush");
     }
 
     private EditorSnapshot? CaptureEditorSnapshot() => _draft is not { } draft ? null : new(
@@ -644,9 +792,15 @@ public sealed partial class SendPage : Page
         var draft = _draft;
         var item = _editingItem;
         if (draft is null || _isSavingEditor) return;
-        if (string.IsNullOrWhiteSpace(draft.Name)) { ShowEditorError("请填写名称"); SendNameTextBox.Focus(FocusState.Programmatic); return; }
-        if (draft.IsText && string.IsNullOrWhiteSpace(draft.Text)) { ShowEditorError("请填写要分享的内容"); SendTextBox.Focus(FocusState.Programmatic); return; }
+        if (string.IsNullOrWhiteSpace(draft.Name)) { EditorNameError.Visibility = Visibility.Visible; ShowEditorError("请填写名称"); SendNameTextBox.Focus(FocusState.Programmatic); return; }
+        if (draft.IsText && string.IsNullOrWhiteSpace(draft.Text)) { EditorTextError.Visibility = Visibility.Visible; ShowEditorError("请填写要分享的内容"); SendTextBox.Focus(FocusState.Programmatic); return; }
         if (draft.IsFile && (string.IsNullOrWhiteSpace(draft.FileName) || (item is null && draft.ReplacementFile is null))) { ShowEditorError("请选择要分享的文件"); return; }
+        if (draft.ExpirationDate is { } expiration && expiration > draft.ToDeletionDate())
+        {
+            ShowEditorError("过期时间不能晚于删除时间");
+            ExpirationChoice.Focus(FocusState.Programmatic);
+            return;
+        }
         var replacingFile = item is not null && draft.IsFile && draft.ReplacementFile is not null;
         if (replacingFile && draft.ExistingHasPassword && !draft.RemovePassword && string.IsNullOrWhiteSpace(draft.Password))
         {
@@ -764,9 +918,13 @@ public sealed partial class SendPage : Page
         _editingItem = null;
         _editorDirty = false;
         _editorBaseline = null;
+        EditorDirtyIndicator.Visibility = Visibility.Collapsed;
+        CustomDeletionEditorPanel.Visibility = Visibility.Collapsed;
+        CustomExpirationEditorPanel.Visibility = Visibility.Collapsed;
         Draft = SendEditorDraft.CreateDefault(SendType.Text);
         Bindings.Update();
         EditorScroll.Visibility = Visibility.Collapsed;
+        RefreshSendRowSelectionIndicators();
     }
     private void ClearPageSensitive()
     {
@@ -775,6 +933,7 @@ public sealed partial class SendPage : Page
         CloseEditor();
         _detailDraft?.ClearSensitive();
         _detailDraft = null;
+        _narrowDetailVisible = false;
         _selectedItem = null;
         SelectedMoreButton.DataContext = null;
         SendsList.SelectedItem = null;
@@ -787,6 +946,7 @@ public sealed partial class SendPage : Page
         DetailScroll.Visibility = Visibility.Collapsed;
         _copyTimer.Stop();
         _copiedLinkVersion = 0;
+        SetSelectedLinkCopyState(false);
         ViewModel.CancelReceive();
     }
 
@@ -807,6 +967,7 @@ public sealed partial class SendPage : Page
         {
             _copiedLinkVersion = _clipboardStatus?.WriteVersion ?? 0;
             ShareLinkLabel.Text = "✓ 已复制";
+            SetSelectedLinkCopyState(true);
             UpdateLinkCopyFeedback();
             _copyTimer.Start();
         }
@@ -818,6 +979,7 @@ public sealed partial class SendPage : Page
         {
             ShareLinkLabel.Text = "分享链接";
             ShareLinkProgress.Visibility = Visibility.Collapsed;
+            SetSelectedLinkCopyState(false);
             _copyTimer.Stop();
             return;
         }
@@ -831,6 +993,11 @@ public sealed partial class SendPage : Page
         ShareLinkLabel.Text = $"✓ 已复制 · {seconds} 秒";
         ShareLinkProgress.Visibility = Visibility.Visible;
         ShareLinkProgress.Value = Math.Clamp(seconds / (double)Math.Max(1, _clipboardStatus.TotalSeconds), 0, 1);
+    }
+    private void SetSelectedLinkCopyState(bool copied)
+    {
+        CopySelectedLinkGlyph.Glyph = copied ? "\uE73E" : "\uE71B";
+        CopySelectedLinkText.Text = copied ? "已复制" : "复制链接";
     }
     private void CopyText(string? text)
     {
@@ -852,6 +1019,87 @@ public sealed partial class SendPage : Page
     private void OnSelectedMoreClick(object sender, RoutedEventArgs e) => ViewModel.MarkMoreMenuOpened(_selectedItem);
     private void OnRowMenuOpening(object sender, object e) { }
     private void OnRowRightTapped(object sender, RightTappedRoutedEventArgs e) => ViewModel.MarkMoreMenuOpened(ItemFromSender(sender));
+    private void OnSendRowLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Grid row) return;
+        _sendRows.Add(row);
+        UpdateSendRowSelectionIndicator(row);
+        QueueSendRowSelectionRefresh();
+    }
+
+    private void OnSendRowUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Grid row) return;
+        _sendRows.Remove(row);
+        UpdateSendRowSelectionIndicator(row);
+    }
+
+    private void OnSendRowDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+    {
+        if (sender is not Grid row) return;
+        UpdateSendRowSelectionIndicator(row);
+        QueueSendRowSelectionRefresh();
+    }
+
+    private void OnSendContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+    {
+        var row = args.ItemContainer.ContentTemplateRoot as Grid;
+        if (args.InRecycleQueue)
+        {
+            if (row is not null)
+            {
+                _sendRows.Remove(row);
+                UpdateSendRowSelectionIndicator(row);
+            }
+            return;
+        }
+
+        if (row is not null)
+        {
+            if (row.IsLoaded) _sendRows.Add(row);
+            UpdateSendRowSelectionIndicator(row);
+        }
+        if (args.Phase == 0)
+            args.RegisterUpdateCallback(1, OnSendContainerContentChanging);
+        QueueSendRowSelectionRefresh();
+    }
+
+    private void UpdateSendRowSelectionIndicator(Grid row)
+    {
+        if (row.FindName("RowSelectionIndicator") is not Border indicator) return;
+        var selected = _sendRows.Contains(row) && row.IsLoaded
+            && !(_draft is not null && _editingItem is null)
+            && SendsList.SelectedItem is SendListItem selectedItem
+            && row.DataContext is SendListItem item && item.Id == selectedItem.Id
+            && SendsList.ContainerFromItem(item) is ListViewItem container && container.IsSelected
+            && ReferenceEquals(container.ContentTemplateRoot, row);
+        indicator.Visibility = selected ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void RefreshSendRowSelectionIndicators()
+    {
+        foreach (var row in _sendRows)
+            UpdateSendRowSelectionIndicator(row);
+    }
+
+    private void QueueSendRowSelectionRefresh()
+    {
+        if (_sendRowSelectionRefreshQueued) return;
+        _sendRowSelectionRefreshQueued = true;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            _sendRowSelectionRefreshQueued = false;
+            RefreshSendRowSelectionIndicators();
+        });
+    }
+
+    private void OnRowProtectionLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement row && ItemFromSender(sender) is { } item
+            && row.FindName("RowAvailabilityIcon") is FontIcon icon)
+            icon.Visibility = item.GetAvailability(item.DisplayTime).State is SendAvailabilityState.Available or SendAvailabilityState.Unknown
+                ? Visibility.Collapsed : Visibility.Visible;
+    }
     private void OnRowPointerEntered(object sender, PointerRoutedEventArgs e)
     {
         if (sender is Grid grid && grid.FindName("RowCopyButton") is Button button)
@@ -860,12 +1108,12 @@ public sealed partial class SendPage : Page
             if (button.Content is FontIcon glyph)
                 glyph.Glyph = button.Tag is long version && version == _clipboardStatus?.WriteVersion && _clipboardStatus?.HasContent == true ? "\uE73E" : "\uE71B";
         }
-        if (sender is Grid row && row.FindName("RowProtection") is FontIcon icon) icon.Visibility = Visibility.Collapsed;
+        if (sender is Grid row && row.FindName("RowProtection") is FrameworkElement status) status.Visibility = Visibility.Collapsed;
     }
     private void OnRowPointerExited(object sender, PointerRoutedEventArgs e)
     {
         if (sender is Grid grid && grid.FindName("RowCopyButton") is Button button) button.Visibility = Visibility.Collapsed;
-        if (sender is Grid row && row.FindName("RowProtection") is FontIcon icon) icon.Visibility = ItemFromSender(sender)?.HasRowStatus == true ? Visibility.Visible : Visibility.Collapsed;
+        if (sender is Grid row && row.FindName("RowProtection") is FrameworkElement status) status.Visibility = ItemFromSender(sender)?.HasRowStatus == true ? Visibility.Visible : Visibility.Collapsed;
     }
     private async void OnToggleDisabledClick(object sender, RoutedEventArgs e)
     {
@@ -938,6 +1186,13 @@ public sealed partial class SendPage : Page
         MoveSearchSelection(e.Key == Windows.System.VirtualKey.Up ? -1 : 1);
         e.Handled = true;
     }
+    private void OnSendListKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Handled || e.Key != Windows.System.VirtualKey.Enter || !CanHandleListShortcut()
+            || FocusManager.GetFocusedElement(XamlRoot) is not (ListView or ListViewItem)) return;
+        AcceptSearchResult();
+        e.Handled = true;
+    }
     private static bool HasSelectedText(DependencyObject parent)
     {
         if (parent is TextBlock { SelectedText.Length: > 0 } or RichTextBlock { SelectedText.Length: > 0 }) return true;
@@ -964,18 +1219,28 @@ public sealed partial class SendPage : Page
         ViewModel.OpenReceivedLinkCommand.Execute(null);
     }
     private void OnSurfaceSizeChanged(object sender, SizeChangedEventArgs e) => UpdateAdaptiveLayout();
+    private void OnEditorHeaderSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var stacked = e.NewSize.Width < 680;
+        Grid.SetColumnSpan(EditorNamePanel, stacked ? 2 : 1);
+        Grid.SetRow(EditorHeaderActions, stacked ? 1 : 0);
+        Grid.SetColumn(EditorHeaderActions, stacked ? 0 : 2);
+        Grid.SetColumnSpan(EditorHeaderActions, stacked ? 3 : 1);
+    }
+
     private void UpdateAdaptiveLayout()
     {
         if (SendSurface is null) return;
         var width = XamlRoot?.Size.Width ?? ActualWidth;
         var narrow = width > 0 && width < 800;
-        var hasDetail = _draft is not null || _selectedItem is not null;
+        var hasDetail = _draft is not null || (_selectedItem is not null && _narrowDetailVisible);
         SendListColumn.Width = new GridLength(narrow ? (hasDetail ? 0 : Math.Max(0, SendSurface.ActualWidth)) : width >= 1680 ? 380 : width < 1000 ? 300 : 344);
         ListPane.Visibility = narrow && hasDetail ? Visibility.Collapsed : Visibility.Visible;
         DetailPane.Visibility = narrow && !hasDetail ? Visibility.Collapsed : Visibility.Visible;
         NarrowBackBar.Visibility = narrow ? Visibility.Visible : Visibility.Collapsed;
-        DetailContent.Padding = new Thickness(narrow ? 24 : 40, 32, narrow ? 24 : 40, 36);
-        EditorContent.Padding = new Thickness(narrow ? 24 : 40, 32, narrow ? 24 : 40, 40);
+        var contentWidth = Math.Clamp(SendSurface.ActualWidth - (narrow ? 0 : SendListColumn.Width.Value), 0, 1000);
+        DetailContent.Width = contentWidth;
+        EditorContent.Width = contentWidth;
         UpdateEditorValueLayout();
     }
     private void UpdateEditorValueLayout()
@@ -985,13 +1250,20 @@ public sealed partial class SendPage : Page
         PlaceHint(DeletionEditorHint, available < 430);
         PlaceHint(ExpirationEditorHint, available < 430);
         PlaceHint(EditorAccessHint, available < 290);
-        PlaceHint(RemovePasswordButton, available < 400);
+        PlaceHint(PasswordActionGroup, available < 400);
         SendPasswordBox.Width = Math.Clamp(available, 120, 280);
-        var fileButtonBelow = available < 330;
-        Grid.SetColumn(ChooseFileButton, fileButtonBelow ? 0 : 3);
+        var hasFile = !string.IsNullOrWhiteSpace(_draft?.FileName);
+        var fileButtonBelow = hasFile && available < 330;
+        var fileHintBelow = !hasFile && available < 220;
+        Grid.SetColumn(ChooseFileButton, hasFile && !fileButtonBelow ? 3 : 0);
         Grid.SetColumnSpan(ChooseFileButton, fileButtonBelow ? 4 : 1);
         Grid.SetRow(ChooseFileButton, fileButtonBelow ? 1 : 0);
+        ChooseFileButton.Margin = new Thickness(0, fileButtonBelow ? 6 : 0, 0, 0);
         ChooseFileButton.HorizontalAlignment = HorizontalAlignment.Left;
+        Grid.SetColumn(EditorFileSize, hasFile ? 2 : fileHintBelow ? 0 : 1);
+        Grid.SetColumnSpan(EditorFileSize, hasFile ? 1 : fileHintBelow ? 4 : 3);
+        Grid.SetRow(EditorFileSize, fileHintBelow ? 1 : 0);
+        EditorFileSize.Margin = new Thickness(0, fileHintBelow ? 6 : 0, 0, 0);
         EditorFileName.MaxWidth = Math.Clamp(available - (fileButtonBelow ? 90 : 180), 60, 180);
 
         static void PlaceHint(FrameworkElement hint, bool below)
@@ -999,6 +1271,7 @@ public sealed partial class SendPage : Page
             Grid.SetColumn(hint, below ? 0 : 1);
             Grid.SetRow(hint, below ? 1 : 0);
             Grid.SetColumnSpan(hint, below ? 2 : 1);
+            hint.Margin = new Thickness(0, below ? 6 : 0, 0, 0);
         }
     }
     private void UpdateEditorFileSummary()
@@ -1007,7 +1280,9 @@ public sealed partial class SendPage : Page
         var hasFile = !string.IsNullOrWhiteSpace(_draft.FileName);
         ChooseFileButton.Content = hasFile ? "更换文件…" : "选择文件…";
         EditorFileIcon.Visibility = hasFile ? Visibility.Visible : Visibility.Collapsed;
+        EditorFileName.Visibility = hasFile ? Visibility.Visible : Visibility.Collapsed;
         EditorFileSize.Text = hasFile ? FormatSize(_draft.ReplacementFileLength ?? _editingItem?.FileSize) : "最大 500 MB";
+        UpdateEditorValueLayout();
     }
     private async void OnBackToListClick(object sender, RoutedEventArgs e)
     {
@@ -1015,9 +1290,28 @@ public sealed partial class SendPage : Page
         if (!await CanNavigateAwayAsync()) return;
         TryCommitPageRequest(request, () =>
         {
-        CloseEditor();
-        ResetSelectedDetail();
-        UpdateAdaptiveLayout();
+            CloseEditor();
+            _narrowDetailVisible = false;
+            var selected = ViewModel.FilteredItems.FirstOrDefault(item => item.Id == _selectedItem?.Id);
+            if (selected is not null)
+                SetLoadedSelection(selected);
+            else
+                ResetSelectedDetail();
+            UpdateAdaptiveLayout();
+            var focusRequest = request with { Generation = Volatile.Read(ref _selectionRequest) };
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_narrowDetailVisible || _draft is not null || _isReceive) return;
+                TryCommitPageRequest(focusRequest, () =>
+                {
+                    if (SendsList.SelectedItem is { } item)
+                    {
+                        SendsList.ScrollIntoView(item);
+                        if (SendsList.ContainerFromItem(item) is Control row && row.Focus(FocusState.Programmatic)) return;
+                    }
+                    SendsList.Focus(FocusState.Programmatic);
+                });
+            });
         });
     }
     private void OnDownloadOwnFileClick(object sender, RoutedEventArgs e)

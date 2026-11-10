@@ -114,6 +114,7 @@ public sealed partial class GeneratorWorkspace : UserControl
     private void RenderValue(int frame = 9)
     {
         var value = ViewModel.GeneratedPassword;
+        var passphraseSeparator = ViewModel.IsPassphraseMode ? ViewModel.PassphraseSeparator : string.Empty;
         GeneratedValueText.Inlines.Clear();
         var settled = value.Length * frame / 9;
         for (var index = 0; index < value.Length; index++)
@@ -126,6 +127,9 @@ public sealed partial class GeneratorWorkspace : UserControl
                 : char.IsLetter(character) ? "TextFillColorPrimaryBrush"
                 : separator ? "TextFillColorTertiaryBrush" : "SystemFillColorCautionBrush";
             GeneratedValueText.Inlines.Add(new Run { Text = character.ToString(), Foreground = Brush(key) });
+            // Keep soft wrap opportunities in the presentation, never in the copied credential.
+            if (passphraseSeparator.Length == 1 && actual == passphraseSeparator[0])
+                GeneratedValueText.Inlines.Add(new Run { Text = "\u200B" });
         }
         AutomationProperties.SetName(GeneratedValueText, ViewModel.GeneratedValueLabel);
         UpdateStrength();

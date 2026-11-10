@@ -7,11 +7,11 @@
         <Border MaxWidth="680" HorizontalAlignment="Stretch">
             <StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                    <FontIcon x:Name="StatusIcon" Glyph="&#xE8FD;" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <TextBlock x:Name="StatusText" Text="正在加载…" />
+                    <FontIcon x:Name="StatusIcon" Glyph="&#xE8FD;" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.AccessibilityView="Raw" />
+                    <TextBlock x:Name="StatusText" Text="正在加载…" AutomationProperties.LiveSetting="Polite" />
                 </StackPanel>
                 <TextBlock Text="在新设备上登录时，除了主密码还要再验证一次。多开启几种方式，手边没有其中一种时可以换着用。" MaxWidth="600" HorizontalAlignment="Left" Margin="0,8,0,28" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                <InfoBar x:Name="LoadErrorBar" IsOpen="False" IsClosable="False" Severity="Error" Margin="0,0,0,12">
+                <InfoBar x:Name="LoadErrorBar" IsOpen="False" IsClosable="False" Severity="Error" Background="{ThemeResource WardenCriticalBackgroundBrush}" Margin="0,0,0,12">
                     <InfoBar.ActionButton><Button Content="重试" Click="OnRetryClick" /></InfoBar.ActionButton>
                 </InfoBar>
                 <ProgressRing x:Name="LoadingRing" IsActive="True" Width="24" Height="24" HorizontalAlignment="Left" AutomationProperties.Name="正在加载两步登录" />

@@ -8,7 +8,8 @@
         <TextBlock x:Name="LetterText" FontSize="14" FontWeight="SemiBold"
                    HorizontalAlignment="Center" VerticalAlignment="Center"
                    AutomationProperties.AccessibilityView="Raw" />
-        <FontIcon x:Name="GlyphIcon" FontSize="16" AutomationProperties.AccessibilityView="Raw" />
+        <FontIcon x:Name="GlyphIcon" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"
+                  AutomationProperties.AccessibilityView="Raw" />
         <Image x:Name="IconImage" Stretch="Uniform" Visibility="Collapsed"
                HorizontalAlignment="Center" VerticalAlignment="Center"
                ImageOpened="OnImageOpened" ImageFailed="OnImageFailed"

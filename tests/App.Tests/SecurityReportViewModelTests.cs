@@ -699,14 +699,18 @@ public class SecurityReportViewModelTests
         Assert.Equal("待复查", vm.ExposureStatusLabel);
     }
 
-    [Fact]
-    public async Task CancellationDuringCollectionPublication_ProjectsOnlyTheCompleteCommittedSnapshot()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancellationDuringCollectionPublication_ProjectsOnlyTheCompleteCommittedSnapshot(bool hasExposureSnapshot)
     {
         var first = new HealthItemRef("first", "First", null);
         var second = new HealthItemRef("second", "Second", null);
         var service = new StubHealthUiService { Report = new HealthReport([], [new WeakFinding(first, 1)], []) };
         var vm = new SecurityReportViewModel(service);
         await vm.LoadOfflineAsync();
+        if (hasExposureSnapshot)
+            await vm.RunExposedCheckCommand.ExecuteAsync(null);
         var cancelled = false;
         vm.WeakItems.CollectionChanged += (_, args) =>
         {
@@ -720,11 +724,33 @@ public class SecurityReportViewModelTests
 
         var result = await vm.LoadOfflineAsync();
 
+        Assert.True(cancelled);
         Assert.Equal(UiOperationStatus.Cancelled, result.Status);
         Assert.Empty(vm.ResolvedItems);
         Assert.Equal("second", vm.PriorityIssue?.CipherId);
-        Assert.Equal("first", Assert.Single(Assert.Single(vm.IssueGroups).Items).CipherId);
-        Assert.Equal("http", Assert.Single(vm.IssueGroups).Category);
+        Assert.Equal("second", Assert.Single(vm.WeakItems).Item.CipherId);
+        Assert.Equal("first", Assert.Single(vm.UnsecuredItems).Item.CipherId);
+        Assert.Equal(2, vm.OverviewIssueCount);
+        Assert.Equal(1, vm.GetCategoryIssueCount("weak"));
+        Assert.Equal(1, vm.GetCategoryIssueCount("http"));
+        Assert.Equal(0, vm.ResolvedCount);
+        Assert.Equal(hasExposureSnapshot, vm.ShowPriority);
+        Assert.False(vm.ExposedChecked);
+        Assert.Equal(hasExposureSnapshot ? 1 : 0, service.ExposureCalls);
+
+        // Before the first exposure snapshot, all offline findings stay in groups instead of a priority card.
+        var visibleRows = vm.IssueGroups.SelectMany(group => group.Items).ToArray();
+        if (hasExposureSnapshot)
+        {
+            Assert.Equal("http", Assert.Single(vm.IssueGroups).Category);
+            Assert.Equal("first", Assert.Single(visibleRows).CipherId);
+        }
+        else
+        {
+            Assert.Equal(new[] { "weak", "http" }, vm.IssueGroups.Select(group => group.Category));
+            Assert.Equal(new[] { "second", "first" }, visibleRows.Select(row => row.CipherId));
+        }
+        Assert.DoesNotContain(visibleRows, row => row.Category == "weak" && row.CipherId == "first");
     }
 
     [Theory]
@@ -926,7 +952,359 @@ public class SecurityReportViewModelTests
         Assert.Equal("weak", Assert.Single(vm.ResolvedItems).Category);
     }
 
-    // ── Fakes ──────────────────────────────────────────────────────────────────
+    // Session-scoped report presentation.
+
+    [Fact]
+    public async Task IgnoredFinding_FiltersOnlyItsCategoryAndRestoresItsExactItem()
+    {
+        var first = new HealthItemRef("first", "Same name", "first@example.test");
+        var second = new HealthItemRef("second", "Same name", "second@example.test");
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport([], [new WeakFinding(first, 1), new WeakFinding(second, 1)],
+                [new UnsecuredFinding(first, "http://example.test")]),
+        };
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+        vm.Category = "weak";
+        var original = Assert.Single(Assert.Single(vm.IssueGroups).Items, row => row.CipherId == first.CipherId);
+
+        vm.IgnoreIssueCommand.Execute(original);
+        vm.IgnoreIssueCommand.Execute(original);
+
+        Assert.Equal(1, vm.IgnoredCount);
+        Assert.Equal(1, vm.GetCategoryIssueCount("ignored"));
+        Assert.Equal(1, vm.GetCategoryIssueCount("weak"));
+        Assert.Equal(1, vm.GetCategoryIssueCount("http"));
+        Assert.Equal(2, vm.OverviewIssueCount);
+        Assert.Equal(2, vm.WeakItems.Count);
+        Assert.Equal(0, vm.ResolvedCount);
+
+        vm.Category = "ignored";
+        Assert.Equal("已忽略的提醒", vm.PageTitle);
+        var group = Assert.Single(vm.IssueGroups);
+        Assert.False(group.ShowHeader);
+        var ignored = Assert.Single(group.Items);
+        Assert.Equal(first.CipherId, ignored.CipherId);
+        Assert.True(ignored.IsIgnored);
+        Assert.False(ignored.CanIgnore);
+        Assert.Equal("恢复提醒", ignored.ActionLabel);
+        Assert.Contains("弱密码", ignored.Subtitle);
+        Assert.Empty(vm.ResolvedItems);
+
+        vm.RestoreIssueCommand.Execute(ignored);
+
+        Assert.Equal(0, vm.IgnoredCount);
+        Assert.Empty(vm.IssueGroups);
+        vm.Category = "weak";
+        Assert.Equal(new[] { "first", "second" }, Assert.Single(vm.IssueGroups).Items.Select(row => row.CipherId));
+        Assert.Equal(2, vm.GetCategoryIssueCount("weak"));
+    }
+
+    [Fact]
+    public async Task NewBreach_RemainsVisibleForAnIgnoredItemAndCannotBeIgnored()
+    {
+        var item = new HealthItemRef("entry", "Example", null);
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport([], [new WeakFinding(item, 1)], []),
+        };
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+        vm.IgnoreIssueCommand.Execute(vm.PriorityIssue);
+        Assert.Equal(0, vm.OverviewIssueCount);
+        Assert.Equal(1, vm.IgnoredCount);
+
+        service.Exposed = [new ExposedFinding(item, 42)];
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+
+        var breach = Assert.IsType<SecurityIssueRow>(vm.PriorityIssue);
+        Assert.Equal("breach", breach.Category);
+        Assert.False(breach.CanIgnore);
+        vm.IgnoreIssueCommand.Execute(breach);
+        Assert.Equal(1, vm.GetCategoryIssueCount("breach"));
+        Assert.Equal(1, vm.OverviewIssueCount);
+        Assert.Equal(1, vm.IgnoredCount);
+        Assert.Equal(0, vm.ResolvedCount);
+        Assert.Equal(1, service.ExposureCalls);
+
+        vm.Category = "ignored";
+        Assert.Equal("weak", Assert.Single(Assert.Single(vm.IssueGroups).Items).Category);
+    }
+
+    [Fact]
+    public async Task IgnoreCommand_RejectsUnknownAndStaleFindingIdentities()
+    {
+        var item = new HealthItemRef("entry", "Example", null);
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport([], [new WeakFinding(item, 1)], []),
+        };
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+        var row = Assert.IsType<SecurityIssueRow>(vm.PriorityIssue);
+
+        vm.IgnoreIssueCommand.Execute(row with { CipherId = "unknown" });
+        Assert.Equal(0, vm.IgnoredCount);
+        Assert.Equal(1, vm.OverviewIssueCount);
+
+        service.Report = new HealthReport([], [], []);
+        await vm.LoadOfflineAsync();
+        vm.IgnoreIssueCommand.Execute(row);
+        vm.RestoreIssueCommand.Execute(row);
+
+        Assert.Equal(0, vm.IgnoredCount);
+        Assert.Equal(0, vm.OverviewIssueCount);
+    }
+
+    [Fact]
+    public async Task IgnoredFinding_ResolvesOnlyWhenItDisappearsAndDoesNotStayIgnoredOnReappearance()
+    {
+        var item = new HealthItemRef("entry", "Example", null);
+        var report = new HealthReport([], [new WeakFinding(item, 1)], []);
+        var service = new StubHealthUiService { Report = report };
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+        vm.IgnoreIssueCommand.Execute(vm.PriorityIssue);
+
+        await vm.RefreshReportsAsync();
+        Assert.Equal(1, vm.IgnoredCount);
+        Assert.Equal(0, vm.OverviewIssueCount);
+        Assert.Equal(0, vm.ResolvedCount);
+
+        service.Report = new HealthReport([], [], []);
+        await vm.RefreshReportsAsync();
+        Assert.Equal(0, vm.IgnoredCount);
+        Assert.Equal(1, vm.ResolvedCount);
+
+        service.Report = report;
+        await vm.RefreshReportsAsync();
+        Assert.Equal(0, vm.IgnoredCount);
+        Assert.Equal(1, vm.OverviewIssueCount);
+        Assert.Equal(item.CipherId, vm.PriorityIssue?.CipherId);
+        Assert.Equal(0, vm.ResolvedCount);
+        Assert.Equal(0, service.ExposureCalls);
+    }
+
+    [Fact]
+    public async Task PasswordChanged_RestoresOnlyThatItemsRemindersWithoutAuthorizingExposure()
+    {
+        var first = new HealthItemRef("first", "First", null);
+        var second = new HealthItemRef("second", "Second", null);
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport([], [new WeakFinding(first, 1), new WeakFinding(second, 1)], []),
+        };
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+        vm.Category = "weak";
+        var rows = Assert.Single(vm.IssueGroups).Items.ToArray();
+        foreach (var row in rows)
+            vm.IgnoreIssueCommand.Execute(row);
+        Assert.Equal(2, vm.IgnoredCount);
+
+        vm.MarkPasswordChanged(first.CipherId);
+
+        Assert.Equal(1, vm.IgnoredCount);
+        Assert.Equal(1, vm.GetCategoryIssueCount("weak"));
+        Assert.Equal(1, vm.OverviewIssueCount);
+        Assert.Equal(first.CipherId, Assert.Single(Assert.Single(vm.IssueGroups).Items).CipherId);
+        vm.Category = "ignored";
+        Assert.Equal(second.CipherId, Assert.Single(Assert.Single(vm.IssueGroups).Items).CipherId);
+
+        await vm.RefreshReportsAsync();
+        Assert.Equal(0, service.ExposureCalls);
+        Assert.Equal(1, vm.IgnoredCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ClearSensitive_PurgesIgnoredRowsEvenDuringProjectionNotification(bool clearDuringProjection)
+    {
+        var item = new HealthItemRef("entry", "Example", null);
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport([], [new WeakFinding(item, 1)], []),
+        };
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+        var original = Assert.IsType<SecurityIssueRow>(vm.PriorityIssue);
+        vm.IgnoreIssueCommand.Execute(original);
+        var cleared = false;
+        if (clearDuringProjection)
+        {
+            vm.IssueGroups.CollectionChanged += (_, args) =>
+            {
+                if (!cleared && args.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add)
+                {
+                    cleared = true;
+                    vm.ClearSensitive();
+                }
+            };
+        }
+        vm.Category = "ignored";
+        if (!clearDuringProjection)
+            vm.ClearSensitive();
+
+        vm.IgnoreIssueCommand.Execute(original);
+        vm.RestoreIssueCommand.Execute(original);
+        Assert.Equal(0, vm.IgnoredCount);
+        Assert.Equal(0, vm.OverviewIssueCount);
+        Assert.Equal(0, vm.ResolvedCount);
+        Assert.Empty(vm.IssueGroups);
+        Assert.Empty(vm.WeakItems);
+        Assert.Equal("all", vm.Category);
+
+        await vm.LoadOfflineAsync();
+        Assert.Equal(0, vm.IgnoredCount);
+        Assert.Equal(1, vm.OverviewIssueCount);
+        Assert.Equal(item.CipherId, vm.PriorityIssue?.CipherId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FirstExposureCheck_ShowsLocalFindingsAndRequiresExplicitOnlineConsent(bool hasFinding)
+    {
+        var item = new HealthItemRef("entry", "Example", null);
+        var service = new ControlledExposedHealthUiService
+        {
+            Report = hasFinding ? new HealthReport([], [new WeakFinding(item, 1)], []) : new HealthReport([], [], []),
+        };
+        var vm = new SecurityReportViewModel(service);
+
+        await vm.RefreshReportsAsync();
+
+        Assert.Equal(0, service.ExposureCalls);
+        Assert.True(vm.ShowFirstExposureCheck);
+        Assert.False(vm.ShowPriority);
+        Assert.False(vm.ShowEmptyMessage);
+        Assert.Equal(hasFinding ? 1 : 0, vm.IssueGroups.SelectMany(group => group.Items).Count());
+        Assert.Contains("还没有检查过泄露", vm.LastCheckedText);
+        vm.Category = "breach";
+        Assert.True(vm.ShowFirstExposureCheck);
+        Assert.Empty(vm.CategorySummary);
+        vm.Category = "weak";
+        Assert.False(vm.ShowFirstExposureCheck);
+        vm.Category = "all";
+
+        var check = vm.RunExposedCheckCommand.ExecuteAsync(null);
+        await service.Entered.Task;
+        Assert.True(vm.IsCheckingExposed);
+        Assert.False(vm.ShowFirstExposureCheck);
+        Assert.False(vm.ShowEmptyMessage);
+        service.Complete(0, []);
+        await check;
+
+        Assert.Equal(1, service.ExposureCalls);
+        Assert.True(vm.ExposedChecked);
+        Assert.False(vm.ShowFirstExposureCheck);
+        Assert.Equal(hasFinding, vm.ShowPriority);
+        Assert.Empty(vm.IssueGroups);
+        Assert.Equal(!hasFinding, vm.ShowEmptyMessage);
+    }
+
+    [Fact]
+    public async Task OfflineProgress_UsesTheServicesActualCompletedAndTotalValues()
+    {
+        var service = new ControlledProgressHealthUiService();
+        var vm = new SecurityReportViewModel(service);
+        var observed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        vm.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(SecurityReportViewModel.OfflineProgress)
+                && vm.OfflineProgress == 2 && vm.OfflineProgressTotal == 7)
+                observed.TrySetResult(true);
+        };
+        var load = vm.LoadOfflineAsync();
+
+        service.ReportProgress(2, 7);
+        await observed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(vm.ShowOfflineLoading);
+        Assert.Equal(2, vm.OfflineProgress);
+        Assert.Equal(7, vm.OfflineProgressTotal);
+        Assert.Contains("2 / 7", vm.OfflineProgressText);
+        service.Complete(new HealthReport([], [], []));
+        var result = await load;
+        Assert.True(result.IsSuccess);
+        Assert.Equal(7, vm.OfflineProgress);
+        Assert.Equal(7, vm.OfflineProgressTotal);
+        Assert.Contains("7 / 7", vm.OfflineProgressText);
+    }
+
+    [Fact]
+    public async Task AllIgnoredFindings_DoNotClaimToPassChecksAndPublishReminderChanges()
+    {
+        var item = new HealthItemRef("entry", "Example", null);
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport([], [new WeakFinding(item, 1)], []),
+        };
+        var vm = new SecurityReportViewModel(service);
+        await vm.LoadOfflineAsync();
+        await vm.RunExposedCheckCommand.ExecuteAsync(null);
+        var original = Assert.IsType<SecurityIssueRow>(vm.PriorityIssue);
+        var notifiedCounts = new List<int>();
+        vm.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(SecurityReportViewModel.IgnoredCount))
+                notifiedCounts.Add(vm.IgnoredCount);
+        };
+
+        vm.IgnoreIssueCommand.Execute(original);
+
+        Assert.True(vm.ExposedChecked);
+        Assert.True(vm.ShowEmptyMessage);
+        Assert.Equal("没有需要处理的问题", vm.CategorySummary);
+        Assert.DoesNotContain("所有条目都通过了检查", vm.EmptyMessage);
+        Assert.Contains("已忽略", vm.EmptyMessage);
+        Assert.True(vm.IsIssueIgnored("weak", item.CipherId));
+        Assert.False(vm.IsIssueIgnored("breach", item.CipherId));
+        Assert.Equal(0, vm.ResolvedCount);
+        Assert.Contains(1, notifiedCounts);
+
+        notifiedCounts.Clear();
+        vm.Category = "ignored";
+        var ignored = Assert.Single(Assert.Single(vm.IssueGroups).Items);
+        Assert.Contains(1, notifiedCounts);
+
+        notifiedCounts.Clear();
+        vm.RestoreIssueCommand.Execute(ignored);
+
+        Assert.False(vm.IsIssueIgnored("weak", item.CipherId));
+        Assert.Equal(0, vm.IgnoredCount);
+        Assert.Equal(0, vm.ResolvedCount);
+        Assert.Contains(0, notifiedCounts);
+        vm.Category = "all";
+        Assert.Equal(1, vm.OverviewIssueCount);
+        Assert.Equal(item.CipherId, vm.PriorityIssue?.CipherId);
+    }
+
+    // Fakes.
+    private sealed class ControlledProgressHealthUiService : IVaultHealthUiService
+    {
+        private readonly TaskCompletionSource<HealthReport> _completion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private IProgress<HealthAnalysisProgress>? _progress;
+
+        public Task<HealthReport> AnalyzeOfflineAsync(
+            IProgress<HealthAnalysisProgress>? progress = null,
+            CancellationToken ct = default)
+        {
+            _progress = progress;
+            return _completion.Task;
+        }
+
+        public void ReportProgress(int completed, int total) =>
+            _progress?.Report(new HealthAnalysisProgress(completed, total, "Analyzing vault"));
+
+        public void Complete(HealthReport report) => _completion.SetResult(report);
+
+        public Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<ExposedFinding>>([]);
+    }
 
     private sealed class StubHealthUiService : IVaultHealthUiService
     {
@@ -1066,6 +1444,8 @@ public class SecurityReportViewModelTests
     private sealed class ControlledExposedHealthUiService : IVaultHealthUiService
     {
         private readonly List<TaskCompletionSource<IReadOnlyList<ExposedFinding>>> _calls = [];
+        public HealthReport Report { get; set; } = new([], [], []);
+        public int ExposureCalls => _calls.Count;
 
         public TaskCompletionSource<bool> Entered { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1073,7 +1453,7 @@ public class SecurityReportViewModelTests
         public Task<HealthReport> AnalyzeOfflineAsync(
             IProgress<HealthAnalysisProgress>? progress = null,
             CancellationToken ct = default) =>
-            Task.FromResult(new HealthReport([], [], []));
+            Task.FromResult(Report);
 
         public Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(CancellationToken ct = default)
         {

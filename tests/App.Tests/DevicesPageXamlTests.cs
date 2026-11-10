@@ -62,7 +62,7 @@ public class DevicesPageXamlTests
         Assert.Contains(tileStyle.Elements(), element => element.Attribute("Property")?.Value == "Height"
             && element.Attribute("Value")?.Value == "32");
         Assert.Contains(tileStyle.Elements(), element => element.Attribute("Property")?.Value == "Background"
-            && element.Attribute("Value")?.Value == "{ThemeResource ControlFillColorSecondaryBrush}");
+            && element.Attribute("Value")?.Value == "{ThemeResource WardenTileBrush}");
 
         Assert.DoesNotContain(template.Descendants(), element =>
             element.Attribute("Style")?.Value == "{StaticResource CardBorderStyle}");

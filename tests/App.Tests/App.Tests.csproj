@@ -79,6 +79,7 @@
     <Compile Include="..\..\src\App\Services\ItemRepromptGate.cs" Link="Services\ItemRepromptGate.cs" />
     <Compile Include="..\..\src\App\Services\UserVerificationService.cs" Link="Services\UserVerificationService.cs" />
     <Compile Include="..\..\src\App\ViewModels\VaultViewModel.cs" Link="ViewModels\VaultViewModel.cs" />
+    <Compile Include="..\..\src\App\ViewModels\VaultViewModel.Folders.cs" Link="ViewModels\VaultViewModel.Folders.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\SendListItem.cs" Link="Models\SendListItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\SendEditorDraft.cs" Link="Models\SendEditorDraft.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\SendExpirationSelection.cs" Link="Models\SendExpirationSelection.cs" />

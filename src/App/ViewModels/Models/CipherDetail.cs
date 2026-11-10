@@ -10,6 +10,8 @@ public partial record CustomField(string Label, string Value, CipherEditorFieldT
 
 public sealed partial record PasswordHistoryItem(string Password, string DateLabel);
 
+public sealed partial record LoginUriDetail(string Value, string Label);
+
 public sealed partial record PasskeyDetail(
     string? RpId,
     string? UserName,
@@ -75,11 +77,19 @@ public sealed partial class LoginDetail : CipherDetail
     public IReadOnlyList<string> DisplayUris => Uris.Count > 0
         ? Uris
         : string.IsNullOrWhiteSpace(Uri) ? Array.Empty<string>() : new[] { Uri };
+    public IReadOnlyList<LoginUriDetail> UriRows => DisplayUris
+        .Select((value, index) => new LoginUriDetail(value, index == 0 ? "网址" : string.Empty))
+        .ToArray();
     public IReadOnlyList<PasskeyDetail> Passkeys { get; init; } = Array.Empty<PasskeyDetail>();
     public bool HasPasskeys => Passkeys.Count > 0;
     public IReadOnlyList<PasswordHistoryItem> PasswordHistory { get; init; } = Array.Empty<PasswordHistoryItem>();
     public bool HasPasswordHistory => PasswordHistory.Count > 0;
     public int PasswordHistoryCount => PasswordHistory.Count;
+    public bool HasSecondaryDetails => HasPasskeys || HasPasswordHistory;
+    public string PasswordHistorySummary => $"{PasswordHistoryCount} 个旧密码";
+    public string LatestPasswordHistoryText => HasPasswordHistory
+        ? $"最近一次更换在 {PasswordHistory[0].DateLabel}"
+        : string.Empty;
 }
 
 public sealed partial class CardDetail : CipherDetail
