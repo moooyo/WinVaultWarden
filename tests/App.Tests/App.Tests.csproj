@@ -8,6 +8,8 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\App\Services\TitleBarLayoutPolicy.cs" Link="Services\TitleBarLayoutPolicy.cs" />
+    <Compile Include="..\..\src\App\Services\BoundedImportReader.cs" Link="Services\BoundedImportReader.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
@@ -21,8 +23,16 @@
   </ItemGroup>
   <!-- 直接链接 App 的纯 C# 源(不依赖 WinUI),绕开 WinUI 打包任务无法在命令行加载的问题 -->
   <ItemGroup>
+    <Compile Include="..\..\src\App\Localization\LanguagePreferencePolicy.cs" Link="Localization\LanguagePreferencePolicy.cs" />
+    <Compile Include="..\..\src\App\Localization\LanguagePreferenceController.cs" Link="Localization\LanguagePreferenceController.cs" />
+    <Compile Include="..\..\src\App\Localization\UiStringKey.g.cs" Link="Localization\UiStringKey.g.cs" />
+    <Compile Include="..\..\src\App\Localization\UiStringCatalog.cs" Link="Localization\UiStringCatalog.cs" />
+    <Compile Include="..\..\src\App\Localization\UiText.cs" Link="Localization\UiText.cs" />
+    <EmbeddedResource Include="..\..\src\App\Localization\DefaultResources.json" LogicalName="App.Localization.DefaultResources.json" />
     <Compile Include="..\..\src\App\ViewModels\Models\CipherListItem.cs" Link="Models\CipherListItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\RecoveredCipherListItem.cs" Link="Models\RecoveredCipherListItem.cs" />
+    <Compile Include="..\..\src\App\Services\RecoveredVaultViewSession.cs" Link="Services\RecoveredVaultViewSession.cs" />
+    <Compile Include="..\..\src\App\Services\LockedDeviceRequestMonitor.cs" Link="Services\LockedDeviceRequestMonitor.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\VaultListGroup.cs" Link="Models\VaultListGroup.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\CipherDetail.cs" Link="Models\CipherDetail.cs" />
     <Compile Include="..\..\src\App\ViewModels\Models\AttachmentItem.cs" Link="Models\AttachmentItem.cs" />
@@ -60,6 +70,12 @@
     <Compile Include="..\..\src\App\Services\PersistentDeviceIdentifierProvider.cs" Link="Services\PersistentDeviceIdentifierProvider.cs" />
     <Compile Include="..\..\src\App\Services\AppJsonContext.cs" Link="Services\AppJsonContext.cs" />
     <Compile Include="..\..\src\App\Services\AppPreferences.cs" Link="Services\AppPreferences.cs" />
+    <Compile Include="..\..\src\App\Services\StartupRegistrationService.cs" Link="Services\StartupRegistrationService.cs" />
+    <Compile Include="..\..\src\App\Services\ApplicationVersionReader.cs" Link="Services\ApplicationVersionReader.cs" />
+    <Compile Include="..\..\src\App\Services\ReleaseUpdateService.cs" Link="Services\ReleaseUpdateService.cs" />
+    <Compile Include="..\..\src\App\Services\AppInstallerFeedPolicy.cs" Link="Services\AppInstallerFeedPolicy.cs" />
+    <Compile Include="..\..\src\App\Services\AppInstallerFeedDownloader.cs" Link="Services\AppInstallerFeedDownloader.cs" />
+    <Compile Include="..\..\src\App\Services\PreparedAppInstallerRetention.cs" Link="Services\PreparedAppInstallerRetention.cs" />
     <Compile Include="..\..\src\App\Services\DemoVaultSessionService.cs" Link="Services\DemoVaultSessionService.cs" />
     <Compile Include="..\..\src\App\Services\CipherDraftMapper.cs" Link="Services\CipherDraftMapper.cs" />
     <Compile Include="..\..\src\App\Services\CrashLogger.cs" Link="Services\CrashLogger.cs" />
@@ -98,6 +114,7 @@
     <Compile Include="..\..\src\App\ViewModels\Models\GeneratorHistoryItem.cs" Link="Models\GeneratorHistoryItem.cs" />
     <Compile Include="..\..\src\App\ViewModels\GeneratorViewModel.cs" Link="ViewModels\GeneratorViewModel.cs" />
     <Compile Include="..\..\src\App\ViewModels\DevicesViewModel.cs" Link="ViewModels\DevicesViewModel.cs" />
+    <Compile Include="..\..\src\App\ViewModels\AccountManagementViewModel.cs" Link="ViewModels\AccountManagementViewModel.cs" />
     <Compile Include="..\..\src\App\Services\PasskeyOriginDisplay.cs" Link="Services\PasskeyOriginDisplay.cs" />
     <Compile Include="..\..\src\App\Services\PasskeyApprovalPresentation.cs" Link="Services\PasskeyApprovalPresentation.cs" />
     <Compile Include="..\..\src\App\Services\PasskeyApprovalThrottle.cs" Link="Linked\PasskeyApprovalThrottle.cs" />

@@ -858,13 +858,13 @@ public sealed class AccountDeletionLoginRecoveryTests
         Assert.Contains("ViewModel.PrepareInitialLoginState(session)", source);
         Assert.Contains("PrepareInitialLoginState(activeSession: null)", source);
         Assert.DoesNotContain("ViewModel.PrepareUnlock(session", source);
-        Assert.Contains("仅清除此设备上的数据？", source);
-        Assert.Contains("永久安全隔离记录", source);
-        Assert.Contains("永久禁用此账户标识与当前服务器端点组合", source);
-        Assert.Contains("Windows 应用重置", source);
-        Assert.Contains("全部本地数据", source);
-        Assert.Contains("仍可能稍后在服务器完成", source);
-        Assert.Contains("不会再次向服务器发送删除请求", source);
+        LocalizedSourceAssert.ContainsText("仅清除此设备上的数据？", source);
+        LocalizedSourceAssert.ContainsText("永久安全隔离记录", source);
+        LocalizedSourceAssert.ContainsText("永久禁用此账户标识与当前服务器端点组合", source);
+        LocalizedSourceAssert.ContainsText("Windows 应用重置", source);
+        LocalizedSourceAssert.ContainsText("全部本地数据", source);
+        LocalizedSourceAssert.ContainsText("仍可能稍后在服务器完成", source);
+        LocalizedSourceAssert.ContainsText("不会再次向服务器发送删除请求", source);
         Assert.Contains("ClearPendingAccountDeletionLocalDataAsync", source);
 
         var stage = Named(xaml, "AccountDeletionRecoveryStage");
@@ -906,16 +906,16 @@ public sealed class AccountDeletionLoginRecoveryTests
         Assert.Contains("ShowFullLocalResetAction", button.Attribute("Visibility")?.Value);
         Assert.Contains("SystemFillColorCriticalBrush", button.Attribute("Foreground")?.Value);
 
-        Assert.Contains("所有保存账户", source);
-        Assert.Contains("离线密码库", source);
-        Assert.Contains("设备密钥", source);
-        Assert.Contains("应用偏好", source);
-        Assert.Contains("永久删除隔离记录", source);
-        Assert.Contains("现在会记录重置请求并退出应用", source);
-        Assert.Contains("下次启动、登录界面出现前完成删除", source);
-        Assert.Contains("服务器上的账户和密码库数据不会受到影响", source);
-        Assert.Contains("浏览器集成可能需要重新配置", source);
-        Assert.Contains("输入 RESET 以确认", source);
+        LocalizedSourceAssert.ContainsText("所有保存账户", source);
+        LocalizedSourceAssert.ContainsText("离线密码库", source);
+        LocalizedSourceAssert.ContainsText("设备密钥", source);
+        LocalizedSourceAssert.ContainsText("应用偏好", source);
+        LocalizedSourceAssert.ContainsText("永久删除隔离记录", source);
+        LocalizedSourceAssert.ContainsText("现在会记录重置请求并退出应用", source);
+        LocalizedSourceAssert.ContainsText("下次启动、登录界面出现前完成删除", source);
+        LocalizedSourceAssert.ContainsText("服务器上的账户和密码库数据不会受到影响", source);
+        LocalizedSourceAssert.ContainsText("浏览器集成可能需要重新配置", source);
+        LocalizedSourceAssert.ContainsText("输入 RESET 以确认", source);
         Assert.Contains("MaxLength = 5", source);
         Assert.Contains("StringComparison.Ordinal", source);
         Assert.Contains("IsPrimaryButtonEnabled = false", source);

@@ -20,8 +20,8 @@ public partial class DevicesViewModel : ObservableObject, ISensitiveState
 
     // 网络层真实失败为 VaultApiException/VaultWriteException(均 : HttpRequestException)。这些文案
     // 固定脱敏、绝不回显 ex.Message(服务端错误可能夹带账户/资源标识)。
-    private const string NetworkLoadError = "无法加载设备登录请求，请检查网络后重试。";
-    private const string NetworkOperationError = "网络请求失败，请检查连接后重试。";
+    private static readonly string NetworkLoadError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD47DFC7993C8437F);
+    private static readonly string NetworkOperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBD573FBAE00C37F5);
 
     public ObservableCollection<DeviceItem> Devices { get; } = new();
     public ObservableCollection<AuthRequestItem> PendingRequests { get; } = new();
@@ -129,7 +129,7 @@ public partial class DevicesViewModel : ObservableObject, ISensitiveState
             }
             catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
             {
-                const string message = "无法刷新已登录的设备，请检查连接并确认密码库已解锁。";
+                var message = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF4066C680EC74148);
                 if (!PublishIfCurrent(() => DeviceError = message))
                     return UiOperationResult<IReadOnlyList<DeviceItem>>.Cancelled();
                 return UiOperationResult<IReadOnlyList<DeviceItem>>.Failure(message);
@@ -164,7 +164,7 @@ public partial class DevicesViewModel : ObservableObject, ISensitiveState
         }
         if (_authRequests is null)
         {
-            const string unavailable = "设备登录授权服务不可用";
+            string unavailable = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5024FEB74AE121B9);
             SetLoadFailure(unavailable);
             return UiOperationResult<IReadOnlyList<AuthRequestItem>>.Failure(unavailable);
         }
@@ -244,7 +244,7 @@ public partial class DevicesViewModel : ObservableObject, ISensitiveState
         CancellationToken ct = default)
     {
         if (_authRequests is null)
-            return FailOperation("设备登录授权服务不可用");
+            return FailOperation(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5024FEB74AE121B9));
         if (!_operations.TryEnter(out var operation))
             return UiOperationResult.Busy();
 
@@ -307,7 +307,7 @@ public partial class DevicesViewModel : ObservableObject, ISensitiveState
         CancellationToken ct = default)
     {
         if (_authRequests is null)
-            return FailOperation("设备登录授权服务不可用");
+            return FailOperation(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5024FEB74AE121B9));
         if (!_operations.TryEnter(out var operation))
             return UiOperationResult.Busy();
 

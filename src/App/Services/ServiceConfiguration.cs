@@ -152,7 +152,13 @@ public static class ServiceConfiguration
         // singleton so its per-(tab,frame,RP) in-flight/rate-limit state is process-wide.
         services.AddSingleton(WebAuthnRequestPolicy.CreateDefault());
         services.AddSingleton(_ => new PasskeyRequestGate(TimeProvider.System));
-        services.AddSingleton<BrowserPasskeyRequestHandler>();
+        services.AddSingleton<BrowserPasskeyRequestHandler>(sp => new BrowserPasskeyRequestHandler(
+            sp.GetRequiredService<IVaultService>(),
+            sp.GetRequiredService<IVaultWriteService>(),
+            sp.GetRequiredService<IPasskeyApprovalService>(),
+            sp.GetRequiredService<WebAuthnRequestPolicy>(),
+            sp.GetRequiredService<PasskeyRequestGate>(),
+            lease => NotifyCommittedPasskey(sp, lease)));
         // Task 3：管道 peer 双向鉴别。生产环境只注册真实 authorizer + Windows 身份读取器,
         // 无任何 fake / 降级开关(fake 仅存在于测试程序集)。
         services.AddSingleton<IPipePeerAuthorizer>(_ =>
@@ -203,7 +209,8 @@ public static class ServiceConfiguration
             sp.GetRequiredService<IAccountDeletionService>(),
             sp.GetRequiredService<AccountDeletionRecoveryHost>(),
             sp.GetRequiredService<ILocalDataResetService>(),
-            sp.GetRequiredService<IAppLifecycleCoordinator>())));
+            sp.GetRequiredService<IAppLifecycleCoordinator>(),
+            beforeAccountChange: () => sp.GetRequiredService<LockedDeviceRequestWindowService>().Stop())));
         services.AddTransient<VaultViewModel>(sp =>
             TrackSensitive(sp, ActivatorUtilities.CreateInstance<VaultViewModel>(sp)));
         services.AddTransient<SendViewModel>(sp => TrackSensitive(sp, new SendViewModel(
@@ -229,7 +236,7 @@ public static class ServiceConfiguration
                 supportsLocalUnlock: () =>
                 {
                     var session = sp.GetRequiredService<VaultSession>();
-                    return session.State == Core.Session.VaultState.Unlocked && !session.UsesV2UserKey;
+                    return session.State == Core.Session.VaultState.Unlocked;
                 }));
         services.AddTransient<DevicesViewModel>(sp =>
             TrackSensitive(sp, new DevicesViewModel(
@@ -383,7 +390,9 @@ public static class ServiceConfiguration
                 InvalidateSession: () => session.Lock(),
                 StopBackgroundAsync: () => Task.WhenAll(
                     sp.GetRequiredService<NotificationsHost>().StopAsync(),
-                    sp.GetRequiredService<PasskeyBridgeServer>().StopAsync()),
+                    sp.GetRequiredService<PasskeyBridgeServer>().StopAsync(),
+                    sp.GetRequiredService<Vault.SshAgentServer>().StopAsync(),
+                    sp.GetRequiredService<IWindowsPasskeyProvider>().OnSessionLockedAsync()),
                 CloseTransientsAsync: transients.CancelAndCloseAllAsync,
                 CloseTransientsSynchronously: transients.CancelAndCloseAllSynchronously,
                 ClearClipboardAsync: () => clipboard.ClearSecretsAsync(CancellationToken.None),
@@ -393,12 +402,19 @@ public static class ServiceConfiguration
                 LockSessionAsync: () => auth.LockAsync(CancellationToken.None),
                 LogoutSessionAsync: async () =>
                 {
+                    sp.GetRequiredService<LockedDeviceRequestMonitor>().Stop();
                     await auth.LogoutAsync(CancellationToken.None);
                     sp.GetRequiredService<IFaviconCache>().Clear();
                 },
-                ShowLogin: () => global::App.App.MainWindow?.ShowLoginAfterLifecycle(),
+                ShowLogin: () =>
+                {
+                    global::App.App.MainWindow?.ShowLoginAfterLifecycle();
+                    _ = sp.GetRequiredService<LockedDeviceRequestWindowService>().OnLockedAsync();
+                },
                 ExitProcess: () =>
                 {
+                    sp.GetRequiredService<LockedDeviceRequestMonitor>().Stop();
+                    _ = sp.GetRequiredService<IWindowsPasskeyProvider>().StopAsync();
                     var window = global::App.App.MainWindow
                         ?? throw new InvalidOperationException(
                             "The main window is unavailable during process exit.");
@@ -408,10 +424,57 @@ public static class ServiceConfiguration
                 ReportFailure: (step, ex) =>
                     CrashLogger.WriteRedacted($"Lifecycle:{step}", ex),
                 TryLogoutExpectedSessionAsync: lease =>
-                    auth.LogoutAsync(lease, CancellationToken.None)));
+                    auth.LogoutAsync(lease, CancellationToken.None),
+                TransitionClaimed: intent =>
+                {
+                    if (intent != AppLifecycleIntent.Lock)
+                        sp.GetRequiredService<LockedDeviceRequestMonitor>().Stop();
+                }));
         });
 
+        services.AddSingleton<Core.SshAgent.ISshAgentApprovalService, SshAgentApprovalDialogService>();
+        services.AddSingleton<Vault.SshAgentService>();
+        services.AddSingleton<Core.SshAgent.ISshAgentRequestHandler>(sp =>
+            sp.GetRequiredService<Vault.SshAgentService>());
+        services.AddSingleton<Vault.SshAgentServer>();
+        services.AddSingleton<ISshAgentHost, WindowsSshAgentHost>();
+        services.AddSingleton<Core.WindowsPasskeys.IWindowsPasskeyApprovalService, WindowsPasskeyApprovalService>();
+        services.AddSingleton<Core.WindowsPasskeys.WindowsPasskeyAuthenticator>();
+        services.AddSingleton<IWindowsPasskeyProvider>(sp => new WindowsPasskeyProviderService(
+            sp.GetRequiredService<Core.WindowsPasskeys.WindowsPasskeyAuthenticator>(),
+            sp.GetRequiredService<ISyncService>(),
+            lease => NotifyCommittedPasskey(sp, lease)));
+        services.AddSingleton<StartupRegistrationService>(_ => new StartupRegistrationService());
+        services.AddSingleton<IAccountManagementService, Vault.AccountManagementService>();
+        services.AddTransient<AccountManagementViewModel>(sp =>
+            TrackSensitive(sp, ActivatorUtilities.CreateInstance<AccountManagementViewModel>(sp)));
+        services.AddSingleton<LockedDeviceRequestMonitor>(sp => TrackSensitive(sp,
+            new LockedDeviceRequestMonitor(
+                sp.GetRequiredService<VaultSession>(),
+                sp.GetRequiredService<IApiClientFactory>(),
+                sp.GetRequiredService<IVaultApiClientProvider>(),
+                sp.GetRequiredService<FingerprintService>(),
+                () => !sp.GetRequiredService<IAppLifecycleCoordinator>().IsTransitioning)));
+        services.AddSingleton<LockedDeviceRequestWindowService>(sp => TrackSensitive(sp,
+            ActivatorUtilities.CreateInstance<LockedDeviceRequestWindowService>(sp)));
+
         return services.BuildServiceProvider();
+    }
+
+    private static void NotifyCommittedPasskey(IServiceProvider services, Core.Session.VaultSessionLease lease)
+    {
+        _ = services.GetRequiredService<IUiDispatcher>().Enqueue(() =>
+        {
+            var session = services.GetRequiredService<VaultSession>();
+            if (!session.IsUnlocked(lease)
+                || services.GetRequiredService<IAppLifecycleCoordinator>().IsTransitioning)
+                return;
+            try { global::App.App.MainWindow?.RefreshVaultSnapshot(); }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                CrashLogger.WriteRedacted("PasskeyVaultPresentation", exception);
+            }
+        });
     }
 
     // 唯一敏感状态弱登记入口:构造后立即弱引用登记到 registry,锁屏/登出时统一 ClearSensitive。

@@ -185,7 +185,7 @@ public class BrowserPasskeyCancellationTests
     }
 
     private static BrowserRequestContext Ctx() =>
-        new(FrameOrigin, FrameOrigin, 1, 0, "document-1", true);
+        new(FrameOrigin, FrameOrigin, 1, 0, "document-1", true, true, true);
 
     private static VaultSession UnlockedSession(string account, string serverOrigin)
     {

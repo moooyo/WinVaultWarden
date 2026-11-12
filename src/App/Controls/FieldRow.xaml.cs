@@ -49,7 +49,7 @@ public sealed partial class FieldRow : UserControl
     public bool ShowCopyButtonText { get => (bool)GetValue(ShowCopyButtonTextProperty); set => SetValue(ShowCopyButtonTextProperty, value); }
     public static readonly DependencyProperty ShowCopyButtonTextProperty = RegisterBoolean(nameof(ShowCopyButtonText), true);
     public string EmptyValueText { get => (string)GetValue(EmptyValueTextProperty); set => SetValue(EmptyValueTextProperty, value); }
-    public static readonly DependencyProperty EmptyValueTextProperty = RegisterString(nameof(EmptyValueText), "未设置");
+    public static readonly DependencyProperty EmptyValueTextProperty = RegisterString(nameof(EmptyValueText), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2F5F1D6FBFB061ED));
     public string Label { get => (string)GetValue(LabelProperty); set => SetValue(LabelProperty, value); }
     public static readonly DependencyProperty LabelProperty = RegisterString(nameof(Label), string.Empty);
     public string Value { get => (string)GetValue(ValueProperty); set => SetValue(ValueProperty, value); }
@@ -147,12 +147,12 @@ public sealed partial class FieldRow : UserControl
         CopyButton.IsEnabled = RevealButton.IsEnabled = OpenButton.IsEnabled = !empty;
         CopyButton.IsEnabled &= !_copyBusy && !_revealBusy;
         RevealButton.IsEnabled &= !_revealBusy && !_copyBusy;
-        var label = IsTrailingLabel ? "旧密码" : string.IsNullOrWhiteSpace(Label) ? (ShowOpen ? "网址" : "字段") : Label;
-        AutomationProperties.SetName(CopyButton, $"复制{label}");
-        AutomationProperties.SetName(RevealButton, $"{(_revealed ? "隐藏" : "显示")}{label}");
-        AutomationProperties.SetName(OpenButton, $"在浏览器中打开{label}");
-        ToolTipService.SetToolTip(CopyButton, $"复制{label}");
-        ToolTipService.SetToolTip(RevealButton, _revealed ? "隐藏" : "显示（需 Windows Hello）");
+        var label = IsTrailingLabel ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6BDB727F1E5DA30A) : string.IsNullOrWhiteSpace(Label) ? (ShowOpen ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA8ECB4B6DABEBC09) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text49ECD0E342D6D23B)) : Label;
+        AutomationProperties.SetName(CopyButton, global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text1752D5F410D92066,label));
+        AutomationProperties.SetName(RevealButton, $"{(_revealed ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text145219E726B87790) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4E1449E7D5E50593))}{label}");
+        AutomationProperties.SetName(OpenButton, global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextDDD40A2B14A77EC8,label));
+        ToolTipService.SetToolTip(CopyButton, global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text1752D5F410D92066,label));
+        ToolTipService.SetToolTip(RevealButton, _revealed ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text145219E726B87790) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC56EDC896A616588));
         CopyLabel.Text = CopyButtonText ?? string.Empty;
         CopyLabel.Visibility = ShowCopyButtonText && !string.IsNullOrWhiteSpace(CopyButtonText) ? Visibility.Visible : Visibility.Collapsed;
         Visibility = HideWhenEmpty && empty ? Visibility.Collapsed : Visibility.Visible;
@@ -199,10 +199,10 @@ public sealed partial class FieldRow : UserControl
         var copied = _clipboardStatus is { HasContent: true } && _copiedVersion != 0 && _copiedVersion == _clipboardStatus.WriteVersion;
         CopyIcon.Glyph = copied ? "\uE73E" : "\uE8C8";
         CopyIcon.Foreground = ThemeBrushResolver.Resolve(this, copied ? "SystemFillColorSuccessBrush" : "TextFillColorSecondaryBrush");
-        var label = IsTrailingLabel ? "旧密码" : string.IsNullOrWhiteSpace(Label) ? (ShowOpen ? "网址" : "字段") : Label;
-        var action = string.IsNullOrWhiteSpace(CopyButtonText) ? $"复制{label}" : CopyButtonText;
-        AutomationProperties.SetName(CopyButton, copied ? $"已{action}" : action);
-        ToolTipService.SetToolTip(CopyButton, copied ? $"已{action}" : action);
+        var label = IsTrailingLabel ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6BDB727F1E5DA30A) : string.IsNullOrWhiteSpace(Label) ? (ShowOpen ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA8ECB4B6DABEBC09) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text49ECD0E342D6D23B)) : Label;
+        var action = string.IsNullOrWhiteSpace(CopyButtonText) ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text1752D5F410D92066,label) : CopyButtonText;
+        AutomationProperties.SetName(CopyButton, copied ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text79521CAF83FB146C,action) : action);
+        ToolTipService.SetToolTip(CopyButton, copied ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text79521CAF83FB146C,action) : action);
     }
 
     private async void OnReveal(object sender, RoutedEventArgs e)
@@ -247,7 +247,7 @@ public sealed partial class FieldRow : UserControl
         }
         catch (Exception exception) when (exception is ExternalException or InvalidOperationException or OperationCanceledException)
         {
-            ShowFeedback("无法完成验证，请重试。");
+            ShowFeedback(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0947B2C7535917D6));
         }
         finally
         {
@@ -265,17 +265,17 @@ public sealed partial class FieldRow : UserControl
         var window = global::App.App.MainWindow;
         if (verification is null || window is null || owner.XamlRoot is null) return false;
         var message = string.IsNullOrWhiteSpace(itemName)
-            ? $"WinVaultWarden 想要显示{label}。"
-            : $"WinVaultWarden 想要显示“{itemName}”的{label}。";
+            ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text6B75540D6859DC46,label)
+            : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text991F7BBFC2917F6A,itemName,label);
         return await verification.VerifyAsync(WinRT.Interop.WindowNative.GetWindowHandle(window), message, async cancellationToken =>
         {
-            var input = new PasswordBox { PlaceholderText = "主密码", MinWidth = 300 };
+            var input = new PasswordBox { PlaceholderText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF36F5F11EDEFB912), MinWidth = 300 };
             var dialog = new ContentDialog
             {
-                Title = "确认是你本人",
+                Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD03D7594294E6F49),
                 Content = input,
-                PrimaryButtonText = "验证",
-                CloseButtonText = "取消",
+                PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text154723A1AA0A09A4),
+                CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
                 DefaultButton = ContentDialogButton.Primary,
                 XamlRoot = owner.XamlRoot,
             };
@@ -321,7 +321,7 @@ public sealed partial class FieldRow : UserControl
             {
                 if (!IsCurrentOperation(version, value, operationToken)) return false;
                 clipboard.SetText(Value);
-                (clipboard as IClipboardStatus)?.SetLabel(IsTrailingLabel ? "旧密码" : string.IsNullOrWhiteSpace(Label) ? "内容" : Label);
+                (clipboard as IClipboardStatus)?.SetLabel(IsTrailingLabel ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6BDB727F1E5DA30A) : string.IsNullOrWhiteSpace(Label) ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7A688306423BEC17) : Label);
                 return true;
             }) != true) return;
             _copiedVersion = _clipboardStatus?.WriteVersion ?? 0;
@@ -336,7 +336,7 @@ public sealed partial class FieldRow : UserControl
         }
         catch (Exception exception) when (exception is ExternalException or InvalidOperationException or OperationCanceledException)
         {
-            ShowFeedback("复制失败，请重试。");
+            ShowFeedback(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0E7E0391BAE51CDD));
         }
         finally
         {
@@ -358,7 +358,7 @@ public sealed partial class FieldRow : UserControl
             if (await Launcher.LaunchUriAsync(uri) && version == _viewVersion && IsLoaded)
                 FieldUsed?.Invoke(this, EventArgs.Empty);
         }
-        catch (Exception) { ShowFeedback("无法打开链接。"); }
+        catch (Exception) { ShowFeedback(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextADADBB2597281AB2)); }
     }
 }
 

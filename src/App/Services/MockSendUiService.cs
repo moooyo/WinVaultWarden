@@ -7,9 +7,9 @@ public sealed class MockSendUiService : ISendUiService
 {
     private readonly List<SendListItem> _sends = new()
     {
-        new("s1", "项目周报.pdf", SendType.File, "2026-07-01 截止", "https://vault.example/#/send/s1/seed1"),
-        new("s2", "临时登录口令", SendType.Text, "2026-06-25 截止", "https://vault.example/#/send/s2/seed2"),
-        new("s3", "设计稿打包.zip", SendType.File, "无截止日期", "https://vault.example/#/send/s3/seed3"),
+        new("s1", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB0C92A9C02A31F7A), SendType.File, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB9A975A69DF7CDDB), "https://vault.example/#/send/s1/seed1"),
+        new("s2", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1D2B98AE82F48A60), SendType.Text, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB04320E9DE11FF28), "https://vault.example/#/send/s2/seed2"),
+        new("s3", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF14B8A26CA33D02D), SendType.File, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6A5E9A88D86579D0), "https://vault.example/#/send/s3/seed3"),
     };
 
     public IReadOnlyList<SendListItem> GetSends() => _sends.ToList();
@@ -37,7 +37,7 @@ public sealed class MockSendUiService : ISendUiService
         {
             Name = name,
             Type = draft.Type,
-            DeleteDate = $"{draft.DeletionDateLabel} 后删除",
+            DeleteDate = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text96C980AD3CAD40A7,draft.DeletionDateLabel),
         };
         _sends[index] = updated;
         return updated;
@@ -47,7 +47,7 @@ public sealed class MockSendUiService : ISendUiService
     {
         var id = $"local-{_sends.Count + 1}";
         var name = draft.Type == SendType.File && !string.IsNullOrWhiteSpace(draft.FileName) ? draft.FileName : draft.Name;
-        var item = new SendListItem(id, name, draft.Type, $"{draft.DeletionDateLabel} 后删除", $"https://vault.example/#/send/{id}/seed");
+        var item = new SendListItem(id, name, draft.Type, global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text96C980AD3CAD40A7,draft.DeletionDateLabel), $"https://vault.example/#/send/{id}/seed");
         _sends.Add(item);
         return item;
     }
@@ -68,11 +68,11 @@ public sealed class MockSendUiService : ISendUiService
         var index = _sends.FindIndex(s => s.Id == id);
         if (index < 0)
         {
-            var added = new SendListItem(id, name, draft.Type, $"{draft.DeletionDateLabel} 后删除", $"https://vault.example/#/send/{id}/seed");
+            var added = new SendListItem(id, name, draft.Type, global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text96C980AD3CAD40A7,draft.DeletionDateLabel), $"https://vault.example/#/send/{id}/seed");
             _sends.Add(added);
             return Task.FromResult(added);
         }
-        var updated = _sends[index] with { Name = name, Type = draft.Type, DeleteDate = $"{draft.DeletionDateLabel} 后删除" };
+        var updated = _sends[index] with { Name = name, Type = draft.Type, DeleteDate = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text96C980AD3CAD40A7,draft.DeletionDateLabel) };
         _sends[index] = updated;
         return Task.FromResult(updated);
     }
@@ -100,5 +100,5 @@ public sealed class MockSendUiService : ISendUiService
     public string? CopyShareLink(SendListItem item) => item.Link;
 
     public Task<SendReceivedResult> OpenReceivedLinkAsync(string url, string? password, CancellationToken ct = default) =>
-        Task.FromResult(new SendReceivedResult(true, false, SendType.Text, "示例 Send", "示例文本内容", null, null, null));
+        Task.FromResult(new SendReceivedResult(true, false, SendType.Text, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text070EA3B3A9511416), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2AA6312EABA971C7), null, null, null));
 }

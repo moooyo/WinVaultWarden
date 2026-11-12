@@ -24,6 +24,27 @@ public sealed class ProtocolContractTests
     }
 
     [Fact]
+    public void NativeResponse_EmitsProtocolVersion()
+    {
+        var response = new BrowserNativeHost.NativeResponse("00000000000000000000000000000001", "error", false,
+            Error: new BrowserNativeHost.NativeError("invalid_request"));
+        var json = JsonSerializer.Serialize(response, BrowserNativeHost.NativeMessageJsonContext.Default.NativeResponse);
+
+        Assert.Contains("\"v\":1", json);
+        Assert.DoesNotContain("message", json);
+    }
+
+    [Fact]
+    public void CoreParser_RejectsUnsupportedProtocolVersion()
+    {
+        var request = new BrowserPasskeyRequest("00000000000000000000000000000001", "passkey.get", Version: 2);
+
+        Assert.False(PasskeyRequestParser.TryParse(request, out var parsed, out var error));
+        Assert.Null(parsed);
+        Assert.Equal("invalid_request", error!.Code);
+    }
+
+    [Fact]
     public void ProtocolSchema_ContainsNoCredentialOrSessionSecrets()
     {
         var schema = File.ReadAllText(FindRepoFile("protocol", "browser-passkey-v1.schema.json"));
@@ -44,6 +65,8 @@ public sealed class ProtocolContractTests
         Assert.True(defs.TryGetProperty("request", out _));
         Assert.True(defs.TryGetProperty("cancel", out _));
         Assert.True(defs.TryGetProperty("response", out _));
+        Assert.True(defs.TryGetProperty("ping", out _));
+        Assert.True(defs.TryGetProperty("pong", out _));
 
         var requestVersion = defs
             .GetProperty("request").GetProperty("properties")
@@ -51,7 +74,7 @@ public sealed class ProtocolContractTests
         Assert.Equal(1, requestVersion);
 
         // The wire payload must never let the page assert its own origin/frame context.
-        var forbidden = defs.GetProperty("payload").GetProperty("not").GetProperty("anyOf")
+        var forbidden = defs.GetProperty("pagePayload").GetProperty("not").GetProperty("anyOf")
             .EnumerateArray()
             .Select(entry => entry.GetProperty("required")[0].GetString())
             .ToHashSet(StringComparer.Ordinal);
@@ -59,6 +82,33 @@ public sealed class ProtocolContractTests
         Assert.Contains("crossOrigin", forbidden);
         Assert.Contains("frameOrigin", forbidden);
         Assert.Contains("topOrigin", forbidden);
+        Assert.Contains("sameOriginWithAncestors", forbidden);
+
+        var nativeProperties = defs.GetProperty("payload").GetProperty("properties");
+        Assert.True(nativeProperties.TryGetProperty("origin", out _));
+        Assert.True(nativeProperties.TryGetProperty("crossOrigin", out _));
+        Assert.True(nativeProperties.TryGetProperty("topOrigin", out _));
+        var contextRequired = defs.GetProperty("context").GetProperty("required")
+            .EnumerateArray().Select(property => property.GetString()).ToArray();
+        Assert.Contains("sameOriginWithAncestors", contextRequired);
+        Assert.Contains("publicKeyCredentialsCreateAllowed", contextRequired);
+    }
+
+    [Theory]
+    [InlineData("sameOriginWithAncestors")]
+    [InlineData("publicKeyCredentialsCreateAllowed")]
+    public void TrustedContext_RejectsMissingRequiredPolicyEvidence(string missingProperty)
+    {
+        var context = new BrowserRequestContext("https://example.com", "https://example.com", 1, 0,
+            "document-1", true, true, true);
+        var encoded = JsonSerializer.SerializeToElement(context, PasskeyJsonContext.Default.BrowserRequestContext);
+        var values = encoded.EnumerateObject()
+            .Where(property => property.Name != missingProperty)
+            .ToDictionary(property => property.Name, property => property.Value);
+        var json = JsonSerializer.Serialize(values);
+
+        Assert.Throws<JsonException>(() =>
+            JsonSerializer.Deserialize(json, PasskeyJsonContext.Default.BrowserRequestContext));
     }
 
     [Fact]

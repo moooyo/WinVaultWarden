@@ -62,28 +62,28 @@ public sealed record SendListItem(
         _ => "\uE72E",
     };
     public double NameOpacity => GetAvailability(DisplayTime).State is SendAvailabilityState.Available or SendAvailabilityState.Unknown ? 1 : 0.62;
-    public string ToggleActionLabel => Disabled ? "启用" : "禁用";
+    public string ToggleActionLabel => Disabled ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF4F0EAD1116B5B62) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7DF5C456C765E4C3);
 
     public string ListSubtitle => GetAvailability(DisplayTime).State switch
     {
-        SendAvailabilityState.Disabled => "已禁用 · 链接暂时打不开",
-        SendAvailabilityState.Expired or SendAvailabilityState.Deleted => "已过期",
-        SendAvailabilityState.AccessLimitReached => "已达访问上限",
-        SendAvailabilityState.AwaitingConfirmation => "等待服务器确认",
-        _ => $"{DeletionRelativeLabel}删除 · 已访问 {AccessCount} 次",
+        SendAvailabilityState.Disabled => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text82DCBAF77DBDF9E8),
+        SendAvailabilityState.Expired or SendAvailabilityState.Deleted => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2FE0E3339AC4D1BB),
+        SendAvailabilityState.AccessLimitReached => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text91195D91235E3EC1),
+        SendAvailabilityState.AwaitingConfirmation => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDBA89EC86A14EB9E),
+        _ => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text2A700181943DAFA3,DeletionRelativeLabel,AccessCount),
     };
 
     public string DeletionRelativeLabel
     {
         get
         {
-            if (DeletionDateTime is not { } deletion) return "待确认后";
+            if (DeletionDateTime is not { } deletion) return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4A2ADA2CDA37C42C);
             var remaining = deletion - DisplayTime;
-            if (remaining <= TimeSpan.Zero) return "已到期 · ";
-            if (remaining.TotalHours < 1) return $"{Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes))} 分钟后";
-            if (remaining.TotalDays < 1) return $"{(int)Math.Ceiling(remaining.TotalHours)} 小时后";
-            if (remaining.TotalDays < 2) return "明天";
-            return $"{(int)Math.Ceiling(remaining.TotalDays)} 天后";
+            if (remaining <= TimeSpan.Zero) return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDC80D44EFFAC8101);
+            if (remaining.TotalHours < 1) return global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text79BD1453F811E2F5,Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes)));
+            if (remaining.TotalDays < 1) return global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text480F29736393C1B6,(int)Math.Ceiling(remaining.TotalHours));
+            if (remaining.TotalDays < 2) return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB1D841B978FB524C);
+            return global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text509E198F04F98C5A,(int)Math.Ceiling(remaining.TotalDays));
         }
     }
 
@@ -105,35 +105,35 @@ public sealed record SendListItem(
 
     public string AccessStatus => GetAvailability(DisplayTime).State switch
     {
-        SendAvailabilityState.Available => "可访问",
-        SendAvailabilityState.Disabled => "已停用",
-        SendAvailabilityState.Expired => "已过期",
-        SendAvailabilityState.Deleted => "已到删除时间",
-        SendAvailabilityState.AccessLimitReached => "已达访问上限",
-        SendAvailabilityState.AwaitingConfirmation => "等待服务器确认",
-        _ => "状态待确认",
+        SendAvailabilityState.Available => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1E07E4EAF02DB9D1),
+        SendAvailabilityState.Disabled => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA8C3698B5B8C485D),
+        SendAvailabilityState.Expired => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2FE0E3339AC4D1BB),
+        SendAvailabilityState.Deleted => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDCB9E19FE323DCD1),
+        SendAvailabilityState.AccessLimitReached => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text91195D91235E3EC1),
+        SendAvailabilityState.AwaitingConfirmation => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDBA89EC86A14EB9E),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCDEA037991951159),
     };
 
     public string AudienceLabel => HasPassword || AuthType == Core.Enums.SendAuthType.Password
-        ? "需要访问密码"
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC3B64BFB0029F21B)
         : AuthType switch
         {
-            Core.Enums.SendAuthType.None => "拥有链接的任何人",
-            Core.Enums.SendAuthType.Email => "需要邮箱验证",
-            _ => "访问方式待确认",
+            Core.Enums.SendAuthType.None => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7BE417BF2D4937D9),
+            Core.Enums.SendAuthType.Email => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1CDF9DFD62D35990),
+            _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text02DADFD72BDAE282),
         };
 
     public string AvailableUntilLabel => GetAvailability(DisplayTime) is
         { IsAvailable: true, AvailableUntil: { } until }
             ? until.ToLocalTime().ToString("yyyy/M/d HH:mm")
-            : "当前不可访问";
+            : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text36CE943FECDCB1AD);
 
     public string RetentionLabel => DeletionDateTime is { } deletion
-        ? $"{deletion.ToLocalTime():yyyy/M/d HH:mm} 删除"
+        ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextB15B9532A37ACAE6,deletion.ToLocalTime())
         : DeleteDate;
 
     public string AvailableUntilAccessibleLabel =>
-        $"{AccessStatus}，{AudienceLabel}，可访问至 {AvailableUntilLabel}，{RetentionLabel}";
+        global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextFDBD912EBC54DC98,AccessStatus,AudienceLabel,AvailableUntilLabel,RetentionLabel);
 
     public string CompactAccessLabel => $"{AccessStatus} · {AudienceLabel}";
 
@@ -144,7 +144,7 @@ public sealed record SendListItem(
             var size = Type == SendType.File && FileSize is { } bytes
                 ? $" · {FormatSize(bytes)}" : string.Empty;
             var access = MaxAccessCount is { } limit
-                ? $"{AccessCount}/{limit} 次访问" : $"{AccessCount} 次访问";
+                ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextC2BE1E4BFFDB2B25,AccessCount,limit) : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextEBB83E175081AD1A,AccessCount);
             return $"{TypeLabel}{size} · {access}";
         }
     }
@@ -160,12 +160,12 @@ public sealed record SendListItem(
     {
         get
         {
-            var type = Type == SendType.File ? "文件" : "文本";
+            var type = Type == SendType.File ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text39932F24FE11A6BA) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDD81861811E57BF7);
             return ReconciliationState switch
             {
-                SendReconciliationState.CommittedPendingRefresh => $"{type} · 已保存，等待刷新",
-                SendReconciliationState.ReplacementOriginalPending => $"{type} · 原 Send，删除结果待确认",
-                SendReconciliationState.ReplacementNewPending => $"{type} · 新 Send，等待对账",
+                SendReconciliationState.CommittedPendingRefresh => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextC11AE41771057E3B,type),
+                SendReconciliationState.ReplacementOriginalPending => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextDBB36A9F9943D106,type),
+                SendReconciliationState.ReplacementNewPending => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextA94571EDEB6295BF,type),
                 _ => type,
             };
         }
@@ -173,7 +173,7 @@ public sealed record SendListItem(
 
     public bool CanModify => !IsReadOnly && ReconciliationState == SendReconciliationState.None;
 
-    public string DeleteDateAccessibleLabel => $"删除日期 {DeleteDate}";
+    public string DeleteDateAccessibleLabel => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextF7580DCE41F82E58,DeleteDate);
 
     public string Glyph => Type switch
     {

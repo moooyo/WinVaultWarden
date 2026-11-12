@@ -10,7 +10,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock x:Name="LabelText" Text="验证码" FontSize="14" LineHeight="20"
+            <TextBlock x:Uid="L53AC09C9EFCBF77F" x:Name="LabelText" Text="验证码" FontSize="14" LineHeight="20"
                        LineStackingStrategy="BlockLineHeight" VerticalAlignment="Center"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -32,7 +32,7 @@
                            LineStackingStrategy="BlockLineHeight" TextWrapping="Wrap"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
             </StackPanel>
-            <Button x:Name="CopyButton" Grid.Column="2" Click="OnCopy" Width="32" Height="32"
+            <Button x:Uid="LF27FA0C3686AD757" x:Name="CopyButton" Grid.Column="2" Click="OnCopy" Width="32" Height="32"
                     Style="{StaticResource IconButtonStyle}" VerticalAlignment="Center"
                     AutomationProperties.Name="复制验证码" ToolTipService.ToolTip="复制验证码">
                 <FontIcon x:Name="CopyIcon" Glyph="&#xE8C8;" FontSize="16" />

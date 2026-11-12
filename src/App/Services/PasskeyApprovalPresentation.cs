@@ -38,7 +38,7 @@ public sealed record PasskeyApprovalPresentation(
             // The brand name is always a secondary line and can never replace the origin/RP identity.
             string.IsNullOrWhiteSpace(reportedRpName)
                 ? null
-                : $"网站自报名称：{reportedRpName}",
+                : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text74C16B5551B33FAC,reportedRpName),
             materialized,
             // Only a lone credential may be pre-selected; multiple candidates force an explicit pick.
             materialized.Length == 1 ? materialized[0] : null);

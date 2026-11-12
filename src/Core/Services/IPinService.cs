@@ -4,6 +4,17 @@ namespace Core.Services;
 public interface IPinService
 {
     bool IsPinSet { get; }
+    bool RequireMasterPasswordOnRestart => false;
+    bool CanRequireMasterPasswordOnRestart => true;
+    bool RequiresMasterPasswordBeforePin => false;
     void SetPin(string pin);
+    void SetPin(string pin, bool requireMasterPasswordOnRestart)
+    {
+        if (requireMasterPasswordOnRestart)
+            throw new NotSupportedException("This PIN service cannot configure the restart policy.");
+        SetPin(pin);
+    }
+    void SetRequireMasterPasswordOnRestart(bool value) =>
+        throw new NotSupportedException("This PIN service cannot configure the restart policy.");
     void ClearPin();
 }

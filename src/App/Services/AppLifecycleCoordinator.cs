@@ -50,7 +50,8 @@ public sealed record AppLifecycleHooks(
     Action ExitProcess,
     Action FailClosedSession,
     Action<string, Exception> ReportFailure,
-    Func<VaultSessionLease, Task<bool>>? TryLogoutExpectedSessionAsync = null);
+    Func<VaultSessionLease, Task<bool>>? TryLogoutExpectedSessionAsync = null,
+    Action<AppLifecycleIntent>? TransitionClaimed = null);
 
 /// <summary>
 /// Coordinates the application's only security lifecycle transition. A request atomically blocks
@@ -60,12 +61,17 @@ public sealed record AppLifecycleHooks(
 /// </summary>
 public sealed class AppLifecycleCoordinator(
     AppLifecycleHooks hooks,
-    TimeSpan? exitStepTimeout = null)
+    TimeSpan? exitStepTimeout = null,
+    TimeSpan? cleanupStepTimeout = null)
     : IAppLifecycleCoordinator
 {
     private static readonly TimeSpan DefaultExitStepTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan DefaultCleanupStepTimeout = TimeSpan.FromSeconds(5);
     private readonly object _gate = new();
-    private readonly TimeSpan _exitStepTimeout = ValidateExitStepTimeout(exitStepTimeout);
+    private readonly TimeSpan _exitStepTimeout = ValidateStepTimeout(
+        exitStepTimeout, DefaultExitStepTimeout, nameof(exitStepTimeout));
+    private readonly TimeSpan _cleanupStepTimeout = ValidateStepTimeout(
+        cleanupStepTimeout, DefaultCleanupStepTimeout, nameof(cleanupStepTimeout));
     private readonly TaskCompletionSource _exitRequested =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task? _transition;
@@ -83,8 +89,12 @@ public sealed class AppLifecycleCoordinator(
         AppLifecycleIntent intent,
         VaultSessionLease? expectedSession = null)
     {
+        Task transition;
         lock (_gate)
-            return ClaimRequestNoLock(intent, expectedSession);
+            transition = ClaimRequestNoLock(intent, expectedSession);
+        if (expectedSession is null)
+            Safe("metadata-scope", () => hooks.TransitionClaimed?.Invoke(intent));
+        return transition;
     }
 
     public Task<bool> RequestIfAsync(
@@ -168,6 +178,7 @@ public sealed class AppLifecycleCoordinator(
             _hasRequest = true;
         }
         Safe("block", hooks.BlockSensitiveOperations);
+        Safe("metadata-scope", () => hooks.TransitionClaimed?.Invoke(AppLifecycleIntent.Exit));
         Safe("invalidate", hooks.InvalidateSession);
         Safe("transients-sync", hooks.CloseTransientsSynchronously);
         Safe("clipboard-sync", hooks.ClearClipboardSynchronously);
@@ -274,13 +285,22 @@ public sealed class AppLifecycleCoordinator(
             }
         }
 
+        AppLifecycleIntent claimedIntent;
+        lock (_gate) claimedIntent = _requested;
+        Safe("metadata-scope", () => hooks.TransitionClaimed?.Invoke(claimedIntent));
+
+        // Clear every immediately accessible projection before awaiting network or provider
+        // shutdown. The synchronous hooks are idempotent and also revoke transient UI work.
+        Safe("transients-sync", hooks.CloseTransientsSynchronously);
+        Safe("clipboard-sync", hooks.ClearClipboardSynchronously);
+        Safe("sensitive", hooks.ClearSensitiveState);
+        Safe("frames", hooks.ResetFrames);
+
         await SafeCleanupAsync("stop", hooks.StopBackgroundAsync);
         if (await SafeCleanupAsync("transients", hooks.CloseTransientsAsync))
             Safe("transients-sync", hooks.CloseTransientsSynchronously);
         if (await SafeCleanupAsync("clipboard", hooks.ClearClipboardAsync))
             Safe("clipboard-sync", hooks.ClearClipboardSynchronously);
-        Safe("sensitive", hooks.ClearSensitiveState);
-        Safe("frames", hooks.ResetFrames);
 
         var completedRank = -1;
         while (true)
@@ -363,9 +383,19 @@ public sealed class AppLifecycleCoordinator(
 
         if (!_exitRequested.Task.IsCompleted)
         {
-            var completed = await Task.WhenAny(cleanup, _exitRequested.Task);
+            using var deadline = new CancellationTokenSource();
+            var timeout = Task.Delay(_cleanupStepTimeout, deadline.Token);
+            var completed = await Task.WhenAny(cleanup, _exitRequested.Task, timeout);
+            await deadline.CancelAsync();
             if (ReferenceEquals(completed, cleanup))
                 return await ObserveCleanupAsync(step, cleanup);
+            if (ReferenceEquals(completed, timeout))
+            {
+                ReportSafely(step, new TimeoutException(
+                    $"The {step} cleanup did not complete within {_cleanupStepTimeout}."));
+                ObserveLateFailure(cleanup);
+                return true;
+            }
         }
 
         try
@@ -454,11 +484,14 @@ public sealed class AppLifecycleCoordinator(
         _ => 0,
     };
 
-    private static TimeSpan ValidateExitStepTimeout(TimeSpan? timeout)
+    private static TimeSpan ValidateStepTimeout(
+        TimeSpan? timeout,
+        TimeSpan defaultValue,
+        string parameterName)
     {
-        var value = timeout ?? DefaultExitStepTimeout;
-        if (value <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException("exitStepTimeout");
+        var value = timeout ?? defaultValue;
+        if (value <= TimeSpan.Zero || value > TimeSpan.FromMilliseconds(uint.MaxValue - 1))
+            throw new ArgumentOutOfRangeException(parameterName);
         return value;
     }
 }

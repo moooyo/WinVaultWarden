@@ -177,7 +177,7 @@
                     <StackPanel x:Name="SavedAccountsPanel"
                         Spacing="8"
                         Visibility="{x:Bind ViewModel.ShowSavedAccounts, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Text="已保存账户"
+                        <TextBlock x:Uid="L648CCADD6732FCE0" Text="已保存账户"
                             Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
                         <ItemsControl ItemsSource="{x:Bind ViewModel.SavedAccounts, Mode=OneWay}">
                             <ItemsControl.ItemTemplate>
@@ -217,8 +217,8 @@
                         </ItemsControl>
                     </StackPanel>
                     <StackPanel Spacing="6">
-                        <TextBlock Text="服务器" />
-                        <ListBox x:Name="ServerOptionBox"
+                        <TextBlock x:Uid="L6499927BFDD76D8E" Text="服务器" />
+                        <ListBox x:Uid="LAD2B46DBE7846CCD" x:Name="ServerOptionBox"
                             AutomationProperties.Name="服务器"
                             SizeChanged="OnServerOptionsSizeChanged"
                             HorizontalAlignment="Stretch" Height="32" Padding="0"
@@ -229,12 +229,12 @@
                             <ListBox.ItemsPanel>
                                 <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                             </ListBox.ItemsPanel>
-                            <ListBoxItem Content="bitwarden.com" />
-                            <ListBoxItem Content="bitwarden.eu" />
-                            <ListBoxItem Content="自托管" />
+                            <ListBoxItem x:Uid="L05574DA1F3202964" Content="bitwarden.com" />
+                            <ListBoxItem x:Uid="LA5253E6ADBF19F8F" Content="bitwarden.eu" />
+                            <ListBoxItem x:Uid="L615210BB1F251210" Content="自托管" />
                         </ListBox>
                     </StackPanel>
-                    <TextBox x:Name="ServerUrlTextBox"
+                    <TextBox x:Uid="L7595803A181A000D" x:Name="ServerUrlTextBox"
                         Header="服务器地址"
                         AutomationProperties.Name="服务器地址"
                         FontFamily="{StaticResource MonospaceFontFamily}"
@@ -247,11 +247,11 @@
                     <TextBlock x:Name="ServerErrorText" Margin="0,-10,0,0" FontSize="12" LineHeight="16"
                         Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap"
                         AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" />
-                    <TextBlock x:Name="ServerUrlHelper" Margin="0,-10,0,0"
+                    <TextBlock x:Uid="L082FDDB80552A422" x:Name="ServerUrlHelper" Margin="0,-10,0,0"
                         Text="Vaultwarden 或自建的 Bitwarden 服务器"
                         Style="{StaticResource CaptionSecondaryTextBlockStyle}"
                         Visibility="{x:Bind ViewModel.ShowCustomServerUrl, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                    <TextBox x:Name="EmailTextBox"
+                    <TextBox x:Uid="LBC9300FE3CB12D9E" x:Name="EmailTextBox"
                         Header="邮箱"
                         AutomationProperties.Name="邮箱"
                         PlaceholderText="name@example.com"
@@ -262,8 +262,14 @@
                     <TextBlock x:Name="EmailErrorText" Margin="0,-10,0,0" FontSize="12" LineHeight="16"
                         Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap"
                         AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" />
-                    <CheckBox x:Name="RememberEmailBox" Content="记住邮箱" IsChecked="True"
+                    <CheckBox x:Uid="LD5919F4AC4F5A79D" x:Name="RememberEmailBox" Content="记住邮箱" IsChecked="True"
                         Checked="OnRememberEmailChanged" Unchecked="OnRememberEmailChanged" />
+                    <HyperlinkButton x:Uid="L4878005E1BE5D055" x:Name="OpenApiKeySignInButton"
+                        Content="Sign in with a personal API key"
+                        Command="{x:Bind ViewModel.OpenApiKeySignInCommand, Mode=OneWay}"
+                        IsEnabled="{x:Bind ViewModel.CanUseApiKeySignIn, Mode=OneWay}"
+                        Padding="0" MinHeight="32"
+                        AutomationProperties.Name="Sign in with a personal API key" />
                 </StackPanel>
                 <StackPanel x:Name="AccountDeletionRecoveryStage"
                     Margin="0,28,0,0"
@@ -275,7 +281,7 @@
                         Severity="Warning"
                         Title="{x:Bind ViewModel.AccountDeletionRecoveryTitle, Mode=OneWay}"
                         Message="{x:Bind ViewModel.AccountDeletionRecoveryMessage, Mode=OneWay}" />
-                    <Button x:Name="RetryConfirmedAccountDeletionCleanupButton"
+                    <Button x:Uid="L73B2B398E95961DB" x:Name="RetryConfirmedAccountDeletionCleanupButton"
                         AutomationProperties.AutomationId="RetryConfirmedAccountDeletionCleanupButton"
                         Content="重试本地清理"
                         Command="{x:Bind ViewModel.RetryConfirmedAccountDeletionCleanupCommand, Mode=OneWay}"
@@ -283,7 +289,7 @@
                         Visibility="{x:Bind ViewModel.ShowRetryConfirmedAccountDeletionCleanup, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                         MinHeight="32"
                         HorizontalAlignment="Stretch" />
-                    <Button x:Name="ClearPendingAccountDeletionLocalDataButton"
+                    <Button x:Uid="L4B2772F91C655812" x:Name="ClearPendingAccountDeletionLocalDataButton"
                         AutomationProperties.AutomationId="ClearPendingAccountDeletionLocalDataButton"
                         Content="仅清除此设备"
                         Click="OnClearPendingAccountDeletionClick"
@@ -298,7 +304,7 @@
                         IsEnabled="{x:Bind ViewModel.CanContinueFromAccountDeletionRecovery, Mode=OneWay}"
                         MinHeight="32"
                         HorizontalAlignment="Stretch" />
-                    <Button x:Name="RequestFullLocalResetButton"
+                    <Button x:Uid="L66C1C70909C12176" x:Name="RequestFullLocalResetButton"
                         AutomationProperties.AutomationId="RequestFullLocalResetButton"
                         Content="清除全部本机数据并退出"
                         Click="OnRequestFullLocalResetClick"
@@ -312,6 +318,27 @@
                     Margin="0,28,0,0"
                     Spacing="16"
                     Visibility="{x:Bind ViewModel.IsPasswordStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel x:Name="ApiKeySignInFields" Spacing="16"
+                        Visibility="{x:Bind ViewModel.IsApiKeyMode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBox x:Uid="L627468D6E21B8AE7" x:Name="ApiKeyClientIdBox" Header="Personal API client ID"
+                            AutomationProperties.Name="Personal API client ID"
+                            PlaceholderText="user.account-uuid" MaxLength="41"
+                            Text="{x:Bind ViewModel.ApiKeyClientId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            IsEnabled="{x:Bind ViewModel.CanUsePrimaryAction, Mode=OneWay}" />
+                        <TextBlock x:Name="ApiKeyClientIdErrorText" Margin="0,-10,0,0" FontSize="12"
+                            Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap"
+                            AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" />
+                        <PasswordBox x:Uid="L1B2A95CAD6419763" x:Name="ApiKeySecretBox" Header="Personal API secret"
+                            AutomationProperties.Name="Personal API secret" MaxLength="8192"
+                            Password="{x:Bind ViewModel.ApiKeySecret, Mode=TwoWay}"
+                            PasswordRevealMode="Hidden"
+                            IsEnabled="{x:Bind ViewModel.CanUsePrimaryAction, Mode=OneWay}" />
+                        <TextBlock x:Name="ApiKeySecretErrorText" Margin="0,-10,0,0" FontSize="12"
+                            Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap"
+                            AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" />
+                        <TextBlock x:Uid="L63B1AF29CC3D0F37" Text="Personal API keys bypass two-step login on the server. The secret is never saved. When the access token expires, sign in again; a saved vault can still be unlocked offline."
+                            TextWrapping="Wrap" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                    </StackPanel>
                     <StackPanel x:Name="LoginWithDeviceQuarantinePanel"
                         Spacing="10"
                         Visibility="{x:Bind ViewModel.ShowLoginWithDeviceQuarantineNotice, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -321,7 +348,7 @@
                             Severity="Warning"
                             Title="{x:Bind ViewModel.LoginWithDeviceQuarantineTitle, Mode=OneWay}"
                             Message="{x:Bind ViewModel.LoginWithDeviceQuarantineMessage, Mode=OneWay}" />
-                        <Button x:Name="ClearLoginWithDeviceQuarantineButton"
+                        <Button x:Uid="LF40A69758AF5EA58" x:Name="ClearLoginWithDeviceQuarantineButton"
                             AutomationProperties.AutomationId="ClearLoginWithDeviceQuarantineButton"
                             Content="检查/撤销其他设备会话后清除此隔离"
                             Click="OnClearLoginWithDeviceQuarantineClick"
@@ -331,12 +358,12 @@
                             MinHeight="32" />
                     </StackPanel>
                     <Grid>
-                    <PasswordBox x:Name="MasterPasswordBox"
+                    <PasswordBox x:Uid="LE32BE63C3CDAA28D" x:Name="MasterPasswordBox"
                         Header="主密码"
                         AutomationProperties.Name="主密码"
                         MinHeight="32" Padding="10,4,36,4" PasswordRevealMode="Hidden"
                         Password="{x:Bind ViewModel.MasterPassword, Mode=TwoWay}" />
-                        <ToggleButton x:Name="RevealMasterPasswordBoxButton" Tag="MasterPasswordBox"
+                        <ToggleButton x:Uid="L32E71108187CC590" x:Name="RevealMasterPasswordBoxButton" Tag="MasterPasswordBox"
                             AutomationProperties.Name="显示主密码" ToolTipService.ToolTip="显示主密码"
                             Checked="OnPasswordRevealChanged" Unchecked="OnPasswordRevealChanged"
                             Background="Transparent" BorderThickness="0" Width="32" Height="32"
@@ -351,7 +378,7 @@
                         Visibility="Collapsed" AutomationProperties.LiveSetting="Polite">
                         <FontIcon Glyph="&#xE765;" FontSize="14" Foreground="{ThemeResource SystemFillColorCautionBrush}"
                             AutomationProperties.AccessibilityView="Raw" />
-                        <TextBlock Text="大写锁定已打开" Style="{StaticResource AuthCapsLockTextStyle}" />
+                        <TextBlock x:Uid="L30E91FFA89A601A2" Text="大写锁定已打开" Style="{StaticResource AuthCapsLockTextStyle}" />
                     </StackPanel>
                 </StackPanel>
                 <StackPanel x:Name="LoginWithDeviceStage"
@@ -362,8 +389,8 @@
                         Padding="0,14,0,16"
                         Visibility="{x:Bind ViewModel.HasLoginWithDeviceFingerprint, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel Spacing="6">
-                            <TextBlock Text="指纹短语" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
-                            <TextBox x:Name="LoginWithDeviceFingerprintBox"
+                            <TextBlock x:Uid="LBDF21CE442374F09" Text="指纹短语" Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
+                            <TextBox x:Uid="L40105222AD7C68A2" x:Name="LoginWithDeviceFingerprintBox"
                                 AutomationProperties.AutomationId="LoginWithDeviceFingerprintBox"
                                 AutomationProperties.Name="指纹短语"
                                 Text="{x:Bind ViewModel.LoginWithDeviceFingerprint, Mode=OneWay}"
@@ -371,14 +398,14 @@
                                 Background="Transparent" FontFamily="{StaticResource MonospaceFontFamily}"
                                 FontSize="18" FontWeight="SemiBold"
                                 Visibility="{x:Bind ViewModel.HasLoginWithDeviceFingerprint, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                            <TextBlock Text="在另一台设备上批准前，确认那里显示的是同样的短语。"
+                            <TextBlock x:Uid="L931F9A7FB781FE28" Text="在另一台设备上批准前，确认那里显示的是同样的短语。"
                                 FontSize="12" LineHeight="18" Foreground="{ThemeResource WardenSecondaryTextBrush}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
                     <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
                         <FontIcon Glyph="&#xE823;" FontSize="16" Foreground="{ThemeResource WardenSecondaryTextBrush}" />
-                        <TextBlock x:Name="DeviceApprovalWaitingText" Text="正在等待批准"
+                        <TextBlock x:Uid="L2078EC07EC1ECB20" x:Name="DeviceApprovalWaitingText" Text="正在等待批准"
                             Foreground="{ThemeResource WardenSecondaryTextBrush}"
                             AutomationProperties.LiveSetting="Off" />
                     </StackPanel>
@@ -386,7 +413,7 @@
                         AutomationProperties.AutomationId="LoginWithDeviceExpiryText"
                         Text="{x:Bind ViewModel.LoginWithDeviceExpiryText, Mode=OneWay}"
                         Visibility="Collapsed" />
-                    <Button x:Name="CancelLoginWithDeviceButton"
+                    <Button x:Uid="L3D734EAE11CCFCAC" x:Name="CancelLoginWithDeviceButton"
                         AutomationProperties.AutomationId="CancelLoginWithDeviceButton"
                         Content="改用主密码"
                         Command="{x:Bind ViewModel.CancelLoginWithDeviceCommand, Mode=OneWay}"
@@ -398,7 +425,7 @@
                     Margin="0,28,0,0"
                     Spacing="16"
                     Visibility="{x:Bind ViewModel.IsDeviceVerificationStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <TextBox x:Name="DeviceVerificationCodeTextBox"
+                    <TextBox x:Uid="L00C1A3D33A56DD54" x:Name="DeviceVerificationCodeTextBox"
                         AutomationProperties.AutomationId="DeviceVerificationCodeTextBox"
                         Header="设备验证码"
                         AutomationProperties.Name="设备验证码"
@@ -410,7 +437,7 @@
                     <TextBlock x:Name="DeviceVerificationErrorText" Margin="0,-10,0,0" FontSize="12" LineHeight="16"
                         Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap"
                         AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" />
-                    <HyperlinkButton x:Name="ResendNewDeviceCodeButton"
+                    <HyperlinkButton x:Uid="L2D6F8F6ABAF56A4E" x:Name="ResendNewDeviceCodeButton"
                         AutomationProperties.AutomationId="ResendNewDeviceCodeButton"
                         Content="重新发送验证码"
                         HorizontalAlignment="Center"
@@ -421,12 +448,12 @@
                     Margin="0,28,0,0"
                     Spacing="16"
                     Visibility="{x:Bind ViewModel.IsPasswordChangeRequiredStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <InfoBar IsOpen="True"
+                    <InfoBar x:Uid="LCAA36D11E67FD8A2" IsOpen="True"
                         IsClosable="False"
                         Severity="Warning"
                         Title="需要更新主密码"
                         Message="{x:Bind ViewModel.RequiredPasswordPolicySummary, Mode=OneWay}" />
-                    <PasswordBox x:Name="NewMasterPasswordBox"
+                    <PasswordBox x:Uid="L20F1D05D58965B48" x:Name="NewMasterPasswordBox"
                         AutomationProperties.AutomationId="NewMasterPasswordBox"
                         Header="新主密码"
                         AutomationProperties.Name="新主密码"
@@ -436,9 +463,9 @@
                         Visibility="Collapsed" AutomationProperties.LiveSetting="Polite">
                         <FontIcon Glyph="&#xE765;" FontSize="14" Foreground="{ThemeResource SystemFillColorCautionBrush}"
                             AutomationProperties.AccessibilityView="Raw" />
-                        <TextBlock Text="大写锁定已打开" Style="{StaticResource AuthCapsLockTextStyle}" />
+                        <TextBlock x:Uid="L30E91FFA89A601A2" Text="大写锁定已打开" Style="{StaticResource AuthCapsLockTextStyle}" />
                     </StackPanel>
-                    <PasswordBox x:Name="ConfirmNewMasterPasswordBox"
+                    <PasswordBox x:Uid="LFF061A16C7A70FCF" x:Name="ConfirmNewMasterPasswordBox"
                         AutomationProperties.AutomationId="ConfirmNewMasterPasswordBox"
                         Header="确认新主密码"
                         AutomationProperties.Name="确认新主密码"
@@ -448,16 +475,16 @@
                         Visibility="Collapsed" AutomationProperties.LiveSetting="Polite">
                         <FontIcon Glyph="&#xE765;" FontSize="14" Foreground="{ThemeResource SystemFillColorCautionBrush}"
                             AutomationProperties.AccessibilityView="Raw" />
-                        <TextBlock Text="大写锁定已打开" Style="{StaticResource AuthCapsLockTextStyle}" />
+                        <TextBlock x:Uid="L30E91FFA89A601A2" Text="大写锁定已打开" Style="{StaticResource AuthCapsLockTextStyle}" />
                     </StackPanel>
-                    <TextBox x:Name="MasterPasswordHintTextBox"
+                    <TextBox x:Uid="LF8C2F0591497B090" x:Name="MasterPasswordHintTextBox"
                         AutomationProperties.AutomationId="MasterPasswordHintTextBox"
                         Header="密码提示（可选）"
                         AutomationProperties.Name="密码提示（可选）"
                         Text="{x:Bind ViewModel.MasterPasswordHint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                         MaxLength="50"
                         MinHeight="32" />
-                    <Button Content="切换账户"
+                    <Button x:Uid="L0C28284471AF904D" Content="切换账户"
                         Command="{x:Bind ViewModel.SwitchAccountCommand, Mode=OneWay}"
                         HorizontalAlignment="Stretch" />
                 </StackPanel>
@@ -465,7 +492,7 @@
                     Margin="0,28,0,0"
                     Spacing="16"
                     Visibility="{x:Bind ViewModel.IsTwoFactorStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <InfoBar x:Name="LoginWithDeviceTwoFactorExpiryInfoBar"
+                    <InfoBar x:Uid="L78C2BB1F27187169" x:Name="LoginWithDeviceTwoFactorExpiryInfoBar"
                         IsOpen="{x:Bind ViewModel.ShowLoginWithDeviceTwoFactorExpiry, Mode=OneWay}"
                         IsClosable="False"
                         Severity="Informational"
@@ -484,21 +511,21 @@
                     <TextBlock x:Name="TwoFactorErrorText" Margin="0,-10,0,0" FontSize="12" LineHeight="16"
                         Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap"
                         AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" />
-                    <InfoBar x:Name="RecoveryCodeWarningInfoBar"
+                    <InfoBar x:Uid="LF73C2647D5F413E9" x:Name="RecoveryCodeWarningInfoBar"
                         IsOpen="{x:Bind ViewModel.ShowRecoveryCodeWarning, Mode=OneWay}"
                         IsClosable="False"
                         Severity="Warning"
                         Title="恢复代码会停用两步验证"
                         Message="验证成功后，账户当前配置的所有两步验证方式都会被移除。" />
-                    <CheckBox Content="记住此设备"
+                    <CheckBox x:Uid="LC5F20F1643F08C05" Content="记住此设备"
                         IsChecked="{x:Bind ViewModel.RememberDevice, Mode=TwoWay}"
                         Visibility="{x:Bind ViewModel.ShowRememberDevice, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                    <HyperlinkButton x:Name="ResendEmailCodeButton"
+                    <HyperlinkButton x:Uid="LB52F68991419621F" x:Name="ResendEmailCodeButton"
                         Content="重发验证码"
                         HorizontalAlignment="Center"
                         Command="{x:Bind ViewModel.ResendEmailCodeCommand, Mode=OneWay}"
                         Visibility="{x:Bind ViewModel.ShowResendEmailCode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                    <HyperlinkButton x:Name="RecoveryCodeModeButton"
+                    <HyperlinkButton x:Uid="LCB82C252B61AD942" x:Name="RecoveryCodeModeButton"
                         AutomationProperties.AutomationId="TwoFactorChangeMethodButton"
                         Content="换一种方式"
                         HorizontalAlignment="Center"
@@ -509,7 +536,7 @@
                     Margin="0,28,0,0"
                     Spacing="16"
                     Visibility="{x:Bind ViewModel.IsTrustedDeviceApprovalStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <ComboBox x:Name="DeviceApprovalMethodBox"
+                    <ComboBox x:Uid="L702783BADFE565B0" x:Name="DeviceApprovalMethodBox"
                         AutomationProperties.AutomationId="DeviceApprovalMethodBox"
                         Header="批准方式"
                         AutomationProperties.Name="批准方式"
@@ -523,7 +550,7 @@
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
-                    <TextBox x:Name="DeviceApprovalFingerprintBox"
+                    <TextBox x:Uid="L3378A2CA03FCC04E" x:Name="DeviceApprovalFingerprintBox"
                         AutomationProperties.AutomationId="DeviceApprovalFingerprintBox"
                         Header="指纹短语"
                         AutomationProperties.Name="指纹短语"
@@ -532,13 +559,13 @@
                         TextWrapping="Wrap"
                         FontFamily="{StaticResource MonospaceFontFamily}"
                         Visibility="{x:Bind ViewModel.HasApprovalFingerprint, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                    <CheckBox Content="批准后信任此设备"
+                    <CheckBox x:Uid="LABEF01851F46F18D" Content="批准后信任此设备"
                         IsChecked="{x:Bind ViewModel.TrustCurrentDeviceAfterApproval, Mode=TwoWay}" />
-                    <Button Content="取消等待"
+                    <Button x:Uid="LF338147A864A3EAC" Content="取消等待"
                         Command="{x:Bind ViewModel.CancelTrustedDeviceApprovalCommand, Mode=OneWay}"
                         Visibility="{x:Bind ViewModel.ShowCancelDeviceApproval, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                         HorizontalAlignment="Stretch" />
-                    <Button Content="切换账户"
+                    <Button x:Uid="L0C28284471AF904D" Content="切换账户"
                         Command="{x:Bind ViewModel.SwitchAccountCommand, Mode=OneWay}"
                         HorizontalAlignment="Stretch" />
                 </StackPanel>
@@ -546,13 +573,13 @@
                     Margin="0,28,0,0"
                     Spacing="16"
                     Visibility="{x:Bind ViewModel.IsTdeV2JitProvisioningStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <TextBlock Text="此企业账户尚未建立加密密钥。继续后将完成账户恢复注册。"
+                    <TextBlock x:Uid="L34304D120A6DEEE8" Text="此企业账户尚未建立加密密钥。继续后将完成账户恢复注册。"
                         TextWrapping="Wrap"
                         Style="{StaticResource CaptionSecondaryTextBlockStyle}" />
-                    <CheckBox Content="同时信任此设备"
+                    <CheckBox x:Uid="LD2E64D0287C282B5" Content="同时信任此设备"
                         IsEnabled="{x:Bind ViewModel.CanChooseTrustCurrentDeviceAfterJit, Mode=OneWay}"
                         IsChecked="{x:Bind ViewModel.TrustCurrentDeviceAfterApproval, Mode=TwoWay}" />
-                    <Button Content="切换账户"
+                    <Button x:Uid="L0C28284471AF904D" Content="切换账户"
                         Command="{x:Bind ViewModel.SwitchAccountCommand, Mode=OneWay}"
                         HorizontalAlignment="Stretch" />
                 </StackPanel>
@@ -560,12 +587,12 @@
                     Margin="0,28,0,0" Spacing="8"
                     Visibility="{x:Bind UnlockPanelVisibility(ViewModel.ShowUnlockPanel, ViewModel.ShowHelloUnlock), Mode=OneWay}">
                     <Grid Visibility="{x:Bind ViewModel.IsUnlockStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <PasswordBox x:Name="UnlockPasswordBox"
+                    <PasswordBox x:Uid="LF5B47E92EF2629AC" x:Name="UnlockPasswordBox"
                         AutomationProperties.Name="主密码" PlaceholderText="主密码"
                         MinHeight="32" Padding="10,4,36,4" PasswordRevealMode="Hidden"
                         Password="{x:Bind ViewModel.MasterPassword, Mode=TwoWay}"
                         Visibility="{x:Bind ViewModel.IsUnlockStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                        <ToggleButton x:Name="RevealUnlockPasswordBoxButton" Tag="UnlockPasswordBox"
+                        <ToggleButton x:Uid="L32E71108187CC590" x:Name="RevealUnlockPasswordBoxButton" Tag="UnlockPasswordBox"
                             AutomationProperties.Name="显示主密码" ToolTipService.ToolTip="显示主密码"
                             Checked="OnPasswordRevealChanged" Unchecked="OnPasswordRevealChanged"
                             Background="Transparent" BorderThickness="0" Width="32" Height="32"
@@ -580,13 +607,13 @@
                         Visibility="Collapsed" AutomationProperties.LiveSetting="Polite">
                         <FontIcon Glyph="&#xE765;" FontSize="14" Foreground="{ThemeResource SystemFillColorCautionBrush}"
                             AutomationProperties.AccessibilityView="Raw" />
-                        <TextBlock Text="大写锁定已打开" Style="{StaticResource AuthCapsLockTextStyle}" />
+                        <TextBlock x:Uid="L30E91FFA89A601A2" Text="大写锁定已打开" Style="{StaticResource AuthCapsLockTextStyle}" />
                     </StackPanel>
                 </StackPanel>
                 <StackPanel x:Name="LoginPinUnlockStage"
                     Margin="0,28,0,0" Spacing="8"
                     Visibility="{x:Bind UnlockPanelVisibility(ViewModel.IsPinUnlockStage, ViewModel.ShowHelloUnlock), Mode=OneWay}">
-                    <PasswordBox x:Name="PinBox"
+                    <PasswordBox x:Uid="L11EE12FF61A21C64" x:Name="PinBox"
                         AutomationProperties.AutomationId="PinBox"
                         AutomationProperties.Name="PIN" PlaceholderText="PIN"
                         MinHeight="32" InputScope="NumericPin"
@@ -606,7 +633,7 @@
                     MinHeight="32" HorizontalAlignment="Stretch">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xE77B;" FontSize="16" />
-                        <TextBlock Text="使用 Windows Hello 解锁" />
+                        <TextBlock x:Uid="L38A37BBEC2C084F7" Text="使用 Windows Hello 解锁" />
                     </StackPanel>
                 </Button>
                 <Button x:Name="PrimaryAuthButton"
@@ -634,10 +661,10 @@
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <Border Height="1" Background="{ThemeResource WardenLineBrush}" />
-                        <TextBlock Grid.Column="1" Text="或" FontSize="12" Foreground="{ThemeResource WardenTertiaryTextBrush}" />
+                        <TextBlock x:Uid="L0F83FDA5AAAF92A8" Grid.Column="1" Text="或" FontSize="12" Foreground="{ThemeResource WardenTertiaryTextBrush}" />
                         <Border Grid.Column="2" Height="1" Background="{ThemeResource WardenLineBrush}" />
                     </Grid>
-                    <Button x:Name="LoginWithDeviceButton"
+                    <Button x:Uid="LB9AB3D3AE49FEF69" x:Name="LoginWithDeviceButton"
                         AutomationProperties.AutomationId="LoginWithDeviceButton"
                         AutomationProperties.Name="使用设备登录"
                         Command="{x:Bind ViewModel.LoginWithDeviceCommand, Mode=OneWay}"
@@ -648,7 +675,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <FontIcon Glyph="&#xE772;" FontSize="16" VerticalAlignment="Center"
                                 AutomationProperties.AccessibilityView="Raw" />
-                            <TextBlock Text="使用设备登录" VerticalAlignment="Center" />
+                            <TextBlock x:Uid="LE238CBC88E64F8B9" Text="使用设备登录" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
                 </StackPanel>
@@ -660,10 +687,10 @@
                         Command="{x:Bind ViewModel.UseMasterPasswordCommand, Mode=OneWay}"
                         IsEnabled="{x:Bind ViewModel.CanUsePrimaryAction, Mode=OneWay}"
                         Click="OnUseMasterPasswordClick" Padding="10,0" MinHeight="32" />
-                    <HyperlinkButton x:Name="UsePinUnlockButton"
+                    <HyperlinkButton x:Uid="L96FB3767C98B7393" x:Name="UsePinUnlockButton"
                         Content="改用 PIN" Command="{x:Bind ViewModel.UsePinUnlockCommand, Mode=OneWay}"
                         Click="OnUsePinClick" Padding="10,0" MinHeight="32" />
-                    <HyperlinkButton x:Name="PinHelloUnlockButton"
+                    <HyperlinkButton x:Uid="L7D6CF6810FBF674C" x:Name="PinHelloUnlockButton"
                         AutomationProperties.AutomationId="PinHelloUnlockButton"
                         Content="改用 Windows Hello"
                         Command="{x:Bind ViewModel.UnlockWithHelloCommand, Mode=OneWay}"
@@ -674,11 +701,11 @@
                     Foreground="{ThemeResource WardenTertiaryTextBrush}"
                     TextAlignment="Center" TextWrapping="Wrap" Visibility="Collapsed" />
                 <StackPanel x:Name="SwitchAccountLinks" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0" Visibility="Collapsed">
-                    <HyperlinkButton x:Name="SwitchAccountButton" Content="切换账户"
+                    <HyperlinkButton x:Uid="LCEA5A078F13D5228" x:Name="SwitchAccountButton" Content="切换账户"
                         Command="{x:Bind ViewModel.SwitchAccountCommand, Mode=OneWay}"
                         Visibility="{x:Bind ViewModel.ShowUnlockPanel, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                         Padding="10,0" MinHeight="32" />
-                    <HyperlinkButton x:Name="PinSwitchAccountButton" Content="切换账户"
+                    <HyperlinkButton x:Uid="LCEA5A078F13D5228" x:Name="PinSwitchAccountButton" Content="切换账户"
                         Command="{x:Bind ViewModel.SwitchAccountCommand, Mode=OneWay}"
                         Visibility="{x:Bind ViewModel.IsPinUnlockStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                         Padding="10,0" MinHeight="32" />
@@ -691,7 +718,7 @@
                         IsEnabled="{x:Bind ViewModel.CanRequestPasswordHint, Mode=OneWay}"
                         Visibility="{x:Bind ViewModel.IsPasswordStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                         Padding="10,0" MinHeight="32" />
-                <HyperlinkButton x:Name="BackButton" Content="{x:Bind BackActionText(ViewModel.IsPasswordStage), Mode=OneWay}" AutomationProperties.Name="返回"
+                <HyperlinkButton x:Uid="L0E03719483FAA0DA" x:Name="BackButton" Content="{x:Bind BackActionText(ViewModel.IsPasswordStage), Mode=OneWay}" AutomationProperties.Name="返回"
                     Padding="10,0" MinHeight="32" HorizontalAlignment="Center"
                     Command="{x:Bind ViewModel.BackCommand, Mode=OneWay}"
                     IsEnabled="{x:Bind ViewModel.CanGoBack, Mode=OneWay}"
@@ -703,25 +730,25 @@
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <Border Height="1" Background="{ThemeResource WardenLineBrush}" />
-                        <TextBlock Grid.Column="1" Text="或" FontSize="12" Foreground="{ThemeResource WardenTertiaryTextBrush}" />
+                        <TextBlock x:Uid="L0F83FDA5AAAF92A8" Grid.Column="1" Text="或" FontSize="12" Foreground="{ThemeResource WardenTertiaryTextBrush}" />
                         <Border Grid.Column="2" Height="1" Background="{ThemeResource WardenLineBrush}" />
                     </Grid>
-                    <Button x:Name="SsoLoginButton"
+                    <Button x:Uid="L6AF44CA2E4C889E5" x:Name="SsoLoginButton"
                         AutomationProperties.AutomationId="SsoLoginButton"
                         Content="使用单点登录（SSO）"
                         Click="OnOpenSsoSignInClick"
                         IsEnabled="{x:Bind ViewModel.CanUseSso, Mode=OneWay}"
                         MinHeight="32"
                         HorizontalAlignment="Stretch" />
-                    <HyperlinkButton x:Name="CancelSsoButton"
+                    <HyperlinkButton x:Uid="LA6BAD41FA3F13CE4" x:Name="CancelSsoButton"
                         AutomationProperties.AutomationId="CancelSsoButton"
                         Content="取消 SSO 登录"
                         Command="{x:Bind ViewModel.CancelSsoCommand, Mode=OneWay}"
                         HorizontalAlignment="Center"
                         Visibility="{x:Bind ViewModel.ShowCancelSso, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
-                        <TextBlock Text="还没有账户？" VerticalAlignment="Center" Foreground="{ThemeResource WardenSecondaryTextBrush}" />
-                    <HyperlinkButton x:Name="GoToRegisterButton"
+                        <TextBlock x:Uid="L3A75B689BAAE6ACA" Text="还没有账户？" VerticalAlignment="Center" Foreground="{ThemeResource WardenSecondaryTextBrush}" />
+                    <HyperlinkButton x:Uid="L6299445ED05D1A72" x:Name="GoToRegisterButton"
                         AutomationProperties.AutomationId="GoToRegisterButton"
                         Content="创建账户"
                         Padding="4,0" MinHeight="32"
@@ -730,7 +757,7 @@
                         Click="OnGoToRegisterClick" />
                     </StackPanel>
                 </StackPanel>
-                <Button x:Name="DemoVaultButton"
+                <Button x:Uid="L32E9BF699C4A1FD6" x:Name="DemoVaultButton"
                     Margin="0,10,0,0"
                     Content="使用演示保险库"
                     Command="{x:Bind ViewModel.UseDemoVaultCommand, Mode=OneWay}"
@@ -746,29 +773,29 @@
                 <Border Width="48" Height="48" CornerRadius="10" HorizontalAlignment="Center" Background="{ThemeResource WardenTileBrush}">
                     <FontIcon Glyph="&#xE80F;" FontSize="24" />
                 </Border>
-                <TextBlock Text="单点登录" Margin="0,16,0,0" FontSize="20" LineHeight="28" FontWeight="SemiBold"
+                <TextBlock x:Uid="L4F9F0C895660AFFB" Text="单点登录" Margin="0,16,0,0" FontSize="20" LineHeight="28" FontWeight="SemiBold"
                     FontFamily="{StaticResource WardenDisplayFontFamily}" TextAlignment="Center" AutomationProperties.HeadingLevel="Level1" />
-                <TextBlock x:Name="SsoSubtitle" Margin="0,4,0,0" Text="输入组织标识符，会在浏览器中打开组织的登录页面"
+                <TextBlock x:Uid="L0EA460C2488F69FD" x:Name="SsoSubtitle" Margin="0,4,0,0" Text="输入组织标识符，会在浏览器中打开组织的登录页面"
                     Foreground="{ThemeResource WardenSecondaryTextBrush}" TextAlignment="Center" TextWrapping="Wrap" />
                 <StackPanel x:Name="SsoOrganizationForm" Margin="0,28,0,0" Spacing="6">
-                    <TextBlock Text="组织标识符" />
-                    <TextBox x:Name="SsoOrganizationBox" AutomationProperties.Name="组织标识符" PlaceholderText="例如 moooyo-family"
+                    <TextBlock x:Uid="L8ADD8FA4046B2456" Text="组织标识符" />
+                    <TextBox x:Uid="L0F8523BE12110FF7" x:Name="SsoOrganizationBox" AutomationProperties.Name="组织标识符" PlaceholderText="例如 moooyo-family"
                         MinHeight="32" Text="{x:Bind ViewModel.SsoOrganizationIdentifier, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock x:Name="SsoOrganizationError" FontSize="12" LineHeight="16"
+                    <TextBlock x:Uid="LCB668FF1F37F74E2" x:Name="SsoOrganizationError" FontSize="12" LineHeight="16"
                         Foreground="{ThemeResource SystemFillColorCriticalBrush}" Text="请输入组织标识符"
                         Visibility="Collapsed" AutomationProperties.LiveSetting="Polite" />
                 </StackPanel>
                 <StackPanel x:Name="SsoWaitingRow" Orientation="Horizontal" Spacing="8" Margin="0,28,0,0"
                     HorizontalAlignment="Center" Visibility="Collapsed">
                     <ProgressRing Width="16" Height="16" IsActive="{x:Bind ViewModel.IsSsoPending, Mode=OneWay}" />
-                    <TextBlock x:Name="SsoWaitingText" Text="正在等待浏览器中的登录…" Foreground="{ThemeResource WardenSecondaryTextBrush}" />
+                    <TextBlock x:Uid="L65E697197D4B2FA1" x:Name="SsoWaitingText" Text="正在等待浏览器中的登录…" Foreground="{ThemeResource WardenSecondaryTextBrush}" />
                 </StackPanel>
                 <InfoBar x:Name="SsoStatusInfoBar" IsOpen="False" IsClosable="False" Margin="0,16,0,0" Visibility="Collapsed" />
-                <Button x:Name="SsoContinueButton" Content="继续" Click="OnSsoContinueClick"
+                <Button x:Uid="LC053E836CDD63C77" x:Name="SsoContinueButton" Content="继续" Click="OnSsoContinueClick"
                     Margin="0,16,0,0" MinHeight="32" HorizontalAlignment="Stretch" Style="{ThemeResource AccentButtonStyle}" />
-                <Button x:Name="SsoReopenButton" Content="重新打开浏览器" Click="OnSsoReopenClick"
+                <Button x:Uid="L762E290C291F87A2" x:Name="SsoReopenButton" Content="重新打开浏览器" Click="OnSsoReopenClick"
                     Margin="0,16,0,0" MinHeight="32" HorizontalAlignment="Stretch" Visibility="Collapsed" />
-                <HyperlinkButton x:Name="SsoBackButton" Content="返回" Click="OnSsoBackClick"
+                <HyperlinkButton x:Uid="LC4F5A65AF981378B" x:Name="SsoBackButton" Content="返回" Click="OnSsoBackClick"
                     Margin="0,8,0,0" MinHeight="32" HorizontalAlignment="Center" Padding="10,0" />
             </StackPanel>
             <StackPanel x:Name="TwoFactorPickerPanel" MaxWidth="360" HorizontalAlignment="Stretch"
@@ -777,11 +804,11 @@
                     Background="{ThemeResource WardenTileBrush}">
                     <FontIcon Glyph="&#xEA18;" FontSize="24" Foreground="{ThemeResource WardenPrimaryTextBrush}" />
                 </Border>
-                <TextBlock Text="选择验证方式" Margin="0,16,0,0"
+                <TextBlock x:Uid="L6AF06DABD67521BA" Text="选择验证方式" Margin="0,16,0,0"
                     FontFamily="{StaticResource WardenDisplayFontFamily}" FontSize="20" LineHeight="28"
                     FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap"
                     AutomationProperties.HeadingLevel="Level1" />
-                <TextBlock Text="用其中任意一种完成两步登录" Margin="0,4,0,0"
+                <TextBlock x:Uid="L63DAAC05AE90AC31" Text="用其中任意一种完成两步登录" Margin="0,4,0,0"
                     Foreground="{ThemeResource WardenSecondaryTextBrush}" TextAlignment="Center" TextWrapping="Wrap" />
                 <ItemsControl x:Name="TwoFactorPickerItems" Margin="-12,28,-12,0"
                     AutomationProperties.AutomationId="TwoFactorMethodList">
@@ -811,7 +838,7 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <HyperlinkButton x:Name="TwoFactorPickerBackButton" Content="返回"
+                <HyperlinkButton x:Uid="LC4F5A65AF981378B" x:Name="TwoFactorPickerBackButton" Content="返回"
                     AutomationProperties.AutomationId="TwoFactorPickerBackButton"
                     HorizontalAlignment="Center" MinHeight="32" Padding="10,0" Margin="0,16,0,0"
                     Click="OnCloseTwoFactorPickerClick" />
@@ -822,11 +849,11 @@
                     Background="{ThemeResource WardenTileBrush}">
                     <FontIcon Glyph="&#xE77B;" FontSize="24" Foreground="{ThemeResource WardenPrimaryTextBrush}" />
                 </Border>
-                <TextBlock Text="下次用 Windows Hello 解锁？" Margin="0,16,0,0"
+                <TextBlock x:Uid="L31F7821477107B7C" Text="下次用 Windows Hello 解锁？" Margin="0,16,0,0"
                     FontFamily="{StaticResource WardenDisplayFontFamily}" FontSize="20" LineHeight="28"
                     FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap"
                     AutomationProperties.HeadingLevel="Level1" />
-                <TextBlock Text="用面部、指纹或 PIN 代替主密码，主密码仍然可以用。" Margin="0,4,0,0"
+                <TextBlock x:Uid="L283CBE27EE9B321D" Text="用面部、指纹或 PIN 代替主密码，主密码仍然可以用。" Margin="0,4,0,0"
                     Foreground="{ThemeResource WardenSecondaryTextBrush}" TextAlignment="Center" TextWrapping="Wrap" />
                 <InfoBar x:Name="HelloEnrollmentStatus" IsOpen="False" IsClosable="False" Margin="0,20,0,0"
                     Visibility="Collapsed" AutomationProperties.LiveSetting="Polite" />
@@ -835,10 +862,10 @@
                     Click="OnEnableHelloEnrollmentClick">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xE77B;" FontSize="16" />
-                        <TextBlock x:Name="HelloEnrollmentButtonText" Text="开启 Windows Hello" />
+                        <TextBlock x:Uid="LC2458D6C0F54894E" x:Name="HelloEnrollmentButtonText" Text="开启 Windows Hello" />
                     </StackPanel>
                 </Button>
-                <Button x:Name="SkipHelloEnrollmentButton" Content="以后再说" Margin="0,8,0,0"
+                <Button x:Uid="LA1AE5669A2099D84" x:Name="SkipHelloEnrollmentButton" Content="以后再说" Margin="0,8,0,0"
                     MinHeight="32" HorizontalAlignment="Stretch" Click="OnSkipHelloEnrollmentClick" />
             </StackPanel>
             </Grid>

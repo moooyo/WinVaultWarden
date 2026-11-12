@@ -41,6 +41,7 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
     private bool _avoidAmbiguous;
     private string _generatedPassword = string.Empty;
     private int _strengthScore;
+    private bool _strengthComplete = true;
     private int _passphraseWordCount = 4;
     private bool _passphraseCapitalize = true;
     private bool _passphraseIncludeNumber = true;
@@ -321,17 +322,17 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
     public bool IsUsernameMode => Mode == GeneratorMode.Username;
     public string PageTitle => Mode switch
     {
-        GeneratorMode.Passphrase => "密码短语",
-        GeneratorMode.Username => "用户名",
-        _ => "随机密码",
+        GeneratorMode.Passphrase => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCB1B19977701FF9B),
+        GeneratorMode.Username => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1A3F0617D6DE8E52),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD7A101216E4AD4B1),
     };
     public string PageDescription => Mode switch
     {
-        GeneratorMode.Passphrase => "由几个随机单词组成，好记、好输入，也足够强。",
-        GeneratorMode.Username => "生成随机用户名或邮箱别名，让不同账户保持独立。",
-        _ => "由字母、数字和符号随机组成，适合交给密码库保管。",
+        GeneratorMode.Passphrase => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5C6044EC8B297705),
+        GeneratorMode.Username => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text72480F57BACEC7C0),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text65EAE61C5F594EF6),
     };
-    public string EntropyLabel => $"约 {Math.Round(EntropyBits)} 位熵";
+    public string EntropyLabel => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextA86B3C947B97DF53,Math.Round(EntropyBits));
     public double EntropyBits => Mode switch
     {
         GeneratorMode.Passphrase => PassphraseWordCount * Math.Log2(7776)
@@ -343,52 +344,53 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
             + (IncludeNumbers ? (AvoidAmbiguous ? 8 : 10) : 0)
             + (IncludeSpecial ? 8 : 0))),
     };
-    public int StrengthSegments => Math.Clamp(_strengthScore, 1, 4);
+    public int StrengthSegments => _strengthComplete ? Math.Clamp(_strengthScore, 1, 4) : 0;
     public double PasswordSliderMaximum => Math.Max(64, Math.Max(Length, MinimumPasswordLength));
     public double PassphraseSliderMaximum => Math.Max(10, Math.Max(PassphraseWordCount, MinimumPassphraseWordCount));
     public string GeneratedValueLabel => Mode switch
     {
-        GeneratorMode.Passphrase => "已生成的密码短语",
-        GeneratorMode.Username => "已生成的用户名",
-        _ => "已生成的密码",
+        GeneratorMode.Passphrase => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB093DE9FFA031F5F),
+        GeneratorMode.Username => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2B4AD0BAD44AB89A),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5D5F980082D5CB20),
     };
-    public string CopyLabel => HasCopyFeedback && !CopyFailed ? "已复制" : "复制";
+    public string CopyLabel => HasCopyFeedback && !CopyFailed ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8F6F8D979C981CED) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text63D90D977348AB1F);
     public string GeneratedValueSummary => string.IsNullOrEmpty(GeneratedPassword)
-        ? "请先完成下面的生成选项。"
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD9434F5B005376C7)
         : Mode == GeneratorMode.Passphrase
-            ? $"{PassphraseWordCount} 个单词 · {GeneratedPassword.Length} 个字符"
-            : $"{GeneratedPassword.Length} 个字符";
+            ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text8800026B71571914,PassphraseWordCount,GeneratedPassword.Length)
+            : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextDBC8FF4DA903AD79,GeneratedPassword.Length);
     public bool CanCopy => CanGenerate && !string.IsNullOrWhiteSpace(GeneratedPassword);
     public bool HasHistory => History.Count > 0;
     public bool IsHistoryEmpty => History.Count == 0;
-    public string HistorySummary => HasHistory ? $"本次解锁期间 · {History.Count} 项记录" : "本次解锁期间尚未复制";
-    public string AdvancedOptionsSummary => $"最少 {MinNumbers} 个数字 · {MinSpecial} 个符号"
-        + (AvoidAmbiguous ? " · 排除易混淆字符" : string.Empty);
+    public string HistorySummary => HasHistory ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text4DD7C14B9C388255,History.Count) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text544C403D7B36674A);
+    public string AdvancedOptionsSummary => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text78602D8B9830AF1A,MinNumbers,MinSpecial)
+        + (AvoidAmbiguous ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD153E0BF760C1FE8) : string.Empty);
     public string CopyFeedback => _copyFeedback;
     public bool HasCopyFeedback => !string.IsNullOrEmpty(_copyFeedback);
     public bool CopyFailed => _copyFailed;
 
     public int StrengthScore => _strengthScore;
+    public bool IsStrengthComplete => _strengthComplete;
 
     public bool ShowStrength => Mode != GeneratorMode.Username && !string.IsNullOrEmpty(GeneratedPassword);
 
-    public double StrengthFraction => (_strengthScore + 1) / 5.0;
+    public double StrengthFraction => _strengthComplete ? (_strengthScore + 1) / 5.0 : 0;
 
-    public string StrengthLabel => _strengthScore switch
+    public string StrengthLabel => !_strengthComplete ? "Not assessed" : _strengthScore switch
     {
-        0 => "弱",
-        1 => "弱",
-        2 => "中等",
-        3 => "强",
-        _ => "非常强",
+        0 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDEFA376EABAF2FFF),
+        1 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDEFA376EABAF2FFF),
+        2 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC7092C51FDCF2F65),
+        3 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF038053BEDB1B9ED),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE6471576029B77BB),
     };
 
     public bool HasGeneratorPolicyNotice =>
         _policy.InEffect || _policy.HasMalformedPolicyData;
 
     public string GeneratorPolicyNotice => _policy.HasMalformedPolicyData
-        ? "组织生成器策略数据无效；密码和密码短语生成已禁用。"
-        : "已应用组织生成器策略。";
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text60FB0A59280E8D99)
+        : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD436626262189EE3);
 
     public bool CanGenerate => !_suspended && (Mode == GeneratorMode.Username
         ? CanGenerateUsername()
@@ -800,12 +802,16 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(EntropyBits));
         OnPropertyChanged(nameof(PasswordSliderMaximum));
         OnPropertyChanged(nameof(PassphraseSliderMaximum));
-        var score = (_strength is not null && Mode != GeneratorMode.Username && !string.IsNullOrEmpty(GeneratedPassword))
-            ? _strength.Evaluate(GeneratedPassword).Score : 0;
-        if (score != _strengthScore)
+        var result = (_strength is not null && Mode != GeneratorMode.Username && !string.IsNullOrEmpty(GeneratedPassword))
+            ? _strength.Evaluate(GeneratedPassword) : null;
+        var score = result?.Score ?? 0;
+        var complete = result?.IsComplete ?? true;
+        if (score != _strengthScore || complete != _strengthComplete)
         {
             _strengthScore = score;
+            _strengthComplete = complete;
             OnPropertyChanged(nameof(StrengthScore));
+            OnPropertyChanged(nameof(IsStrengthComplete));
             OnPropertyChanged(nameof(StrengthFraction));
             OnPropertyChanged(nameof(StrengthLabel));
             OnPropertyChanged(nameof(StrengthSegments));
@@ -818,7 +824,7 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
         if (RefreshAndApplyPolicy())
         {
             Generate(allowReuse: true);
-            SetCopyFeedback("组织策略已更新，请确认新结果后再复制。", failed: true);
+            SetCopyFeedback(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text118A4AF80EA96E5E), failed: true);
             return;
         }
         if (!CanCopy)
@@ -855,10 +861,10 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
                 return false;
             _clipboard.SetSecretText(value);
             if (_clipboard is IClipboardStatus status)
-                status.SetLabel((historyMode ?? Mode) == GeneratorMode.Username ? "用户名" : "密码");
+                status.SetLabel((historyMode ?? Mode) == GeneratorMode.Username ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1A3F0617D6DE8E52) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA621AB606DB2A11F));
             if (recordHistory)
                 RecordHistory(value, historyMode);
-            SetCopyFeedback("已复制。剪贴板将按安全设置清除。");
+            SetCopyFeedback(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF11544C5C1B921FA));
             return true;
         }
 
@@ -868,12 +874,12 @@ public partial class GeneratorViewModel : ObservableObject, ISensitiveState
                 ? WriteClipboard()
                 : _lifecycle.TryRunSensitive(WriteClipboard);
             if (!copied)
-                SetCopyFeedback("未能复制，请重试。", failed: true);
+                SetCopyFeedback(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA069273F5EE3D0FE), failed: true);
             return copied;
         }
         catch (Exception)
         {
-            SetCopyFeedback("未能复制，请重试。", failed: true);
+            SetCopyFeedback(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA069273F5EE3D0FE), failed: true);
             return false;
         }
     }

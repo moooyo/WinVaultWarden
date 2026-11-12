@@ -116,6 +116,12 @@ public static class PasskeyRequestParser
         parsed = null;
         error = null;
 
+        if (request.Version != 1)
+        {
+            error = new BrowserPasskeyError("invalid_request", "Unsupported passkey protocol version.");
+            return false;
+        }
+
         if (string.IsNullOrWhiteSpace(request.Id))
         {
             error = new BrowserPasskeyError("invalid_request", "Passkey request id is required.");

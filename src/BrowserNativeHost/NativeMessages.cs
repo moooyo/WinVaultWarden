@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Core.Passkeys;
 
 namespace BrowserNativeHost;
@@ -13,14 +14,20 @@ public sealed record NativeRequest(
     long? DeadlineUnixMs = null,
     // Trusted sender-supplied frame/RP context (never page-reported). Forwarded verbatim to the App
     // so the policy derives origin and RP identity from it rather than from the page payload.
-    BrowserRequestContext? Context = null);
+    BrowserRequestContext? Context = null,
+    [property: JsonPropertyName("v")] int Version = 1);
 
 public sealed record NativeResponse(
     string? Id,
     string Type,
     bool Ok,
     JsonElement? Payload = null,
-    NativeError? Error = null);
+    NativeError? Error = null)
+{
+    [JsonPropertyName("v")]
+    [JsonPropertyOrder(-100)]
+    public int Version => 1;
+}
 
 // Task 7: code-only wire error. Message stays on the record (nullable, default null) so the wire
 // characterization test and any direct constructors compile, but production never populates it and

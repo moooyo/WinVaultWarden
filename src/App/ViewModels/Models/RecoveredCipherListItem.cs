@@ -30,22 +30,22 @@ public sealed class RecoveredCipherListItem
         ArgumentNullException.ThrowIfNull(cipher);
 
         return new RecoveredCipherListItem(
-            Normalize(cipher.Name, "未命名条目"),
+            Normalize(cipher.Name, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD03438B702B564F3)),
             TypeLabelFor(cipher.Type),
             AccountSummaryFor(cipher));
     }
 
     private static string TypeLabelFor(CipherType type) => type switch
     {
-        CipherType.Login => "登录",
-        CipherType.SecureNote => "安全笔记",
-        CipherType.Card => "卡片",
-        CipherType.Identity => "身份",
-        CipherType.SshKey => "SSH 密钥",
-        CipherType.BankAccount => "银行账户",
-        CipherType.DriversLicense => "驾驶证",
-        CipherType.Passport => "护照",
-        _ => "其他条目",
+        CipherType.Login => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1E2DF9C3075AE9E4),
+        CipherType.SecureNote => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3B0221743F79E8A4),
+        CipherType.Card => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFB5640F8E12E3337),
+        CipherType.Identity => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2A9C9E9976421A9D),
+        CipherType.SshKey => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBF18658907FB9C66),
+        CipherType.BankAccount => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC4C25EEB5DAF09EA),
+        CipherType.DriversLicense => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text61B7153092BCDCCB),
+        CipherType.Passport => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD24F1B9E50C3D3C8),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFCC0D5729CD499A1),
     };
 
     private static string AccountSummaryFor(Cipher cipher) => cipher.Type switch

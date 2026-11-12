@@ -114,8 +114,8 @@ public sealed class AppLifecycleCoordinatorTests
         await coordinator.RequestAsync(AppLifecycleIntent.Lock);
 
         Assert.Equal([
-            "block", "invalidate", "stop", "transients", "clipboard",
-            "sensitive", "frames", "lock", "login"
+            "block", "invalidate", "transients-sync", "clipboard-sync",
+            "sensitive", "frames", "stop", "transients", "clipboard", "lock", "login"
         ], log);
     }
 
@@ -128,8 +128,8 @@ public sealed class AppLifecycleCoordinatorTests
         await coordinator.RequestAsync(AppLifecycleIntent.Logout);
 
         Assert.Equal([
-            "block", "invalidate", "stop", "transients", "clipboard",
-            "sensitive", "frames", "logout", "login"
+            "block", "invalidate", "transients-sync", "clipboard-sync",
+            "sensitive", "frames", "stop", "transients", "clipboard", "logout", "login"
         ], log);
     }
 
@@ -142,8 +142,8 @@ public sealed class AppLifecycleCoordinatorTests
         await coordinator.RequestAsync(AppLifecycleIntent.Exit);
 
         Assert.Equal([
-            "block", "invalidate", "stop", "transients", "clipboard",
-            "sensitive", "frames", "exit"
+            "block", "invalidate", "transients-sync", "clipboard-sync",
+            "sensitive", "frames", "stop", "transients", "clipboard", "exit"
         ], log);
         Assert.DoesNotContain("lock", log);
         Assert.DoesNotContain("logout", log);
@@ -276,7 +276,7 @@ public sealed class AppLifecycleCoordinatorTests
         Assert.All(reports, report => Assert.IsType<TimeoutException>(report.Exception));
         Assert.Contains("transients-sync", log);
         Assert.Contains("clipboard-sync", log);
-        Assert.True(log.IndexOf("sensitive") > log.IndexOf("clipboard-sync"));
+        Assert.True(log.IndexOf("sensitive") < log.IndexOf("stop-start"));
         Assert.True(log.IndexOf("exit") > log.IndexOf("frames"));
         Assert.DoesNotContain("login", log);
         Assert.True(coordinator.IsTransitioning);
@@ -284,29 +284,63 @@ public sealed class AppLifecycleCoordinatorTests
         Assert.False(coordinator.TryRunSensitive(static () => true));
     }
 
-    [Fact]
-    public async Task LockDoesNotApplyExitTimeoutToHangingCleanup()
+    [Theory]
+    [InlineData(AppLifecycleIntent.Lock)]
+    [InlineData(AppLifecycleIntent.Logout)]
+    public async Task OrdinaryTransitionClearsSensitiveStateBeforeBoundingHangingCleanup(
+        AppLifecycleIntent intent)
     {
         var entered = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var log = new List<string>();
-        var coordinator = Build(log, async () =>
-        {
-            entered.TrySetResult();
-            await release.Task;
-        });
+        var reports = new List<(string Step, Exception Exception)>();
+        var coordinator = new AppLifecycleCoordinator(
+            new AppLifecycleHooks(
+                BlockSensitiveOperations: () => log.Add("block"),
+                AllowSensitiveOperations: () => log.Add("allow"),
+                InvalidateSession: () => log.Add("invalidate"),
+                StopBackgroundAsync: () =>
+                {
+                    log.Add("stop");
+                    entered.TrySetResult();
+                    return release.Task;
+                },
+                CloseTransientsAsync: () => AddAsync(log, "transients"),
+                CloseTransientsSynchronously: () => log.Add("transients-sync"),
+                ClearClipboardAsync: () => AddAsync(log, "clipboard"),
+                ClearClipboardSynchronously: () => log.Add("clipboard-sync"),
+                ClearSensitiveState: () => log.Add("sensitive"),
+                ResetFrames: () => log.Add("frames"),
+                LockSessionAsync: () => AddAsync(log, "lock"),
+                LogoutSessionAsync: () => AddAsync(log, "logout"),
+                ShowLogin: () => log.Add("login"),
+                ExitProcess: () => log.Add("exit"),
+                FailClosedSession: () => { },
+                ReportFailure: (step, exception) => reports.Add((step, exception))),
+            cleanupStepTimeout: TimeSpan.FromMilliseconds(20));
 
-        var transition = coordinator.RequestAsync(AppLifecycleIntent.Lock);
+        var transition = coordinator.RequestAsync(intent);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await Task.Delay(50);
 
-        Assert.False(transition.IsCompleted);
-        Assert.DoesNotContain("login", log);
-        release.TrySetResult();
-        await transition.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Contains("login", log);
+        try
+        {
+            Assert.True(log.IndexOf("transients-sync") < log.IndexOf("stop"));
+            Assert.True(log.IndexOf("clipboard-sync") < log.IndexOf("stop"));
+            Assert.True(log.IndexOf("sensitive") < log.IndexOf("stop"));
+            Assert.True(log.IndexOf("frames") < log.IndexOf("stop"));
+            await transition.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Contains("login", log);
+            Assert.False(coordinator.IsTransitioning);
+            var report = Assert.Single(reports);
+            Assert.Equal("stop", report.Step);
+            Assert.IsType<TimeoutException>(report.Exception);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
     }
 
     [Theory]
@@ -352,7 +386,7 @@ public sealed class AppLifecycleCoordinatorTests
         Assert.Contains("transients-sync", log);
         Assert.Contains("clipboard-sync", log);
         Assert.True(log.IndexOf("transients-sync") < log.IndexOf("clipboard-sync"));
-        Assert.True(log.IndexOf("clipboard-sync") < log.IndexOf("sensitive"));
+        Assert.True(log.IndexOf("sensitive") < log.LastIndexOf("transients-sync"));
         if (intent == AppLifecycleIntent.Exit)
         {
             Assert.Contains("exit", log);
@@ -387,6 +421,95 @@ public sealed class AppLifecycleCoordinatorTests
         Assert.DoesNotContain("lock", log);
         Assert.DoesNotContain("logout", log);
         Assert.DoesNotContain("login", log);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OrdinaryTransitionBoundsHangingTransientOrClipboardCleanup(
+        bool hangTransient)
+    {
+        var log = new List<string>();
+        var reports = new List<(string Step, Exception Exception)>();
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Task HangAsync()
+        {
+            entered.TrySetResult();
+            return release.Task;
+        }
+
+        var hooks = BuildHooks(log) with
+        {
+            CloseTransientsAsync = hangTransient
+                ? HangAsync
+                : () => AddAsync(log, "transients"),
+            ClearClipboardAsync = hangTransient
+                ? () => AddAsync(log, "clipboard")
+                : HangAsync,
+            ReportFailure = (step, exception) => reports.Add((step, exception)),
+        };
+        var coordinator = new AppLifecycleCoordinator(
+            hooks,
+            cleanupStepTimeout: TimeSpan.FromMilliseconds(20));
+
+        var transition = coordinator.RequestAsync(AppLifecycleIntent.Lock);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        try
+        {
+            Assert.Contains("sensitive", log);
+            Assert.Contains("frames", log);
+            Assert.Contains("clipboard-sync", log);
+            await transition.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Contains("login", log);
+            var report = Assert.Single(reports);
+            Assert.Equal(hangTransient ? "transients" : "clipboard", report.Step);
+            Assert.IsType<TimeoutException>(report.Exception);
+            Assert.Equal(2, log.Count(value => value ==
+                (hangTransient ? "transients-sync" : "clipboard-sync")));
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+    }
+
+    [Fact]
+    public async Task LockUpgradedToExitBoundsTheAlreadyPendingCleanup()
+    {
+        var log = new List<string>();
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var coordinator = new AppLifecycleCoordinator(
+            BuildHooks(log) with
+            {
+                StopBackgroundAsync = () =>
+                {
+                    entered.TrySetResult();
+                    return release.Task;
+                },
+            },
+            exitStepTimeout: TimeSpan.FromMilliseconds(20),
+            cleanupStepTimeout: TimeSpan.FromMinutes(1));
+
+        var transition = coordinator.RequestAsync(AppLifecycleIntent.Lock);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        try
+        {
+            Assert.Same(transition, coordinator.RequestAsync(AppLifecycleIntent.Exit));
+            await transition.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Contains("exit", log);
+            Assert.DoesNotContain("login", log);
+            Assert.False(coordinator.MarkSessionReady());
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
     }
 
     [Fact]
@@ -501,8 +624,8 @@ public sealed class AppLifecycleCoordinatorTests
         await coordinator.RequestAsync(AppLifecycleIntent.Logout);
 
         Assert.Equal([
-            "block", "invalidate", "transients", "clipboard",
-            "sensitive", "frames", "logout", "login"
+            "block", "invalidate", "transients-sync", "clipboard-sync",
+            "sensitive", "frames", "transients", "clipboard", "logout", "login"
         ], log);
     }
 
@@ -837,8 +960,8 @@ public sealed class AppLifecycleCoordinatorTests
             TestSessionLeases.CreateSessionLease());
 
         Assert.Equal([
-            "block", "invalidate", "stop", "transients", "clipboard",
-            "sensitive", "frames", "logout", "login",
+            "block", "invalidate", "sensitive", "frames", "stop", "transients",
+            "clipboard", "logout", "login",
         ], log);
         Assert.Equal(["logout-expected"], reports);
         Assert.DoesNotContain("allow", log);
@@ -1055,10 +1178,90 @@ public sealed class AppLifecycleCoordinatorTests
         Assert.Equal(1, unconditionalLogouts);
     }
 
+    [Theory]
+    [InlineData(AppLifecycleIntent.Logout)]
+    [InlineData(AppLifecycleIntent.RemoteLogout)]
+    [InlineData(AppLifecycleIntent.CredentialChanged)]
+    [InlineData(AppLifecycleIntent.Exit)]
+    public async Task DestructiveTransition_RevokesMetadataScopeBeforeBackgroundShutdown(AppLifecycleIntent intent)
+    {
+        var revoked = false;
+        bool? revokedAtShutdown = null;
+        var log = new List<string>();
+        var hooks = BuildHooks(log, () =>
+        {
+            revokedAtShutdown = revoked;
+            return Task.CompletedTask;
+        }) with
+        {
+            TransitionClaimed = claimed =>
+            {
+                if (claimed != AppLifecycleIntent.Lock) revoked = true;
+            },
+        };
+
+        await new AppLifecycleCoordinator(hooks).RequestAsync(intent);
+
+        Assert.True(revoked);
+        Assert.True(revokedAtShutdown);
+        Assert.Contains("sensitive", log);
+    }
+
+    [Fact]
+    public async Task LogoutUpgrade_RevokesMetadataWhileLockCleanupIsStillPending()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var revoked = false;
+        var hooks = BuildHooks([], () =>
+        {
+            entered.TrySetResult();
+            return release.Task;
+        }) with
+        {
+            TransitionClaimed = claimed =>
+            {
+                if (claimed != AppLifecycleIntent.Lock) revoked = true;
+            },
+        };
+        var coordinator = new AppLifecycleCoordinator(hooks);
+        var locking = coordinator.RequestAsync(AppLifecycleIntent.Lock);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(revoked);
+
+        var loggingOut = coordinator.RequestAsync(AppLifecycleIntent.Logout);
+
+        Assert.True(revoked);
+        release.TrySetResult();
+        await Task.WhenAll(locking, loggingOut).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task RejectedStaleLogout_DoesNotRevokeTheActiveMetadataScope()
+    {
+        var session = new VaultSession();
+        var expected = session.BeginAccountSession("old-account", "old@example.com", new ServerOrigin("https://vault.example"));
+        var revoked = false;
+        var hooks = BuildHooks([]) with
+        {
+            TryLogoutExpectedSessionAsync = _ => Task.FromResult(false),
+            TransitionClaimed = _ => revoked = true,
+        };
+
+        await new AppLifecycleCoordinator(hooks).RequestAsync(AppLifecycleIntent.RemoteLogout, expected);
+
+        Assert.False(revoked);
+    }
+
     private static AppLifecycleCoordinator Build(
         List<string> log,
         Func<Task>? stop = null) =>
-        new(new AppLifecycleHooks(
+        new(BuildHooks(log, stop));
+
+    private static AppLifecycleHooks BuildHooks(
+        List<string> log,
+        Func<Task>? stop = null) =>
+        new(
             BlockSensitiveOperations: () => log.Add("block"),
             AllowSensitiveOperations: () => log.Add("allow"),
             InvalidateSession: () => log.Add("invalidate"),
@@ -1074,7 +1277,7 @@ public sealed class AppLifecycleCoordinatorTests
             ShowLogin: () => log.Add("login"),
             ExitProcess: () => log.Add("exit"),
             FailClosedSession: () => log.Add("session-sync"),
-            ReportFailure: (_, _) => { }));
+            ReportFailure: (_, _) => { });
 
     private static Task AddAsync(List<string> log, string value)
     {

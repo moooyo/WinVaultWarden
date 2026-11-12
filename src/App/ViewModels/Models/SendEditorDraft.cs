@@ -16,11 +16,32 @@ public sealed partial class SendEditorDraft : ObservableObject
     [ObservableProperty]
     public partial string FileName { get; set; } = string.Empty;
 
-    [ObservableProperty]
-    public partial string DeletionDateLabel { get; set; } = "7 天";
+    private SendDatePreset _deletionPreset = SendDatePreset.SevenDays;
+
+    public SendDatePreset DeletionPreset
+    {
+        get => _deletionPreset;
+        set
+        {
+            if (value is SendDatePreset.Never or SendDatePreset.KeepExisting || !Enum.IsDefined(value))
+                throw new ArgumentOutOfRangeException(nameof(value), value, "A deletion preset must provide a deadline.");
+            if (!SetProperty(ref _deletionPreset, value))
+                return;
+            OnPropertyChanged(nameof(DeletionDateLabel));
+            OnPropertyChanged(nameof(IsCustomDeletion));
+        }
+    }
+
+    public string DeletionDateLabel
+    {
+        get => SendDatePresetOptions.DisplayLabel(DeletionPreset);
+        set => DeletionPreset = SendExpirationSelection.LegacyPreset(value);
+    }
+
+    public bool IsCustomDeletion => DeletionPreset == SendDatePreset.Custom;
 
     [ObservableProperty]
-    public partial string ViewerLabel { get; set; } = "拥有链接的任何人";
+    public partial string ViewerLabel { get; set; } = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7BE417BF2D4937D9);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AccessPrivacySummary))]
@@ -52,9 +73,9 @@ public sealed partial class SendEditorDraft : ObservableObject
         get
         {
             var protection = (ExistingHasPassword && !RemovePassword) || !string.IsNullOrEmpty(Password)
-                ? "需要访问密码" : "拥有链接的任何人";
-            var limit = MaxAccessCount is { } count ? $" · 最多 {count} 次访问" : string.Empty;
-            return $"{(Disabled ? "已停用 · " : string.Empty)}{protection}{limit}";
+                ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC3B64BFB0029F21B) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7BE417BF2D4937D9);
+            var limit = MaxAccessCount is { } count ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text79B464575A42DD7D,count) : string.Empty;
+            return $"{(Disabled ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text191605F814533160) : string.Empty)}{protection}{limit}";
         }
     }
 
@@ -69,8 +90,10 @@ public sealed partial class SendEditorDraft : ObservableObject
 
     public string ExpirationDateLabel => _expirationSelection.Label;
 
+    public SendDatePreset ExpirationPreset => _expirationSelection.Preset;
+
     public bool IsCustomExpiration =>
-        ExpirationDateLabel == SendExpirationSelection.CustomLabel;
+        ExpirationPreset == SendDatePreset.Custom;
 
     public DateTimeOffset? CustomExpirationDate =>
         IsCustomExpiration && ExpirationDate is { } expiration
@@ -79,7 +102,7 @@ public sealed partial class SendEditorDraft : ObservableObject
 
     public string CustomExpirationDescription =>
         CustomExpirationDate is { } expiration
-            ? $"{expiration:yyyy/MM/dd HH:mm:ss zzz}"
+            ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text6DAEE045B9A62B5B,expiration)
             : string.Empty;
 
     [ObservableProperty]
@@ -87,13 +110,22 @@ public sealed partial class SendEditorDraft : ObservableObject
     public partial DateTimeOffset? DeletionDate { get; set; }
 
     public string CustomDeletionDescription => DeletionDate is { } deletion
-        ? $"本地时间：{deletion.ToLocalTime():yyyy/MM/dd HH:mm:ss zzz}" : string.Empty;
+        ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text977797BD62BEB75B,deletion.ToLocalTime()) : string.Empty;
 
     public void SelectCustomDeletionDate(DateTimeOffset selectedDate, TimeZoneInfo localTimeZone)
     {
         var current = DeletionDate ?? DateTimeOffset.UtcNow.AddDays(7);
+        DeletionPreset = SendDatePreset.Custom;
         DeletionDate = SendExpirationSelection.FromExpiration(current)
             .SelectCustomDate(selectedDate, localTimeZone).ExpirationDate;
+    }
+
+    public void SelectDeletion(SendDatePreset preset, DateTimeOffset now)
+    {
+        if (preset == SendDatePreset.KeepExisting)
+            return;
+        DeletionPreset = preset;
+        DeletionDate = SendDatePresetOptions.ResolveDate(preset, now, DeletionDate, customDefaultDays: 7);
     }
 
     public bool IsText => Type == SendType.Text;
@@ -127,19 +159,12 @@ public sealed partial class SendEditorDraft : ObservableObject
         OriginatingSession = null;
     }
 
-    // 相对删除标签 → 绝对删除时间(服务端要求 <=31 天)。"自定义" 用 DeletionDate(为空则回退 7 天)。
+    // Relative deadlines use stable preset values; localized labels are never parsed.
     public DateTimeOffset ToDeletionDate()
     {
         var now = DateTimeOffset.UtcNow;
-        var days = DeletionDateLabel switch
-        {
-            "1 天" => 1,
-            "7 天" => 7,
-            "30 天" => 30,
-            _ => -1,
-        };
-        if (days >= 0)
-            return now.AddDays(days);
+        if (DeletionPreset != SendDatePreset.Custom)
+            return now + SendDatePresetOptions.RelativeDuration(DeletionPreset);
 
         var picked = DeletionDate ?? now.AddDays(7);
         var max = now.AddDays(31);
@@ -150,6 +175,9 @@ public sealed partial class SendEditorDraft : ObservableObject
 
     public void SelectExpiration(string label, DateTimeOffset now) =>
         SetExpirationSelection(_expirationSelection.Select(label, now));
+
+    public void SelectExpiration(SendDatePreset preset, DateTimeOffset now) =>
+        SetExpirationSelection(_expirationSelection.Select(preset, now));
 
     public void SelectCustomExpirationDate(
         DateTimeOffset selectedDate,
@@ -171,7 +199,7 @@ public sealed partial class SendEditorDraft : ObservableObject
         ExpirationDate = send.ExpirationDate,
         DeletionDate = send.DeletionDate,
         // 绝对删除日期:标为"自定义"使 ToDeletionDate() 使用 DeletionDate(而非相对天数)。
-        DeletionDateLabel = "自定义",
+        DeletionPreset = SendDatePreset.Custom,
         WrappedKey = send.Key,
         ExistingHasPassword = send.HasPassword,
         ExistingAuthType = send.AuthType,
@@ -196,6 +224,7 @@ public sealed partial class SendEditorDraft : ObservableObject
         _expirationSelection = selection;
         OnPropertyChanged(nameof(ExpirationDate));
         OnPropertyChanged(nameof(ExpirationDateLabel));
+        OnPropertyChanged(nameof(ExpirationPreset));
         OnPropertyChanged(nameof(IsCustomExpiration));
         OnPropertyChanged(nameof(CustomExpirationDate));
         OnPropertyChanged(nameof(CustomExpirationDescription));

@@ -1,0 +1,10 @@
+{
+  "Preserve source folders": "保留來源資料夾",
+  "The import result is uncertain. Some or all items may already have been saved. Sync and check the vault before choosing the file to import again.": "匯入結果尚未確認，部分或全部項目可能已經儲存。請先同步並核對保險庫，再決定是否重新選擇檔案匯入。",
+  "Import destination folder": "匯入目的地資料夾",
+  "KeePass XML excludes the recycle bin. Password history is retained. Attachments and unsupported data stop the entire import.": "KeePass XML 不匯入資源回收筒，保留密碼歷史；發現附件或不支援的資料時，整次匯入會停止。",
+  "1Password archives are processed only in memory. Attachments, archived records, documents and unsupported data stop the entire import.": "1Password 封存檔僅在記憶體中處理；發現附件、已封存記錄、文件或不支援的資料時，整次匯入會停止。",
+  "Imports add new items. Unsupported data stops the entire import so that information is not silently discarded.": "匯入會新增項目；遇到不支援的資料時會停止整次匯入，避免無聲遺失資訊。",
+  "Choose a backup file in one of the supported import formats.": "請選擇支援匯入格式的備份檔案。",
+  "1Password (.1pux)": "1Password (.1pux)", "KeePass 2 (.xml)": "KeePass 2 (.xml)", "Chrome (.csv)": "Chrome (.csv)", "Edge (.csv)": "Edge (.csv)", "Firefox (.csv)": "Firefox (.csv)", "LastPass (.csv)": "LastPass (.csv)"
+}

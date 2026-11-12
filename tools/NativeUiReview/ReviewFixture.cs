@@ -26,6 +26,7 @@ internal sealed class ReviewFixture : IDisposable
     private readonly IDisposable _preferences;
     private readonly ReviewLifecycle _lifecycle;
     private readonly ReviewSendUiService _sends;
+    private readonly string _dataMode;
     private bool _disposed;
 
     public IServiceProvider Services { get; }
@@ -36,6 +37,12 @@ internal sealed class ReviewFixture : IDisposable
     public SettingsViewModel Settings { get; }
     public VaultViewModel Vault { get; }
     public string HealthyLoginId => HealthyCipherId;
+    public bool NoExternalCapabilityActions =>
+        Services.GetRequiredService<ISshAgentHost>() is ReviewSshAgentHost { StartCalls: 0 }
+        && Services.GetRequiredService<IWindowsPasskeyProvider>() is ReviewWindowsPasskeyProvider { OperationCalls: 0 }
+        && Services.GetRequiredService<StartupRegistrationService>() is not null
+        && Services.GetRequiredService<IStartupRegistrationBackend>() is ReviewStartupRegistration { ChangeCalls: 0 }
+        && Services.GetRequiredService<IAccountManagementService>() is ReviewAccountManagementService { MutationCalls: 0 };
     public SendListItem ReviseSendForRefresh() => _sends.ReviseTextForReview();
     public void RestoreSendAfterRefresh() => _sends.RestoreReviewRevision();
     public IReadOnlyDictionary<VaultItemKind, string> DetailIds { get; } =
@@ -48,8 +55,10 @@ internal sealed class ReviewFixture : IDisposable
         set => _sends.Empty = value;
     }
 
-    public ReviewFixture()
+    public ReviewFixture(string languagePreference = "zh-CN", string dataMode = "full")
     {
+        NativeReviewStartupTrace.Record("fixture-constructor-entered");
+        _dataMode = dataMode;
         _preferences = AppPreferences.UseInMemoryForTesting(new AppPreferencesData
         {
             RememberEmail = false,
@@ -59,8 +68,12 @@ internal sealed class ReviewFixture : IDisposable
             CloseToTray = false,
             MinimizeToTray = false,
             AllowBrowserIntegration = false,
+            LanguagePreference = languagePreference,
+            SshAgentEnabled = false,
+            MonitorDeviceRequestsWhileLocked = false,
             SensitiveActionVerificationIndex = 0,
         });
+        NativeReviewStartupTrace.Record("fixture-memory-preferences-installed");
         Session = new VaultSession();
         Clipboard = new ReviewClipboard();
         Verifier = new ReviewVerifier();
@@ -79,7 +92,9 @@ internal sealed class ReviewFixture : IDisposable
         var requests = new ReviewAuthRequests();
         var transients = new TransientOperationRegistry(_ => { });
         var states = new SensitiveStateRegistry(_ => { });
+        NativeReviewStartupTrace.Record("fixture-before-frequency-dictionaries");
         var strength = new PasswordStrengthEvaluator(new Omnimatch(new DictionaryMatcher(FrequencyDictionaries.Load())));
+        NativeReviewStartupTrace.Record("fixture-frequency-dictionaries-ready");
         var prefill = new AccountPrefill();
         var tokens = new ReviewTokenStore();
         var auth = new ReviewAuthService(Session);
@@ -105,6 +120,13 @@ internal sealed class ReviewFixture : IDisposable
         collection.AddSingleton<IAuthRequestUiService>(requests);
         collection.AddSingleton<ITransientOperationRegistry>(transients);
         collection.AddSingleton<ISensitiveStateRegistry>(states);
+        collection.AddSingleton<ISshAgentHost, ReviewSshAgentHost>();
+        collection.AddSingleton<IWindowsPasskeyProvider, ReviewWindowsPasskeyProvider>();
+        collection.AddSingleton<IStartupRegistrationBackend, ReviewStartupRegistration>();
+        collection.AddSingleton<StartupRegistrationService>();
+        collection.AddSingleton<IAccountManagementService, ReviewAccountManagementService>();
+        collection.AddTransient(provider => new AccountManagementViewModel(
+            provider.GetRequiredService<IAccountManagementService>(), Session, _lifecycle));
         collection.AddSingleton<IAppLifecycleCoordinator>(_lifecycle);
         collection.AddSingleton<IClipboardService>(Clipboard);
         collection.AddSingleton<IClipboardStatus>(Clipboard);
@@ -138,11 +160,12 @@ internal sealed class ReviewFixture : IDisposable
         collection.AddTransient(provider => new DevicesViewModel(provider.GetRequiredService<IDeviceUiService>(), requests, Session, _lifecycle));
         collection.AddTransient(_ => new EmergencyAccessViewModel(emergency, Session));
         collection.AddSingleton<IVaultExportService, ReviewExport>();
-        collection.AddSingleton<IVaultImportService, ReviewImport>();
+        collection.AddSingleton<IVaultImportService>(new ReviewImport(Session));
         collection.AddTransient(provider => new ImportExportViewModel(provider.GetRequiredService<IVaultExportService>(),
             provider.GetRequiredService<IVaultImportService>(), account));
         collection.AddSingleton(new DeviceApprovalWindowService(requests, Session, transients, _lifecycle));
         Services = collection.BuildServiceProvider();
+        NativeReviewStartupTrace.Record("fixture-services-built");
         states.Register(Vault);
         states.Register(SensitiveActions);
     }
@@ -156,7 +179,19 @@ internal sealed class ReviewFixture : IDisposable
         if (!Session.TryCommit(lease, () =>
         {
             Session.SetUnlockedKey(key);
-            Session.SetSnapshot(CreateSnapshot(origin), capabilities: Capabilities);
+            var snapshot = CreateSnapshot(origin);
+            if (_dataMode == "empty")
+                snapshot = new(snapshot.Account, Array.Empty<Folder>(), Array.Empty<Cipher>(), 0, 0);
+            else if (_dataMode == "single-login")
+                snapshot = new(snapshot.Account, Array.Empty<Folder>(), new Cipher[]
+                {
+                    new()
+                    {
+                        Id = "1", Type = CipherType.Login, Name = "Synthetic Minimal Login",
+                        Login = new("reviewer@minimal.example", "Synthetic-only-42!", null, Array.Empty<CipherLoginUri>()),
+                    },
+                }, 0, 0);
+            Session.SetSnapshot(snapshot, capabilities: Capabilities);
             Session.MarkDemo();
         }))
         {
@@ -188,16 +223,16 @@ internal sealed class ReviewFixture : IDisposable
                 CreationDate = created, RevisionDate = edited,
                 Notes = "Synthetic workspace account used only by the native visual review fixture.",
                 Login = new CipherLogin("reviewer@aurora.example", "Synthetic-only-42!", "JBSWY3DPEHPK3PXP",
-                    [new("https://workspace.aurora.example/account?mode=review#details", null), new("https://login.aurora.example", 1)])
+                    (CipherLoginUri[])[new("https://workspace.aurora.example/account?mode=review#details", null), new("https://login.aurora.example", 1)])
                 {
                     PasswordRevisionDate = edited,
-                    Fido2Credentials = [new(null, "public-key", "ECDSA", "P-256", null, "aurora.example", null,
+                    Fido2Credentials = (CipherFido2Credential[])[new(null, "public-key", "ECDSA", "P-256", null, "aurora.example", null,
                         "reviewer@aurora.example", 0, "Aurora", "Review User", true, created)],
                 },
-                Fields = [new("Workspace", "Aurora Design", CipherFieldType.Text),
+                Fields = (CipherField[])[new("Workspace", "Aurora Design", CipherFieldType.Text),
                     new("Recovery label", "Synthetic recovery value", CipherFieldType.Hidden),
                     new("Review enabled", "true", CipherFieldType.Boolean)],
-                PasswordHistory = [new("Synthetic-old-2026-C!", edited.AddDays(-12)),
+                PasswordHistory = (PasswordHistoryEntry[])[new("Synthetic-old-2026-C!", edited.AddDays(-12)),
                     new("Synthetic-old-2026-B!", edited.AddDays(-38)), new("Synthetic-old-2026-A!", edited.AddDays(-72))],
             },
             new()
@@ -205,7 +240,7 @@ internal sealed class ReviewFixture : IDisposable
                 Id = "2", Type = CipherType.Card, Name = "Example Travel Card", FolderId = "review-finance", Favorite = true,
                 CreationDate = created, RevisionDate = edited.AddHours(-2), Notes = "Synthetic payment information.",
                 Card = new("Review User", "4111111111111111", "08", "2030", "123", "Visa"),
-                Fields = [new("Purpose", "Native review only", CipherFieldType.Text)],
+                Fields = (CipherField[])[new("Purpose", "Native review only", CipherFieldType.Text)],
             },
             new()
             {
@@ -252,20 +287,20 @@ internal sealed class ReviewFixture : IDisposable
             {
                 Id = "review-reused", Type = CipherType.Login, Name = "Example Collaboration", FolderId = "review-work",
                 CreationDate = created, RevisionDate = edited.AddDays(-3),
-                Login = new("reviewer@collaboration.example", "Synthetic-only-42!", null, [new("https://collaboration.example", null)]),
+                Login = new("reviewer@collaboration.example", "Synthetic-only-42!", null, (CipherLoginUri[])[new("https://collaboration.example", null)]),
             },
             new()
             {
                 Id = "review-http", Type = CipherType.Login, Name = "Example Legacy Portal", FolderId = "review-personal",
                 CreationDate = created, RevisionDate = edited.AddDays(-4),
-                Login = new("reviewer@legacy.example", "review123", null, [new("http://legacy.example/login", null)]),
+                Login = new("reviewer@legacy.example", "review123", null, (CipherLoginUri[])[new("http://legacy.example/login", null)]),
             },
             new()
             {
                 Id = HealthyCipherId, Type = CipherType.Login, Name = "Example Secure Service", FolderId = "review-work",
                 CreationDate = created, RevisionDate = edited.AddDays(-1),
                 Login = new("reviewer@secure.example", "pZ8$T4u#qL6!F9s&vR2@bN7%hK5", null,
-                    [new("https://secure.review.example/sign-in", null)]),
+                    (CipherLoginUri[])[new("https://secure.review.example/sign-in", null)]),
             },
             new()
             {
@@ -496,6 +531,76 @@ internal sealed class ReviewAccountService : IAccountService
     public Task<bool> VerifyMasterPasswordAsync(string password, CancellationToken ct = default) => Task.FromResult(password == ReviewVerifier.SyntheticPhrase);
 }
 
+internal sealed class ReviewSshAgentHost : ISshAgentHost
+{
+    public bool IsRunning { get; private set; }
+    public int StartCalls { get; private set; }
+    public SshAgentStartResult Start()
+    {
+        StartCalls++;
+        var result = IsRunning ? SshAgentStartResult.AlreadyRunning : SshAgentStartResult.Started;
+        IsRunning = true;
+        return result;
+    }
+    public Task StopAsync() { IsRunning = false; return Task.CompletedTask; }
+}
+
+internal sealed class ReviewWindowsPasskeyProvider : IWindowsPasskeyProvider
+{
+    private bool _registered;
+    private bool _running;
+    public int OperationCalls { get; private set; }
+    public WindowsPasskeyProviderStatus GetStatus() =>
+        new(true, _registered, _running, "Synthetic provider capability; no Windows registration or COM activation is used.");
+    public Task StartAsync() { OperationCalls++; _running = true; return Task.CompletedTask; }
+    public Task StopAsync() { OperationCalls++; _running = false; return Task.CompletedTask; }
+    public void Register() { OperationCalls++; _registered = true; }
+    public void Unregister() { OperationCalls++; _registered = false; _running = false; }
+    public void SynchronizeMetadata() { OperationCalls++; }
+    public Task OnSessionLockedAsync() { OperationCalls++; return Task.CompletedTask; }
+}
+
+internal sealed class ReviewStartupRegistration : IStartupRegistrationBackend
+{
+    private bool _enabled;
+    public int ChangeCalls { get; private set; }
+    public Task<StartupRegistrationResult> ReadAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new StartupRegistrationResult(
+            _enabled ? StartupRegistrationState.Enabled : StartupRegistrationState.Disabled,
+            "Synthetic startup setting; no registry or startup-task access is used."));
+    }
+    public Task<StartupRegistrationResult> SetEnabledAsync(bool enabled, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ChangeCalls++;
+        _enabled = enabled;
+        return ReadAsync(cancellationToken);
+    }
+}
+
+internal sealed class ReviewAccountManagementService : IAccountManagementService
+{
+    public int MutationCalls { get; private set; }
+    public AccountManagementAvailability GetAvailability() => new(true, null);
+    private Task Rejected()
+    {
+        MutationCalls++;
+        return Task.FromException(new InvalidOperationException("Native review does not send account-management requests."));
+    }
+    private Task<AccountSecurityChangeReceipt> RejectedChange()
+    {
+        MutationCalls++;
+        return Task.FromException<AccountSecurityChangeReceipt>(new InvalidOperationException("Native review does not change account security."));
+    }
+    public Task RequestEmailChangeAsync(string currentPassword, string newEmail, CancellationToken ct = default) => Rejected();
+    public Task<AccountSecurityChangeReceipt> ChangeEmailAsync(string currentPassword, string newEmail, string token, CancellationToken ct = default) => RejectedChange();
+    public Task RequestEmailVerificationAsync(CancellationToken ct = default) => Rejected();
+    public Task VerifyEmailAsync(string token, CancellationToken ct = default) => Rejected();
+    public Task<AccountSecurityChangeReceipt> RevokeAllSessionsAsync(string currentPassword, CancellationToken ct = default) => RejectedChange();
+}
+
 internal sealed class ReviewAuthRequests : IAuthRequestUiService
 {
     public Task<IReadOnlyList<AuthRequestItem>> ListPendingAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<AuthRequestItem>>([]);
@@ -517,10 +622,11 @@ internal sealed class ReviewHealthUiService : IVaultHealthUiService
     {
         ct.ThrowIfCancellationRequested();
         progress?.Report(new(100, 100, "Synthetic analysis complete"));
-        return Task.FromResult(new HealthReport([new(2, [Main, Reused])], [new(Legacy, 12)], [new(Legacy, "http://legacy.example/login")]));
+        return Task.FromResult(new HealthReport((ReusedGroup[])[new(2, (HealthItemRef[])[Main, Reused])],
+            (WeakFinding[])[new(Legacy, 12)], (UnsecuredFinding[])[new(Legacy, "http://legacy.example/login")]));
     }
     public Task<IReadOnlyList<ExposedFinding>> CheckExposedAsync(CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<ExposedFinding>>([new(Main, 5)]);
+        Task.FromResult<IReadOnlyList<ExposedFinding>>((ExposedFinding[])[new(Main, 5)]);
 }
 
 internal sealed class ReviewExport : IVaultExportService
@@ -529,8 +635,10 @@ internal sealed class ReviewExport : IVaultExportService
     public string Export(ExportFormat format) => throw new InvalidOperationException("Native review does not export vault content.");
 }
 
-internal sealed class ReviewImport : IVaultImportService
+internal sealed class ReviewImport(VaultSession session) : IVaultImportService
 {
+    public IReadOnlyList<Folder> GetDestinationFolders() =>
+        session.State == VaultState.Unlocked ? session.Folders.ToArray() : Array.Empty<Folder>();
     public ImportPreview Parse(ImportFormat format, string content) => new(0, 0, "Native review does not parse imported files.");
     public Task<int> ImportAsync(ImportFormat format, string content, CancellationToken ct = default) =>
         Task.FromException<int>(new InvalidOperationException("Native review does not import files."));
@@ -540,7 +648,7 @@ internal sealed class ReviewTwoFactorUiService : ITwoFactorUiService
 {
     private static Task<T> Rejected<T>() => Task.FromException<T>(new InvalidOperationException("Native review does not run two-factor ceremonies."));
     private static Task Rejected() => Task.FromException(new InvalidOperationException("Native review does not run two-factor ceremonies."));
-    public Task<IReadOnlyList<TwoFactorProvider>> ListProvidersAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<TwoFactorProvider>>([new(0, true), new(1, false), new(7, false)]);
+    public Task<IReadOnlyList<TwoFactorProvider>> ListProvidersAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<TwoFactorProvider>>((TwoFactorProvider[])[new(0, true), new(1, false), new(7, false)]);
     public Task<(string secret, string otpauth)> BeginTotpSetupAsync(string pw, CancellationToken ct = default) => Rejected<(string, string)>();
     public Task<TotpActivationResult> EnableTotpAsync(string pw, string secret, string code, CancellationToken ct = default) => Rejected<TotpActivationResult>();
     public Task<string> GetRecoveryCodeAsync(string pw, CancellationToken ct = default) => Rejected<string>();

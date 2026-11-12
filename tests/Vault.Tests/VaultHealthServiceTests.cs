@@ -63,6 +63,44 @@ public class VaultHealthServiceTests
     }
 
     [Fact]
+    public void AnalyzeOffline_OverBudgetStrengthIsUnassessedRatherThanWeak()
+    {
+        var report = New(
+            Login("long", "Long password", new string('a', 4096)),
+            Login("weak", "Weak password", "123456"))
+            .AnalyzeOffline();
+
+        Assert.Equal("long", Assert.Single(report.UnassessedPasswords).CipherId);
+        Assert.Equal("weak", Assert.Single(report.Weak).Item.CipherId);
+    }
+
+    [Fact]
+    public void AnalyzeOffline_UnassessedStrengthDoesNotSuppressIndependentFindings()
+    {
+        var password = new string('a', 4096);
+        var report = New(
+            Login("first", "First", password, "http://example.test"),
+            Login("second", "Second", password))
+            .AnalyzeOffline();
+
+        Assert.Equal(2, report.UnassessedPasswords.Count);
+        Assert.Equal(2, Assert.Single(report.Reused).Count);
+        Assert.Equal("first", Assert.Single(report.Unsecured).Item.CipherId);
+        Assert.Empty(report.Weak);
+    }
+
+    [Fact]
+    public void AnalyzeOffline_HiddenPasswordIsNotAddedToUnassessedMetadata()
+    {
+        var report = New(Login(
+            "hidden", "Hidden", new string('a', 4096), canViewPassword: false))
+            .AnalyzeOffline();
+
+        Assert.Empty(report.UnassessedPasswords);
+        Assert.Empty(report.Weak);
+    }
+
+    [Fact]
     public void Unsecured_FlagsHttpUri()
     {
         var r = New(Login("1","A","x","http://example.com"), Login("2","B","y","https://secure.com")).AnalyzeOffline();

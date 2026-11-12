@@ -1,0 +1,21 @@
+{
+  "Unable to verify the device request. Unlock and reload your device requests.": "デバイスのリクエストを確認できません。ロックを解除してリクエストを再読み込みしてください。",
+  "The request list could not be verified.": "リクエスト一覧を確認できませんでした。",
+  "The PIN restart policy could not be changed.": "再起動後の PIN ポリシーを変更できませんでした。",
+  "Compare this phrase on the requesting device:": "リクエスト元のデバイスで次のフレーズを照合してください：",
+  "SSH agent running": "SSH エージェントは実行中です",
+  "Your vault is locked. Unlock the same account, then review the freshly verified request before approving it.": "ボールトはロックされています。同じアカウントのロックを解除し、再確認されたリクエストを確認してから承認してください。",
+  "Require master password before using PIN after restart": "再起動後に PIN を使う前にマスターパスワードを確認する",
+  "Unlock and review": "ロックを解除して確認",
+  "The first PIN unlock in each application process requires prior master-password verification": "アプリを起動するたびに、最初の PIN によるロック解除の前にマスターパスワードの確認が必要です",
+  "SSH agent disabled": "SSH エージェントは無効です",
+  "Expires in {0}:{1:00}": "有効期限まで {0}:{1:00}",
+  "Unlock the same account and review this device sign-in request": "同じアカウントのロックを解除し、このデバイスのログインリクエストを確認",
+  "SSH agent stopped": "SSH エージェントは停止しています",
+  "Device sign-in request": "デバイスのログインリクエスト",
+  "Require master password after restart": "再起動後にマスターパスワードを確認する",
+  "Unlock with the master password once after restarting the application before using this account's PIN.": "アプリを再起動した後、このアカウントの PIN を使う前に、マスターパスワードで一度ロックを解除してください。",
+  "The device request changed or is no longer pending. Review it again.": "デバイスのリクエストが変更されたか、処理待ちではなくなりました。もう一度確認してください。",
+  "Windows must trust the package publisher certificate. The vault will lock, discard unsaved drafts and clear copied secrets before the installer opens.": "Windows がパッケージ発行元の証明書を信頼する必要があります。インストーラーを開く前にボールトをロックし、未保存の下書きを破棄して、コピー済みの機密情報を消去します。",
+  "A device is requesting sign-in": "デバイスがログインをリクエストしています"
+}

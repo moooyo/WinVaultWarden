@@ -1,0 +1,21 @@
+{
+  "Unable to verify the device request. Unlock and reload your device requests.": "无法验证设备请求。请解锁并重新加载设备请求。",
+  "The request list could not be verified.": "无法验证请求列表。",
+  "The PIN restart policy could not be changed.": "无法更改 PIN 重启策略。",
+  "Compare this phrase on the requesting device:": "请在请求设备上核对以下短语：",
+  "SSH agent running": "SSH 代理正在运行",
+  "Your vault is locked. Unlock the same account, then review the freshly verified request before approving it.": "密码库已锁定。请解锁同一个账户，重新核对已验证的请求后再批准。",
+  "Require master password before using PIN after restart": "重启后使用 PIN 前需要验证主密码",
+  "Unlock and review": "解锁并查看",
+  "The first PIN unlock in each application process requires prior master-password verification": "每次启动应用后，首次使用 PIN 解锁前需要先验证主密码",
+  "SSH agent disabled": "SSH 代理未启用",
+  "Expires in {0}:{1:00}": "将在 {0}:{1:00} 后过期",
+  "Unlock the same account and review this device sign-in request": "解锁同一个账户并查看此设备登录请求",
+  "SSH agent stopped": "SSH 代理已停止",
+  "Device sign-in request": "设备登录请求",
+  "Require master password after restart": "重启后先验证主密码",
+  "Unlock with the master password once after restarting the application before using this account's PIN.": "重启应用后，请先用主密码解锁一次，再使用此账户的 PIN。",
+  "The device request changed or is no longer pending. Review it again.": "设备请求已更改或不再等待处理，请重新核对。",
+  "Windows must trust the package publisher certificate. The vault will lock, discard unsaved drafts and clear copied secrets before the installer opens.": "Windows 必须信任安装包发布者的证书。打开安装程序前，密码库会锁定、丢弃未保存的草稿并清除已复制的敏感内容。",
+  "A device is requesting sign-in": "有设备正在请求登录"
+}

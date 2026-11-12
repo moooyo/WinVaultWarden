@@ -18,8 +18,8 @@ public sealed partial class SendEditorDialog : ContentDialog
     public bool CanChangeType => !IsEditMode;
 
     public string DialogTitle => IsEditMode
-        ? "编辑 Send"
-        : (Draft.Type == SendType.File ? "新增文件 Send" : "新增文本 Send");
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE860D7675952CD43)
+        : (Draft.Type == SendType.File ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text767E0279344337A2) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF327B420BC2B658E));
 
     public double MaxAccessCountValue
     {
@@ -27,7 +27,7 @@ public sealed partial class SendEditorDialog : ContentDialog
         set => Draft.MaxAccessCount = double.IsNaN(value) ? null : (int)Math.Clamp(Math.Round(value), 0, int.MaxValue);
     }
 
-    public bool ShowCustomDeletionPicker => Draft.DeletionDateLabel == "自定义";
+    public bool ShowCustomDeletionPicker => Draft.IsCustomDeletion;
 
     public DateTimeOffset CustomDeletionMinDate => DateTimeOffset.Now;
     public DateTimeOffset CustomDeletionMaxDate => DateTimeOffset.Now.AddDays(31);
@@ -42,8 +42,10 @@ public sealed partial class SendEditorDialog : ContentDialog
         IsEditMode = isEditMode;
         _save = save;
         InitializeComponent();
+        FillDateChoices(DeletionPresetChoice, SendDatePresetOptions.CreateDeletionOptions(compact: true), Draft.DeletionPreset);
+        FillDateChoices(ExpirationPresetChoice, SendDatePresetOptions.CreateExpirationOptions(compact: true), Draft.ExpirationPreset);
         if (isEditMode)
-            PrimaryButtonText = "保存更改";
+            PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextECF0EA01192D5A01);
         Loaded += (_, _) =>
         {
             _canUpdateBindings = true;
@@ -86,12 +88,11 @@ public sealed partial class SendEditorDialog : ContentDialog
 
     private void OnDeletionLabelChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_canUpdateBindings)
-        {
-            if (ShowCustomDeletionPicker && Draft.DeletionDate is null)
-                Draft.DeletionDate = DateTimeOffset.Now.AddDays(7);
-            Bindings?.Update();
-        }
+        if (!_canApplyExpirationChanges
+            || sender is not ComboBox { SelectedItem: ComboBoxItem { Tag: SendDatePreset preset } })
+            return;
+        Draft.SelectDeletion(preset, DateTimeOffset.UtcNow);
+        Bindings?.Update();
     }
 
     private void OnCustomDeletionDateChanged(
@@ -107,11 +108,25 @@ public sealed partial class SendEditorDialog : ContentDialog
     private void OnExpirationLabelChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_canApplyExpirationChanges
-            || sender is not ComboBox { SelectedItem: string label })
+            || sender is not ComboBox { SelectedItem: ComboBoxItem { Tag: SendDatePreset preset } })
             return;
 
-        Draft.SelectExpiration(label, DateTimeOffset.UtcNow);
+        Draft.SelectExpiration(preset, DateTimeOffset.UtcNow);
         Bindings?.Update();
+    }
+
+    private static void FillDateChoices(
+        ComboBox combo,
+        IReadOnlyList<SendDatePresetOption> options,
+        SendDatePreset selected)
+    {
+        foreach (var option in options)
+        {
+            var item = new ComboBoxItem { Content = option.Label, Tag = option.Value };
+            combo.Items.Add(item);
+            if (option.Value == selected)
+                combo.SelectedItem = item;
+        }
     }
 
     private void OnCustomExpirationDateChanged(
@@ -146,15 +161,15 @@ public sealed partial class SendEditorDialog : ContentDialog
         }
         catch (ArgumentOutOfRangeException)
         {
-            ShowEditorError("文件超过 500 MiB 上限。");
+            ShowEditorError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFC35EAAAAD04F005));
         }
         catch (UnauthorizedAccessException)
         {
-            ShowEditorError("没有读取所选文件的权限。");
+            ShowEditorError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA2DAD4AAC80F11EE));
         }
         catch (IOException)
         {
-            ShowEditorError("无法读取所选文件，请重新选择。");
+            ShowEditorError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text51BDBEFBC0C88421));
         }
     }
 
@@ -195,7 +210,7 @@ public sealed partial class SendEditorDialog : ContentDialog
             if (!Draft.HasRequiredData()
                 || (!IsEditMode && Draft.IsFile && Draft.ReplacementFile is null))
             {
-                ShowEditorError("请填写必填项并为文件 Send 选择文件。");
+                ShowEditorError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC8DF7D05EC1505D7));
                 args.Cancel = true;
                 return;
             }
@@ -204,7 +219,7 @@ public sealed partial class SendEditorDialog : ContentDialog
             var result = await _save(Draft, saveCts.Token);
             if (result.Status == UiOperationStatus.Failed)
             {
-                ShowEditorError(result.Error ?? "保存 Send 失败，请重试。");
+                ShowEditorError(result.Error ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8715DD8F2827D9A3));
                 args.Cancel = true;
                 return;
             }

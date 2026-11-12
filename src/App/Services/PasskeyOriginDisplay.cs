@@ -15,7 +15,8 @@ public readonly record struct OriginDisplayResult(string Unicode, string Ascii, 
 /// </summary>
 public static class PasskeyOriginDisplay
 {
-    private const string Unknown = "(未知来源)";
+    private static string Unknown => global::App.Localization.UiText.Get(
+        global::App.Localization.UiStringKey.TextB0D278876992FC46);
     private static readonly IdnMapping Idn = new();
 
     public static OriginDisplayResult Parse(string? origin)

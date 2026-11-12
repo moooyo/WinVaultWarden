@@ -91,9 +91,9 @@ public sealed partial class LoginPage : Page
         {
             if (await DialogHelper.ConfirmAsync(
                     XamlRoot,
-                    "清除设备登录隔离？",
-                    "请先检查并撤销其他设备中的可疑会话。清除后，将重新检查此设备是否可使用设备登录。",
-                    "清除隔离")
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text303CCA4464148D45),
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text406D8F654271E707),
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text15F37E2DBB78A1A6))
                 && !_isDeactivated
                 && ViewModel.CanClearLoginWithDeviceQuarantine)
             {
@@ -122,9 +122,9 @@ public sealed partial class LoginPage : Page
         {
             if (await DialogHelper.ConfirmAsync(
                     XamlRoot,
-                    "仅清除此设备上的数据？",
-                    "账户删除请求的服务器结果仍不确定。此前发送的删除请求仍可能稍后在服务器完成。成功后会写入永久安全隔离记录，并在本安装中永久禁用此账户标识与当前服务器端点组合。若日后确认账户仍存在，要在此安装中恢复，只能通过 Windows 应用重置清除此应用的全部本地数据。此操作不会再次向服务器发送删除请求。",
-                    "仅清除此设备")
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text989FDC569E4BD8A7),
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text21CBAC5EB51CBF7E),
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3C9F97EE918CFA68))
                 && !_isDeactivated
                 && ViewModel.CanRunAccountDeletionRecoveryAction
                 && ViewModel.ShowClearPendingAccountDeletion)
@@ -153,8 +153,8 @@ public sealed partial class LoginPage : Page
         _fullLocalResetConfirmationCancellation = confirmationCancellation;
         var confirmation = new TextBox
         {
-            Header = "输入 RESET 以确认",
-            PlaceholderText = "RESET",
+            Header = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text52C55DC8495125BB),
+            PlaceholderText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7EF2FAD58D1F2F12),
             MaxLength = 5,
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
@@ -163,7 +163,7 @@ public sealed partial class LoginPage : Page
             "FullLocalResetConfirmationTextBox");
         var warning = new TextBlock
         {
-            Text = "此操作现在会记录重置请求并退出应用；所有保存账户、离线密码库、设备密钥、应用偏好和永久删除隔离记录会在下次启动、登录界面出现前完成删除。服务器上的账户和密码库数据不会受到影响。浏览器集成可能需要重新配置。",
+            Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text765F67073CA0200A),
             TextWrapping = TextWrapping.Wrap,
         };
         var content = new StackPanel { Spacing = 12 };
@@ -171,10 +171,10 @@ public sealed partial class LoginPage : Page
         content.Children.Add(confirmation);
         var dialog = new ContentDialog
         {
-            Title = "清除全部本机数据并退出？",
+            Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5545852578469AF8),
             Content = content,
-            PrimaryButtonText = "清除全部本机数据并退出",
-            CloseButtonText = "取消",
+            PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text50E34E92AC968118),
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Close,
             IsPrimaryButtonEnabled = false,
             XamlRoot = XamlRoot,
@@ -337,7 +337,8 @@ public sealed partial class LoginPage : Page
             || ViewModel.IsDeviceVerificationStage || ViewModel.IsSsoPending)
             _onlineAuthenticationStarted = true;
         if (IsLayoutAffectingProperty(e.PropertyName)
-            || e.PropertyName is nameof(LoginViewModel.MasterPassword) or nameof(LoginViewModel.Pin))
+            || e.PropertyName is nameof(LoginViewModel.MasterPassword) or nameof(LoginViewModel.Pin)
+                or nameof(LoginViewModel.InlineErrorTarget) or nameof(LoginViewModel.IsUnlockPrompt))
         {
             UpdateAuthPresentation();
             QueueFitWindowToContent();
@@ -389,6 +390,8 @@ public sealed partial class LoginPage : Page
             LoginFocusTarget.AccountDeletionRecoveryAction =>
                 ContinueFromAccountDeletionRecoveryButton,
             LoginFocusTarget.PrimaryAction => PrimaryAuthButton,
+            LoginFocusTarget.ApiKeyClientId => ApiKeyClientIdBox,
+            LoginFocusTarget.ApiKeySecret => ApiKeySecretBox,
             _ when ViewModel.IsUnlockStage => UnlockPasswordBox,
             _ => MasterPasswordBox,
         };
@@ -552,9 +555,9 @@ public sealed partial class LoginPage : Page
                 return;
             _canEnrollHello = available && !session.UsesV2UserKey;
             if (session.UsesV2UserKey)
-                SetHelloEnrollmentStatus("此账户使用新版加密密钥，目前需要用主密码解锁。可以跳过此步骤。", InfoBarSeverity.Informational);
+                SetHelloEnrollmentStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD4C12A16E05BD575), InfoBarSeverity.Informational);
             else if (!available)
-                SetHelloEnrollmentStatus("请先在 Windows 设置中配置 Windows Hello。也可以以后再开启。", InfoBarSeverity.Informational);
+                SetHelloEnrollmentStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4A2941D857E15A3C), InfoBarSeverity.Informational);
             UpdateHelloEnrollmentButtons();
         }));
     }
@@ -592,7 +595,7 @@ public sealed partial class LoginPage : Page
                 return;
             if (signature is null)
             {
-                SetHelloEnrollmentStatus("Windows Hello 未完成。可以重试，或以后再说。", InfoBarSeverity.Informational);
+                SetHelloEnrollmentStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEE8A9246FE733855), InfoBarSeverity.Informational);
                 return;
             }
 
@@ -613,7 +616,7 @@ public sealed partial class LoginPage : Page
         catch (Exception)
         {
             if (IsCurrentHelloEnrollment(lease, generation, cancellation))
-                SetHelloEnrollmentStatus("无法开启 Windows Hello。可以重试，或以后再说。", InfoBarSeverity.Error);
+                SetHelloEnrollmentStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAF6A25232A732000), InfoBarSeverity.Error);
         }
         finally
         {
@@ -659,7 +662,7 @@ public sealed partial class LoginPage : Page
     {
         EnableHelloEnrollmentButton.IsEnabled = _canEnrollHello && !_helloEnrollmentBusy;
         SkipHelloEnrollmentButton.IsEnabled = !_helloEnrollmentBusy;
-        HelloEnrollmentButtonText.Text = _helloEnrollmentBusy ? "正在开启…" : "开启 Windows Hello";
+        HelloEnrollmentButtonText.Text = _helloEnrollmentBusy ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6DAE991EEA1501F1) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text521A1F07A33275E3);
     }
 
     private void SetHelloEnrollmentStatus(string message, InfoBarSeverity severity)
@@ -690,7 +693,7 @@ public sealed partial class LoginPage : Page
         DispatcherQueue.TryEnqueue(ApplyFocusRequest);
     }
 
-    private string BackActionText(bool isPasswordStage) => isPasswordStage ? "不是你？" : "返回";
+    private string BackActionText(bool isPasswordStage) => isPasswordStage ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9B5A81489DF54406) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text572CF45BA43634B3);
 
     private Visibility NavigationLinksVisibility(bool isPasswordStage, bool canGoBack) =>
         isPasswordStage || canGoBack ? Visibility.Visible : Visibility.Collapsed;
@@ -717,11 +720,11 @@ public sealed partial class LoginPage : Page
         SsoWaitingRow.Visibility = pending ? Visibility.Visible : Visibility.Collapsed;
         SsoContinueButton.Visibility = pending ? Visibility.Collapsed : Visibility.Visible;
         SsoReopenButton.Visibility = pending && ViewModel.IsSsoBrowserOpened ? Visibility.Visible : Visibility.Collapsed;
-        SsoBackButton.Content = pending ? "取消" : "返回";
+        SsoBackButton.Content = pending ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text572CF45BA43634B3);
         SsoSubtitle.Text = pending && ViewModel.IsSsoBrowserOpened
-            ? "已在浏览器中打开组织的登录页面，完成后会自动回到这里"
-            : "输入组织标识符，会在浏览器中打开组织的登录页面";
-        SsoWaitingText.Text = ViewModel.IsSsoBrowserOpened ? "正在等待浏览器中的登录…" : "正在打开浏览器…";
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE7D4B0A32C46DD23)
+            : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text52321B12B7816E78);
+        SsoWaitingText.Text = ViewModel.IsSsoBrowserOpened ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF58731D98357C109) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF52647CF67075ECB);
         SsoStatusInfoBar.IsOpen = ViewModel.HasStatus && ViewModel.StatusKind == LoginStatusKind.Error;
         SsoStatusInfoBar.Visibility = SsoStatusInfoBar.IsOpen ? Visibility.Visible : Visibility.Collapsed;
         SsoStatusInfoBar.Severity = InfoBarSeverity.Error;
@@ -821,7 +824,7 @@ public sealed partial class LoginPage : Page
             return;
         var visible = button.IsChecked == true;
         password.PasswordRevealMode = visible ? PasswordRevealMode.Visible : PasswordRevealMode.Hidden;
-        var label = visible ? "隐藏主密码" : "显示主密码";
+        var label = visible ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEB26C751D7379736) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCDA877C642C146C2);
         AutomationProperties.SetName(button, label);
         ToolTipService.SetToolTip(button, label);
         if (button.Content is FontIcon icon)
@@ -918,14 +921,14 @@ public sealed partial class LoginPage : Page
     private static TwoFactorPickerOption CreateTwoFactorPickerOption(TwoFactorProviderOption option) =>
         option.Type switch
         {
-            0 => new(option.Type, "身份验证器应用", "打开身份验证器应用，输入 6 位验证码", "\uE823"),
-            1 => new(option.Type, "电子邮件", "使用发送到邮箱的一次性验证码", "\uE715"),
-            2 => new(option.Type, "Duo", "在浏览器中完成验证", "\uEA18"),
-            3 => new(option.Type, "YubiKey OTP", "连接 YubiKey，输入一次性密码", "\uE88E"),
-            6 => new(option.Type, "组织 Duo", "在浏览器中完成组织要求的验证", "\uEA18"),
-            7 => new(option.Type, "通行密钥或安全密钥", "插入安全密钥，或者用 Windows Hello 验证", "\uE88E"),
-            8 => new(option.Type, "恢复代码", "丢失所有验证方式时使用", "\uE8D7"),
-            _ => new(option.Type, option.DisplayName, "使用账户启用的验证方式", "\uEA18"),
+            0 => new(option.Type, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0BFE93D95E677A9A), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6C39AE664726B06C), "\uE823"),
+            1 => new(option.Type, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1B2714B812D42F77), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEDE24583525B9BB8), "\uE715"),
+            2 => new(option.Type, "Duo", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA90836E2F8E34C24), "\uEA18"),
+            3 => new(option.Type, "YubiKey OTP", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1B846A5DD4B1F9CE), "\uE88E"),
+            6 => new(option.Type, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4F42C08738E301D2), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text842CA0FD36DC9B43), "\uEA18"),
+            7 => new(option.Type, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4671FB290C9D89B0), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2C7D4F4AB6B753F1), "\uE88E"),
+            8 => new(option.Type, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC5674F920EF6D556), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0487B7DD9336F66B), "\uE8D7"),
+            _ => new(option.Type, option.DisplayName, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6A5DAF0FD1F28CBE), "\uEA18"),
         };
 
     private Visibility UnlockPanelVisibility(bool visible, bool helloAvailable) =>
@@ -995,7 +998,7 @@ public sealed partial class LoginPage : Page
 
         var inlineError = UpdateInlineAuthError();
         var redundantUnlockPrompt = isLocked && ViewModel.StatusKind == LoginStatusKind.Info
-            && ViewModel.Status is "请输入 PIN 解锁。" or "请输入主密码解锁。";
+            && ViewModel.IsUnlockPrompt;
         LoginStatusInfoBar.Visibility = ViewModel.HasStatus && !redundantUnlockPrompt && !inlineError
             ? Visibility.Visible : Visibility.Collapsed;
         UpdateCapsLockWarnings();
@@ -1012,6 +1015,8 @@ public sealed partial class LoginPage : Page
             (PinBox, PinErrorText),
             (TwoFactorCodeTextBox, TwoFactorErrorText),
             (DeviceVerificationCodeTextBox, DeviceVerificationErrorText),
+            (ApiKeyClientIdBox, ApiKeyClientIdErrorText),
+            (ApiKeySecretBox, ApiKeySecretErrorText),
         ];
         foreach (var field in fields)
         {
@@ -1024,17 +1029,12 @@ public sealed partial class LoginPage : Page
         var message = ViewModel.Status;
         if (ViewModel.StatusKind != LoginStatusKind.Error
             || (_preferHelloUnlock && ViewModel.ShowHelloUnlock)
-            || !(message.StartsWith("请输入", StringComparison.Ordinal)
-                || message.StartsWith("主密码错误", StringComparison.Ordinal)
-                || message.StartsWith("用户名或主密码错误", StringComparison.Ordinal)
-                || message.StartsWith("验证码无效", StringComparison.Ordinal)
-                || message.StartsWith("恢复代码无效", StringComparison.Ordinal)
-                || message.StartsWith("PIN ", StringComparison.Ordinal)))
+            || ViewModel.InlineErrorTarget is null)
         {
             return false;
         }
 
-        var target = ViewModel.FocusTarget switch
+        var target = ViewModel.InlineErrorTarget switch
         {
             LoginFocusTarget.ServerUrl => 0,
             LoginFocusTarget.Email => 1,
@@ -1043,6 +1043,8 @@ public sealed partial class LoginPage : Page
             LoginFocusTarget.Pin => 4,
             LoginFocusTarget.TwoFactorCode => 5,
             LoginFocusTarget.DeviceVerificationCode => 6,
+            LoginFocusTarget.ApiKeyClientId => 7,
+            LoginFocusTarget.ApiKeySecret => 8,
             _ => -1,
         };
         if (target < 0)
@@ -1064,14 +1066,14 @@ public sealed partial class LoginPage : Page
     {
         if (ViewModel.LoginWithDeviceExpiresAtUtc is not { } expiresAt)
         {
-            DeviceApprovalWaitingText.Text = "正在等待批准";
+            DeviceApprovalWaitingText.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD12D36392ECF1873);
             return;
         }
 
         var seconds = Math.Max(0, (int)Math.Ceiling((expiresAt - DateTimeOffset.UtcNow).TotalSeconds));
         DeviceApprovalWaitingText.Text = seconds > 0
-            ? $"正在等待批准 · {seconds / 60}:{seconds % 60:00} 后过期"
-            : "请求已过期";
+            ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextB5B87DFC18F9FA9E,seconds / 60,seconds % 60)
+            : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9AE7174BB045A6E3);
     }
 
     private static string DescribeLockPolicy()
@@ -1080,13 +1082,13 @@ public sealed partial class LoginPage : Page
         var vault = global::App.App.Services.GetRequiredService<IVaultService>();
         var timeout = IdleTimeoutPolicy.Resolve(
             vault.Snapshot, preferences.SessionTimeoutIndex, preferences.TimeoutActionIndex);
-        var action = timeout.Action == VaultTimeoutAction.Logout ? "退出登录" : "锁定";
+        var action = timeout.Action == VaultTimeoutAction.Logout ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3AB8CC15939F3B5C) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFF9872A023E3A8AA);
         return timeout.Trigger switch
         {
-            VaultTimeoutTrigger.AfterIdle => $"闲置 {timeout.Minutes} 分钟后会自动{action}",
-            VaultTimeoutTrigger.OnAppRestart => $"重启应用后会{action}",
-            VaultTimeoutTrigger.OnSystemLock => $"锁定 Windows 时会{action}",
-            _ => "不会自动锁定",
+            VaultTimeoutTrigger.AfterIdle => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextFA86C0C93DC13BCD,timeout.Minutes,action),
+            VaultTimeoutTrigger.OnAppRestart => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextD6F7FCC68E66A292,action),
+            VaultTimeoutTrigger.OnSystemLock => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text50BF84637CD283E7,action),
+            _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0F3676D6EBE58BB4),
         };
     }
 
@@ -1116,6 +1118,7 @@ public sealed partial class LoginPage : Page
         or nameof(LoginViewModel.HasStatus)
         or nameof(LoginViewModel.Status)
         or nameof(LoginViewModel.IsBusy)
+        or nameof(LoginViewModel.IsApiKeyMode)
         or nameof(LoginViewModel.FormTitle)
         or nameof(LoginViewModel.FormSubtitle)
         or nameof(LoginViewModel.StepText)

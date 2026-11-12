@@ -18,7 +18,7 @@ public class SendViewModelTests
         var service = new FakeSendUiService
         {
             ScriptedReceived = new SendReceivedResult(true, false, SendType.Text, "Hidden note", "private text", null, null,
-                new SendAccessResult { TextHidden = true }),
+                Accessed: null, TextHidden: true),
         };
         var vm = await LoadedVmAsync(service);
         vm.ReceivedLinkUrl = "https://vault.example/#/send/access/seed";

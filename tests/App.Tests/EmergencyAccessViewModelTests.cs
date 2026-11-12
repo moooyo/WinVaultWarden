@@ -277,6 +277,38 @@ public class EmergencyAccessViewModelTests
         Assert.Empty(vm.RecoveredItems);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LateViewResponse_DoesNotRepopulateRecoveredPlaintextAfterSessionEnds(bool switchAccount)
+    {
+        var session = new Vault.VaultSession();
+        session.BeginAccountSession("recipient", "recipient@example.com", new ServerOrigin("https://vault.example"));
+        session.SetUnlockedKey(new Crypto.SymmetricCryptoKey(new byte[64]));
+        var response = new TaskCompletionSource<RecoveredVault>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new ScriptedEaUiService { ViewHandler = _ => response.Task };
+        var vm = new EmergencyAccessViewModel(service, session);
+        var granted = new GrantedAccess("grant", "owner", "owner@example.com", null,
+            EmergencyAccessStatus.RecoveryApproved, EmergencyAccessType.View, 7);
+        var viewing = vm.ViewAsync(granted);
+        if (switchAccount)
+        {
+            session.BeginAccountSession("other", "other@example.com", new ServerOrigin("https://vault.example"));
+            session.SetUnlockedKey(new Crypto.SymmetricCryptoKey(new byte[64]));
+        }
+        else
+            session.Lock();
+        vm.ClearSensitive();
+        response.SetResult(new RecoveredVault("owner@example.com",
+            [new Cipher { Notes = "recovered-secret" }]));
+
+        var result = await viewing;
+        Assert.Equal(UiOperationStatus.Cancelled, result.Status);
+        Assert.Null(result.Value);
+        Assert.Empty(vm.RecoveredItems);
+        session.Lock();
+    }
+
     [Fact]
     public async Task AnyMutation_ClearsStaleRecoveredResult()
     {
@@ -806,6 +838,7 @@ public class EmergencyAccessViewModelTests
         public RecoveredVault ViewResult { get; set; } =
             new(string.Empty, []);
         public Exception? ViewError { get; set; }
+        public Func<CancellationToken, Task<RecoveredVault>>? ViewHandler { get; set; }
 
         public Task<IReadOnlyList<EmergencyContact>> GetTrustedAsync(
             CancellationToken ct = default) =>
@@ -823,7 +856,7 @@ public class EmergencyAccessViewModelTests
         public Task AcceptAsync(string id, string token, CancellationToken ct = default) => Task.CompletedTask;
         public Task InitiateAsync(string id, CancellationToken ct = default) => Task.CompletedTask;
         public Task<RecoveredVault> ViewAsync(string id, string grantorEmail, CancellationToken ct = default) =>
-            ViewError is null
+            ViewHandler is not null ? ViewHandler(ct) : ViewError is null
                 ? Task.FromResult(ViewResult)
                 : Task.FromException<RecoveredVault>(ViewError);
         public Task TakeoverAndResetPasswordAsync(string id, string grantorEmail, string newPassword, CancellationToken ct = default) => Task.CompletedTask;

@@ -108,9 +108,9 @@ internal sealed unsafe class TrayIconService : IDisposable
         if (menu == IntPtr.Zero)
             return;
 
-        NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, (UIntPtr)1, "打开");
-        NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, (UIntPtr)2, "锁定");
-        NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, (UIntPtr)3, "退出");
+        NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, (UIntPtr)1, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC771248E511FBF93));
+        NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, (UIntPtr)2, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFF9872A023E3A8AA));
+        NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, (UIntPtr)3, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text498E1D59B4D787EE));
 
         // 经典要求：弹菜单前把窗口设为前台，否则菜单不会在点击别处时消失。
         NativeMethods.SetForegroundWindow(_hwnd);

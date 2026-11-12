@@ -1,4 +1,5 @@
 using Core.Models;
+using System.Text.Json.Serialization;
 
 namespace Core.Passkeys;
 
@@ -11,7 +12,9 @@ public sealed record BrowserRequestContext(
     int TabId,
     int FrameId,
     string DocumentId,
-    bool PublicKeyCredentialsGetAllowed);
+    bool PublicKeyCredentialsGetAllowed,
+    [property: JsonRequired] bool SameOriginWithAncestors,
+    [property: JsonRequired] bool PublicKeyCredentialsCreateAllowed);
 
 public enum BrowserPasskeyOperation
 {
@@ -21,7 +24,7 @@ public enum BrowserPasskeyOperation
 
 // Result of a successful policy evaluation: normalised origins plus the canonical
 // (A-label) and Unicode forms of the relying-party id, and whether the call is
-// cross-origin (frame origin != top origin).
+// cross-origin relative to any ancestor, including an A-to-B-to-A frame chain.
 public sealed record ValidatedBrowserRequestContext(
     ServerOrigin FrameOrigin,
     ServerOrigin TopOrigin,

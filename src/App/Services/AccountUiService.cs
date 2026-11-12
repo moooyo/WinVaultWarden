@@ -15,6 +15,11 @@ public interface IAccountUiService
 
     // 改迭代次数（KDF）
     Task ChangeIterationsAsync(string current, int iterations, CancellationToken ct = default);
+
+    Task ChangeKdfAsync(string current, AccountKdfParameters parameters, CancellationToken ct = default) =>
+        parameters.Type == Core.Enums.KdfType.Pbkdf2 && parameters.IsWriteCompatible
+            ? ChangeIterationsAsync(current, parameters.Iterations, ct)
+            : Task.FromException(new NotSupportedException("This account UI service cannot change KDF algorithms."));
 }
 
 public sealed class AccountUiService : IAccountUiService
@@ -34,25 +39,32 @@ public sealed class AccountUiService : IAccountUiService
     public Task RenameAsync(string name, CancellationToken ct = default)
     {
         if (_account is null)
-            throw new AccountOperationException("账户服务不可用");
+            throw new AccountOperationException(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB742DBD6B37D5897));
         return _account.UpdateNameAsync(name, ct);
     }
 
     public Task ChangePasswordAsync(string current, string next, string confirm, string? hint, CancellationToken ct = default)
     {
         if (_account is null)
-            throw new AccountOperationException("账户服务不可用");
+            throw new AccountOperationException(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB742DBD6B37D5897));
         if (string.IsNullOrEmpty(next))
-            throw new AccountOperationException("新密码不能为空");
+            throw new AccountOperationException(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC90FD1B53F3523CC));
         if (next != confirm)
-            throw new AccountOperationException("两次输入的新密码不一致");
+            throw new AccountOperationException(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC5575A2E4B0311B8));
         return _account.ChangePasswordAsync(current, next, hint, ct);
     }
 
     public Task ChangeIterationsAsync(string current, int iterations, CancellationToken ct = default)
     {
         if (_account is null)
-            throw new AccountOperationException("账户服务不可用");
+            throw new AccountOperationException(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB742DBD6B37D5897));
         return _account.ChangeKdfAsync(current, iterations, ct);
+    }
+
+    public Task ChangeKdfAsync(string current, AccountKdfParameters parameters, CancellationToken ct = default)
+    {
+        if (_account is null)
+            throw new AccountOperationException("The account service is unavailable.");
+        return _account.ChangeKdfAsync(current, parameters, ct);
     }
 }

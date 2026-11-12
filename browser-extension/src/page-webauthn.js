@@ -162,6 +162,12 @@
     if (!options?.publicKey) {
       return nativeCreate(options);
     }
+    const attachment = options.publicKey.authenticatorSelection?.authenticatorAttachment;
+    if (attachment !== undefined && attachment !== "platform") {
+      // The vault implements a software platform authenticator. Preserve cross-platform requests
+      // and invalid enum values for the browser to handle with its original WebAuthn semantics.
+      return nativeCreate(options);
+    }
 
     const response = await relay(
       {
@@ -246,6 +252,7 @@
       attestation: keyOptions.attestation ?? null,
       authenticatorSelection: keyOptions.authenticatorSelection
         ? {
+            authenticatorAttachment: keyOptions.authenticatorSelection.authenticatorAttachment,
             requireResidentKey: keyOptions.authenticatorSelection.requireResidentKey,
             residentKey: keyOptions.authenticatorSelection.residentKey,
             userVerification: keyOptions.authenticatorSelection.userVerification,

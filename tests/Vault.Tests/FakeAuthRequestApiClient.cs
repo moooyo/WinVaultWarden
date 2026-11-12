@@ -19,6 +19,14 @@ public sealed class FakeAuthRequestApiClient : IAuthRequestApiClient
     public AuthRequestListResponse PendingResult { get; set; } =
         new(Data: new List<AuthRequestResponse>());
 
+    public AuthRequestResponse? GetResult { get; set; }
+
+    public Task<AuthRequestResponse> GetAsync(string id, CancellationToken ct = default)
+    {
+        Calls.Add("get");
+        return Task.FromResult(GetResult ?? PendingResult.Data.Single(request => request.Id == id));
+    }
+
     public AuthRequestResponse ApproveResult { get; set; } =
         new(Id: "req-1", PublicKey: "", RequestDeviceType: "Windows",
             RequestIpAddress: "192.168.1.1", Key: null, MasterPasswordHash: null,

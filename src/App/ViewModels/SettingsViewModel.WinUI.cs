@@ -88,7 +88,7 @@ public partial class SettingsViewModel
     public string WindowsVersion => AboutInfo.WindowsVersion;
     public string DotNetVersion => AboutInfo.DotNetVersion;
     public string AppArchitecture => AboutInfo.Architecture;
-    public string VersionSummary => $"版本 {AppVersion} · {AppArchitecture}";
+    public string VersionSummary => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text1AD9BD236FA981C5,AppVersion,AppArchitecture);
     public string RuntimeSummary
     {
         get
@@ -107,10 +107,10 @@ public partial class SettingsViewModel
         get
         {
             if (!TryReadCurrentKdf(out var type, out var iterations, out var memory, out var parallelism))
-                return string.IsNullOrWhiteSpace(KdfSummary) ? "当前加密参数不可用" : KdfSummary;
+                return string.IsNullOrWhiteSpace(KdfSummary) ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEA286A90D0D22094) : KdfSummary;
             return type == Core.Enums.KdfType.Argon2id
-                ? $"Argon2id · {iterations} 次迭代 · {memory} MiB · 并行度 {parallelism}"
-                : $"PBKDF2-SHA256 · {iterations.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)} 次迭代";
+                ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text1135564B359EB64B,iterations,memory,parallelism)
+                : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text1B0CF71A54CD6C92,iterations.ToString("N0", System.Globalization.CultureInfo.InvariantCulture));
         }
     }
 

@@ -40,6 +40,8 @@ public enum LoginFocusTarget
     LoginWithDeviceCancel,
     AccountDeletionRecoveryAction,
     PrimaryAction,
+    ApiKeyClientId,
+    ApiKeySecret,
 }
 
 public enum LoginStatusKind
@@ -71,6 +73,43 @@ public enum AccountDeletionRecoveryNoticeKind
 
 public partial class LoginViewModel : ObservableObject, ISensitiveState
 {
+    [ObservableProperty]
+    public partial bool IsApiKeyMode { get; set; }
+
+    [ObservableProperty]
+    public partial string ApiKeyClientId { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string ApiKeySecret { get; set; } = string.Empty;
+
+    public bool CanUseApiKeySignIn => IsAccountStage && !IsBusy;
+
+    partial void OnIsApiKeyModeChanged(bool value)
+    {
+        OnPropertyChanged(nameof(FormTitle));
+        OnPropertyChanged(nameof(FormSubtitle));
+        OnPropertyChanged(nameof(CanRequestPasswordHint));
+        OnPropertyChanged(nameof(ShowLoginWithDeviceOption));
+        RequestPasswordHintCommand.NotifyCanExecuteChanged();
+        if (value)
+        {
+            CancelLoginWithDeviceAvailabilityProbe();
+            ResetLoginWithDevicePresentation(clearAvailability: true);
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanUseApiKeySignIn))]
+    private void OpenApiKeySignIn()
+    {
+        if (!CanUseApiKeySignIn)
+            return;
+        ContinueToPassword();
+        if (!IsPasswordStage)
+            return;
+        IsApiKeyMode = true;
+        RequestFocus(LoginFocusTarget.ApiKeyClientId);
+    }
+
     private const string BitwardenUsUrl = "https://vault.bitwarden.com";
     private const string BitwardenEuUrl = "https://vault.bitwarden.eu";
 
@@ -93,9 +132,11 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     private readonly AccountDeletionRecoveryHost? _accountDeletionRecoveryHost;
     private readonly ILocalDataResetService? _localDataReset;
     private readonly IAppLifecycleCoordinator? _lifecycle;
+    private readonly Action? _beforeAccountChange;
     private long _passwordHintGeneration;
     private CancellationTokenSource? _passwordHintCancellation;
     private bool _isPasswordHintRequestActive;
+    private bool _statusContainsPasswordHint;
     private bool _usesKeyConnector;
     private bool _usesTrustedDeviceSso;
     private Action<VaultSessionLease>? _onSuccess;
@@ -197,6 +238,12 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     public partial LoginStatusKind StatusKind { get; set; } = LoginStatusKind.Info;
 
     [ObservableProperty]
+    public partial LoginFocusTarget? InlineErrorTarget { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsUnlockPrompt { get; set; }
+
+    [ObservableProperty]
     public partial int SelectedServerOptionIndex { get; set; }
 
     [ObservableProperty]
@@ -290,7 +337,8 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         IAccountDeletionService? accountDeletion = null,
         AccountDeletionRecoveryHost? accountDeletionRecoveryHost = null,
         ILocalDataResetService? localDataReset = null,
-        IAppLifecycleCoordinator? lifecycle = null)
+        IAppLifecycleCoordinator? lifecycle = null,
+        Action? beforeAccountChange = null)
     {
         _auth = auth;
         _demoVault = demoVault;
@@ -307,6 +355,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         _accountDeletionRecoveryHost = accountDeletionRecoveryHost;
         _localDataReset = localDataReset;
         _lifecycle = lifecycle;
+        _beforeAccountChange = beforeAccountChange;
         RefreshSavedAccounts();
 
         // 注册成功后经 AccountPrefill(DI 单例)把服务器/邮箱预填带到新建的 LoginViewModel(Transient,
@@ -375,35 +424,36 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     public string AccountDeletionRecoveryTitle => AccountDeletionRecoveryNotice switch
     {
-        AccountDeletionRecoveryNoticeKind.Prepared => "账户删除结果不确定",
-        AccountDeletionRecoveryNoticeKind.ServerConfirmed => "账户已在服务器删除",
-        AccountDeletionRecoveryNoticeKind.LocalCleanupComplete => "检测到已删除账户的本地残留",
+        AccountDeletionRecoveryNoticeKind.Prepared => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA2D3FB875236BF9A),
+        AccountDeletionRecoveryNoticeKind.ServerConfirmed => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text78C6DCA880CC9E59),
+        AccountDeletionRecoveryNoticeKind.LocalCleanupComplete => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5EE7615E5C801886),
         AccountDeletionRecoveryNoticeKind.UncertainLocalCleanupComplete =>
-            "检测到删除结果不确定账户的本地残留",
-        _ => "无法安全恢复保存账户",
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1B1DB5F8B44E439B),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text255B1F670F319151),
     };
 
     public string AccountDeletionRecoveryMessage => AccountDeletionRecoveryNotice switch
     {
         AccountDeletionRecoveryNoticeKind.Prepared =>
-            "此前的账户删除请求可能已到达服务器，并且仍可能稍后完成。旧令牌、离线、PIN 和 Windows Hello 解锁已禁用。你可以仅清除此设备上的全部账户数据，或改用其他账户。",
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0979AE1B16406AF7),
         AccountDeletionRecoveryNoticeKind.ServerConfirmed =>
-            "服务器已确认删除账户，但此设备仍有数据尚未清理。请重试本地清理；旧令牌与离线解锁保持禁用。",
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text13F48B295BB8FEE9),
         AccountDeletionRecoveryNoticeKind.LocalCleanupComplete =>
-            "此账户已完成本地清理，并由永久安全记录阻止再次使用，但检测到旧进程重新写入的保存会话。请再次清理本机残留数据，或使用其他账户。",
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text62E50E9A31DC2036),
         AccountDeletionRecoveryNoticeKind.UncertainLocalCleanupComplete =>
-            "此账户此前的删除结果不确定，本地数据已清理并保持安全隔离，但检测到旧进程重新写入的保存会话。请再次清理本机残留数据，或使用其他账户。",
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text27C5A978B8E6CA91),
         _ =>
-            "账户删除恢复记录无法读取，因此所有账户登录和旧令牌解锁均已禁用。请先关闭其他应用实例并重新检查。若记录永久损坏，可以清除本应用的全部本地数据并退出；服务器数据不会受影响。若应用内重置不可用，请使用 Windows 应用重置。",
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD03AF11A076D615F),
     };
 
     public string AccountDeletionRecoveryContinueText =>
         AccountDeletionRecoveryNotice == AccountDeletionRecoveryNoticeKind.LedgerUnavailable
-            ? "重新检查安全存储"
-            : "使用其他账户";
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0AEF68CF9FFDFEAC)
+            : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4068C9F588A3E8FD);
 
     public bool ShowLoginWithDeviceOption =>
         IsPasswordStage
+        && !IsApiKeyMode
         && IsLoginWithDeviceAvailable
         && !IsLoginWithDeviceQuarantineBlocked;
 
@@ -429,22 +479,22 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     public string LoginWithDeviceQuarantineTitle =>
         _loginWithDeviceQuarantineInfo switch
         {
-            LoginWithDeviceQuarantineInfo.Found => "设备登录已隔离",
-            LoginWithDeviceQuarantineInfo.Corrupt => "设备登录安全状态已损坏",
-            _ => "设备登录安全状态不可用",
+            LoginWithDeviceQuarantineInfo.Found => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC871DC318451D352),
+            LoginWithDeviceQuarantineInfo.Corrupt => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD4A57749F54DF67E),
+            _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6903D2ED4FDDE1A8),
         };
 
     public string LoginWithDeviceQuarantineMessage =>
         _loginWithDeviceQuarantineInfo switch
         {
             LoginWithDeviceQuarantineInfo.Found { IsClearEligible: true } =>
-                "一次设备批准的登录结果无法确认。请先检查并撤销其他设备中的可疑会话，再清除此隔离。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC5B4CC4664FB858E),
             LoginWithDeviceQuarantineInfo.Found =>
-                "一次设备批准的登录结果无法确认。隔离期结束前，请使用主密码登录，或返回并使用企业 SSO 完成身份确认。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC6E7D89C25ED6358),
             LoginWithDeviceQuarantineInfo.Corrupt =>
-                "无法验证本机保存的设备登录安全状态。为保护账户，设备登录已停用；请修复本机安全存储后重试。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text17371ACD082600A4),
             _ =>
-                "暂时无法验证本机设备登录安全状态。设备登录将在检查恢复前保持停用；你仍可使用主密码或企业 SSO。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF026D709DA885C4A),
         };
 
     public bool ShowCancelLoginWithDevice =>
@@ -488,15 +538,16 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         && (_helloUnlock?.IsHelloSet ?? false) && IsWindowsHelloAvailable;
 
     public bool IsPinUnlockAvailable => (ShowUnlockPanel || IsPinUnlockStage)
-        && (_pin?.IsPinSet ?? false);
+        && (_pin?.IsPinSet ?? false)
+        && _pin?.RequiresMasterPasswordBeforePin != true;
 
     public bool CanUsePinUnlock => IsPinUnlockAvailable && !IsBusy;
 
     public string AlternativeUnlockText => _usesTrustedDeviceSso
-        ? "改用企业 SSO"
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text289D355190DA124D)
         : _usesKeyConnector
-            ? "改用 Key Connector"
-            : "改用主密码";
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4D40732CDE51D8E9)
+            : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5F65D5BC87316299);
 
     public bool ShowResendEmailCode => IsTwoFactorStage
         && !IsRecoveryCodeMode
@@ -507,7 +558,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     public IReadOnlyList<TwoFactorProviderOption> AvailableTwoFactorProviderOptions =>
         _twoFactorProviders.Where(IsSupportedTwoFactorProvider)
             .Select(provider => new TwoFactorProviderOption(provider, ProviderDisplayName(provider)))
-            .Append(new TwoFactorProviderOption(RecoveryCodeProvider, "恢复代码"))
+            .Append(new TwoFactorProviderOption(RecoveryCodeProvider, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC5674F920EF6D556)))
             .DistinctBy(option => option.Type).ToArray();
 
     public bool ShowTwoFactorProviderPicker => !IsRecoveryCodeMode && TwoFactorProviderOptions.Count > 1;
@@ -533,19 +584,19 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     public bool ShowTwoFactorCodeInput => IsTwoFactorStage && !IsWebAuthnMode && !IsDuoMode;
 
-    public string RecoveryCodeActionText => IsRecoveryCodeMode ? "使用其他验证方式" : "使用恢复代码";
+    public string RecoveryCodeActionText => IsRecoveryCodeMode ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1E9F2E2D76E259CD) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA24F4E7BB6DC1B64);
 
     public string TwoFactorInputHeader => ResolveSelectedTwoFactorProvider() switch
     {
         (int)TwoFactorProviderType.YubiKey => "YubiKey OTP",
-        RecoveryCodeProvider => "恢复代码",
-        _ => "验证码",
+        RecoveryCodeProvider => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC5674F920EF6D556),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBB015C60BAFC8A96),
     };
 
     public string TwoFactorInputPlaceholder => ResolveSelectedTwoFactorProvider() switch
     {
-        (int)TwoFactorProviderType.YubiKey => "轻触 YubiKey 后输入 OTP",
-        RecoveryCodeProvider => "输入恢复代码",
+        (int)TwoFactorProviderType.YubiKey => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text61EEED6D42C5E140),
+        RecoveryCodeProvider => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1547F87F5594259A),
         _ => "000000",
     };
 
@@ -610,14 +661,14 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     private static string ProviderDisplayName(int provider) => provider switch
     {
-        0 => "身份验证器 App",
-        1 => "电子邮件",
+        0 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD6A4E838B9B78E09),
+        1 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1B2714B812D42F77),
         2 => "Duo",
         3 => "YubiKey OTP",
-        6 => "组织 Duo",
-        7 => "安全密钥 / Windows Hello",
-        8 => "恢复代码",
-        _ => $"其他方式 ({provider})",
+        6 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4F42C08738E301D2),
+        7 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD43412EE36BE899E),
+        8 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC5674F920EF6D556),
+        _ => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text0C3D44AF5EB4A62D,provider),
     };
 
     private int ResolveSelectedTwoFactorProvider()
@@ -649,18 +700,18 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             var policy = _requiredPasswordPolicy;
             var requirements = new List<string>
             {
-                $"至少 {Math.Max(MasterPasswordPolicyRequirements.MinimumLength, policy?.MinLength ?? 0)} 个字符",
+                global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextFFE004E224D09E9B,Math.Max(MasterPasswordPolicyRequirements.MinimumLength, policy?.MinLength ?? 0)),
             };
             if (policy?.MinComplexity is > 0)
-                requirements.Add($"强度等级至少 {policy.MinComplexity}/4");
+                requirements.Add(global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text958BDBCD3E1FCE23,policy.MinComplexity));
             if (policy?.RequireUpper == true)
-                requirements.Add("包含大写字母");
+                requirements.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCD806D2DC853D2DD));
             if (policy?.RequireLower == true)
-                requirements.Add("包含小写字母");
+                requirements.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB609131A895029C8));
             if (policy?.RequireNumbers == true)
-                requirements.Add("包含数字");
+                requirements.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD886BF750293503B));
             if (policy?.RequireSpecial == true)
-                requirements.Add("包含 !@#$%^&* 中的字符");
+                requirements.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD5FC42B507823E35));
             return string.Join("；", requirements);
         }
     }
@@ -669,10 +720,10 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     public bool CanUseSso => _ssoAuthorization is not null && IsAccountStage && !IsBusy;
 
-    public bool CanRequestPasswordHint => IsPasswordStage && !IsBusy;
+    public bool CanRequestPasswordHint => IsPasswordStage && !IsApiKeyMode && !IsBusy;
 
     public string PasswordHintButtonText => _isPasswordHintRequestActive
-        ? "正在获取提示…" : "获取主密码提示";
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3D969F2D71FD815C) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text90FA43B0A18F9E2A);
 
     public bool ShowCancelSso => IsSsoPending;
 
@@ -680,111 +731,113 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     public bool ShowCustomServerUrl => IsAccountStage && SelectedServerOptionIndex == 2;
 
-    public string PrimaryButtonText => _isPasswordHintRequestActive ? "登录" : IsBusy
+    public string PrimaryButtonText => _isPasswordHintRequestActive ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1E2DF9C3075AE9E4) : IsBusy
         ? Stage switch
         {
-            LoginStage.Password => "正在登录",
-            LoginStage.LoginWithDevice => "正在等待设备批准",
-            LoginStage.DeviceVerification => "正在验证设备",
-            LoginStage.PasswordChangeRequired => "正在更新主密码",
+            LoginStage.Password => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9E27D3FB2BFB4146),
+            LoginStage.LoginWithDevice => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6D1F6406824C2BA6),
+            LoginStage.DeviceVerification => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEC59AEF352FDEDC4),
+            LoginStage.PasswordChangeRequired => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text977A1413167F2AA0),
             LoginStage.TwoFactor => IsRecoveryCodeMode
-                ? "正在恢复"
+                ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7266E439CC2E1277)
                 : IsWebAuthnMode
-                    ? "正在等待安全密钥"
-                    : IsDuoMode ? "正在等待 Duo" : "正在验证",
-            LoginStage.Unlock => "正在解锁",
-            LoginStage.PinUnlock => "正在解锁",
-            LoginStage.KeyConnectorUnlock => "正在连接 Key Connector",
-            LoginStage.TrustedDeviceSso => "正在完成企业 SSO",
-            LoginStage.TrustedDeviceApproval => "正在等待设备批准",
-            LoginStage.TdeV2JitProvisioning => "正在初始化账户加密",
-            LoginStage.AccountDeletionRecovery => "正在清理本地账户数据",
-            _ => "请稍候",
+                    ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0D59C25CE7A97C4D)
+                    : IsDuoMode ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCE632BA9DCA3BAD9) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text80652BE50407F6A0),
+            LoginStage.Unlock => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC15D8A980EEC8CBC),
+            LoginStage.PinUnlock => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC15D8A980EEC8CBC),
+            LoginStage.KeyConnectorUnlock => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7006498F498CEB30),
+            LoginStage.TrustedDeviceSso => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA0B7742C128B3952),
+            LoginStage.TrustedDeviceApproval => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6D1F6406824C2BA6),
+            LoginStage.TdeV2JitProvisioning => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC63F8C7405116F6F),
+            LoginStage.AccountDeletionRecovery => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE2D6654015A34F7A),
+            _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text20CFD1C3B4C849A9),
         }
         : Stage switch
         {
-            LoginStage.Account => "继续",
-            LoginStage.LoginWithDevice => "等待设备批准",
-            LoginStage.DeviceVerification => "验证设备",
-            LoginStage.PasswordChangeRequired => "更新主密码",
+            LoginStage.Account => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7C9691192F1B7340),
+            LoginStage.LoginWithDevice => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6AE9704445B25B5A),
+            LoginStage.DeviceVerification => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1E58055546842167),
+            LoginStage.PasswordChangeRequired => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text96DFC135A1EAC3B2),
             LoginStage.TwoFactor => IsRecoveryCodeMode
-                ? "恢复并登录"
+                ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2C7E6131265CD356)
                 : IsWebAuthnMode
-                    ? "使用安全密钥"
-                    : IsDuoMode ? "打开 Duo" : "验证",
-            LoginStage.Unlock => "解锁",
-            LoginStage.PinUnlock => "解锁",
-            LoginStage.KeyConnectorUnlock => "通过 Key Connector 解锁",
-            LoginStage.TrustedDeviceSso => "使用企业 SSO 解锁",
-            LoginStage.TrustedDeviceApproval => "请求设备批准",
-            LoginStage.TdeV2JitProvisioning => "完成账户初始化",
-            LoginStage.AccountDeletionRecovery => "账户删除恢复",
-            _ => "登录",
+                    ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextACBF7FBFB2509C24)
+                    : IsDuoMode ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text66B6A3EFFBC0306F) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text154723A1AA0A09A4),
+            LoginStage.Unlock => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text70FBA17FFFB72F1A),
+            LoginStage.PinUnlock => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text70FBA17FFFB72F1A),
+            LoginStage.KeyConnectorUnlock => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4D1D50DE94008BD0),
+            LoginStage.TrustedDeviceSso => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text68F234FE70D8CADC),
+            LoginStage.TrustedDeviceApproval => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1D199F9370640DD0),
+            LoginStage.TdeV2JitProvisioning => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9FF367BEDB88298E),
+            LoginStage.AccountDeletionRecovery => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB847DB2F1A2C997C),
+            _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1E2DF9C3075AE9E4),
         };
 
     public string FormTitle => Stage switch
     {
-        LoginStage.Password => "输入主密码",
-        LoginStage.LoginWithDevice => "在其他设备上批准",
-        LoginStage.DeviceVerification => "验证新设备",
-        LoginStage.PasswordChangeRequired => "必须更新主密码",
+        LoginStage.Password => IsApiKeyMode ? "Personal API key sign-in" : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text91BFD6063710FADF),
+        LoginStage.LoginWithDevice => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text24A7591B498DFBCB),
+        LoginStage.DeviceVerification => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF7CFC51BDC273DB0),
+        LoginStage.PasswordChangeRequired => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD23804775C52FD31),
         LoginStage.TwoFactor => IsRecoveryCodeMode
-            ? "两步登录 · 恢复代码"
-            : $"两步登录 · {ProviderDisplayName(ResolveSelectedTwoFactorProvider())}",
-        LoginStage.Unlock => "密码库已锁定",
-        LoginStage.PinUnlock => "密码库已锁定",
-        LoginStage.KeyConnectorUnlock => "通过 Key Connector 解锁",
-        LoginStage.TrustedDeviceSso => "可信设备登录",
-        LoginStage.TrustedDeviceApproval => "批准此设备",
-        LoginStage.TdeV2JitProvisioning => "设置账户加密",
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEDD6C223B64B7B5E)
+            : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text62AA5B7A409DFF6F,ProviderDisplayName(ResolveSelectedTwoFactorProvider())),
+        LoginStage.Unlock => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text799316DCCBA64119),
+        LoginStage.PinUnlock => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text799316DCCBA64119),
+        LoginStage.KeyConnectorUnlock => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4D1D50DE94008BD0),
+        LoginStage.TrustedDeviceSso => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA958E42950912643),
+        LoginStage.TrustedDeviceApproval => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF9D8B15D6898FF6D),
+        LoginStage.TdeV2JitProvisioning => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB834D6431FA92B5E),
         LoginStage.AccountDeletionRecovery => AccountDeletionRecoveryTitle,
-        _ => "登录",
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1E2DF9C3075AE9E4),
     };
 
     public string FormSubtitle => Stage switch
     {
-        LoginStage.Password => $"{AccountSummary} · {ServerHost}",
-        LoginStage.LoginWithDevice => "在已登录的设备上核对指纹并批准请求。",
-        LoginStage.DeviceVerification => "验证此设备后继续登录。",
-        LoginStage.PasswordChangeRequired => "满足账户要求后继续使用保险库。",
+        LoginStage.Password => IsApiKeyMode
+            ? "The API key authenticates this account. The master password decrypts it locally."
+            : $"{AccountSummary} · {ServerHost}",
+        LoginStage.LoginWithDevice => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text614D25837F55AE60),
+        LoginStage.DeviceVerification => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text009047809A2743BC),
+        LoginStage.PasswordChangeRequired => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text57AEF4A59BF8D1AA),
         LoginStage.TwoFactor => IsRecoveryCodeMode
-            ? "登录后两步登录会全部关闭，需要重新设置"
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0CEAECFDDD8A72E0)
             : IsWebAuthnMode
-                ? "插入安全密钥，或者用 Windows Hello 验证"
+                ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2C7D4F4AB6B753F1)
                 : IsDuoMode
-                    ? "在浏览器中完成 Duo 验证"
+                    ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2B3D73FCD62AE167)
                     : ResolveSelectedTwoFactorProvider() == EmailTwoFactorProvider
-                        ? "输入发送到邮箱中的验证码"
-                        : "打开身份验证器应用，输入验证码",
+                        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBEC24832DDD5E149)
+                        : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0FFEABE91CFB28AF),
         LoginStage.Unlock or LoginStage.PinUnlock => $"{AccountDisplayName} · {ServerHost}",
-        LoginStage.KeyConnectorUnlock => "连接组织的 Key Connector 以解锁。",
-        LoginStage.TrustedDeviceSso => "重新完成企业身份验证以解锁。",
-        LoginStage.TrustedDeviceApproval => "核对指纹短语后批准此设备。",
-        LoginStage.TdeV2JitProvisioning => "完成企业账户的首次加密设置。",
-        LoginStage.AccountDeletionRecovery => "先确认删除状态并完成本地恢复。",
-        _ => "使用 Bitwarden 或 Vaultwarden 账户",
+        LoginStage.KeyConnectorUnlock => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2F077FF5DE0D2D2A),
+        LoginStage.TrustedDeviceSso => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text800CDDD9EA7DEE07),
+        LoginStage.TrustedDeviceApproval => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text298A4409C0A2AA7E),
+        LoginStage.TdeV2JitProvisioning => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF89727E8EA3FD415),
+        LoginStage.AccountDeletionRecovery => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB2E276756F8AF043),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1F9E4918CF6DD169),
     };
 
     public string StepText => Stage switch
     {
-        LoginStage.Password => "主密码",
-        LoginStage.LoginWithDevice => "在另一台设备上批准",
-        LoginStage.DeviceVerification => "安全检查",
-        LoginStage.PasswordChangeRequired => "账户恢复",
-        LoginStage.TwoFactor => "附加验证",
-        LoginStage.Unlock => "已锁定",
-        LoginStage.PinUnlock => "已锁定",
-        LoginStage.KeyConnectorUnlock => "已锁定",
-        LoginStage.TrustedDeviceSso => "需要重新认证",
-        LoginStage.TrustedDeviceApproval => "需要另一台设备",
-        LoginStage.TdeV2JitProvisioning => "首次企业登录",
-        LoginStage.AccountDeletionRecovery => "安全恢复",
-        _ => "账户信息",
+        LoginStage.Password => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF36F5F11EDEFB912),
+        LoginStage.LoginWithDevice => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB7ED76DF2220A3DA),
+        LoginStage.DeviceVerification => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB16CF917405DD423),
+        LoginStage.PasswordChangeRequired => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE2B840D8022EB61E),
+        LoginStage.TwoFactor => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5E406936FA039548),
+        LoginStage.Unlock => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text56CEE9095850D2FA),
+        LoginStage.PinUnlock => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text56CEE9095850D2FA),
+        LoginStage.KeyConnectorUnlock => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text56CEE9095850D2FA),
+        LoginStage.TrustedDeviceSso => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7BFE6A805EDEBC5C),
+        LoginStage.TrustedDeviceApproval => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA613C234017E7C68),
+        LoginStage.TdeV2JitProvisioning => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB65CD461B47FF2EB),
+        LoginStage.AccountDeletionRecovery => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1A41926D6ADD97B2),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text34E5636C63CC8F78),
     };
 
     public bool ShowAccountContext => !IsAccountStage && !string.IsNullOrWhiteSpace(Email);
 
-    public string AccountSummary => string.IsNullOrWhiteSpace(Email) ? "邮箱地址" : Email.Trim();
+    public string AccountSummary => string.IsNullOrWhiteSpace(Email) ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2E412E03837F7DF0) : Email.Trim();
 
     public string ServerSummary => FormatServerSummary(ResolveServerUrl());
 
@@ -821,6 +874,8 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     public void Deactivate()
     {
+        ApiKeySecret = string.Empty;
+        ApiKeyClientId = string.Empty;
         InvalidatePasswordHintRequest();
         _onSuccess = null;
         _tryAcceptSuccess = null;
@@ -1037,10 +1092,10 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                     == AccountDeletionRecoveryNoticeKind.LedgerUnavailable;
             SetStatus(
                 stillUnavailable
-                    ? "安全存储仍不可用，所有账户登录保持禁用。"
+                    ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7F007CA140D2309F)
                     : IsAccountDeletionRecoveryStage
-                        ? "安全存储检查已恢复，请继续处理账户删除记录。"
-                        : "安全存储检查已恢复。",
+                        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE3274866761A7968)
+                        : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB959C60A7BB5C068),
                 stillUnavailable
                     ? LoginStatusKind.Error
                     : LoginStatusKind.Success);
@@ -1052,7 +1107,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         OnPropertyChanged(nameof(CanUseDemoVault));
         UseDemoVaultCommand.NotifyCanExecuteChanged();
         SetStatus(
-            "请输入其他账户的邮箱地址。待恢复账户仍不可登录。",
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5A4B328A30191D38),
             LoginStatusKind.Info);
     }
 
@@ -1076,7 +1131,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             catch
             {
                 SetStatus(
-                    "重置请求结果无法确认，应用将安全退出，下次启动会重新检查。",
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9E15FE0C8A335558),
                     LoginStatusKind.Error);
                 await ExitAfterLocalDataResetRequestAsync(alwaysFailClosed: true);
                 return;
@@ -1085,19 +1140,19 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             if (result.Status is LocalDataResetRequestStatus.Requested
                 or LocalDataResetRequestStatus.AlreadyPending)
             {
-                SetStatus("本地数据重置请求已记录，正在安全退出。", LoginStatusKind.Success);
+                SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text77BFEA8B9B125A80), LoginStatusKind.Success);
             }
             else
             {
                 SetStatus(
-                    "重置请求结果无法确认，应用将安全退出，下次启动会重新检查。",
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9E15FE0C8A335558),
                     LoginStatusKind.Info);
             }
             await ExitAfterLocalDataResetRequestAsync(alwaysFailClosed: false);
         }
         catch (OperationCanceledException) when (!resetAttempted && ct.IsCancellationRequested)
         {
-            SetStatus("本地数据重置已取消。", LoginStatusKind.Info);
+            SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text13CDD4CC6F88C58F), LoginStatusKind.Info);
         }
         finally
         {
@@ -1117,7 +1172,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         {
             failClosed = true;
             SetStatus(
-                "重置请求结果无法确认，自动退出失败。请立即关闭应用；下次启动会重新检查。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7A81B377F4455ECA),
                 LoginStatusKind.Error);
         }
 
@@ -1156,24 +1211,24 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             if (result.Status == AccountDeletionLocalResolutionStatus.Completed)
             {
                 FinishAccountDeletionRecoveryAction(
-                    "本机数据已清理，该账户在此安装中保持安全隔离。你可以使用其他账户。",
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1EBEA131AEC7D43F),
                     LoginStatusKind.Success);
                 return;
             }
             if (result.Status == AccountDeletionLocalResolutionStatus.NotFound)
             {
                 FinishAccountDeletionRecoveryAction(
-                    "账户删除恢复记录已变化，未执行本地清理。请重新检查后再选择账户。",
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDB08724D0D51A6DE),
                     LoginStatusKind.Info,
-                    "账户删除恢复记录已变化，请处理当前恢复记录。");
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text527FBC187D0D9776));
                 return;
             }
 
             RetainAccountDeletionRecovery(result.Pending);
             SetStatus(
                 result.Status == AccountDeletionLocalResolutionStatus.CancelledBeforeCleanup
-                    ? "本地清理已取消。"
-                    : "未能完整清除此设备上的账户数据，请重试。",
+                    ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB261C35B068A9CF1)
+                    : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text18615DA78C720317),
                 result.Status == AccountDeletionLocalResolutionStatus.CancelledBeforeCleanup
                     ? LoginStatusKind.Info
                     : LoginStatusKind.Error);
@@ -1182,14 +1237,14 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
         {
             if (IsCurrentAccountDeletionRecoveryOperation(generation, expected))
-                SetStatus("本地清理已取消。", LoginStatusKind.Info);
+                SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB261C35B068A9CF1), LoginStatusKind.Info);
         }
         catch
         {
             if (IsCurrentAccountDeletionRecoveryOperation(generation, expected))
             {
                 SetStatus(
-                    "未能完整清除此设备上的账户数据，请重试。",
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text18615DA78C720317),
                     LoginStatusKind.Error);
             }
         }
@@ -1231,7 +1286,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             {
                 _accountDeletionRecoveryHost?.MarkResolved(expected);
                 FinishAccountDeletionRecoveryAction(
-                    "本机数据已清理，该账户在此安装中保持安全隔离。你可以使用其他账户。",
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1EBEA131AEC7D43F),
                     LoginStatusKind.Success);
                 return;
             }
@@ -1250,21 +1305,21 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             };
             RetainAccountDeletionRecovery(pending);
             SetStatus(
-                "本地清理仍未完成，请检查本机安全存储后重试。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text847DCF2337A38D85),
                 LoginStatusKind.Error);
         }
         catch (OperationCanceledException ex)
             when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
         {
             if (IsCurrentAccountDeletionRecoveryOperation(generation, expected))
-                SetStatus("本地清理已取消。", LoginStatusKind.Info);
+                SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB261C35B068A9CF1), LoginStatusKind.Info);
         }
         catch
         {
             if (IsCurrentAccountDeletionRecoveryOperation(generation, expected))
             {
                 SetStatus(
-                    "本地清理仍未完成，请检查本机安全存储后重试。",
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text847DCF2337A38D85),
                     LoginStatusKind.Error);
             }
         }
@@ -1324,8 +1379,10 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     private void FinishAccountDeletionRecoveryAction(
         string message,
         LoginStatusKind statusKind,
-        string remainingRecoveryMessage = "已完成一项本地恢复，请继续处理其余账户记录。")
+        string? remainingRecoveryMessage = null)
     {
+        remainingRecoveryMessage ??= global::App.Localization.UiText.Get(
+            global::App.Localization.UiStringKey.TextD974D584F8F8B2D1);
         var serverUrl = _accountDeletionRecoveryServerUrl;
         var email = AccountDeletionRecoveryNotice is
                 AccountDeletionRecoveryNoticeKind.ServerConfirmed
@@ -1394,18 +1451,22 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         _usesKeyConnector = unlockMethod == PersistedSessionUnlockMethod.KeyConnector;
         _usesTrustedDeviceSso = unlockMethod == PersistedSessionUnlockMethod.TrustedDeviceSso;
         OnPropertyChanged(nameof(AlternativeUnlockText));
-        Stage = (_pin?.IsPinSet ?? false)
+        var requiresMasterPassword = _pin?.RequiresMasterPasswordBeforePin == true;
+        Stage = (_pin?.IsPinSet ?? false) && !requiresMasterPassword
             ? LoginStage.PinUnlock
             : ResolveNonPinUnlockStage();
         SetStatus(
-            IsPinUnlockStage
-                ? "请输入 PIN 解锁。"
+            requiresMasterPassword
+                ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA742F292FBBB039A)
+                : IsPinUnlockStage
+                ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE4C5CE7FC065A98B)
                 : IsKeyConnectorUnlockStage
-                    ? "连接组织的 Key Connector 以解锁保险库。"
+                    ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6C26BE6DAC29951E)
                     : IsTrustedDeviceSsoStage
-                        ? "请重新完成企业 SSO，以确认当前设备的信任状态。"
-                    : "请输入主密码解锁。",
-            LoginStatusKind.Info);
+                        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text52729D84A5FC5563)
+                    : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text92735DEC8C488201),
+            LoginStatusKind.Info,
+            isUnlockPrompt: !requiresMasterPassword && (Stage is LoginStage.Unlock or LoginStage.PinUnlock));
     }
 
     public void PrepareAccount(string serverUrl, string email)
@@ -1496,7 +1557,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 ReturnFromTwoFactorStage();
             else if (IsDeviceVerificationStage)
                 ReturnFromDeviceVerificationStage();
-            SetStatus("认证会话已失效，请重试。", LoginStatusKind.Error);
+            SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE02E26E76AA0E916), LoginStatusKind.Error);
             RequestFocus(CurrentSecretFocusTarget());
             return;
         }
@@ -1517,7 +1578,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                             "The WebAuthn challenge is unavailable.");
                     }
 
-                    SetStatus("请按系统提示使用安全密钥或 Windows Hello。", LoginStatusKind.Info);
+                    SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC5883D11EA9AE0EE), LoginStatusKind.Info);
                     twoFactorToken = await _webAuthnTwoFactor.AuthenticateAsync(
                         providerData,
                         ServerEndpoints.FromWebVault(ResolveServerUrl()),
@@ -1531,7 +1592,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                         throw new DuoTwoFactorException("The Duo challenge is unavailable.");
                     }
 
-                    SetStatus("请在 Duo 窗口中完成验证。", LoginStatusKind.Info);
+                    SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1E2AFE1D2D279D33), LoginStatusKind.Info);
                     twoFactorToken = await _duoTwoFactor.AuthenticateAsync(
                         providerData,
                         ServerEndpoints.FromWebVault(ResolveServerUrl()),
@@ -1561,13 +1622,22 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                             twoFactorProvider,
                             ct,
                             rememberDevice: !IsRecoveryCodeMode && RememberDevice)
-                        : await _auth.LoginAsync(attempt, ResolveServerUrl(), Email.Trim(), MasterPassword, ct);
+                        : IsApiKeyMode
+                            ? await _auth.LoginWithApiKeyAsync(
+                                attempt,
+                                ResolveServerUrl(),
+                                Email.Trim(),
+                                ApiKeyClientId.Trim(),
+                                ApiKeySecret,
+                                MasterPassword,
+                                ct)
+                            : await _auth.LoginAsync(attempt, ResolveServerUrl(), Email.Trim(), MasterPassword, ct);
 
             await HandleResultAsync(attempt, result);
         }
         catch (WebAuthnTwoFactorCancelledException)
         {
-            SetStatus("安全密钥验证已取消，可重新尝试或选择其他方式。", LoginStatusKind.Info);
+            SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2DC4E9694B9E9F62), LoginStatusKind.Info);
             RequestFocus(LoginFocusTarget.PrimaryAction);
         }
         catch (WebAuthnTwoFactorException)
@@ -1578,7 +1648,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         }
         catch (DuoTwoFactorCancelledException)
         {
-            SetStatus("Duo 验证已取消，可重新尝试或选择其他方式。", LoginStatusKind.Info);
+            SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3A4C44BE28ED9F46), LoginStatusKind.Info);
             RequestFocus(LoginFocusTarget.PrimaryAction);
         }
         catch (DuoTwoFactorException)
@@ -1611,6 +1681,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         }
         finally
         {
+            ApiKeySecret = string.Empty;
             IsBusy = false;
         }
     }
@@ -1623,14 +1694,12 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         var serverUrl = ResolveServerUrl();
         if (!IsValidServerUrl(serverUrl))
         {
-            SetStatus("请输入有效的服务器地址。", LoginStatusKind.Error);
-            RequestFocus(LoginFocusTarget.ServerUrl);
+            SetFieldError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA9C8539849E5660C), LoginFocusTarget.ServerUrl);
             return false;
         }
         if (string.IsNullOrWhiteSpace(Email))
         {
-            SetStatus("请输入邮箱地址。", LoginStatusKind.Error);
-            RequestFocus(LoginFocusTarget.Email);
+            SetFieldError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCC1DD3420167F716), LoginFocusTarget.Email);
             return false;
         }
 
@@ -1656,7 +1725,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             IsBusy = true;
             IsSsoPending = true;
             IsSsoBrowserOpened = false;
-            SetStatus("请在浏览器中完成企业 SSO 登录。", LoginStatusKind.Info);
+            SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4D1DC9D952D5FC73), LoginStatusKind.Info);
 
             var endpoints = ServerEndpoints.FromWebVault(serverUrl);
             var browserOpened = new Progress<bool>(opened =>
@@ -1670,7 +1739,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 SsoOrganizationIdentifier,
                 browserOpened,
                 cancellation.Token);
-            SetStatus("正在完成 SSO 登录…", LoginStatusKind.Info);
+            SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE4BE808A116C4241), LoginStatusKind.Info);
             var result = await _auth.LoginWithSsoAsync(
                 attempt,
                 serverUrl,
@@ -1718,13 +1787,13 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         {
             if (!await _ssoAuthorization.ReopenPendingBrowserAsync(cancellation.Token)
                 && ReferenceEquals(_ssoCancellation, cancellation) && !cancellation.IsCancellationRequested)
-                SetStatus("无法重新打开浏览器，请切换到已有登录页面或取消后重试。", LoginStatusKind.Error);
+                SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD4E2CF6A2C4B6445), LoginStatusKind.Error);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception ex) when (ex is SsoAuthorizationException or InvalidOperationException)
         {
             if (ReferenceEquals(_ssoCancellation, cancellation))
-                SetStatus("无法重新打开浏览器，请切换到已有登录页面或取消后重试。", LoginStatusKind.Error);
+                SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD4E2CF6A2C4B6445), LoginStatusKind.Error);
         }
     }
 
@@ -1755,7 +1824,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         LoginWithDeviceTerminal = LoginWithDeviceTerminalKind.None;
         IsBusy = true;
         Stage = LoginStage.LoginWithDevice;
-        SetStatus("正在创建设备登录请求。", LoginStatusKind.Info);
+        SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFE7BDBAC615E654E), LoginStatusKind.Info);
 
         try
         {
@@ -1790,7 +1859,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             }
 
             SetStatus(
-                "请在另一台已登录设备上核对指纹短语并批准此请求。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6E4C5EF6DDE4522C),
                 LoginStatusKind.Info);
 
             while (IsCurrentLoginWithDeviceOperation(generation, cancellation, attempt))
@@ -1800,7 +1869,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 {
                     CompleteLoginWithDeviceTerminal(
                         LoginWithDeviceTerminalKind.Expired,
-                        "设备登录请求已过期。请重新发起请求或使用主密码登录。",
+                        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFCE4930A78A1E385),
                         LoginStatusKind.Error,
                         cancelService: true);
                     return;
@@ -1853,7 +1922,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                     {
                         CompleteLoginWithDeviceTerminal(
                             LoginWithDeviceTerminalKind.Denied,
-                            "另一台设备拒绝了登录请求。请重新发起请求或使用主密码登录。",
+                            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text694F7EC4E5358984),
                             LoginStatusKind.Error,
                             cancelService: false);
                         return;
@@ -1863,7 +1932,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                     {
                         CompleteLoginWithDeviceTerminal(
                             LoginWithDeviceTerminalKind.Expired,
-                            "设备登录请求已过期。请重新发起请求或使用主密码登录。",
+                            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFCE4930A78A1E385),
                             LoginStatusKind.Error,
                             cancelService: false);
                         return;
@@ -1879,7 +1948,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                     }
 
                     SetStatus(
-                        "请在另一台已登录设备上核对指纹短语并批准此请求。",
+                        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6E4C5EF6DDE4522C),
                         LoginStatusKind.Info);
                     await Task.Delay(LoginWithDevicePollInterval, cancellation.Token);
                     continue;
@@ -1891,7 +1960,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                     })
                 {
                     SetStatus(
-                        "暂时无法检查设备批准状态，正在重试。",
+                        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2F79A92B3835297D),
                         LoginStatusKind.Info);
                     await Task.Delay(LoginWithDevicePollInterval, cancellation.Token);
                     continue;
@@ -1939,7 +2008,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             {
                 CompleteLoginWithDeviceTerminal(
                     LoginWithDeviceTerminalKind.Canceled,
-                    "设备登录已取消。你仍可使用主密码登录。",
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8992739C06ABCE52),
                     LoginStatusKind.Info,
                     cancelService: true);
             }
@@ -1988,7 +2057,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     [RelayCommand(CanExecute = nameof(CanCancelLoginWithDevice))]
     private void CancelLoginWithDevice() => CompleteLoginWithDeviceTerminal(
         LoginWithDeviceTerminalKind.Canceled,
-        "设备登录已取消。你仍可使用主密码登录。",
+        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8992739C06ABCE52),
         LoginStatusKind.Info,
         cancelService: true);
 
@@ -2078,7 +2147,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             LoginWithDeviceTerminal = LoginWithDeviceTerminalKind.Expired;
             IsBusy = false;
             SetStatus(
-                "设备登录请求已过期。请重新发起请求或使用主密码登录。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFCE4930A78A1E385),
                 LoginStatusKind.Error);
             RequestFocus(LoginFocusTarget.MasterPassword);
         }
@@ -2154,7 +2223,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         CompleteLoginWithDeviceTerminal(
             LoginWithDeviceTerminalKind.Failed,
             failure.Kind is AuthFailureKind.Network or AuthFailureKind.Timeout
-                ? "设备登录请求可能已经发送，但未收到服务器响应。请稍后重新发起，并只批准新页面显示的指纹短语。"
+                ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF626EC92CB2CC4A7)
                 : LoginWithDeviceFailureMessage(failure),
             LoginStatusKind.Error,
             cancelService: true);
@@ -2173,7 +2242,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         ClearTwoFactorChallengeState();
         CompleteLoginWithDeviceTerminal(
             LoginWithDeviceTerminalKind.OutcomeUncertain,
-            "设备批准后的登录结果无法确认。请使用主密码重新登录以确认账户状态，不要重试设备登录。",
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4166C7678F99D802),
             LoginStatusKind.Error,
             cancelService: false);
     }
@@ -2182,11 +2251,11 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         failure.Kind switch
         {
             AuthFailureKind.InvalidCredentials =>
-                "设备登录授权无效或已过期。请重新发起请求。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF1FE8882639B63B5),
             AuthFailureKind.SafeMessage =>
-                "当前设备无法使用设备登录。请使用主密码登录。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text65E8F45D102F86BB),
             AuthFailureKind.Unspecified =>
-                "设备登录失败，请稍后重试。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text77428D9DB100EDB6),
             _ => FailureMessage(failure, wasTwoFactor: false),
         };
 
@@ -2214,7 +2283,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                         == LoginWithDeviceCancellationStatus.OutcomeUncertain)
                 {
                     terminal = LoginWithDeviceTerminalKind.OutcomeUncertain;
-                    message = "设备批准可能与取消同时发生，登录结果无法确认。请使用主密码重新登录以确认账户状态，不要重试设备登录。";
+                    message = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3A4B11E851EEF02F);
                     statusKind = LoginStatusKind.Error;
                 }
             }
@@ -2467,16 +2536,16 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             result.Status switch
             {
                 LoginWithDeviceQuarantineClearStatus.Cleared =>
-                    "设备登录隔离已清除，正在重新检查此设备。",
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text844A03306C229E1C),
                 LoginWithDeviceQuarantineClearStatus.AlreadyAbsent =>
-                    "设备登录隔离已不存在，正在重新检查此设备。",
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB9C2AA7F7C85A8AC),
                 LoginWithDeviceQuarantineClearStatus.NotEligible =>
-                    "隔离期尚未结束。请使用主密码或企业 SSO 完成身份确认。",
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text04B087985A0E1ECF),
                 LoginWithDeviceQuarantineClearStatus.Changed =>
-                    "设备登录隔离状态已变化，已重新读取最新状态。",
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE708D7557FA34C17),
                 LoginWithDeviceQuarantineClearStatus.Corrupt =>
-                    "本机设备登录安全状态已损坏，无法清除隔离。",
-                _ => "暂时无法清除设备登录隔离。设备登录仍保持停用。",
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text624835823E41786E),
+                _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3A364F81DE8B6588),
             },
             result.IsCleared ? LoginStatusKind.Success : LoginStatusKind.Error);
         StartLoginWithDeviceAvailabilityProbe();
@@ -2492,7 +2561,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         if (service is null || lease is null)
         {
             ReturnFromTrustedDeviceApproval(
-                "设备批准服务不可用，请重新完成企业 SSO。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD9A83B91AE38EF79),
                 LoginStatusKind.Error);
             return;
         }
@@ -2512,8 +2581,8 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             ApprovalFingerprint = request.FingerprintPhrase;
             SetStatus(
                 _approvalMethod == TrustedDeviceApprovalMethod.Administrator
-                    ? "请等待组织管理员核对指纹并批准此请求。"
-                    : "请在另一台已解锁设备上核对指纹并批准此请求。",
+                    ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE9682E07E64CFA99)
+                    : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6CB460D88AAD4FF6),
                 LoginStatusKind.Info);
 
             while (true)
@@ -2532,14 +2601,14 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 if (poll.Status == TrustedDeviceApprovalStatus.Denied)
                 {
                     ReturnFromTrustedDeviceApproval(
-                        "另一台设备拒绝了此请求。",
+                        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBD90CAA5C8BC0ED7),
                         LoginStatusKind.Error);
                     return;
                 }
                 if (poll.Status == TrustedDeviceApprovalStatus.Expired)
                 {
                     ReturnFromTrustedDeviceApproval(
-                        "设备批准请求已过期，请重新完成企业 SSO。",
+                        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4321D5A1245D6CB1),
                         LoginStatusKind.Error);
                     return;
                 }
@@ -2577,7 +2646,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         {
             service.Cancel(lease);
             ReturnFromTrustedDeviceApproval(
-                "设备批准已取消。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5B51CE28698579EE),
                 LoginStatusKind.Info);
         }
         catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
@@ -2591,14 +2660,14 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         {
             service.Cancel(lease);
             ReturnFromTrustedDeviceApproval(
-                "无法连接服务器，请检查网络后重试。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9B0501625B589BC9),
                 LoginStatusKind.Error);
         }
         catch (TrustedDeviceApprovalException)
         {
             service.Cancel(lease);
             ReturnFromTrustedDeviceApproval(
-                "设备批准响应无效，请重新完成企业 SSO。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6898E24FA43A79EA),
                 LoginStatusKind.Error);
         }
         finally
@@ -2617,7 +2686,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         {
             ClearTdeV2JitProvisioning();
             Stage = LoginStage.TrustedDeviceSso;
-            SetStatus("账户初始化会话已失效，请重新完成企业 SSO。", LoginStatusKind.Error);
+            SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA406A2098500DDDE), LoginStatusKind.Error);
             return;
         }
 
@@ -2640,9 +2709,9 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
             var message = result is AuthResult.Failure failure
                 ? failure.Kind == AuthFailureKind.SafeMessage
-                    ? "账户密钥可能已部分提交。请重新登录核对状态，不要直接重复初始化。"
+                    ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9082168205CF9F96)
                     : FailureMessage(failure, wasTwoFactor: false)
-                : "账户初始化会话已失效，请重新完成企业 SSO。";
+                : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA406A2098500DDDE);
             ClearTdeV2JitProvisioning();
             Stage = LoginStage.TrustedDeviceSso;
             SetStatus(message, LoginStatusKind.Error);
@@ -2651,7 +2720,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             UiExceptionPolicy.IsGenuineCancellation(ex, ct)
             || lease.CancellationToken.IsCancellationRequested)
         {
-            SetStatus("账户初始化已取消。", LoginStatusKind.Info);
+            SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4AA66B2C5CB5667B), LoginStatusKind.Info);
         }
         finally
         {
@@ -2682,7 +2751,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             if (signature is null)
             {
                 AbandonAuthenticationAttempt(attempt);
-                SetStatus("Windows Hello 未完成。", LoginStatusKind.Info);
+                SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF97B74127CF56E08), LoginStatusKind.Info);
                 return;
             }
 
@@ -2720,31 +2789,27 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         {
             ClearRequiredPasswordChange();
             Stage = LoginStage.Password;
-            SetStatus("强制改密会话已失效，请重新登录。", LoginStatusKind.Error);
+            SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB07501BE717A6027), LoginStatusKind.Error);
             return;
         }
 
         if (NewMasterPassword.Length is < MasterPasswordPolicyRequirements.MinimumLength
                 or > MasterPasswordPolicyRequirements.MaximumLength)
         {
-            SetStatus(
-                $"新主密码长度必须为 {MasterPasswordPolicyRequirements.MinimumLength} 到 "
-                + $"{MasterPasswordPolicyRequirements.MaximumLength} 个字符。",
-                LoginStatusKind.Error);
-            RequestFocus(LoginFocusTarget.NewMasterPassword);
+            SetFieldError(
+                global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextBDCAFC74BC969881,MasterPasswordPolicyRequirements.MinimumLength)
+                + global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextCD9F30C1A9C1B07E,MasterPasswordPolicyRequirements.MaximumLength), LoginFocusTarget.NewMasterPassword);
             return;
         }
         if (!string.Equals(NewMasterPassword, ConfirmNewMasterPassword, StringComparison.Ordinal))
         {
-            SetStatus("两次输入的新主密码不一致。", LoginStatusKind.Error);
-            RequestFocus(LoginFocusTarget.NewMasterPassword);
+            SetFieldError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD64FFABDBF3917ED), LoginFocusTarget.NewMasterPassword);
             return;
         }
         if (MasterPasswordHint.Length > 50
             || string.Equals(MasterPasswordHint.Trim(), NewMasterPassword, StringComparison.Ordinal))
         {
-            SetStatus("密码提示不能等于主密码，且不能超过 50 个字符。", LoginStatusKind.Error);
-            RequestFocus(LoginFocusTarget.NewMasterPassword);
+            SetFieldError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2275448E3BC841A4), LoginFocusTarget.NewMasterPassword);
             return;
         }
 
@@ -2766,7 +2831,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                     ClearRequiredPasswordChange();
                     RefreshSavedAccounts();
                     Stage = LoginStage.Password;
-                    SetStatus("主密码已更新，请使用新主密码登录。", LoginStatusKind.Success);
+                    SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text789964519717BE78), LoginStatusKind.Success);
                     RequestFocus(LoginFocusTarget.MasterPassword);
                     break;
                 case AuthResult.PasswordChangeUncertain:
@@ -2774,7 +2839,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                     RefreshSavedAccounts();
                     Stage = LoginStage.Password;
                     SetStatus(
-                        "服务器可能已经完成改密。请先使用新主密码登录确认。",
+                        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text77811F0564F33C99),
                         LoginStatusKind.Info);
                     RequestFocus(LoginFocusTarget.MasterPassword);
                     break;
@@ -2785,7 +2850,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 default:
                     ClearRequiredPasswordChange();
                     Stage = LoginStage.Password;
-                    SetStatus("强制改密会话已失效，请重新登录。", LoginStatusKind.Error);
+                    SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB07501BE717A6027), LoginStatusKind.Error);
                     RequestFocus(LoginFocusTarget.MasterPassword);
                     break;
             }
@@ -2793,14 +2858,14 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         catch (OperationCanceledException ex)
             when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
         {
-            SetStatus("改密已取消，可重新提交。", LoginStatusKind.Info);
+            SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB2C17B463283370A), LoginStatusKind.Info);
         }
         catch (HttpRequestException)
         {
             ClearRequiredPasswordChange();
             Stage = LoginStage.Password;
             SetStatus(
-                "改密结果无法确认，请使用新主密码重新登录。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text69BB59F297B20D98),
                 LoginStatusKind.Info);
         }
         finally
@@ -2841,6 +2906,9 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             CancelLoginWithDeviceAvailabilityProbe();
             ResetLoginWithDevicePresentation(clearAvailability: true);
             MasterPassword = string.Empty;
+            ApiKeySecret = string.Empty;
+            ApiKeyClientId = string.Empty;
+            IsApiKeyMode = false;
             Stage = LoginStage.Account;
         }
         else if (IsDeviceVerificationStage)
@@ -2852,7 +2920,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         {
             ClearTrustedDeviceApproval();
             Stage = LoginStage.TrustedDeviceSso;
-            SetStatus("设备批准已取消。", LoginStatusKind.Info);
+            SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5B51CE28698579EE), LoginStatusKind.Info);
         }
     }
 
@@ -2863,7 +2931,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         var sent = attempt is not null
             && await _auth.ResendTwoFactorEmailAsync(attempt);
         SetStatus(
-            sent ? "验证码已重新发送，请查收邮箱。" : "验证码发送失败，请稍后重试。",
+            sent ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text88847641B77E6CC2) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6108070FC5C825DB),
             sent ? LoginStatusKind.Success : LoginStatusKind.Error);
     }
 
@@ -2874,7 +2942,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         var sent = attempt is not null
             && await _auth.ResendNewDeviceVerificationAsync(attempt);
         SetStatus(
-            sent ? "新的设备验证码已发送，请查收邮箱。" : "设备验证码发送失败，请稍后重试。",
+            sent ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text158623E9757FFFC6) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC438E3E9A9A21B2D),
             sent ? LoginStatusKind.Success : LoginStatusKind.Error);
     }
 
@@ -2897,10 +2965,10 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         SelectedTwoFactorProviderIndex = 0;
         SetStatus(
             IsRecoveryCodeMode
-                ? "恢复代码验证成功后，账户的所有两步验证方式都会被停用。"
+                ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2C5A840D68009AA0)
                 : IsWebAuthnMode
-                    ? "请使用安全密钥或 Windows Hello 完成验证。"
-                    : IsDuoMode ? "请打开 Duo 窗口完成验证。" : "请输入两步验证码。",
+                    ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6513C3EA82E29EAE)
+                    : IsDuoMode ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text15E78C7911618EC3) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7D4FFC10D08AE2EF),
             LoginStatusKind.Info);
         RequestFocus(CurrentStageFocusTarget());
         NotifyTwoFactorModeProperties();
@@ -2929,7 +2997,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         {
             await _auth.RequestPasswordHintAsync(serverUrl, email, operationToken);
             if (IsCurrent())
-                SetStatus("请求已提交。如果此账户设置了主密码提示，请检查邮箱。", LoginStatusKind.Info);
+                SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDE4EE248911F2DBE), LoginStatusKind.Info);
         }
         catch (OperationCanceledException) when (operationToken.IsCancellationRequested)
         {
@@ -2937,7 +3005,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex, operationToken))
         {
             if (IsCurrent())
-                SetStatus("获取主密码提示超时，请稍后重试。", LoginStatusKind.Error);
+                SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB788983A282B5A6B), LoginStatusKind.Error);
         }
         catch (VaultApiException ex)
         {
@@ -2946,25 +3014,26 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             const string hintPrefix = "Your password hint is: ";
             var message = ex.ServerMessage ?? string.Empty;
             if (message.StartsWith(hintPrefix, StringComparison.Ordinal))
-                SetStatus($"主密码提示：{message[hintPrefix.Length..]}", LoginStatusKind.Info);
+                SetStatus(global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text3EF1A849A7CDBD84,message[hintPrefix.Length..]), LoginStatusKind.Info,
+                    containsPasswordHint: true);
             else if (message == "Sorry, you have no password hint...")
-                SetStatus("此账户没有可用的主密码提示。", LoginStatusKind.Info);
+                SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6C0A724FA2399151), LoginStatusKind.Info);
             else if (message == "This server is not configured to provide password hints.")
-                SetStatus("此服务器未启用主密码提示。", LoginStatusKind.Error);
+                SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text01976BC9092ACA1D), LoginStatusKind.Error);
             else if (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
-                SetStatus("请求过于频繁，请稍后再试。", LoginStatusKind.Error);
+                SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC7DCEDFB83090600), LoginStatusKind.Error);
             else
-                SetStatus(string.IsNullOrWhiteSpace(message) ? "服务器未能提供主密码提示。" : $"服务器返回：{message}", LoginStatusKind.Error);
+                SetStatus(string.IsNullOrWhiteSpace(message) ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text38C5BC271169217A) : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text49D8B10BE48D6E03,message), LoginStatusKind.Error);
         }
         catch (NotSupportedException)
         {
             if (IsCurrent())
-                SetStatus("当前服务器连接不支持主密码提示。", LoginStatusKind.Error);
+                SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2D904ACEBC390E5D), LoginStatusKind.Error);
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or System.Text.Json.JsonException)
         {
             if (IsCurrent())
-                SetStatus("无法获取主密码提示，请检查连接后重试。", LoginStatusKind.Error);
+                SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFFE34B00B3A54C78), LoginStatusKind.Error);
         }
         finally
         {
@@ -2986,7 +3055,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         try { cancellation?.Cancel(); }
         catch (ObjectDisposedException) { }
         RequestPasswordHintCommand.Cancel();
-        if (Status.StartsWith("主密码提示：", StringComparison.Ordinal))
+        if (_statusContainsPasswordHint)
             ClearStatus();
         if (_isPasswordHintRequestActive)
         {
@@ -3018,10 +3087,10 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         Pin = string.Empty;
         SetStatus(
             IsKeyConnectorUnlockStage
-                ? "连接组织的 Key Connector 以解锁保险库。"
+                ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6C26BE6DAC29951E)
                 : IsTrustedDeviceSsoStage
-                    ? "请重新完成企业 SSO，以确认当前设备的信任状态。"
-                : "请输入主密码解锁。",
+                    ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text52729D84A5FC5563)
+                : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text92735DEC8C488201),
             LoginStatusKind.Info);
     }
 
@@ -3030,6 +3099,8 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     {
         if (IsBusy)
             return;
+
+        _beforeAccountChange?.Invoke();
 
         var authenticatedLease = _requiredPasswordChangeLease
             ?? _tdeV2JitLease
@@ -3044,7 +3115,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             }
             catch (AuthSessionPersistenceException)
             {
-                SetStatus("无法安全移除当前企业登录会话，请重试。", LoginStatusKind.Error);
+                SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text31501890D6B0E2AC), LoginStatusKind.Error);
                 return;
             }
         }
@@ -3057,9 +3128,13 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     [RelayCommand]
     private void SelectSavedAccount(SavedAccountOption? account)
     {
+        if (IsBusy)
+            return;
+        if (account is not null)
+            _beforeAccountChange?.Invoke();
         if (account is null || _savedAccountService?.TryActivate(account) != true)
         {
-            SetStatus("无法读取所选账户，请重新登录。", LoginStatusKind.Error);
+            SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text47A71D6B04A3381A), LoginStatusKind.Error);
             return;
         }
 
@@ -3071,7 +3146,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 StringComparison.Ordinal)
             || activated.Endpoints != account.Endpoints)
         {
-            SetStatus("无法安全读取所选账户，请重新登录。", LoginStatusKind.Error);
+            SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5CE126BA805BF30B), LoginStatusKind.Error);
             return;
         }
 
@@ -3082,6 +3157,9 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     // 锁屏/登出时清空登录页所有机密输入:主密码、PIN、2FA 验证码与其可选项。幂等。
     public void ClearSensitive()
     {
+        ApiKeySecret = string.Empty;
+        ApiKeyClientId = string.Empty;
+        IsApiKeyMode = false;
         InvalidatePasswordHintRequest();
         ClearTrustedDeviceApproval();
         ClearTdeV2JitProvisioning();
@@ -3101,19 +3179,20 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     private void ContinueToPassword()
     {
         ClearStatus();
+        IsApiKeyMode = false;
+        ApiKeySecret = string.Empty;
+        ApiKeyClientId = string.Empty;
 
         var serverUrl = ResolveServerUrl();
         if (!IsValidServerUrl(serverUrl))
         {
-            SetStatus("请输入有效的服务器地址。", LoginStatusKind.Error);
-            RequestFocus(LoginFocusTarget.ServerUrl);
+            SetFieldError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA9C8539849E5660C), LoginFocusTarget.ServerUrl);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(Email))
         {
-            SetStatus("请输入邮箱地址。", LoginStatusKind.Error);
-            RequestFocus(LoginFocusTarget.Email);
+            SetFieldError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCC1DD3420167F716), LoginFocusTarget.Email);
             return;
         }
 
@@ -3130,31 +3209,41 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     {
         ClearStatus();
 
+        if (IsPasswordStage && IsApiKeyMode)
+        {
+            if (string.IsNullOrWhiteSpace(ApiKeyClientId))
+            {
+                SetFieldError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text54DEEC654340E762), LoginFocusTarget.ApiKeyClientId);
+                return false;
+            }
+            if (string.IsNullOrWhiteSpace(ApiKeySecret))
+            {
+                SetFieldError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text23183976D85A9FEE), LoginFocusTarget.ApiKeySecret);
+                return false;
+            }
+        }
+
         if ((IsPasswordStage || IsUnlockStage) && string.IsNullOrWhiteSpace(MasterPassword))
         {
-            SetStatus("请输入主密码。", LoginStatusKind.Error);
-            RequestFocus(LoginFocusTarget.MasterPassword);
+            SetFieldError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC8EA1DB856C8E54D), LoginFocusTarget.MasterPassword);
             return false;
         }
 
         if (IsPinUnlockStage && string.IsNullOrWhiteSpace(Pin))
         {
-            SetStatus("请输入 PIN。", LoginStatusKind.Error);
-            RequestFocus(LoginFocusTarget.Pin);
+            SetFieldError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4769860954D39FA4), LoginFocusTarget.Pin);
             return false;
         }
 
         if (IsDeviceVerificationStage && string.IsNullOrWhiteSpace(DeviceVerificationCode))
         {
-            SetStatus("请输入设备验证码。", LoginStatusKind.Error);
-            RequestFocus(LoginFocusTarget.DeviceVerificationCode);
+            SetFieldError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEDCC38BAA8BD584A), LoginFocusTarget.DeviceVerificationCode);
             return false;
         }
 
         if (ShowTwoFactorCodeInput && string.IsNullOrWhiteSpace(TwoFactorCode))
         {
-            SetStatus("请输入两步验证码。", LoginStatusKind.Error);
-            RequestFocus(LoginFocusTarget.TwoFactorCode);
+            SetFieldError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7D4FFC10D08AE2EF), LoginFocusTarget.TwoFactorCode);
             return false;
         }
 
@@ -3203,7 +3292,9 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         LoginStage.Account => SelectedServerOptionIndex == 2 && !IsValidServerUrl(ServerUrl.Trim())
             ? LoginFocusTarget.ServerUrl
             : LoginFocusTarget.Email,
-        LoginStage.Password => LoginFocusTarget.MasterPassword,
+        LoginStage.Password => IsApiKeyMode
+            ? LoginFocusTarget.ApiKeyClientId
+            : LoginFocusTarget.MasterPassword,
         LoginStage.LoginWithDevice => LoginFocusTarget.LoginWithDeviceCancel,
         LoginStage.AccountDeletionRecovery =>
             LoginFocusTarget.AccountDeletionRecoveryAction,
@@ -3223,6 +3314,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
     // 网络/超时失败后把焦点还给当前阶段的机密输入,方便用户直接重试。
     private LoginFocusTarget CurrentSecretFocusTarget() => Stage switch
     {
+        LoginStage.Password when IsApiKeyMode => LoginFocusTarget.ApiKeySecret,
         LoginStage.LoginWithDevice => LoginFocusTarget.LoginWithDeviceCancel,
         LoginStage.AccountDeletionRecovery =>
             LoginFocusTarget.AccountDeletionRecoveryAction,
@@ -3271,7 +3363,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         else
             PrepareInitialLoginState(activeSession: null);
         SetStatus(
-            "无法打开保险库。会话已重新锁定，请再次解锁。",
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text78E4345CDD8E87DC),
             LoginStatusKind.Error);
         return false;
     }
@@ -3318,7 +3410,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 _twoFactorProviderData = new Dictionary<int, string>();
                 RefreshSavedAccounts();
                 Stage = LoginStage.Unlock;
-                SetStatus("SSO 登录成功，请输入主密码解锁保险库。", LoginStatusKind.Success);
+                SetStatus(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3C96EFB37F913E30), LoginStatusKind.Success);
                 break;
             case AuthResult.TrustedDeviceApprovalRequired approval:
                 _isSsoTwoFactor = false;
@@ -3340,10 +3432,10 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 Stage = LoginStage.TrustedDeviceApproval;
                 SetStatus(
                     ApprovalMethodOptions.Count > 1
-                        ? "请选择由其他已登录设备或组织管理员批准。"
+                        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB6B67384AF83A2CF)
                         : _approvalMethod == TrustedDeviceApprovalMethod.Administrator
-                            ? "将向组织管理员发起设备批准请求。"
-                            : "请由另一台已解锁设备批准此设备。",
+                            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBFC8927EA86FFE19)
+                            : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3362C47F93FE349C),
                     LoginStatusKind.Info);
                 break;
             case AuthResult.TdeV2JitProvisioningRequired jit:
@@ -3365,8 +3457,8 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 Stage = LoginStage.TdeV2JitProvisioning;
                 SetStatus(
                     jit.RequiredTrustCurrentDevice is null
-                        ? "确认后将为此企业账户创建加密密钥并注册账户恢复。"
-                        : "检测到未完成的账户初始化，将安全继续原有流程。",
+                        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE4D61CCE24398378)
+                        : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB7BC6869A6090766),
                     LoginStatusKind.Info);
                 break;
             case AuthResult.PasswordChangeRequired passwordChange:
@@ -3385,8 +3477,8 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 OnPropertyChanged(nameof(RequiredPasswordPolicySummary));
                 SetStatus(
                     passwordChange.Reason == RequiredPasswordChangeReason.AdministratorTemporaryPassword
-                        ? "组织管理员设置了临时密码。继续使用前必须创建新的主密码。"
-                        : "当前主密码不符合组织策略。继续使用前必须更新主密码。",
+                        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6AECF91477513EB8)
+                        : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD76C4B60C9AB517A),
                     LoginStatusKind.Info);
                 RequestFocus(LoginFocusTarget.NewMasterPassword);
                 break;
@@ -3412,8 +3504,8 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                     SelectedTwoFactorProviderIndex = 0;
                     SetStatus(
                         HasLegacyDuoChallenge()
-                            ? "服务器启用了已淘汰 Duo iframe，请管理员关闭 DUO_USE_IFRAME 或使用恢复码。"
-                            : "当前两步验证方式暂不支持，可使用恢复代码继续。",
+                            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC07F42630DA1FC91)
+                            : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text30DDD6A6A92A669D),
                         LoginStatusKind.Info);
                     NotifyTwoFactorModeProperties();
                     if (_isLoginWithDeviceTwoFactor)
@@ -3426,8 +3518,8 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 SelectedTwoFactorProviderIndex = 0;
                 SetStatus(
                     IsWebAuthnMode
-                        ? "请使用安全密钥或 Windows Hello 完成验证。"
-                        : IsDuoMode ? "请打开 Duo 窗口完成验证。" : "请输入两步验证码。",
+                        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6513C3EA82E29EAE)
+                        : IsDuoMode ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text15E78C7911618EC3) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7D4FFC10D08AE2EF),
                     LoginStatusKind.Info);
                 NotifyTwoFactorModeProperties();
                 if (_isLoginWithDeviceTwoFactor)
@@ -3440,7 +3532,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 DeviceVerificationCode = string.Empty;
                 TwoFactorCode = string.Empty;
                 SetStatus(
-                    "这是新的登录设备。请输入发送到邮箱的一次性验证码。",
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text58AE3E6A7B01397F),
                     LoginStatusKind.Info);
                 RequestFocus(LoginFocusTarget.DeviceVerificationCode);
                 break;
@@ -3477,9 +3569,9 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
         var message = result is AuthResult.Failure failure
             ? failure.Kind == AuthFailureKind.SafeMessage
-                ? "此设备已获批准，但未能安全建立设备信任。"
+                ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE78AD519016A66B4)
                 : FailureMessage(failure, wasTwoFactor: false)
-            : "设备批准会话已失效，请重新完成企业 SSO。";
+            : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA0EB75855CF7FFCB);
         ReturnFromTrustedDeviceApproval(message, LoginStatusKind.Error);
     }
 
@@ -3609,7 +3701,7 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
                 PrepareInitialLoginState(activeSession: null);
             }
             SetStatus(
-                "检测到账户删除恢复记录，旧令牌和离线解锁已禁用。请先完成恢复。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA7F7E059F9FEC7B9),
                 LoginStatusKind.Error);
             return;
         }
@@ -3636,7 +3728,11 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         if (IsPinUnlockStage)
             Pin = string.Empty;
 
-        SetStatus(message, LoginStatusKind.Error);
+        SetStatus(message, LoginStatusKind.Error,
+            inlineErrorTarget: failure.Kind == AuthFailureKind.InvalidCredentials
+                || failure.Kind == AuthFailureKind.SafeMessage && IsPinUnlockStage
+                ? CurrentSecretFocusTarget()
+                : null);
         RequestFocus(CurrentSecretFocusTarget());
     }
 
@@ -3644,31 +3740,31 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         failure.Kind switch
         {
             AuthFailureKind.RateLimited =>
-                "登录请求过于频繁，请稍后重试。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2DF909F4558C7A91),
             AuthFailureKind.InvalidCredentials when wasTwoFactor && IsRecoveryCodeMode =>
-                "恢复代码无效，请重试。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text296FF92C0E47AA6B),
             AuthFailureKind.InvalidCredentials when wasTwoFactor =>
-                "验证码无效或已过期，请重试。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA8DBC4C19E59E396),
             AuthFailureKind.InvalidCredentials when IsUnlockStage =>
-                "主密码错误，请重试。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3AEFC83F9B16D36C),
             AuthFailureKind.InvalidCredentials =>
-                "用户名或主密码错误，请重试。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9895C50F00CC2460),
             AuthFailureKind.Network =>
-                "无法连接服务器，请检查网络后重试。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9B0501625B589BC9),
             AuthFailureKind.Timeout =>
-                "连接服务器超时，请稍后重试。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9EB5964A7F40DE2F),
             AuthFailureKind.InvalidResponse =>
-                "服务器响应无效，无法完成认证。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA748BB4E8773680D),
             AuthFailureKind.SessionExpired =>
-                "认证会话已失效，请重试。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE02E26E76AA0E916),
             AuthFailureKind.NoSavedSession =>
-                "没有已保存的会话，请重新登录。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1839ECA5FAB94C5B),
             AuthFailureKind.UnsupportedSsoDecryption =>
-                "服务器要求当前客户端尚未支持的 SSO 解密格式或审批方式。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7F59246C3A57F0F1),
             AuthFailureKind.SsoAuthorization =>
-                "无法启动 SSO 浏览器登录，请检查系统浏览器与本机端口后重试。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text440C33B846B2A208),
             AuthFailureKind.AccountDeletionRecoveryRequired =>
-                "检测到账户删除恢复记录，旧令牌和离线解锁已禁用。请先完成恢复。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA7F7E059F9FEC7B9),
             AuthFailureKind.SafeMessage when !string.IsNullOrWhiteSpace(failure.Message) =>
                 failure.Message,
             _ => LocalizeLegacyAuthMessage(failure.Message),
@@ -3680,29 +3776,29 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             return GenericFailureMessage();
 
         if (message.Contains("Username or password is incorrect", StringComparison.OrdinalIgnoreCase))
-            return "用户名或主密码错误，请重试。";
+            return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9895C50F00CC2460);
 
         return message switch
         {
-            "No saved session." => "没有已保存的会话，请重新登录。",
-            "Authentication failed." => "认证失败，请检查凭据。",
-            "Two-factor authentication is still required." => "仍需完成两步验证。",
-            "No two-factor challenge is pending." => "没有待处理的两步验证请求。",
-            "Token response did not include a protected user key." => "服务器响应缺少用户密钥，登录失败。",
+            "No saved session." => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1839ECA5FAB94C5B),
+            "Authentication failed." => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF10B545D5BBDCAF0),
+            "Two-factor authentication is still required." => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD42AC189F2BBDAB5),
+            "No two-factor challenge is pending." => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text54DB5CB2AEDE4EC4),
+            "Token response did not include a protected user key." => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4EBBDECB37A1B045),
             _ => GenericFailureMessage(),
         };
     }
 
     private string GenericFailureMessage() => Stage switch
     {
-        LoginStage.LoginWithDevice => "设备登录失败，请稍后重试。",
-        LoginStage.DeviceVerification => "设备验证失败，请稍后重试。",
-        LoginStage.PasswordChangeRequired => "主密码更新失败，请稍后重试。",
-        LoginStage.TwoFactor => "验证失败，请稍后重试。",
+        LoginStage.LoginWithDevice => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text77428D9DB100EDB6),
+        LoginStage.DeviceVerification => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0740D38D50534179),
+        LoginStage.PasswordChangeRequired => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD47424DECE11F933),
+        LoginStage.TwoFactor => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD033C3B684D962B6),
         LoginStage.Unlock or LoginStage.PinUnlock or LoginStage.KeyConnectorUnlock
             or LoginStage.TrustedDeviceSso or LoginStage.TrustedDeviceApproval =>
-            "解锁失败，请稍后重试。",
-        _ => "登录失败，请稍后重试。",
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1F805A1904ADDD69),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text42369FD15761E2EC),
     };
 
     private void ReturnFromTwoFactorStage(
@@ -3743,14 +3839,31 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         Stage = LoginStage.Password;
     }
 
-    private void SetStatus(string message, LoginStatusKind kind)
+    private void SetFieldError(string message, LoginFocusTarget target)
     {
+        SetStatus(message, LoginStatusKind.Error, inlineErrorTarget: target);
+        RequestFocus(target);
+    }
+
+    private void SetStatus(
+        string message,
+        LoginStatusKind kind,
+        LoginFocusTarget? inlineErrorTarget = null,
+        bool isUnlockPrompt = false,
+        bool containsPasswordHint = false)
+    {
+        InlineErrorTarget = inlineErrorTarget;
+        IsUnlockPrompt = isUnlockPrompt;
+        _statusContainsPasswordHint = containsPasswordHint;
         StatusKind = kind;
         Status = message;
     }
 
     private void ClearStatus()
     {
+        InlineErrorTarget = null;
+        IsUnlockPrompt = false;
+        _statusContainsPasswordHint = false;
         StatusKind = LoginStatusKind.Info;
         Status = string.Empty;
     }
@@ -3808,10 +3921,17 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
             RequestFocus(LoginFocusTarget.ServerUrl);
     }
 
-    partial void OnServerUrlChanged(string value) => NotifyServerProperties();
+    partial void OnServerUrlChanged(string value)
+    {
+        if (_isPasswordHintRequestActive || _statusContainsPasswordHint)
+            InvalidatePasswordHintRequest();
+        NotifyServerProperties();
+    }
 
     partial void OnEmailChanged(string value)
     {
+        if (_isPasswordHintRequestActive || _statusContainsPasswordHint)
+            InvalidatePasswordHintRequest();
         OnPropertyChanged(nameof(ShowAccountContext));
         OnPropertyChanged(nameof(AccountSummary));
         OnPropertyChanged(nameof(AccountInitial));
@@ -3851,13 +3971,13 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
         {
             options.Add(new TrustedDeviceApprovalMethodOption(
                 TrustedDeviceApprovalMethod.Device,
-                "其他已登录设备"));
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2EF14FB058078C61)));
         }
         if (approval.HasAdminApproval)
         {
             options.Add(new TrustedDeviceApprovalMethodOption(
                 TrustedDeviceApprovalMethod.Administrator,
-                "组织管理员"));
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDA113F25899B2CE1)));
         }
         if (options.Count == 0)
             throw new InvalidOperationException("No trusted-device approval method is available.");
@@ -3898,6 +4018,16 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     partial void OnStageChanged(LoginStage value)
     {
+        if (value != LoginStage.Password && (_isPasswordHintRequestActive || _statusContainsPasswordHint))
+            InvalidatePasswordHintRequest();
+        InlineErrorTarget = null;
+        IsUnlockPrompt = false;
+        if (value == LoginStage.Account)
+        {
+            ApiKeySecret = string.Empty;
+            ApiKeyClientId = string.Empty;
+            IsApiKeyMode = false;
+        }
         NotifyStageProperties();
         RequestFocus(CurrentStageFocusTarget());
         if (value is LoginStage.Unlock or LoginStage.PinUnlock or LoginStage.KeyConnectorUnlock
@@ -3922,6 +4052,8 @@ public partial class LoginViewModel : ObservableObject, ISensitiveState
 
     private void NotifyStageProperties()
     {
+        OnPropertyChanged(nameof(CanUseApiKeySignIn));
+        OpenApiKeySignInCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(ShowAccountContext));
         OnPropertyChanged(nameof(IsAccountStage));
         OnPropertyChanged(nameof(IsPasswordStage));

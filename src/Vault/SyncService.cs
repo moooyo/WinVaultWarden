@@ -8,9 +8,11 @@ using System.Runtime.ExceptionServices;
 
 namespace Vault;
 
-public sealed class SyncService : ISyncService
+public sealed class SyncService : ISyncService, ISyncCompletionSource
 {
     private const int MaximumSecurityStampLength = 128;
+
+    public event Action<VaultSessionLease>? SyncCompleted;
 
     private readonly IVaultApiClientProvider _clients;
     private readonly VaultDecryptor _decryptor;
@@ -286,6 +288,13 @@ public sealed class SyncService : ISyncService
             throw;
         }
 
+        // A metadata observer cannot change the outcome of an already committed sync.
+        // Dispatch outside the session lock; observers schedule their own bounded work.
+        foreach (var observer in SyncCompleted?.GetInvocationList() ?? [])
+        {
+            try { ((Action<VaultSessionLease>)observer)(lease); }
+            catch (Exception exception) when (exception is not OutOfMemoryException) { }
+        }
         return new SyncCoreResult(vault.Ciphers, reconciliation);
     }
 

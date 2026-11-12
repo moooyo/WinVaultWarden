@@ -94,7 +94,7 @@ public sealed partial class TotpField : UserControl
         _currentCode = code;
         CodeText.Text = code.Length == 6 ? $"{code[..3]} {code[3..]}" : code;
         CopyButton.IsEnabled = true;
-        ToolTipService.SetToolTip(CountdownPanel, $"验证码每 {period} 秒刷新");
+        ToolTipService.SetToolTip(CountdownPanel, global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text65D7F24549648A91,period));
         UpdateCopyState();
     }
 
@@ -144,8 +144,8 @@ public sealed partial class TotpField : UserControl
         var copied = _clipboardStatus is { HasContent: true } && _copiedVersion != 0 && _copiedVersion == _clipboardStatus.WriteVersion;
         CopyIcon.Glyph = copied ? "\uE73E" : "\uE8C8";
         CopyIcon.Foreground = ThemeBrushResolver.Resolve(this, copied ? "SystemFillColorSuccessBrush" : "TextFillColorSecondaryBrush");
-        AutomationProperties.SetName(CopyButton, copied ? "已复制验证码" : "复制验证码");
-        ToolTipService.SetToolTip(CopyButton, copied ? "已复制验证码" : "复制验证码");
+        AutomationProperties.SetName(CopyButton, copied ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text022BBAC16CB78AD6) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text85A0B92CA071C4BC));
+        ToolTipService.SetToolTip(CopyButton, copied ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text022BBAC16CB78AD6) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text85A0B92CA071C4BC));
     }
 
     private void OnCopy(object sender, RoutedEventArgs e)
@@ -160,7 +160,7 @@ public sealed partial class TotpField : UserControl
                 Tick();
                 if (_currentCode is not { } code) return false;
                 clipboard.SetSecretText(code);
-                (clipboard as IClipboardStatus)?.SetLabel("验证码");
+                (clipboard as IClipboardStatus)?.SetLabel(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBB015C60BAFC8A96));
                 return true;
             }) != true) return;
             _copiedVersion = _clipboardStatus?.WriteVersion ?? 0;
@@ -169,7 +169,7 @@ public sealed partial class TotpField : UserControl
         }
         catch (Exception exception) when (exception is ExternalException or InvalidOperationException)
         {
-            ShowFeedback("复制失败，请重试。");
+            ShowFeedback(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0E7E0391BAE51CDD));
         }
     }
 }

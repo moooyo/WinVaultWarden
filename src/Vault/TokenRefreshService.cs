@@ -147,19 +147,30 @@ public sealed class TokenRefreshService : ITokenRefresher
                 }
                 if (IsAccountDeletionBlocked(lease))
                     return false;
+                var refreshed = false;
                 if (_session.TryCommit(lease, () =>
                 {
-                    _tokenStore.Save(persisted with
+                    // A local unlock method can be changed while the HTTP request is pending.
+                    // Merge only the token fields into the latest record while holding the
+                    // session commit gate; never restore a superseded credential snapshot.
+                    if (!_tokenStore.TryLoad(out var latest)
+                        || !_session.IsCurrent(lease, latest)
+                        || !string.Equals(latest.RefreshToken, refreshToken, StringComparison.Ordinal))
+                    {
+                        return;
+                    }
+                    _tokenStore.Save(latest with
                     {
                         RefreshToken = success.Token.RefreshToken,
                         Generation = lease.Generation,
                         HasMasterPassword = success.Token.UserDecryptionOptions?.HasMasterPassword
-                            ?? persisted.HasMasterPassword,
+                            ?? latest.HasMasterPassword,
                     });
                     _session.SetTokens(
                         success.Token.AccessToken,
                         success.Token.RefreshToken);
-                }))
+                    refreshed = true;
+                }) && refreshed)
                 {
                     return true;
                 }

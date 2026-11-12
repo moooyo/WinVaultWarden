@@ -93,7 +93,7 @@ public class SecurityReportPageXamlTests
         var xaml = XamlText();
         var actions = LoadXaml().Descendants().Where(element =>
             element.Name.LocalName == "Button" && element.Attribute("Click")?.Value == "OnOpenItemClick").ToArray();
-        Assert.Equal(2, actions.Length);
+        Assert.Equal(3, actions.Length);
         Assert.All(actions, action => Assert.Contains("CipherId", action.Attribute("Tag")?.Value));
         Assert.DoesNotContain("GeneratedPassword", xaml);
         Assert.DoesNotContain("PasswordHash", xaml);
@@ -108,5 +108,20 @@ public class SecurityReportPageXamlTests
         Assert.Contains("vault:edit:", code);
         Assert.Contains("vault:change-password:", code);
         Assert.Contains("OnFixItemClick", XamlText());
+    }
+
+    [Fact]
+    public void UnassessedPasswords_HaveAnExplicitWarningAndExactItemNavigation()
+    {
+        var xaml = XamlText();
+        var notice = Assert.Single(LoadXaml().Descendants(), element =>
+            element.Attribute("AutomationProperties.AutomationId")?.Value == "UnassessedPasswordsNotice");
+
+        Assert.Equal("Warning", notice.Attribute("Severity")?.Value);
+        Assert.Contains("ViewModel.UnassessedSummary", notice.Attribute("Message")?.Value);
+        Assert.Contains("ViewModel.UnassessedItems", xaml);
+        Assert.Contains("ViewModel.ShowUnassessedPasswords", xaml);
+        Assert.Contains("EmptyIcon(ViewModel.IsReportComplete)", xaml);
+        Assert.DoesNotContain("EmptyIcon(ViewModel.ExposedChecked)", xaml);
     }
 }

@@ -242,10 +242,21 @@ jobs:
     # Protect this environment with required reviewers and release-tag deployment rules.
     # Store the PFX secrets and SIGNING_TIMESTAMP_URL environment variable there.
     environment: production-signing
-    permissions: {}
+    permissions:
+      contents: read
     env:
       RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+      RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+      RELEASE_CORE_VERSION: ${{ needs.metadata.outputs.core }}
+      MANIFEST_VERSION: ${{ needs.metadata.outputs.manifest }}
+      RELEASE_IS_PRERELEASE: ${{ github.event.release.prerelease }}
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          global-json-file: global.json
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: unsigned-*
@@ -349,6 +360,15 @@ jobs:
 
           $certificatePath = Join-Path 'output' "$($env:PACKAGE_NAME)-$($env:RELEASE_VERSION).cer"
           [IO.File]::WriteAllBytes($certificatePath, $certificate.Export('Cert'))
+      - name: Generate stable App Installer update feeds
+        shell: pwsh
+        run: |
+          dotnet run --project tools/ReleaseFeedGenerator/ReleaseFeedGenerator.csproj -c Release -- `
+            --artifacts output --repository-manifest src/App/Package.appxmanifest `
+            --release-tag $env:RELEASE_TAG --release-version $env:RELEASE_VERSION `
+            --core-version $env:RELEASE_CORE_VERSION --manifest-version $env:MANIFEST_VERSION `
+            --is-prerelease $env:RELEASE_IS_PRERELEASE
+          if ($LASTEXITCODE -ne 0) { throw 'App Installer update feed generation failed.' }
       - name: Write release checksums
         shell: pwsh
         run: |

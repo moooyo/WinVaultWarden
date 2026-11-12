@@ -24,9 +24,9 @@ public sealed class DeviceApprovalDecisionService(
         CancellationToken ct = default)
     {
         if (!fingerprintReviewed || string.IsNullOrWhiteSpace(reviewed.FingerprintPhrase))
-            return UiOperationResult.Failure("请先在请求设备上核对指纹短语，完全一致才批准。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text75C3D9954955DB54));
         if (!IsPending(reviewed))
-            return UiOperationResult.Failure("登录请求已过期，请在请求设备上重新发送。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAA0418AE7E1250BE));
         if (!_operations.TryEnter(out var operation))
             return UiOperationResult.Busy();
 
@@ -37,7 +37,7 @@ public sealed class DeviceApprovalDecisionService(
                 ct.ThrowIfCancellationRequested();
                 var original = session.CaptureLease();
                 if (!session.IsUnlocked(original) && !await unlock(ct))
-                    return UiOperationResult.Failure("尚未完成解锁。请使用 Windows Hello，或先在主窗口解锁密码库。");
+                    return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text60D04C8338D9A348));
 
                 ct.ThrowIfCancellationRequested();
                 var lease = session.CaptureLease();
@@ -46,14 +46,16 @@ public sealed class DeviceApprovalDecisionService(
                     return UiOperationResult.Cancelled();
 
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
-                var current = (await requests.ListPendingAsync(linked.Token))
-                    .SingleOrDefault(item => item.Id == reviewed.Id);
+                var current = await requests.GetPendingRequestAsync(reviewed.Id, linked.Token);
                 if (current is null || !IsPending(current))
-                    return UiOperationResult.Failure("登录请求已处理或过期。");
+                    return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text04308BA8C199CC2D));
                 if (current.PublicKey != reviewed.PublicKey
                     || current.FingerprintPhrase != reviewed.FingerprintPhrase
-                    || current.CreatedAt != reviewed.CreatedAt)
-                    return UiOperationResult.Failure("登录请求已变化，请重新查看并核对指纹短语。");
+                    || current.CreatedAt != reviewed.CreatedAt
+                    || current.ExpiresAt != reviewed.ExpiresAt
+                    || current.DeviceTypeName != reviewed.DeviceTypeName
+                    || current.IpAddress != reviewed.IpAddress)
+                    return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6F7226B3DBB65EF7));
                 linked.Token.ThrowIfCancellationRequested();
                 if (!session.IsUnlocked(lease))
                     return UiOperationResult.Cancelled();
@@ -72,7 +74,7 @@ public sealed class DeviceApprovalDecisionService(
             }
             catch (Exception ex) when (ex is HttpRequestException or AuthRequestOperationException or InvalidOperationException)
             {
-                return UiOperationResult.Failure("无法批准登录请求，请检查连接并确认密码库已解锁。");
+                return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD1E2AB0373EF8481));
             }
         }
     }

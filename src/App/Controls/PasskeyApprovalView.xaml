@@ -7,10 +7,10 @@
     <ScrollViewer MaxHeight="520"
                   VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="12" MaxWidth="480">
-            <TextBlock Text="WinVaultWarden 正在处理通行密钥请求。"
+            <TextBlock x:Uid="LE547434CDFD0EDDD" Text="WinVaultWarden 正在处理通行密钥请求。"
                        TextWrapping="Wrap" />
 
-            <TextBlock Text="当前 frame 来源" Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock x:Uid="L00BD6994253073DE" Text="当前 frame 来源" Style="{StaticResource CaptionTextBlockStyle}" />
             <TextBlock x:Name="FrameOriginUnicode"
                        Text="{x:Bind Presentation.FrameOriginUnicode}"
                        TextWrapping="Wrap" />
@@ -19,7 +19,7 @@
                        TextWrapping="Wrap"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
-            <TextBlock Text="RP ID" Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock x:Uid="LAA2DBED435907BB3" Text="RP ID" Style="{StaticResource CaptionTextBlockStyle}" />
             <TextBlock x:Name="RpId"
                        Text="{x:Bind Presentation.RpIdUnicode}"
                        TextWrapping="Wrap" />
@@ -27,7 +27,7 @@
                        TextWrapping="Wrap"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
-            <TextBlock Text="顶层来源" Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock x:Uid="LDCEA894D3BB88C56" Text="顶层来源" Style="{StaticResource CaptionTextBlockStyle}" />
             <TextBlock x:Name="TopOrigin"
                        Text="{x:Bind Presentation.TopOriginUnicode}"
                        TextWrapping="Wrap" />
@@ -35,7 +35,7 @@
                        TextWrapping="Wrap"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
-            <InfoBar x:Name="CrossOriginWarning"
+            <InfoBar x:Uid="L85D1296EAE52F7B5" x:Name="CrossOriginWarning"
                      IsOpen="{x:Bind Presentation.IsCrossOrigin}"
                      IsClosable="False"
                      Severity="Warning"
@@ -45,7 +45,7 @@
                        TextWrapping="Wrap"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
-            <ComboBox x:Name="CredentialPicker"
+            <ComboBox x:Uid="LA6BD8C87F8B806DD" x:Name="CredentialPicker"
                       Header="选择账号"
                       ItemsSource="{x:Bind Presentation.Candidates}"
                       SelectedItem="{x:Bind SelectedCredential, Mode=TwoWay}"

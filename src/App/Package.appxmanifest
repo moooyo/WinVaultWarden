@@ -2,8 +2,10 @@
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="rescap">
+  IgnorableNamespaces="rescap uap5 com">
   <Identity Name="WinVaultWarden" Publisher="CN=WinVaultWarden" Version="1.0.0.0" />
   <Properties>
     <DisplayName>WinVaultWarden</DisplayName>
@@ -24,6 +26,19 @@
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
+      <Extensions>
+        <!-- Extension executables are package-relative paths; application tokens are not expanded here. -->
+        <uap5:Extension Category="windows.startupTask" Executable="App.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap5:StartupTask TaskId="WinVaultWardenStartup" Enabled="false" DisplayName="WinVaultWarden" />
+        </uap5:Extension>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="App.exe" Arguments="--windows-passkey-provider" DisplayName="WinVaultWarden passkeys">
+              <com:Class Id="F8AD5A01-0D69-47CA-A928-358D16A07575" DisplayName="WinVaultWarden passkeys" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+      </Extensions>
       <!-- 用户决定:浏览器 Native Messaging Host 仅便携版携带。MSIX 不携带、不注册、
            不声明 Host(无 fullTrustProcess / appExecutionAlias),浏览器集成请用便携版。 -->
     </Application>

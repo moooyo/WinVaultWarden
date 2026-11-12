@@ -203,7 +203,7 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
     {
         if (_registerUi is null)
         {
-            OperationError = "注册服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7FF3F4D5719DE17C);
             return;
         }
 
@@ -264,7 +264,7 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
                     {
                         TryUpdateCurrentOperation(operationGeneration, operationCancellation, allowCancellation: false, () =>
                         {
-                            OperationError = "这个密码出现在已知数据泄露中，换一个吧";
+                            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text779D1EC3369D03B1);
                             RequestFocus(RegisterFocusTarget.MasterPassword);
                         });
                         return;
@@ -274,7 +274,7 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
                 {
                     TryUpdateCurrentOperation(operationGeneration, operationCancellation, allowCancellation: false, () =>
                     {
-                        OperationError = "无法完成密码泄露检查。请重试，或取消勾选后创建账户。";
+                        OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7DAD83614B9FDB7B);
                         RequestFocus(RegisterFocusTarget.MasterPassword);
                     });
                     return;
@@ -415,7 +415,7 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
         var serverUrl = ResolveServerUrl();
         if (!TryParseServerEndpoint(serverUrl))
         {
-            OperationError = "请输入有效的服务器地址";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text89E2C78B36CE710B);
             RequestFocus(RegisterFocusTarget.ServerUrl);
             return false;
         }
@@ -424,28 +424,28 @@ public partial class RegisterViewModel : ObservableObject, ISensitiveState
             || Email.Trim().Length > MasterPasswordSaltPolicy.MaxLength
             || !Email.Contains('@'))
         {
-            OperationError = "请输入有效的邮箱地址";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA926A56E716ACDD6);
             RequestFocus(RegisterFocusTarget.Email);
             return false;
         }
 
         if (string.IsNullOrEmpty(MasterPassword))
         {
-            OperationError = "密码不能为空";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3AA7A9E035A45598);
             RequestFocus(RegisterFocusTarget.MasterPassword);
             return false;
         }
 
         if (MasterPassword != ConfirmPassword)
         {
-            OperationError = "两次输入的密码不一致";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text58807745708ED726);
             RequestFocus(RegisterFocusTarget.ConfirmPassword);
             return false;
         }
 
         if (Name is not null && Name.Trim().Length > 50)
         {
-            OperationError = "昵称不能超过 50 个字符";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text72DF0D02BD02C9B3);
             RequestFocus(RegisterFocusTarget.Name);
             return false;
         }

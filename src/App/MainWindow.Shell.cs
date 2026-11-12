@@ -35,6 +35,7 @@ public sealed partial class MainWindow
     private readonly UISettings _uiSettings = new();
     private bool _historyExpanded;
     private VaultPage? _cachedVaultPage;
+    private VaultViewModel? _observedVaultViewModel;
     private SendPage? _cachedSendPage;
     private Storyboard? _tabIndicatorAnimation;
     private double _tabIndicatorTarget = -1;
@@ -45,9 +46,32 @@ public sealed partial class MainWindow
     private NavigationViewItem? _folderGroupHeader;
     private Button? _folderAddButton;
     private double _lastShellWidth;
+    private bool _compactTopTabs;
+    private double _expandedTopTabsWidth;
+    private readonly Dictionary<ToggleButton, object?> _expandedTopTabContents = [];
 
     private void InitializeShell()
     {
+        foreach (var tab in new[] { VaultTab, GeneratorTab, SendTab, ReportsTab })
+        {
+            _expandedTopTabContents[tab] = tab.Content;
+            var label = tab.Content is StackPanel panel
+                ? panel.Children.OfType<TextBlock>().FirstOrDefault()?.Text
+                : tab.Content as string;
+            if (!string.IsNullOrWhiteSpace(label))
+            {
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(tab, label);
+                ToolTipService.SetToolTip(tab, label);
+            }
+        }
+        TopTabs.SizeChanged += (_, args) =>
+        {
+            if (!_compactTopTabs && args.NewSize.Width > 0)
+                _expandedTopTabsWidth = args.NewSize.Width;
+            UpdateResponsiveShell();
+        };
+        BrandPanel.SizeChanged += (_, _) => UpdateResponsiveShell();
+        TitleActions.SizeChanged += (_, _) => UpdateResponsiveShell();
         Nav.Loaded += (_, _) => UpdateResponsiveShell();
         _clipboardStatus = global::App.App.Services.GetRequiredService<IClipboardService>() as IClipboardStatus;
         _sensitiveActions = global::App.App.Services.GetRequiredService<ISensitiveActionVerificationService>();
@@ -79,7 +103,6 @@ public sealed partial class MainWindow
         ShellRoot.ActualThemeChanged += (_, _) => UpdateThemeIcon();
         global::App.App.Services.GetRequiredService<SecurityReportViewModel>().PropertyChanged += OnReportChanged;
         global::App.App.Services.GetRequiredService<GeneratorViewModel>().History.CollectionChanged += OnGeneratorHistoryChanged;
-        global::App.App.Services.GetRequiredService<VaultViewModel>().PropertyChanged += OnVaultOperationChanged;
         Closed += (_, _) =>
         {
             _statusTimer?.Stop();
@@ -90,7 +113,7 @@ public sealed partial class MainWindow
             requests.PendingRequestsChanged -= OnPendingRequestsChanged;
             global::App.App.Services.GetRequiredService<SecurityReportViewModel>().PropertyChanged -= OnReportChanged;
             global::App.App.Services.GetRequiredService<GeneratorViewModel>().History.CollectionChanged -= OnGeneratorHistoryChanged;
-            global::App.App.Services.GetRequiredService<VaultViewModel>().PropertyChanged -= OnVaultOperationChanged;
+            ObserveVaultViewModel(null);
             if (_cachedSendPage is not null)
             {
                 _cachedSendPage.ViewModel.Items.CollectionChanged -= OnSendItemsChanged;
@@ -106,13 +129,46 @@ public sealed partial class MainWindow
 
     private void OnVaultOperationChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(VaultViewModel.CanCancelEditor))
+        if (string.IsNullOrEmpty(e.PropertyName)
+            || e.PropertyName == nameof(VaultViewModel.CanCancelEditor))
             DispatcherQueue.TryEnqueue(() =>
             {
-                if (_folderAddButton is not null)
-                    _folderAddButton.IsEnabled = IsVaultUnlocked()
-                        && global::App.App.Services.GetRequiredService<VaultViewModel>().CanCancelEditor;
+                if (ReferenceEquals(sender, _observedVaultViewModel))
+                    UpdateFolderActionState();
             });
+    }
+
+    private void ObserveVaultViewModel(VaultViewModel? viewModel)
+    {
+        if (!ReferenceEquals(_observedVaultViewModel, viewModel))
+        {
+            if (_observedVaultViewModel is not null)
+                _observedVaultViewModel.PropertyChanged -= OnVaultOperationChanged;
+            _observedVaultViewModel = viewModel;
+            if (_observedVaultViewModel is not null)
+                _observedVaultViewModel.PropertyChanged += OnVaultOperationChanged;
+        }
+
+        UpdateFolderActionState();
+    }
+
+    private void UpdateFolderActionState()
+    {
+        if (_folderAddButton is null)
+            return;
+
+        var currentVault = ContentFrame.Content as VaultPage;
+        var isCurrent = currentVault is not null
+            && ReferenceEquals(currentVault.ViewModel, _observedVaultViewModel);
+        var available = IsVaultUnlocked() && isCurrent
+            && _observedVaultViewModel?.CanCancelEditor == true;
+        var description = available
+            ? "Create a folder in the current vault."
+            : "Finish or reconcile the current vault operation before creating a folder.";
+
+        _folderAddButton.IsEnabled = available;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(_folderAddButton, description);
+        ToolTipService.SetToolTip(_folderAddButton, description);
     }
 
     private void OnSendItemsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -157,6 +213,7 @@ public sealed partial class MainWindow
             _shellPage = string.Empty;
             _contextTag = string.Empty;
             _lastSyncAt = null;
+            ObserveVaultViewModel(null);
             _cachedVaultPage = null;
             if (_cachedSendPage is not null)
             {
@@ -191,6 +248,9 @@ public sealed partial class MainWindow
             _ => string.Empty,
         };
         var changed = page != _shellPage;
+        ObserveVaultViewModel(IsVaultUnlocked()
+            ? (ContentFrame.Content as VaultPage)?.ViewModel
+            : null);
         if (ContentFrame.Content is VaultPage currentVault) _cachedVaultPage = currentVault;
         if (ContentFrame.Content is SendPage currentSend && !ReferenceEquals(currentSend, _cachedSendPage))
         {
@@ -224,47 +284,47 @@ public sealed partial class MainWindow
                 case "vault":
                     foreach (var item in new NavigationViewItem[] { AllItemsNavItem, FavoritesNavItem, TotpNavItem })
                         Nav.MenuItems.Add(item);
-                    AddVaultGroup("文件夹", FoldersNavItem);
-                    AddVaultGroup("共享", OrganizationsNavItem);
-                    AddVaultGroup("集合", CollectionsNavItem);
+                    AddVaultGroup(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7C7802D8ADAED72E), FoldersNavItem);
+                    AddVaultGroup(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4D6A4BC105DD3F07), OrganizationsNavItem);
+                    AddVaultGroup(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text528E5174C2D4E5C8), CollectionsNavItem);
                     Nav.FooterMenuItems.Add(ArchiveNavItem);
                     Nav.FooterMenuItems.Add(TrashNavItem);
                     break;
                 case "gen":
-                    AddContextItem("随机密码", "gen:password", "\uE8D7");
-                    AddContextItem("密码短语", "gen:passphrase", "\uE8E9");
-                    AddContextItem("用户名", "gen:username", "\uE77B");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD7A101216E4AD4B1), "gen:password", "\uE8D7");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCB1B19977701FF9B), "gen:passphrase", "\uE8E9");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1A3F0617D6DE8E52), "gen:username", "\uE77B");
                     AddGeneratorHistory();
                     if (changed) _contextTag = "gen:password";
                     break;
                 case "send":
-                    AddContextItem("全部 Send", "send:all", "\uE724");
-                    AddContextItem("文本", "send:text", "\uE8A5");
-                    AddContextItem("文件", "send:file", "\uE8A5");
-                    AddContextHeader("接收");
-                    AddContextItem("打开收到的链接", "send:receive", "\uE71B");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text08F06E58676001CE), "send:all", "\uE724");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDD81861811E57BF7), "send:text", "\uE8A5");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text39932F24FE11A6BA), "send:file", "\uE8A5");
+                    AddContextHeader(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6E684586884EBEE6));
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text20F27E9DD9D032DA), "send:receive", "\uE71B");
                     if (changed) _contextTag = "send:all";
                     break;
                 case "reports":
-                    AddContextItem("概览", "reports:all", "\uEA18");
-                    AddContextHeader("需要处理");
-                    AddContextItem("已泄露", "reports:breach", "\uE783");
-                    AddContextItem("重复使用", "reports:reuse", "\uE8EE");
-                    AddContextItem("弱密码", "reports:weak", "\uE7BA");
-                    AddContextItem("不安全的网址", "reports:http", "\uE785");
-                    AddContextHeader("进展");
-                    AddContextItem("本次已处理", "reports:done", "\uE73E");
-                    AddContextItem("已忽略", "reports:ignored", "\uE890");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFEA405F9B01D1416), "reports:all", "\uEA18");
+                    AddContextHeader(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB7E3E715F18B9BAC));
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3E20E2572330B2C0), "reports:breach", "\uE783");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB82FC779B955EC5E), "reports:reuse", "\uE8EE");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEAC3BB39F8F0C574), "reports:weak", "\uE7BA");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text35CB23E74DACE235), "reports:http", "\uE785");
+                    AddContextHeader(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text92D5ADC36C2DE722));
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4BB9578CA0B97C1F), "reports:done", "\uE73E");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC9BB70BCAAA3BEE1), "reports:ignored", "\uE890");
                     if (changed) _contextTag = "reports:all";
                     break;
                 case "settings":
-                    AddContextItem("账户", "settings:account", "\uE77B");
-                    AddContextItem("安全", "settings:security", "\uE72E");
-                    AddContextItem("SSH 代理", "settings:ssh", "\uE756");
-                    AddContextItem("设备", "settings:devices", "\uE772");
-                    AddContextItem("导入和导出", "settings:import", "\uE8AB");
-                    AddContextItem("外观与行为", "settings:appearance", "\uE790");
-                    AddContextItem("关于", "settings:about", "\uE946");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text061246BD31E084A7), "settings:account", "\uE77B");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAFB63A620BDCFF15), "settings:security", "\uE72E");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3F5E6929157C5E75), "settings:ssh", "\uE756");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE1506406A5BD8F02), "settings:devices", "\uE772");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD99C4E425CC754DE), "settings:import", "\uE8AB");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0371F8EADCAA92A3), "settings:appearance", "\uE790");
+                    AddContextItem(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text52D25A9E30BA94F1), "settings:about", "\uE946");
                     if (changed) _contextTag = "settings:account";
                     break;
             }
@@ -301,7 +361,7 @@ public sealed partial class MainWindow
         GeneratorTab.IsChecked = page == "gen";
         SendTab.IsChecked = page == "send";
         ReportsTab.IsChecked = page == "reports";
-        TitleSearch.PlaceholderText = page == "send" && _cachedSendPage?.IsReceiveView != true ? "搜索 Send" : "搜索密码库";
+        TitleSearch.PlaceholderText = page == "send" && _cachedSendPage?.IsReceiveView != true ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text53A3782E240E2CD1) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAE9EE7FE108525EE);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(TitleSearch, TitleSearch.PlaceholderText);
         UpdateNavigationCounts();
         UpdateResponsiveShell();
@@ -349,10 +409,10 @@ public sealed partial class MainWindow
             Padding = new Thickness(4), Style = (Style)Application.Current.Resources["IconButtonStyle"],
             Content = new FontIcon { Glyph = "\uE710", FontSize = 14 },
         };
-        ToolTipService.SetToolTip(add, "新建文件夹");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(add, "新建文件夹");
-        add.IsEnabled = global::App.App.Services.GetRequiredService<VaultViewModel>().CanCancelEditor;
+        ToolTipService.SetToolTip(add, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text84244ABC71DE03AC));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(add, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text84244ABC71DE03AC));
         _folderAddButton = add;
+        UpdateFolderActionState();
         add.Click += async (_, _) => await InvokeFolderActionAsync("create");
         Grid.SetColumn(add, 1);
         content.Children.Add(add);
@@ -367,9 +427,9 @@ public sealed partial class MainWindow
     private MenuFlyout CreateFolderContextMenu(string folderId, string folderName)
     {
         var menu = new MenuFlyout();
-        var rename = new MenuFlyoutItem { Text = "重命名", Icon = new FontIcon { Glyph = "\uE8AC" } };
+        var rename = new MenuFlyoutItem { Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0D0CBAC2EEE54113), Icon = new FontIcon { Glyph = "\uE8AC" } };
         rename.Click += async (_, _) => await InvokeFolderActionAsync("rename", folderId, folderName);
-        var delete = new MenuFlyoutItem { Text = "删除文件夹", Icon = new FontIcon { Glyph = "\uE74D" } };
+        var delete = new MenuFlyoutItem { Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text780DFC4C114297D3), Icon = new FontIcon { Glyph = "\uE74D" } };
         delete.Click += async (_, _) => await InvokeFolderActionAsync("delete", folderId, folderName);
         menu.Items.Add(rename);
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -381,6 +441,12 @@ public sealed partial class MainWindow
     {
         if (!IsVaultUnlocked() || !Nav.IsEnabled || ContentFrame.Content is not VaultPage vault)
             return;
+        if (!vault.ViewModel.CanCancelEditor)
+        {
+            UpdateFolderActionState();
+            ShowNotice(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text442C52CE4ED69957));
+            return;
+        }
         switch (action)
         {
             case "create":
@@ -399,7 +465,7 @@ public sealed partial class MainWindow
     {
         if (ShellRoot.ActualWidth < 1200 && !Nav.IsPaneOpen)
             return;
-        AddContextHeader("最近复制");
+        AddContextHeader(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0A6DB89EB940B391));
         foreach (var history in global::App.App.Services.GetRequiredService<GeneratorViewModel>().History.Take(5))
         {
             var item = new NavigationViewItem { SelectsOnInvoked = false, MinHeight = 32, Padding = new Thickness(14, 0, 8, 0) };
@@ -419,13 +485,13 @@ public sealed partial class MainWindow
                 if (IsVaultUnlocked())
                 {
                     global::App.App.Services.GetRequiredService<GeneratorViewModel>().CopyHistoryItemCommand.Execute(history);
-                    _clipboardStatus?.SetLabel(history.Mode == GeneratorMode.Username ? "用户名" : "密码");
+                    _clipboardStatus?.SetLabel(history.Mode == GeneratorMode.Username ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1A3F0617D6DE8E52) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA621AB606DB2A11F));
                     _historyCopyButtons[copy] = _clipboardStatus?.WriteVersion ?? 0;
                     copy.Content = new FontIcon { Glyph = "\uE73E", FontSize = 14 };
                 }
             };
-            ToolTipService.SetToolTip(copy, "复制");
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(copy, "复制历史记录");
+            ToolTipService.SetToolTip(copy, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text63D90D977348AB1F));
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(copy, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDDDF686AD0853981));
             grid.Children.Add(copy);
             item.Content = grid;
             ToolTipService.SetToolTip(item, history.CreatedAtText);
@@ -442,11 +508,11 @@ public sealed partial class MainWindow
         if (_shellPage == "vault")
         {
             var items = global::App.App.Services.GetRequiredService<IVaultUiService>().GetItems();
-            SetNavigationCount(AllItemsNavItem, "全部条目", items.Count(i => !i.IsDeleted && !i.IsArchived));
-            SetNavigationCount(FavoritesNavItem, "收藏", items.Count(i => !i.IsDeleted && !i.IsArchived && i.Favorite));
-            SetNavigationCount(TotpNavItem, "验证码", items.Count(i => !i.IsDeleted && !i.IsArchived && i.HasTotp));
-            SetNavigationCount(ArchiveNavItem, "归档", items.Count(i => !i.IsDeleted && i.IsArchived));
-            SetNavigationCount(TrashNavItem, "回收站", items.Count(i => i.IsDeleted));
+            SetNavigationCount(AllItemsNavItem, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text80A851B1DF45DC50), items.Count(i => !i.IsDeleted && !i.IsArchived));
+            SetNavigationCount(FavoritesNavItem, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text60A53514EB9228A2), items.Count(i => !i.IsDeleted && !i.IsArchived && i.Favorite));
+            SetNavigationCount(TotpNavItem, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBB015C60BAFC8A96), items.Count(i => !i.IsDeleted && !i.IsArchived && i.HasTotp));
+            SetNavigationCount(ArchiveNavItem, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5292AB1A36C56A6B), items.Count(i => !i.IsDeleted && i.IsArchived));
+            SetNavigationCount(TrashNavItem, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBA35DC23B245E61E), items.Count(i => i.IsDeleted));
             foreach (var filter in global::App.App.Services.GetRequiredService<IVaultUiService>().GetFilters())
             {
                 var tag = filter.Kind switch
@@ -461,25 +527,25 @@ public sealed partial class MainWindow
         }
         else if (_shellPage == "send" && ContentFrame.Content is SendPage send)
         {
-            SetContextCount("send:all", "全部 Send", send.ViewModel.Items.Count);
-            SetContextCount("send:text", "文本", send.ViewModel.Items.Count(i => i.Type == SendType.Text));
-            SetContextCount("send:file", "文件", send.ViewModel.Items.Count(i => i.Type == SendType.File));
+            SetContextCount("send:all", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text08F06E58676001CE), send.ViewModel.Items.Count);
+            SetContextCount("send:text", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDD81861811E57BF7), send.ViewModel.Items.Count(i => i.Type == SendType.Text));
+            SetContextCount("send:file", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text39932F24FE11A6BA), send.ViewModel.Items.Count(i => i.Type == SendType.File));
         }
         else if (_shellPage == "reports")
         {
-            SetContextCount("reports:breach", "已泄露", report.ShowExposedCount
+            SetContextCount("reports:breach", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3E20E2572330B2C0), report.ShowExposedCount
                 ? report.GetCategoryIssueCount("breach").ToString() : "—");
-            SetContextCount("reports:reuse", "重复使用", report.GetCategoryIssueCount("reuse"));
-            SetContextCount("reports:weak", "弱密码", report.GetCategoryIssueCount("weak"));
-            SetContextCount("reports:http", "不安全的网址", report.GetCategoryIssueCount("http"));
-            SetContextCount("reports:done", "本次已处理", report.ResolvedCount);
-            SetContextCount("reports:ignored", "已忽略", report.GetCategoryIssueCount("ignored"));
+            SetContextCount("reports:reuse", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB82FC779B955EC5E), report.GetCategoryIssueCount("reuse"));
+            SetContextCount("reports:weak", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEAC3BB39F8F0C574), report.GetCategoryIssueCount("weak"));
+            SetContextCount("reports:http", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text35CB23E74DACE235), report.GetCategoryIssueCount("http"));
+            SetContextCount("reports:done", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4BB9578CA0B97C1F), report.ResolvedCount);
+            SetContextCount("reports:ignored", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC9BB70BCAAA3BEE1), report.GetCategoryIssueCount("ignored"));
         }
         else if (_shellPage == "settings" && FindNavigationItem("settings:devices") is { } devices)
         {
             var count = global::App.App.Services.GetRequiredService<DeviceApprovalWindowService>().PendingCount;
-            if (count > 0) SetNavigationCount(devices, "设备", count);
-            else devices.Content = "设备";
+            if (count > 0) SetNavigationCount(devices, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE1506406A5BD8F02), count);
+            else devices.Content = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE1506406A5BD8F02);
         }
     }
 
@@ -512,7 +578,7 @@ public sealed partial class MainWindow
         grid.Children.Add(countText);
         item.Content = grid;
         ToolTipService.SetToolTip(item, label);
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, count == "—" ? $"{label} 尚未检查" : $"{label} {count}");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, count == "—" ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text9E6EA02EF40C0B9A,label) : $"{label} {count}");
     }
 
     private async Task<bool> NavigateContextTagAsync(string tag)
@@ -597,9 +663,9 @@ public sealed partial class MainWindow
         if (ContentFrame.Content is not SecurityReportPage report)
             return;
         RecheckButton.IsEnabled = false;
-        RecheckLabel.Text = "正在检查…";
+        RecheckLabel.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6B72C3D6855CB87D);
         try { await report.ViewModel.RefreshReportsAsync(); }
-        finally { RecheckButton.IsEnabled = true; RecheckLabel.Text = "重新检查"; }
+        finally { RecheckButton.IsEnabled = true; RecheckLabel.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC25FB86B1E96E063); }
     }
 
     public void FocusVaultSearch()
@@ -710,14 +776,29 @@ public sealed partial class MainWindow
         BrandPanel.Margin = new Thickness(0, 0, width < 1000 ? 4 : 16, 0);
         TopTabs.Visibility = unlocked && !(narrow && _compactSearchOpen) ? Visibility.Visible : Visibility.Collapsed;
         TitleSearchHost.Visibility = unlocked && (!narrow || _compactSearchOpen) ? Visibility.Visible : Visibility.Collapsed;
-        Grid.SetColumn(TitleSearchHost, width >= 1280 ? 0 : narrow ? 1 : 2);
-        Grid.SetColumnSpan(TitleSearchHost, width >= 1280 ? 5 : narrow ? 2 : 1);
-        TitleSearchHost.HorizontalAlignment = width >= 1280 ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
-        TitleSearchHost.Width = width >= 1280 ? 360 : double.NaN;
-        TitleSearchHost.Margin = width >= 1280 ? new Thickness(0) : new Thickness(12, 0, 8, 0);
-        TitleSearchHost.RenderTransform = new TranslateTransform { X = width >= 1280 ? -8 : 0 };
-        TitleSearchHost.MaxWidth = narrow ? double.PositiveInfinity : 360;
         CompactSearchButton.Visibility = unlocked && narrow && !_compactSearchOpen ? Visibility.Visible : Visibility.Collapsed;
+        var captionWidth = RightPaddingColumn.ActualWidth > 0
+            ? RightPaddingColumn.ActualWidth : RightPaddingColumn.Width.Value;
+        SetCompactTopTabs(unlocked && TitleBarLayoutPolicy.NeedCompactTabs(
+            width, _expandedTopTabsWidth,
+            BrandPanel.ActualWidth + BrandPanel.Margin.Left + BrandPanel.Margin.Right,
+            TitleActions.ActualWidth + TitleActions.Margin.Left + TitleActions.Margin.Right,
+            captionWidth, AppTitleBar.Padding.Left + AppTitleBar.Padding.Right + AppTitleBar.ColumnSpacing * 4,
+            !narrow ? TitleSearch.MinWidth + 20 : 0));
+        var centerSearch = false;
+        if (unlocked && width >= 1280 && TopTabs.ActualWidth > 0 && TitleActions.ActualWidth > 0)
+        {
+            var tabs = TopTabs.TransformToVisual(AppTitleBar).TransformBounds(new Rect(0, 0, TopTabs.ActualWidth, TopTabs.ActualHeight));
+            var actions = TitleActions.TransformToVisual(AppTitleBar).TransformBounds(new Rect(0, 0, TitleActions.ActualWidth, TitleActions.ActualHeight));
+            centerSearch = TitleBarLayoutPolicy.CanCenterSearch(width, tabs.Right, actions.Left);
+        }
+        Grid.SetColumn(TitleSearchHost, centerSearch ? 0 : narrow ? 1 : 2);
+        Grid.SetColumnSpan(TitleSearchHost, centerSearch ? 5 : narrow ? 2 : 1);
+        TitleSearchHost.HorizontalAlignment = centerSearch ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
+        TitleSearchHost.Width = centerSearch ? 360 : double.NaN;
+        TitleSearchHost.Margin = centerSearch ? new Thickness(0) : new Thickness(12, 0, 8, 0);
+        TitleSearchHost.RenderTransform = new TranslateTransform { X = centerSearch ? -8 : 0 };
+        TitleSearchHost.MaxWidth = narrow ? double.PositiveInfinity : 360;
         Nav.IsPaneToggleButtonVisible = width < 1200;
         PaneToggleButton.Visibility = Visibility.Collapsed;
         UpdateCompactPaneAction(compact);
@@ -755,7 +836,7 @@ public sealed partial class MainWindow
             _compactActionItem = new NavigationViewItem
             {
                 Tag = tag, SelectsOnInvoked = false,
-                Content = tag == "shell:new" ? "新建" : "重新检查",
+                Content = tag == "shell:new" ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text50EF2F4CF6A46924) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC25FB86B1E96E063),
                 Icon = new FontIcon { Glyph = tag == "shell:new" ? "\uE710" : "\uE72C", FontSize = 16 },
                 MinHeight = 32, Height = 32,
             };
@@ -763,6 +844,37 @@ public sealed partial class MainWindow
             ToolTipService.SetToolTip(_compactActionItem, _compactActionItem.Content);
         }
         if (!Nav.MenuItems.Contains(_compactActionItem)) Nav.MenuItems.Insert(0, _compactActionItem);
+    }
+
+    private void SetCompactTopTabs(bool compact)
+    {
+        if (_compactTopTabs == compact || _expandedTopTabContents.Count == 0)
+            return;
+        _compactTopTabs = compact;
+        foreach (var (tab, glyph) in new[]
+        {
+            (VaultTab, "\uE72E"), (GeneratorTab, "\uE8B1"),
+            (SendTab, "\uE724"), (ReportsTab, "\uE9D9"),
+        })
+        {
+            if (compact)
+            {
+                var icon = new FontIcon { Glyph = glyph, FontSize = 16 };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
+                    icon, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+                tab.Content = icon;
+                tab.MinWidth = 40;
+                tab.Width = 40;
+                tab.Padding = new Thickness(8, 0, 8, 0);
+            }
+            else
+            {
+                tab.Content = _expandedTopTabContents[tab];
+                tab.ClearValue(FrameworkElement.MinWidthProperty);
+                tab.ClearValue(FrameworkElement.WidthProperty);
+                tab.ClearValue(Control.PaddingProperty);
+            }
+        }
     }
 
     private void UpdateTitleBarRegions()
@@ -838,6 +950,10 @@ public sealed partial class MainWindow
     private void UpdateStatusBar()
     {
         if (ClipboardStatus is null || _isLoginWindow) return;
+        if (SshStatusLabel is not null)
+            SshStatusLabel.Text = global::App.App.Services.GetRequiredService<ISshAgentHost>().IsRunning
+                ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text40FE762563572B54)
+                : AppPreferences.Current.SshAgentEnabled ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8BFB4AC34B2A0735) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8237D3DDFE128CAB);
         var pendingRequests = global::App.App.Services.GetRequiredService<DeviceApprovalWindowService>().PendingCount;
         if (pendingRequests != _lastPendingRequestCount)
         {
@@ -848,11 +964,11 @@ public sealed partial class MainWindow
         if (!_syncing && _lastSyncAt is { } synced)
         {
             var minutes = (int)(DateTimeOffset.UtcNow - synced).TotalMinutes;
-            SyncStatusText.Text = minutes == 0 ? "已同步 · 刚刚" : $"已同步 · {minutes} 分钟前";
+            SyncStatusText.Text = minutes == 0 ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD91CF2173E0AD1CB) : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text61E5D07D00850090,minutes);
         }
         var grace = _sensitiveActions?.GraceRemaining ?? TimeSpan.Zero;
         GraceStatus.Visibility = grace > TimeSpan.Zero ? Visibility.Visible : Visibility.Collapsed;
-        GraceStatusText.Text = ShellRoot.ActualWidth < 1000 ? $"已验证 · {grace.Minutes}:{grace.Seconds:00}" : $"已验证 · {grace.Minutes}:{grace.Seconds:00} 内无需再次验证";
+        GraceStatusText.Text = ShellRoot.ActualWidth < 1000 ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextB7E7A97A8DCFBCA6,grace.Minutes,grace.Seconds) : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text384966EE5AE94371,grace.Minutes,grace.Seconds);
         var clip = _clipboardStatus;
         foreach (var (button, version) in _historyCopyButtons)
         {
@@ -863,14 +979,14 @@ public sealed partial class MainWindow
         {
             ClipboardStatus.Visibility = Visibility.Visible;
             ClearClipboardButton.Visibility = Visibility.Visible;
-            var remaining = clip.ClearAt is { } clearAt ? $"{Math.Max(0, (int)Math.Ceiling((clearAt - DateTimeOffset.UtcNow).TotalSeconds))} 秒后清除" : "不会自动清除";
-            var history = AppPreferences.Current.ExcludeClipboardHistory && ShellRoot.ActualWidth >= 1280 ? " · 不进入 Win+V 历史" : string.Empty;
-            ClipboardStatusText.Text = $"已复制{clip.Label} · {remaining}{history}";
+            var remaining = clip.ClearAt is { } clearAt ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text2A26888143C316A2,Math.Max(0, (int)Math.Ceiling((clearAt - DateTimeOffset.UtcNow).TotalSeconds))) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2744A7F44B3E4C5E);
+            var history = AppPreferences.Current.ExcludeClipboardHistory && ShellRoot.ActualWidth >= 1280 ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA8D10AFC14137EF2) : string.Empty;
+            ClipboardStatusText.Text = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text6FD19F7D346EC57E,clip.Label,remaining,history);
         }
         else if (clip?.LastClearedAt is { } cleared && DateTimeOffset.UtcNow - cleared < TimeSpan.FromSeconds(3))
         {
             ClipboardStatus.Visibility = Visibility.Visible;
-            ClipboardStatusText.Text = "剪贴板已清除";
+            ClipboardStatusText.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9F5F52DF1D67E6C9);
             ClearClipboardButton.Visibility = Visibility.Collapsed;
         }
         else ClipboardStatus.Visibility = Visibility.Collapsed;
@@ -880,7 +996,7 @@ public sealed partial class MainWindow
     {
         if (_syncing || !IsVaultUnlocked()) return;
         _syncing = true;
-        SyncStatusText.Text = "正在同步…";
+        SyncStatusText.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text954EC984CD4F49D1);
         SyncStatusButton.IsEnabled = false;
         var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
         var lease = session.CaptureLease();
@@ -898,8 +1014,8 @@ public sealed partial class MainWindow
             if (session.IsUnlocked(lease))
             {
                 _lastSyncAt = null;
-                SyncStatusText.Text = "同步失败 · 点击重试";
-                ShowNotice("同步未完成，请检查网络连接后重试。");
+                SyncStatusText.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text88B4C02248ADA065);
+                ShowNotice(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF52CF48CAA3117DF));
             }
             CrashLogger.WriteRedacted("ShellSync", ex);
         }

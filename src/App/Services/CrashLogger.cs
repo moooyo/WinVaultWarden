@@ -12,6 +12,9 @@ namespace App.Services;
 /// </summary>
 public static class CrashLogger
 {
+#if NATIVE_UI_REVIEW
+    internal static string? NativeReviewDirectory { get; set; }
+#endif
     /// <summary>日志文件超过此大小则清空重来,避免无限增长。</summary>
     public const long MaxLogBytes = 256 * 1024;
 
@@ -51,6 +54,12 @@ public static class CrashLogger
     /// </summary>
     public static string? Write(string baseDir, string entry)
     {
+#if NATIVE_UI_REVIEW
+        // Fixture diagnostics must never create or modify the user's application profile.
+        if (NativeReviewDirectory is not { Length: > 0 } reviewDirectory)
+            return null;
+        baseDir = reviewDirectory;
+#endif
         try
         {
             var dir = Path.Combine(baseDir, "logs");

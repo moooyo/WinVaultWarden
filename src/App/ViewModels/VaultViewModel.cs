@@ -152,22 +152,22 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
                 return string.Empty;
             if (!TryGetUniformOrganizationSelection(out var selected, out var organizationId))
             {
-                return "所选条目混合了个人密码库与组织条目，或来自不同组织。请仅选择全部个人条目或同一组织的条目。";
+                return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC79C722E845C8E26);
             }
             if (selected.Any(item => item.IsDeleted))
-                return "回收站中的条目不能执行批量组织操作。";
+                return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF234C294806358E5);
             if (selected.Any(item => !IsPlacementTypeSupported(item.Kind)))
-                return "所选条目包含当前服务器不支持写入的类型。";
+                return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text76016CB8644CF6AC);
             if (organizationId is null)
             {
                 if (selected.Any(item => !item.CanEdit || !item.CanViewPassword))
-                    return "所选条目包含只读条目或不可查看密码的条目。";
+                    return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7E8541147B917601);
                 if (selected.Any(item => !item.CanTransferToOrganization))
-                    return "所选条目包含无法安全转移的附件，或当前没有可写入的组织集合。";
+                    return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2E27697584D16101);
             }
             else if (selected.Any(item => !item.CanManageCollections))
             {
-                return "所选条目包含当前账户无权管理集合的条目。";
+                return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text777861925B0B3567);
             }
             return string.Empty;
         }
@@ -219,8 +219,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     }
 
     public string WorkspaceTitle => SelectedFilter?.Kind == FilterKind.AllItems
-        ? "全部条目" : SelectedFilter?.Label ?? "全部条目";
-    public string VisibleItemCountText => $"{FilteredItems.Count} 个条目";
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text80A851B1DF45DC50) : SelectedFilter?.Label ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text80A851B1DF45DC50);
+    public string VisibleItemCountText => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextD3B279371FF17265,FilteredItems.Count);
     public bool ShowDetailNotes => Detail is not NoteDetail && !string.IsNullOrWhiteSpace(Detail?.Notes);
     public bool ShowReadOnlyNotice => SelectedItem is { CanModify: false, IsDeleted: false };
     public bool ShowHiddenSecretsNotice => SelectedItem is { CanViewPassword: false };
@@ -231,8 +231,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         {
             var owner = SelectedItem?.OrganizationId is { } organizationId
                 ? Filters.FirstOrDefault(filter => filter.Kind == FilterKind.Organization
-                    && filter.OrganizationId == organizationId)?.Label ?? "组织密码库"
-                : "个人密码库";
+                    && filter.OrganizationId == organizationId)?.Label ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0079366D3D1DC18A)
+                : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7271EF50257E8649);
             return string.IsNullOrWhiteSpace(Detail?.FolderName) ? owner : $"{owner} › {Detail.FolderName}";
         }
     }
@@ -246,39 +246,39 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     public bool HasEditorPasskeys => EditorPasskeys.Count > 0;
     public string EmptyStateTitle => SelectedFilter?.Kind switch
     {
-        FilterKind.Trash => "回收站是空的",
-        FilterKind.Archive => "没有归档的条目",
-        FilterKind.Favorites => "还没有收藏",
-        FilterKind.Totp => "还没有保存验证码的条目",
-        FilterKind.Folder => $"“{SelectedFilter.Label}”里还没有条目",
-        _ => "密码库还是空的",
+        FilterKind.Trash => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9C670525529948CB),
+        FilterKind.Archive => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBD6146CCAD05EBA6),
+        FilterKind.Favorites => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text45BD81DD675C7D40),
+        FilterKind.Totp => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8DD152C4945A7655),
+        FilterKind.Folder => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextBE835B6D9D495A06,SelectedFilter.Label),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC67ACB524B8AB48F),
     };
     public string EmptyStateHint => SelectedFilter?.Kind switch
     {
-        FilterKind.Trash => "删除的条目会显示在这里，可恢复或永久删除。",
-        FilterKind.Archive => "不常用但还想保留的条目可以归档，随时可以取消归档。",
-        FilterKind.Favorites => "在条目详情里点星标就能收藏，最常用的放在这里。",
-        FilterKind.Totp => "编辑登录条目，填入身份验证器密钥或 otpauth:// 链接。",
-        FilterKind.Folder => "在这里新建的条目会自动放进这个文件夹。也可以多选其他条目再移进来。",
-        _ => "新建第一个条目，或者从其他密码管理器导入。",
+        FilterKind.Trash => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7D60D5D6218BF4D9),
+        FilterKind.Archive => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDFAB5EFE91DE89B4),
+        FilterKind.Favorites => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAECBFC9656E893A1),
+        FilterKind.Totp => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4B63C0EE08ED7724),
+        FilterKind.Folder => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text662ABC33BA55E077),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text40E5007A4CD0277E),
     };
     public bool ShowEmptyCreateAction => SelectedFilter?.Kind is null or FilterKind.AllItems or FilterKind.Folder;
     public bool ShowEmptyImportAction => SelectedFilter?.Kind is null or FilterKind.AllItems;
     public bool IsSearchScopeLimited => !string.IsNullOrWhiteSpace(SearchText)
         && SelectedFilter?.Kind is not (null or FilterKind.AllItems);
     public bool ShowSearchScopeNotice => IsSearchScopeLimited && FilteredItems.Count > 0;
-    public string SearchScopeText => $"只在“{WorkspaceTitle}”里搜索";
+    public string SearchScopeText => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text984720CE111192A5,WorkspaceTitle);
     public bool ShowClearSearchAction => !string.IsNullOrWhiteSpace(SearchText);
     public bool ShowClearRefinementAction => HasActiveRefinement && !ShowClearSearchAction;
     public bool CanManageEditorAttachments => IsEditing && _editingId is not null
         && SelectedItem is { IsDeleted: false, CanModify: true }
         && CanEditEditorDraft && !HasUnsavedEditorChanges;
     public string NoResultsTitle => string.IsNullOrWhiteSpace(SearchText)
-        ? "没有符合筛选条件的条目"
-        : $"没有找到“{SearchText.Trim()}”";
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text78543DBFEDA3AA12)
+        : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text5DC5C08ECE0671A5,SearchText.Trim());
     public string NewSearchItemLabel => string.IsNullOrWhiteSpace(SearchText)
-        ? "新建条目"
-        : $"新建“{SearchText.Trim()}”";
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEF8082EF4A53E474)
+        : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text9E99054578B39BA5,SearchText.Trim());
     public VaultWorkspaceContext WorkspaceContext => new(
         SearchText, CurrentFacets, SelectedSort, SelectedTypeIndex,
         _workspaceVerticalOffset, _workspaceFocusedItemId, _workspaceSearchHadFocus);
@@ -321,14 +321,14 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     {
         if (IsEditing)
         {
-            OperationError = "请先保存或取消当前编辑，再查看其他条目。";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text870317AC41C1DAA1);
             return;
         }
         var item = Items.FirstOrDefault(candidate => string.Equals(candidate.Id, id, StringComparison.Ordinal));
         if (item is null)
         {
             SelectedItem = null;
-            OperationError = "该条目已不在当前保险库中，请同步后重试。";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD7093B7732952925);
             return;
         }
 
@@ -694,7 +694,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         }
     }
 
-    public string EditorFolderLabel => EditorSelectedFolder?.Label ?? "无文件夹";
+    public string EditorFolderLabel => EditorSelectedFolder?.Label ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text767541AFFA3F793B);
 
     [ObservableProperty]
     public partial string EditorError { get; set; } = string.Empty;
@@ -734,28 +734,28 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     public bool HasRecoverablePendingDraft =>
         HasOwnedPendingCipherCreate && IsEditing && EditorDraft is not null;
     public string PendingCipherCreateTitle => _pendingCipherCreate?.CommitConfirmed == true
-        ? "服务器已接受创建，但仍无法定位条目"
-        : "无法确认上一次新建是否成功";
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB29AE344BEE38914)
+        : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8E72765960F1B6F4);
     public string PendingCipherCreateMessage => _pendingCipherCreate?.CommitConfirmed == true
-        ? "服务器曾返回成功，但客户端仍无法确认新条目。解除防重复保护后再次保存，很可能产生重复条目。"
-        : "服务器可能已经保存了该条目。解除防重复保护后再次保存，可能产生重复条目。";
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAD0AFF20B25DAB55)
+        : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text21A1BD4B89EB3951);
     public string PendingCipherCreateDraftMessage => HasRecoverablePendingDraft
-        ? "与此请求对应的当前草稿仍保留。放弃待确认状态后，请先检查密码库，再决定是否手动保存。"
-        : "本地没有与此请求对应的可恢复草稿；此操作可能来自浏览器或上一次应用运行。";
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text054B7DB6B6AAFA3C)
+        : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text31F4724A77741CC6);
     private bool HasOwnedPendingCipherCreate =>
         _pendingCipherCreate is not null && OwnsPendingCipherCreate(_pendingCipherCreate);
     public string BusyMessage => CurrentOperation switch
     {
-        VaultOperationKind.Sync => "正在同步保险库…",
-        VaultOperationKind.ResolveCipherCreate => "正在更新待确认状态…",
-        VaultOperationKind.SaveCipher => "正在保存条目…",
-        VaultOperationKind.DeleteCipher => "正在更新回收站…",
-        VaultOperationKind.ArchiveCipher => "正在更新归档…",
-        VaultOperationKind.Folder => "正在更新文件夹…",
-        VaultOperationKind.Batch => "正在处理所选条目…",
-        VaultOperationKind.AttachmentUpload => "正在上传附件…",
-        VaultOperationKind.AttachmentDownload => "正在下载附件…",
-        VaultOperationKind.AttachmentDelete => "正在删除附件…",
+        VaultOperationKind.Sync => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text85E1E596113C5C90),
+        VaultOperationKind.ResolveCipherCreate => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text51BC70F721DA8EC4),
+        VaultOperationKind.SaveCipher => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC99F4A847329771C),
+        VaultOperationKind.DeleteCipher => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text257AAD36E26E12B5),
+        VaultOperationKind.ArchiveCipher => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8CC16005E763D311),
+        VaultOperationKind.Folder => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE41182E5835BAB1A),
+        VaultOperationKind.Batch => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEFDF55968BE9CAEC),
+        VaultOperationKind.AttachmentUpload => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text95FC93F67265B55C),
+        VaultOperationKind.AttachmentDownload => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC376123976604CCF),
+        VaultOperationKind.AttachmentDelete => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE5E98FBC74E6A5AA),
         _ => string.Empty,
     };
 
@@ -776,10 +776,10 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     public bool HasOperationWarning => !string.IsNullOrEmpty(OperationWarning);
     public bool ShowOperationWarningInfo => HasOperationWarning && !HasPendingCipherCreate;
     public string OperationWarningTitle => _pendingCipherCreate is not null
-        ? "保存结果待确认"
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7CE0519134D785E8)
         : _showPendingCreateAbandonedWarning
-            ? "待确认状态已放弃"
-            : "已保存，需要同步";
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text506184A8427D525F)
+            : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text618A198F330934C7);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSkippedCiphers))]
@@ -788,7 +788,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     // 同步时有条目无法解密被跳过 → 提示用户这些条目已被隐藏。
     public bool HasSkippedCiphers => SkippedCipherCount > 0;
-    public string SkippedCipherMessage => $"{SkippedCipherCount} 个条目无法解密，已隐藏";
+    public string SkippedCipherMessage => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextF04B32E6CAF60255,SkippedCipherCount);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasUnsupportedOrganizationCiphers))]
@@ -797,7 +797,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     public bool HasUnsupportedOrganizationCiphers => UnsupportedOrganizationCipherCount > 0;
     public string UnsupportedOrganizationCipherMessage =>
-        $"{UnsupportedOrganizationCipherCount} 个共享条目因组织密钥无法解密，已隐藏。";
+        global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text86D4D6C2E49328F5,UnsupportedOrganizationCipherCount);
 
     // 当前快照来自离线缓存(未联网同步) → 提示用户数据可能已过期。
     [ObservableProperty]
@@ -834,7 +834,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     public bool HasTrashItems => TrashCount > 0;
     public bool IsTrashEmpty => IsTrashFilterSelected && TrashCount == 0;
     public bool CanEmptyRecycleBin => IsTrashFilterSelected && HasTrashItems;
-    public string TrashHeader => $"回收站 ({TrashCount})";
+    public string TrashHeader => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text47F1550B30759204,TrashCount);
     public int ArchiveCount => Items.Count(i => i.IsArchived && !i.IsDeleted);
     public bool IsArchiveEmpty => IsArchiveFilterSelected && ArchiveCount == 0;
 
@@ -853,14 +853,14 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     public string EditorTitle => EditorDraft?.Type switch
     {
-        VaultItemKind.Login => _editingId is null ? "新增登录" : "编辑登录",
-        VaultItemKind.Card => _editingId is null ? "新增支付卡" : "编辑支付卡",
-        VaultItemKind.Identity => _editingId is null ? "新增身份" : "编辑身份",
-        VaultItemKind.Note => _editingId is null ? "新增笔记" : "编辑笔记",
-        VaultItemKind.Ssh => _editingId is null ? "新增 SSH 密钥" : "编辑 SSH 密钥",
-        VaultItemKind.BankAccount => _editingId is null ? "新增银行账户" : "编辑银行账户",
-        VaultItemKind.DriversLicense => _editingId is null ? "新增驾驶证" : "编辑驾驶证",
-        VaultItemKind.Passport => _editingId is null ? "新增护照" : "编辑护照",
+        VaultItemKind.Login => _editingId is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text38D13B1CA064ACB2) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextADA94A2A17E2D7DD),
+        VaultItemKind.Card => _editingId is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text74132A229B8E3653) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9A5804EDB1E7BADD),
+        VaultItemKind.Identity => _editingId is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD197DA806D759FFF) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8404307BBF6742A9),
+        VaultItemKind.Note => _editingId is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5D767D3FA9C96095) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCB100FB35E7B5D00),
+        VaultItemKind.Ssh => _editingId is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC80264D3FBE4B4A0) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text427073672AD1AF6A),
+        VaultItemKind.BankAccount => _editingId is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE428DB0F881F78FF) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text129B0C6F690EA75B),
+        VaultItemKind.DriversLicense => _editingId is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD5ACE0DA0B891638) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text306C061087F60B36),
+        VaultItemKind.Passport => _editingId is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF0E9495E81D6EFDB) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA22D95BC0F6D7849),
         _ => string.Empty,
     };
 
@@ -886,8 +886,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         {
             _pendingCipherCreate = pending;
             DataStale = true;
-            OperationWarning = "新条目的保存结果仍待确认。请先同步，不要重复提交。";
-            OperationError = "检测到此账户存在待确认的新建操作。";
+            OperationWarning = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6AE4FBDF99628808);
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text14673167DA03FF4A);
         }
         if (savedStore is not null)
             foreach (var v in savedStore.GetAll()) SavedViews.Add(v);
@@ -1185,23 +1185,23 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
     private static string TypeDisplayName(VaultItemKind kind) => kind switch
     {
-        VaultItemKind.Login => "登录",
-        VaultItemKind.Card => "银行卡",
-        VaultItemKind.Identity => "身份",
-        VaultItemKind.Note => "笔记",
-        VaultItemKind.Ssh => "SSH 密钥",
-        VaultItemKind.BankAccount => "银行账户",
-        VaultItemKind.DriversLicense => "驾驶证",
-        VaultItemKind.Passport => "护照",
-        _ => "其他",
+        VaultItemKind.Login => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1E2DF9C3075AE9E4),
+        VaultItemKind.Card => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text063B78481D2EAB5F),
+        VaultItemKind.Identity => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2A9C9E9976421A9D),
+        VaultItemKind.Note => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB778E307964FB978),
+        VaultItemKind.Ssh => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBF18658907FB9C66),
+        VaultItemKind.BankAccount => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC4C25EEB5DAF09EA),
+        VaultItemKind.DriversLicense => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text61B7153092BCDCCB),
+        VaultItemKind.Passport => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD24F1B9E50C3D3C8),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD2909F1647E7C891),
     };
 
     private string FolderNameFor(string? folderId)
     {
         if (string.IsNullOrEmpty(folderId))
-            return "无文件夹";
+            return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text767541AFFA3F793B);
         var folder = Filters.FirstOrDefault(f => f.Kind == FilterKind.Folder && f.FolderId == folderId);
-        return folder?.Label ?? "无文件夹";
+        return folder?.Label ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text767541AFFA3F793B);
     }
 
     private void RebuildGroups()
@@ -1221,9 +1221,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         }
 
         foreach (var groupItems in FilteredItems.GroupBy(item =>
-            item.LastUsedAt?.LocalDateTime.Date >= _recentGroupDate ? "今天"
-                : item.LastUsedAt?.LocalDateTime.Date >= _recentGroupDate.AddDays(-6) ? "过去 7 天"
-                : "更早"))
+            item.LastUsedAt?.LocalDateTime.Date >= _recentGroupDate ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD5F5A7A010731FEB)
+                : item.LastUsedAt?.LocalDateTime.Date >= _recentGroupDate.AddDays(-6) ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA43AECBAD17BEF62)
+                : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC56A5BB657DE8F96)))
         {
             var group = new VaultListGroup { Key = groupItems.Key, ShowHeader = true };
             foreach (var item in groupItems) group.Add(item);
@@ -1264,16 +1264,16 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         if (!CanBeginCipherCreate)
         {
             OperationError = _pendingCipherCreate is not null
-                ? "请先同步并确认上一次新建结果，再创建其他条目。"
+                ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2BC82DC8D00CE4D2)
                 : _service.HasPendingOrInFlightCipherCreate()
-                    ? "另一个新建操作仍在进行或等待确认。"
-                    : "当前有保险库操作正在进行。";
+                    ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text57B2680A9E527E60)
+                    : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB038F2EFB3C1BE30);
             return;
         }
 
         if (IsNewCipherType(type) && !CanCreateNewCipherTypes)
         {
-            OperationError = "当前服务器未确认支持创建此类型的条目。";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text09E0F02CDE74D00A);
             return;
         }
 
@@ -1285,7 +1285,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         ConfigureEditorDestinations(canChoose: true);
         ResetEditorBaseline();
         EditorError = EditorDestinations.Count == 0
-            ? "当前账户没有可写入的密码库或组织集合。"
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6C73A409F247FE62)
             : string.Empty;
         OperationError = string.Empty;
         IsEditing = true;
@@ -1309,7 +1309,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         if (!policy.RequiresReprompt)
             return UiOperationResult<bool>.Success(true);
         if (_reprompt is null)
-            return UiOperationResult<bool>.Failure("敏感条目验证服务不可用");
+            return UiOperationResult<bool>.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text690C852A5907C3ED));
         return await _reprompt.AuthorizeAsync(policy, action, prompt, ct);
     }
 
@@ -1324,13 +1324,13 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         if (!CanStartVaultOperation)
             return UiOperationResult.Busy();
         if (_pendingCipherCreate is not null)
-            return UiOperationResult.Failure("请先同步并确认上一次新建结果。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB9F41B5F9DE4A3E7));
 
         var source = Items.FirstOrDefault(item => item.Id == id);
         if (source is { CanViewPassword: false })
-            return UiOperationResult.Failure("该组织条目已隐藏密码，不能编辑。请联系组织管理员调整权限。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9E1C7CA9C39FE6C7));
         if (source?.CanModify != true)
-            return UiOperationResult.Failure("当前条目不能编辑。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB0C9510321BF99D6));
 
         var authorization = await EnsureAuthorizedAsync(
             id, SensitiveItemAction.Edit, prompt, ct);
@@ -1341,7 +1341,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         if (!CanStartVaultOperation)
             return UiOperationResult.Busy();
         if (_pendingCipherCreate is not null)
-            return UiOperationResult.Failure("请先同步并确认上一次新建结果。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB9F41B5F9DE4A3E7));
 
         CipherEditorDraft draft;
         try
@@ -1350,11 +1350,11 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         }
         catch (Core.Services.OrganizationCipherOperationException)
         {
-            return UiOperationResult.Failure("该组织条目的密码查看权限已被撤销，不能编辑。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA31AC91B1A0F4C75));
         }
         catch (InvalidOperationException)
         {
-            return UiOperationResult.Failure("条目已发生变化，请刷新后重试。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text900F25C5EEB86157));
         }
 
         EditorDraft = draft;
@@ -1379,13 +1379,13 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         if (!CanStartVaultOperation)
             return UiOperationResult.Busy();
         if (!CanBeginCipherCreate)
-            return UiOperationResult.Failure("请先同步并确认上一次新建结果。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB9F41B5F9DE4A3E7));
 
         var source = Items.FirstOrDefault(item => item.Id == id);
         if (source is { CanViewPassword: false })
-            return UiOperationResult.Failure("该组织条目已隐藏密码，不能创建副本。请联系组织管理员调整权限。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF989CCB25C25173C));
         if (source?.CanClone != true)
-            return UiOperationResult.Failure("当前条目不能创建副本。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6C089940A9CD2D03));
 
         var authorization = await EnsureAuthorizedAsync(
             id, SensitiveItemAction.Clone, prompt, ct);
@@ -1396,7 +1396,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         if (!CanStartVaultOperation)
             return UiOperationResult.Busy();
         if (!CanBeginCipherCreate)
-            return UiOperationResult.Failure("请先同步并确认上一次新建结果。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB9F41B5F9DE4A3E7));
 
         CipherEditorDraft draft;
         try
@@ -1405,16 +1405,16 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         }
         catch (Core.Services.OrganizationCipherOperationException)
         {
-            return UiOperationResult.Failure("该组织条目的密码查看权限已被撤销，不能创建副本。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2BAE0EE4F597AEF4));
         }
         catch (InvalidOperationException)
         {
-            return UiOperationResult.Failure("条目已发生变化，请刷新后重试。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text900F25C5EEB86157));
         }
 
         draft.Name = string.IsNullOrWhiteSpace(draft.Name)
-            ? "未命名条目 副本"
-            : $"{draft.Name} 副本";
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text72DAE89AA21B5DD6)
+            : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text15F2F41DFAE107E9,draft.Name);
         draft.Favorite = false;
         EditorDraft = draft;
         _editingId = null;
@@ -1465,7 +1465,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             return;
         if (IsNewCipherType(type) && !CanCreateNewCipherTypes)
         {
-            EditorError = "当前服务器未确认支持创建此类型的条目。";
+            EditorError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text09E0F02CDE74D00A);
             return;
         }
 
@@ -1489,7 +1489,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
                 string.Equals(destination.OrganizationId, draft.OrganizationId, StringComparison.Ordinal)))
         {
             destinations.Add(new CipherDestinationOption(
-                draft.OrganizationId is null ? "个人密码库（当前）" : "当前组织位置",
+                draft.OrganizationId is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEE2946D98C4FC2A8) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF30E05DB7092919D),
                 draft.OrganizationId,
                 null));
         }
@@ -1562,7 +1562,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
                 if (kind == VaultOperationKind.SaveCipher && !CanPublishCurrentCipherSave())
                     return UiOperationResult<T>.Cancelled();
                 DataStale = true;
-                OperationWarning = "更改已保存，但本地密码库刷新失败，请手动同步。";
+                OperationWarning = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5B3DC7C0E044BA6C);
                 ReloadItems();
                 ReloadFilters();
                 return UiOperationResult<T>.Success(committedRefreshFailure());
@@ -1575,8 +1575,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
                 ClaimPendingCipherCreateOwnership(pending);
                 BlockPendingCipherCreate(
                     pending,
-                    "无法确认新条目是否已保存。请手动同步，在确认结果前不要重复提交。",
-                    "新条目的保存结果不确定，已保留当前草稿。");
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB396A5DC9835D85A),
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE42EE3182C7DC408));
                 return UiOperationResult<T>.Failure(OperationError);
             }
             catch (Core.Services.CipherCreateSnapshotMismatchException ex)
@@ -1589,21 +1589,21 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
                 ReloadFilters();
                 BlockPendingCipherCreate(
                     pending,
-                    "新条目可能已保存，但本地快照无法可靠核对。请手动同步。",
-                    "无法确认新条目的服务器记录，已保留当前草稿。");
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFD146F01B5B88179),
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text989E4B5DA15B8FE6));
                 return UiOperationResult<T>.Failure(OperationError);
             }
             catch (Core.Services.VaultBatchMutationRecoveryException)
             {
                 DataStale = true;
-                OperationWarning = "操作可能已部分完成，且无法刷新本地密码库。请立即手动同步。";
-                OperationError = "无法确认服务器更改是否完整完成。";
+                OperationWarning = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text86F7C578345E7113);
+                OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text74100864152024CF);
                 return UiOperationResult<T>.Failure(OperationError);
             }
             catch (Core.Services.VaultMutationReconciliationException)
             {
-                OperationWarning = "操作仅部分完成，已刷新为服务器当前状态。";
-                OperationError = "服务器未对所有所选条目应用更改。";
+                OperationWarning = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFB676576C5DF1111);
+                OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE8FC6ECF7B50C551);
                 return UiOperationResult<T>.Failure(OperationError);
             }
             catch (Exception ex) when (
@@ -1627,7 +1627,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
                 || Api.RequestTimeoutClassifier.IsTimeout(ex, _operationCts.Token))
             {
                 OperationError = kind == VaultOperationKind.ResolveCipherCreate
-                    ? "无法清除本机待确认状态，防重复保护仍然有效。请检查本地存储后重试。"
+                    ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFBF20B0A4DE122B4)
                     : SafeOperationMessage(ex);
                 return UiOperationResult<T>.Failure(OperationError);
             }
@@ -1665,8 +1665,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
         BlockPendingCipherCreate(
             pending,
-            "新条目的保存结果仍待确认。请先同步，不要重复提交。",
-            "检测到此账户存在待确认的新建操作。");
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6AE4FBDF99628808),
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text14673167DA03FF4A));
         return true;
     }
 
@@ -1751,8 +1751,8 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             {
                 BlockPendingCipherCreate(
                     pending,
-                    "新条目的保存结果仍待确认。请先同步，不要重复提交。",
-                    "检测到此账户存在待确认的新建操作。");
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6AE4FBDF99628808),
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text14673167DA03FF4A));
             }
         }
         else if (_pendingCipherCreate is not null
@@ -1772,7 +1772,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             {
                 CloseEditor();
                 OperationError = string.Empty;
-                OperationWarning = "待确认的新条目已完成核销，请刷新密码库查看。";
+                OperationWarning = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1EF94AB02F830C6C);
             }
         }
 
@@ -1844,7 +1844,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         if (_pendingCipherCreate is null
             || !PendingCreateStateMatches(_pendingCipherCreate, expected))
         {
-            OperationError = "待确认状态已变化，请重新检查后再决定是否放弃。";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2AF223A6F8A918AB);
             return UiOperationResult.Failure(OperationError);
         }
 
@@ -1873,7 +1873,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
                 if (_pendingCipherCreate is null)
                     return UiOperationResult.Success();
 
-                OperationError = "待确认状态已变化，请重新检查后再决定是否放弃。";
+                OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2AF223A6F8A918AB);
                 return UiOperationResult.Failure(OperationError);
             }
 
@@ -1897,7 +1897,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         SetPendingCreateAbandonedWarning(true);
         DataStale = true;
         OperationError = string.Empty;
-        OperationWarning = "已清除本机待确认状态。服务器上仍可能存在该条目，请先查找再决定是否手动保存。";
+        OperationWarning = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text36232CE746B5A4CD);
         NotifyPendingCipherCreateChanged();
     }
 
@@ -1923,36 +1923,36 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     {
         if (ex is Vault.AttachmentUploadCompensationException compensation)
         {
-            return $"附件上传未完成，且服务器记录 {compensation.OrphanedAttachmentId} 可能需要手动清理。";
+            return global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text74BE21F49137D2A2,compensation.OrphanedAttachmentId);
         }
         if (Api.RequestTimeoutClassifier.IsTimeout(ex))
-            return "文件传输长时间没有进展，请检查连接后重试。";
+            return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2019E7CD5801502A);
 
         return ex switch
         {
             Core.Services.AttachmentTooLargeException => ex.Message,
             Core.Services.CipherEditConflictException =>
-                "此条目已在其他位置更新或删除，请重新加载后再编辑。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1562DD98C746B4E4),
             Core.Services.LegacyCipherAttachmentTransferException =>
-                "此旧格式条目包含附件，当前无法安全转移到组织。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA7DCF3CEBD23D064),
             Core.Services.VaultMutationReconciliationException =>
-                "服务器未对所有条目应用更改，已刷新为服务器当前状态。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA5C8740332B587F3),
             Core.Services.InvalidCipherWriteShapeException => ex.Message,
             Core.Services.UnsupportedCipherTypeWriteException => ex.Message,
             Core.Services.UnsupportedCipherArchiveOperationException => ex.Message,
             Core.Services.OrganizationCipherOperationException =>
-                "当前账户没有此组织条目的写入权限，或组织密钥不可用。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFAC4A16964A8B548),
             Core.Services.OrganizationPolicyException =>
-                "组织策略不允许执行此操作。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text419E6B1BA56ADE33),
             Core.Services.CipherCreatePendingOperationException =>
-                "另一个新建操作仍在进行或等待确认，请先同步。",
-            Api.VaultWriteException => "服务器拒绝了此更改，请检查输入后重试。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text560DC42E56B0AF29),
+            Api.VaultWriteException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC7BEBAEEE26CEDB9),
             InvalidDataException or System.Security.Cryptography.CryptographicException =>
-                "附件内容无效或完整性校验失败。",
-            UnauthorizedAccessException => "没有访问所选文件的权限。",
-            IOException => "文件读取或写入失败，请检查磁盘和文件状态后重试。",
-            HttpRequestException => "网络请求失败，请检查连接后重试。",
-            _ => "操作失败。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text65DA6CD0CA9009C6),
+            UnauthorizedAccessException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8BACF90B63A4C664),
+            IOException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA88E6D8BFCEDD0FC),
+            HttpRequestException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBD573FBAE00C37F5),
+            _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB3B75BD055C05718),
         };
     }
 
@@ -1964,21 +1964,21 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         if (LoadPendingCipherCreateFromLedger()
             && (_editingId is null || HasOwnedPendingCipherCreate))
         {
-            EditorError = "请先手动同步并确认上一次保存结果。";
+            EditorError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA06903DD2925320F);
             return UiOperationResult<string>.Failure(EditorError);
         }
 
         if (_editingId is null && _service.HasPendingOrInFlightCipherCreate())
         {
-            EditorError = "另一个新建操作仍在进行或等待确认，请先同步。";
+            EditorError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text560DC42E56B0AF29);
             return UiOperationResult<string>.Failure(EditorError);
         }
 
         if (EditorDraft is null)
-            return UiOperationResult<string>.Failure("没有可保存的草稿");
+            return UiOperationResult<string>.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8D3E332CABA8AB04));
         if (_editingId is null && EditorSelectedDestination is null)
         {
-            EditorError = "当前账户没有可写入的密码库或组织集合。";
+            EditorError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6C73A409F247FE62);
             return UiOperationResult<string>.Failure(EditorError);
         }
         if (_canChooseEditorDestination)
@@ -2028,7 +2028,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
                     else
                     {
                         SelectedItem = null;
-                        OperationWarning = "新条目已确认保存，但当前无法解密或不可见。请勿重新创建。";
+                        OperationWarning = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7571158632072623);
                     }
                     CloseEditor();
                     return savedId;
@@ -2099,7 +2099,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
                 { CanArchive: true, IsDeleted: false, IsArchived: false })
         {
             return Task.FromResult(
-                UiOperationResult.Failure("当前服务器或账户不支持此操作。"));
+                UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDF6C382989FDB7D4)));
         }
 
         return RunWriteAndReloadAsync(
@@ -2116,7 +2116,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
                 { CanUnarchive: true, IsDeleted: false, IsArchived: true })
         {
             return Task.FromResult(
-                UiOperationResult.Failure("当前服务器或账户不支持此操作。"));
+                UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDF6C382989FDB7D4)));
         }
 
         return RunWriteAndReloadAsync(
@@ -2129,7 +2129,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     public async Task<UiOperationResult> SaveFolderAsync(string? folderId, string name, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(name))
-            return UiOperationResult.Failure("文件夹名称不能为空。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB0223FA30FCFA275));
         var result = await RunWriteAndReloadAsync(
             VaultOperationKind.Folder,
             token => _service.SaveFolderAsync(folderId, name.Trim(), token),
@@ -2198,9 +2198,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         CancellationToken ct = default)
     {
         if (!CanTransferSelectionToOrganization)
-            return RejectSelectionPlacement("所选条目不能批量转移到组织。");
+            return RejectSelectionPlacement(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4FE1427C33B99A1D));
         if (string.IsNullOrWhiteSpace(organizationId) || collectionIds.Count == 0)
-            return RejectSelectionPlacement("请选择目标组织和至少一个可写集合。");
+            return RejectSelectionPlacement(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA2BC13FB13A734CA));
 
         if (!TryCaptureSelectedPlacementBaselines(out var baselines))
             return UiOperationResult.Failure(OperationError);
@@ -2238,9 +2238,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         CancellationToken ct)
     {
         if (!CanManageSelectionCollections || SelectedOrganizationId is not { } organizationId)
-            return RejectSelectionPlacement("所选条目不能批量更改集合。");
+            return RejectSelectionPlacement(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text235A72E4BA7B9262));
         if (collectionIds.Count == 0)
-            return RejectSelectionPlacement("请至少选择一个可写集合。");
+            return RejectSelectionPlacement(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text670A155D11E10F9A));
 
         if (!TryCaptureSelectedPlacementBaselines(out var baselines))
             return UiOperationResult.Failure(OperationError);
@@ -2270,7 +2270,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         catch (Exception exception) when (exception is InvalidOperationException or NotSupportedException)
         {
             baselines = [];
-            OperationError = "一个或多个所选条目已发生变化，请刷新后重试。";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD3FA9034D199ACA4);
             return false;
         }
     }
@@ -2308,7 +2308,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     {
         var ids = _selectedIds.ToArray();
         if (ids.Length == 0)
-            return UiOperationResult.Failure("没有选择任何条目。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7FB475E51C1057FD));
 
         var selectedId = SelectedItem?.Id;
         var result = await RunWriteAndReloadAsync(
@@ -2356,7 +2356,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         {
             Filters.Add(new FilterNode
             {
-                Label = "验证码",
+                Label = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBB015C60BAFC8A96),
                 Glyph = "\uE916",
                 Kind = FilterKind.Totp,
                 Count = Items.Count(item => item.HasTotp && !item.IsDeleted && !item.IsArchived),
@@ -2500,7 +2500,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             OperationError = string.Empty;
             if (!confirmedCipherIsVisible)
             {
-                OperationWarning = "新条目已确认保存，但当前无法解密或不可见。请勿重新创建。";
+                OperationWarning = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7571158632072623);
             }
             else if (!DataStale)
             {
@@ -2513,18 +2513,18 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         OperationWarning = reconciliation.Status switch
         {
             CipherCreateReconciliationStatus.NotFound =>
-                "同步尚未观察到待确认条目，但先前请求可能仍在处理。请勿重复提交。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text967C8ABC4825CCF6),
             CipherCreateReconciliationStatus.Ambiguous =>
-                "同步后找到多个可能的新条目，无法安全判断保存结果。请勿重复提交。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1801D9C83D8FC2E3),
             CipherCreateReconciliationStatus.SnapshotMismatch =>
-                "同步快照与保存前状态不一致，仍无法安全判断新条目的保存结果。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE9357377EDDC3F78),
             CipherCreateReconciliationStatus.SessionMismatch =>
-                "当前账户或服务器已变化，无法在此会话中核对新条目的保存结果。",
-            _ => "仍无法安全判断新条目的保存结果。请勿重复提交。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEAAB751A30C1C605),
+            _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text978ABD870F1257E1),
         };
         OperationError = HasOwnedPendingCipherCreate
-            ? "新条目的保存结果仍未确认，创建该请求的草稿继续保持锁定。"
-            : "新条目的保存结果仍未确认。现有草稿仍可编辑或取消，但新的创建会继续被阻止。";
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD522B3FBD5DCEA4A)
+            : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text74843A7F386CC065);
     }
 
     [RelayCommand]
@@ -2756,7 +2756,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     {
         var ids = Items.Where(i => i.IsDeleted).Select(i => i.Id).ToArray();
         if (ids.Length == 0)
-            return Task.FromResult(UiOperationResult.Failure("回收站为空。"));
+            return Task.FromResult(UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8BAAC39F1232FC7B)));
         return RunWriteAndReloadAsync(
             VaultOperationKind.Batch,
             token => _service.DeleteCiphersAsync(ids, permanent: true, token),
@@ -2773,7 +2773,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
 
         draft.CustomFields.Add(new CustomFieldEditorDraft
         {
-            Name = $"字段 {draft.CustomFields.Count + 1}",
+            Name = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text21283C7E73DDBC43,draft.CustomFields.Count + 1),
         });
     }
 
@@ -2802,7 +2802,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     {
         if (_clipboard is null)
         {
-            OperationError = "剪贴板暂不可用，请重试。";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDD289D6462E68FCC);
             return UiOperationResult.Failure(OperationError);
         }
 
@@ -2819,7 +2819,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             or InvalidOperationException)
         {
             // Clipboard contention is recoverable; provider exception messages may contain input.
-            OperationError = "复制失败，剪贴板暂不可用。请重试。";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC8F44C6E6304FEC0);
             return UiOperationResult.Failure(OperationError);
         }
     }
@@ -2832,9 +2832,9 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     {
         var lifecycleEpoch = _lifecycleEpoch;
         if (string.IsNullOrEmpty(id))
-            return UiOperationResult.Failure("无效条目");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5C6E51E258D9C23F));
         if (Items.FirstOrDefault(item => item.Id == id) is not { CanViewPassword: true })
-            return UiOperationResult.Failure("该组织条目已隐藏密码，不能复制敏感值。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0756197E1845B5D5));
 
         var authorization = await EnsureAuthorizedAsync(
             id, SensitiveItemAction.Copy, prompt, ct);
@@ -2843,12 +2843,12 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         if (ct.IsCancellationRequested || lifecycleEpoch != _lifecycleEpoch)
             return UiOperationResult.Cancelled();
         if (Items.FirstOrDefault(item => item.Id == id) is not { CanViewPassword: true })
-            return UiOperationResult.Failure("该条目已不可用，请刷新后重试。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3D6DD002B56B88A7));
 
         var value = PrimaryValue(_service.GetDetail(id, includeSensitive: true));
         if (!string.IsNullOrEmpty(value))
             return WriteItemClipboard(id, value, isSecret: true);
-        return UiOperationResult.Failure("没有可复制的内容。");
+        return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBD9A2F5EC51C09F7));
     }
 
     public async Task<UiOperationResult> CopyPasswordAsync(
@@ -2858,17 +2858,17 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     {
         var lifecycleEpoch = _lifecycleEpoch;
         if (Items.FirstOrDefault(item => item.Id == id) is not { Kind: VaultItemKind.Login, CanViewPassword: true })
-            return UiOperationResult.Failure("此条目不允许复制密码。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4960D91E8F8B83C3));
         var authorization = await EnsureAuthorizedAsync(id, SensitiveItemAction.Copy, prompt, ct);
         if (!authorization.IsSuccess)
             return new UiOperationResult(authorization.Status, authorization.Error);
         if (ct.IsCancellationRequested || lifecycleEpoch != _lifecycleEpoch)
             return UiOperationResult.Cancelled();
         if (Items.FirstOrDefault(item => item.Id == id) is not { CanViewPassword: true })
-            return UiOperationResult.Failure("该条目已不可用，请刷新后重试。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3D6DD002B56B88A7));
 
         if (_service.GetDetail(id, includeSensitive: true) is not LoginDetail { Password: { Length: > 0 } password })
-            return UiOperationResult.Failure("未设置密码。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCCB16FD0EDA1FD32));
         return WriteItemClipboard(id, password, isSecret: true);
     }
 
@@ -2890,7 +2890,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         var isSecret = key is "password" or "totp" or "number" or "cvv" or "privateKey";
         var item = Items.FirstOrDefault(candidate => candidate.Id == id);
         if (item is null || (isSecret && !item.CanViewPassword))
-            return UiOperationResult.Failure("此条目不允许复制该字段。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5C550E77641E7996));
         var authorization = await EnsureAuthorizedAsync(id, SensitiveItemAction.Copy, prompt, ct);
         if (!authorization.IsSuccess)
             return new UiOperationResult(authorization.Status, authorization.Error);
@@ -2898,13 +2898,13 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             return UiOperationResult.Cancelled();
         item = Items.FirstOrDefault(candidate => candidate.Id == id);
         if (item is null || (isSecret && !item.CanViewPassword))
-            return UiOperationResult.Failure("该条目的访问权限已发生变化。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC8E355F53777AB04));
 
         CipherDetail detail;
         try { detail = _service.GetDetail(id, includeSensitive: true); }
         catch (InvalidOperationException)
         {
-            return UiOperationResult.Failure("该条目已不可用，请刷新后重试。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3D6DD002B56B88A7));
         }
 
         var value = (detail, key) switch
@@ -2926,7 +2926,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             _ => null,
         };
         return string.IsNullOrEmpty(value)
-            ? UiOperationResult.Failure(key == "totp" ? "验证码不可用。" : "此字段没有可复制的内容。")
+            ? UiOperationResult.Failure(key == "totp" ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFD742F2E53C21CAB) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3A9A9905054063D8))
             : WriteItemClipboard(id, value, isSecret);
     }
 
@@ -2959,7 +2959,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
             if (!result.IsSuccess)
             {
                 if (result.Status == UiOperationStatus.Failed)
-                    OperationError = result.Error ?? "无法完成条目验证，请重试。";
+                    OperationError = result.Error ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDDC3E571D2A60A78);
                 return false;
             }
             return !ct.IsCancellationRequested
@@ -2998,7 +2998,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     {
         var lifecycleEpoch = _lifecycleEpoch;
         if (Items.FirstOrDefault(item => item.Id == id) is not { CanViewPassword: true })
-            return UiOperationResult<bool>.Failure("该组织条目已隐藏密码，不能显示敏感字段。");
+            return UiOperationResult<bool>.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5F43F2FFDE49E45B));
 
         var authorization = await EnsureAuthorizedAsync(
             id, SensitiveItemAction.Totp, prompt, ct);
@@ -3007,7 +3007,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         if (ct.IsCancellationRequested || lifecycleEpoch != _lifecycleEpoch)
             return UiOperationResult<bool>.Cancelled();
         if (Items.FirstOrDefault(item => item.Id == id) is not { CanViewPassword: true })
-            return UiOperationResult<bool>.Failure("该条目的访问权限已发生变化。");
+            return UiOperationResult<bool>.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC8E355F53777AB04));
 
         if (SelectedItem?.Id == id || Detail?.Id == id)
         {
@@ -3034,7 +3034,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         CancellationToken ct = default)
     {
         if (_attachments is null)
-            return UiOperationResult.Failure("附件服务不可用");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text82A9AD3E5C5C8500));
 
         var result = await RunOperationAsync(
             VaultOperationKind.AttachmentUpload,
@@ -3063,7 +3063,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
         if (!authorization.IsSuccess)
             return new UiOperationResult<long>(authorization.Status, default, authorization.Error);
         if (_attachments is null)
-            return UiOperationResult<long>.Failure("附件服务不可用");
+            return UiOperationResult<long>.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text82A9AD3E5C5C8500));
 
         return await RunOperationAsync(
             VaultOperationKind.AttachmentDownload,
@@ -3078,7 +3078,7 @@ public partial class VaultViewModel : ObservableObject, ISensitiveState
     public async Task<UiOperationResult> DeleteAttachmentAsync(string cipherId, string attachmentId, CancellationToken ct = default)
     {
         if (_attachments is null)
-            return UiOperationResult.Failure("附件服务不可用");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text82A9AD3E5C5C8500));
 
         var result = await RunOperationAsync(
             VaultOperationKind.AttachmentDelete,

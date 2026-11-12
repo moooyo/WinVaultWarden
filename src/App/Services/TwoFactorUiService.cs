@@ -88,7 +88,7 @@ public sealed class TwoFactorUiService : ITwoFactorUiService
     }
 
     private ITwoFactorService Require() =>
-        _twoFactor ?? throw new TwoFactorOperationException("两步验证服务不可用");
+        _twoFactor ?? throw new TwoFactorOperationException(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text308830568944259B));
 
     public Task<IReadOnlyList<TwoFactorProvider>> ListProvidersAsync(CancellationToken ct = default) =>
         Require().ListProvidersAsync(ct);

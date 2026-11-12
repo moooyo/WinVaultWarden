@@ -12,8 +12,8 @@ using Crypto.PasswordStrength;
 namespace Vault;
 
 /// <summary>
-/// 账户管理编排层：UpdateName / ChangePassword / ChangeKdf。
-/// 改密和改 KDF 只做服务端变更,不在此登出;由 App 层生命周期协调器经 CredentialChanged intent 统一登出。
+/// Coordinates account profile, password and KDF changes.
+/// The application lifecycle coordinator handles logout after confirmed credential changes.
 /// Requires an unlocked vault session with an active V1 or V2 user key.
 /// </summary>
 public sealed class AccountService : IAccountService
@@ -52,7 +52,7 @@ public sealed class AccountService : IAccountService
     }
 
     // -----------------------------------------------------------------------
-    // UpdateNameAsync: Trim → 长度校验 → POST /api/accounts/profile → 不登出
+    // UpdateNameAsync: normalize and validate, then update the profile without logout.
     // -----------------------------------------------------------------------
 
     public async Task UpdateNameAsync(string name, CancellationToken ct = default)
@@ -75,10 +75,10 @@ public sealed class AccountService : IAccountService
 
     // -----------------------------------------------------------------------
     // ChangePasswordAsync:
-    //   1. 验证旧密码（尝试用旧密码重新派生 masterKey，然后尝试解密 UserKey）
-    //   2. 用新密码派生新 masterKey → ProtectUserKey → newMasterPasswordHash
-    //   3. POST /api/accounts/password
-    //   4. LogoutAsync（强制重新登录）
+    //   1. Verify the current password against the active account key.
+    //   2. Derive a replacement master key and rewrap the unchanged account key.
+    //   3. Submit authentication and unlock data to /api/accounts/password.
+    //   4. Let the application lifecycle coordinator perform logout.
     // -----------------------------------------------------------------------
 
     public async Task ChangePasswordAsync(
@@ -90,7 +90,8 @@ public sealed class AccountService : IAccountService
         var normalizedHint = ValidateNewPassword(currentPassword, newPassword, hint);
         ct.ThrowIfCancellationRequested();
         var lease = _session.CaptureLease();
-        if (!_session.TryCopyUserKey(lease, out var copiedKey) || copiedKey is null)
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        if (!_session.TryCopyUserKeyMaterial(lease, out var copiedKey) || copiedKey is null)
             throw new AccountOperationException("操作需要已解锁的 Vault，请先解锁后重试。");
         using var userKey = copiedKey;
 
@@ -101,23 +102,23 @@ public sealed class AccountService : IAccountService
         var evidence = _passwordPolicyEvaluator.CaptureEvidence(newPassword);
         ValidateOrganizationPasswordPolicy(lease, evidence);
 
-        // 验证旧密码：派生旧 masterKey 后尝试解密 UserKey，不匹配则抛异常
-        // oldMasterKey 在 finally 中无条件清零，catch 只负责把密码错误的异常转为业务异常
-        byte[] oldMasterKey = _crypto.DeriveMasterKey(
+        // Verification owns and clears every temporary key, including failed attempts.
+        byte[] oldMasterKey = await DeriveMasterKeyAsync(
             currentPassword,
             persisted.EffectiveMasterPasswordSalt,
             persisted.KdfType,
             persisted.KdfIterations,
             persisted.KdfMemory,
-            persisted.KdfParallelism);
+            persisted.KdfParallelism,
+            linked.Token).ConfigureAwait(false);
 
         string oldHash;
         try
         {
-            ValidateCurrentPassword(oldMasterKey, persisted.ProtectedUserKey);
+            ValidateCurrentPassword(oldMasterKey, persisted, userKey);
             oldHash = _crypto.ComputeMasterPasswordHash(oldMasterKey, currentPassword);
         }
-        catch (Exception ex) when (ex is CryptographicException or FormatException)
+        catch (Exception ex) when (IsInvalidWrappedKey(ex))
         {
             throw new AccountOperationException("当前密码不正确。");
         }
@@ -126,29 +127,28 @@ public sealed class AccountService : IAccountService
             CryptographicOperations.ZeroMemory(oldMasterKey);
         }
 
-        // 用新密码 + 原 KDF 参数派生新 masterKey
-        byte[] newMasterKey = _crypto.DeriveMasterKey(
+        // Password changes preserve the existing KDF parameters and salt.
+        byte[] newMasterKey = await DeriveMasterKeyAsync(
             newPassword,
             persisted.EffectiveMasterPasswordSalt,
             persisted.KdfType,
             persisted.KdfIterations,
             persisted.KdfMemory,
-            persisted.KdfParallelism);
+            persisted.KdfParallelism,
+            linked.Token).ConfigureAwait(false);
 
         string newHash;
         string wrappedKey;
         try
         {
             newHash = _crypto.ComputeMasterPasswordHash(newMasterKey, newPassword);
-            var protectedKey = _crypto.ProtectUserKey(newMasterKey, userKey!);
-            wrappedKey = protectedKey.ToString();
+            wrappedKey = ProtectUserKey(newMasterKey, userKey);
         }
         finally
         {
             CryptographicOperations.ZeroMemory(newMasterKey);
         }
 
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         _session.ThrowIfExpired(lease);
         var api = _clients.GetAuthenticated<IAccountApiClient>(lease);
         _session.ThrowIfExpired(lease);
@@ -170,32 +170,42 @@ public sealed class AccountService : IAccountService
             UnlockData: new UnlockData(
                 Salt: persisted.EffectiveMasterPasswordSalt,
                 Kdf: kdf,
-                MasterKeyWrappedUserKey: wrappedKey)), linked.Token).ConfigureAwait(false);
+                MasterKeyWrappedUserKey: wrappedKey,
+                ContainedKeyId: userKey.KeyId)), linked.Token).ConfigureAwait(false);
         _session.ThrowIfExpired(lease);
 
-        // 不在此登出:会话保持不变,由 App 层生命周期协调器经 CredentialChanged intent 统一登出并清 store/cache。
+        // CredentialChanged owns the eventual token/cache cleanup and navigation.
     }
 
     // -----------------------------------------------------------------------
     // ChangeKdfAsync:
-    //   1. Validate newIterations against the official-compatible write range.
-    //   2. 验证旧密码（同 ChangePassword）
-    //   3. 用旧密码 + 新 KDF 参数重新派生 masterKey → 新 hash + 新 wrappedKey
-    //   4. 构建 ChangeKdfRequest（kdf=0, mem/par=null, salt=email）
-    //   5. POST /api/accounts/kdf → LogoutAsync
+    //   1. Validate every selected algorithm parameter before allocating KDF work.
+    //   2. Verify the current password against the active account key.
+    //   3. Derive the new master key and rewrap the same V1 or V2 account key.
+    //   4. Submit matching authentication/unlock KDFs to /api/accounts/kdf.
     // -----------------------------------------------------------------------
+
+    public Task ChangeKdfAsync(
+        string currentPassword,
+        int newIterations,
+        CancellationToken ct = default) =>
+        ChangeKdfAsync(currentPassword, AccountKdfParameters.Pbkdf2(newIterations), ct);
 
     public async Task ChangeKdfAsync(
         string currentPassword,
-        int newIterations,
+        AccountKdfParameters parameters,
         CancellationToken ct = default)
     {
-        if (!KdfParameterPolicy.IsPbkdf2WriteCompatible(newIterations))
-            throw new AccountOperationException(
-                $"迭代次数必须在 {KdfParameterPolicy.MinimumPbkdf2WriteIterations} 到 {KdfParameterPolicy.MaximumPbkdf2WriteIterations} 之间（当前 {newIterations}）。");
+        ArgumentNullException.ThrowIfNull(parameters);
+        if (!parameters.IsWriteCompatible)
+            throw new AccountOperationException("The requested KDF parameters are outside the supported write range.");
+        if (string.IsNullOrEmpty(currentPassword))
+            throw new AccountOperationException("The current master password is required.");
+        ct.ThrowIfCancellationRequested();
 
         var lease = _session.CaptureLease();
-        if (!_session.TryCopyUserKey(lease, out var copiedKey) || copiedKey is null)
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        if (!_session.TryCopyUserKeyMaterial(lease, out var copiedKey) || copiedKey is null)
             throw new AccountOperationException("操作需要已解锁的 Vault，请先解锁后重试。");
         using var userKey = copiedKey;
 
@@ -203,23 +213,23 @@ public sealed class AccountService : IAccountService
             || !_session.IsCurrent(lease, persisted))
             throw new AccountOperationException("持久化会话与当前账户不匹配。");
 
-        // 验证旧密码
-        // oldMasterKey 在 finally 中无条件清零，catch 只负责把密码错误的异常转为业务异常
-        byte[] oldMasterKey = _crypto.DeriveMasterKey(
+        // Verify the old credential before preparing replacement authentication data.
+        byte[] oldMasterKey = await DeriveMasterKeyAsync(
             currentPassword,
             persisted.EffectiveMasterPasswordSalt,
             persisted.KdfType,
             persisted.KdfIterations,
             persisted.KdfMemory,
-            persisted.KdfParallelism);
+            persisted.KdfParallelism,
+            linked.Token).ConfigureAwait(false);
 
         string oldHash;
         try
         {
-            ValidateCurrentPassword(oldMasterKey, persisted.ProtectedUserKey);
+            ValidateCurrentPassword(oldMasterKey, persisted, userKey);
             oldHash = _crypto.ComputeMasterPasswordHash(oldMasterKey, currentPassword);
         }
-        catch (Exception ex) when (ex is CryptographicException or FormatException)
+        catch (Exception ex) when (IsInvalidWrappedKey(ex))
         {
             throw new AccountOperationException("当前密码不正确。");
         }
@@ -228,24 +238,22 @@ public sealed class AccountService : IAccountService
             CryptographicOperations.ZeroMemory(oldMasterKey);
         }
 
-        // 用旧密码 + 新 KDF 参数派生新 masterKey
-        // 注意：ChangeKdf 使用 PBKDF2，memory/parallelism 均为 null
-        int newKdf = (int)KdfType.Pbkdf2;
-        byte[] newMasterKey = _crypto.DeriveMasterKey(
+        // Rewrap the unchanged account key with the explicitly selected KDF.
+        byte[] newMasterKey = await DeriveMasterKeyAsync(
             currentPassword,
             persisted.EffectiveMasterPasswordSalt,
-            KdfType.Pbkdf2,
-            newIterations,
-            null,
-            null);
+            parameters.Type,
+            parameters.Iterations,
+            parameters.MemoryMiB,
+            parameters.Parallelism,
+            linked.Token).ConfigureAwait(false);
 
         string newHash;
         string wrappedKey;
         try
         {
             newHash = _crypto.ComputeMasterPasswordHash(newMasterKey, currentPassword);
-            var protectedKey = _crypto.ProtectUserKey(newMasterKey, userKey!);
-            wrappedKey = protectedKey.ToString();
+            wrappedKey = ProtectUserKey(newMasterKey, userKey);
         }
         finally
         {
@@ -253,10 +261,10 @@ public sealed class AccountService : IAccountService
         }
 
         var kdfParams = new KdfParams(
-            Kdf: newKdf,
-            KdfIterations: newIterations,
-            KdfMemory: null,
-            KdfParallelism: null);
+            Kdf: (int)parameters.Type,
+            KdfIterations: parameters.Iterations,
+            KdfMemory: parameters.MemoryMiB,
+            KdfParallelism: parameters.Parallelism);
 
         var request = new ChangeKdfRequest(
             NewMasterPasswordHash: newHash,
@@ -268,30 +276,32 @@ public sealed class AccountService : IAccountService
             UnlockData: new UnlockData(
                 Salt: persisted.EffectiveMasterPasswordSalt,
                 Kdf: kdfParams,
-                MasterKeyWrappedUserKey: wrappedKey),
+                MasterKeyWrappedUserKey: wrappedKey,
+                ContainedKeyId: userKey.KeyId),
             MasterPasswordHash: oldHash);
 
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         _session.ThrowIfExpired(lease);
         var api = _clients.GetAuthenticated<IAccountApiClient>(lease);
         _session.ThrowIfExpired(lease);
         await api.ChangeKdfAsync(request, linked.Token).ConfigureAwait(false);
         _session.ThrowIfExpired(lease);
-        // 不在此登出:会话保持不变,由 App 层生命周期协调器经 CredentialChanged intent 统一登出并清 store/cache。
+        // CredentialChanged owns the eventual token/cache cleanup and navigation.
     }
 
     // -----------------------------------------------------------------------
     // VerifyMasterPasswordAsync:
-    //   复用 ChangePassword/ChangeKdf 中"验证旧密码"的同一套逻辑：
-    //   派生 masterKey → ValidateCurrentPassword 解密 protectedUserKey。
-    //   正确返回 true；密码错误返回 false（不抛异常，供导出前确认等场景使用）。
+    //   Reuses the password-change verification path for sensitive-action confirmation.
+    //   The decrypted representation must match the key already held by this session.
+    //   An invalid password or wrapped-key representation returns false.
     // -----------------------------------------------------------------------
 
-    public Task<bool> VerifyMasterPasswordAsync(string password, CancellationToken ct = default)
+    public async Task<bool> VerifyMasterPasswordAsync(string password, CancellationToken ct = default)
     {
         var lease = _session.CaptureLease();
-        if (!_session.IsUnlocked(lease))
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        if (!_session.TryCopyUserKeyMaterial(lease, out var copiedKey) || copiedKey is null)
             throw new AccountOperationException("操作需要已解锁的 Vault，请先解锁后重试。");
+        using var currentKey = copiedKey;
 
         if (!_tokenStore.TryLoad(out var persisted)
             || !_session.IsCurrent(lease, persisted))
@@ -299,21 +309,22 @@ public sealed class AccountService : IAccountService
 
         ct.ThrowIfCancellationRequested();
 
-        byte[] masterKey = _crypto.DeriveMasterKey(
+        byte[] masterKey = await DeriveMasterKeyAsync(
             password,
             persisted.EffectiveMasterPasswordSalt,
             persisted.KdfType,
             persisted.KdfIterations,
             persisted.KdfMemory,
-            persisted.KdfParallelism);
+            persisted.KdfParallelism,
+            linked.Token).ConfigureAwait(false);
 
         bool valid;
         try
         {
-            ValidateCurrentPassword(masterKey, persisted.ProtectedUserKey);
+            ValidateCurrentPassword(masterKey, persisted, currentKey);
             valid = true;
         }
-        catch (Exception ex) when (ex is CryptographicException or FormatException)
+        catch (Exception ex) when (IsInvalidWrappedKey(ex))
         {
             valid = false;
         }
@@ -324,27 +335,101 @@ public sealed class AccountService : IAccountService
 
         _session.ThrowIfExpired(lease);
         ct.ThrowIfCancellationRequested();
-        return Task.FromResult(valid);
+        if (valid)
+            PinUnlockSessionPolicy.RecordMasterPasswordVerification(_session, _tokenStore, lease, persisted);
+        return valid;
     }
 
     // -----------------------------------------------------------------------
-    // 私有辅助
+    // Private helpers
     // -----------------------------------------------------------------------
 
     /// <summary>
-    /// 尝试用 masterKey 解密 protectedUserKey。如果解密失败会抛出 CryptographicException，
-    /// 调用者捕获后将其转换为 AccountOperationException("当前密码不正确")。
+    /// Unwraps the saved account key using its declared security version, then compares it
+    /// with the active key so a decryptable but unrelated wrapper cannot authenticate.
     /// </summary>
-    private void ValidateCurrentPassword(byte[] masterKey, string protectedUserKey)
+    private void ValidateCurrentPassword(
+        byte[] masterKey,
+        PersistedSession persisted,
+        VaultUserKey expectedKey)
     {
-        // stretchedKey 与解密出的 userKey 都是敏感派生物料;用 using 确保校验后立即 Dispose(清零其
-        // FullKey/EncKey/MacKey),不残留在托管堆。密码错误时 DecryptUserKey 抛 CryptographicException,
-        // userKey 未赋值,stretchedKey 的 using 仍会在异常回溯中释放。VerifyMasterPasswordAsync /
-        // ChangePasswordAsync / ChangeKdfAsync 三条路径共用本方法,一并覆盖。
+        if (persisted.UserKeySecurityVersion != expectedKey.SecurityVersion)
+            throw new CryptographicException("The saved and unlocked account key versions differ.");
+
         using var stretchedKey = _crypto.StretchMasterKey(masterKey);
-        var encString = EncString.Parse(protectedUserKey);
-        using var userKey = _crypto.DecryptUserKey(stretchedKey, encString); // throws CryptographicException if wrong
+        var encString = EncString.Parse(persisted.ProtectedUserKey);
+        if (expectedKey.Legacy is { } legacy)
+        {
+            using var userKey = _crypto.DecryptUserKey(stretchedKey, encString);
+            if (!CryptographicOperations.FixedTimeEquals(userKey.FullKey, legacy.FullKey))
+                throw new CryptographicException("The password did not unlock the active account key.");
+            return;
+        }
+
+        byte[]? encoded = _crypto.DecryptUserKeyMaterial(stretchedKey, encString);
+        byte[]? actualTransport = null;
+        byte[]? expectedTransport = null;
+        try
+        {
+            using var key = VaultUserKey.ImportOwnedTransport(encoded, persisted.UserKeySecurityVersion);
+            encoded = null;
+            if (persisted.UserKeyId is not null
+                && !string.Equals(persisted.UserKeyId, key.KeyId, StringComparison.Ordinal))
+            {
+                throw new CryptographicException("The password-unwrapped account key identifier is invalid.");
+            }
+            actualTransport = key.V2!.ExportTransport();
+            expectedTransport = expectedKey.V2!.ExportTransport();
+            if (!CryptographicOperations.FixedTimeEquals(actualTransport, expectedTransport))
+                throw new CryptographicException("The password did not unlock the active account key.");
+        }
+        finally
+        {
+            if (encoded is not null)
+                CryptographicOperations.ZeroMemory(encoded);
+            if (actualTransport is not null)
+                CryptographicOperations.ZeroMemory(actualTransport);
+            if (expectedTransport is not null)
+                CryptographicOperations.ZeroMemory(expectedTransport);
+        }
     }
+
+    private string ProtectUserKey(byte[] masterKey, VaultUserKey userKey)
+    {
+        if (userKey.Legacy is { } legacy)
+            return _crypto.ProtectUserKey(masterKey, legacy).ToString();
+
+        using var stretchedKey = _crypto.StretchMasterKey(masterKey);
+        var transport = userKey.V2!.ExportTransport();
+        try
+        {
+            return _crypto.Encrypt(transport, stretchedKey).ToString();
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(transport);
+        }
+    }
+
+    private static bool IsInvalidWrappedKey(Exception exception) => exception is
+        CryptographicException or FormatException or ArgumentException or InvalidDataException
+            or System.Formats.Cbor.CborContentException or OverflowException;
+
+    private Task<byte[]> DeriveMasterKeyAsync(
+        string password,
+        string salt,
+        KdfType type,
+        int iterations,
+        int? memory,
+        int? parallelism,
+        CancellationToken ct) => Task.Run(() =>
+        {
+            var key = _crypto.DeriveMasterKey(password, salt, type, iterations, memory, parallelism);
+            if (!ct.IsCancellationRequested)
+                return key;
+            CryptographicOperations.ZeroMemory(key);
+            throw new OperationCanceledException(ct);
+        }, ct);
 
     private static string? ValidateNewPassword(
         string currentPassword,

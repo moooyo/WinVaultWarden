@@ -1,0 +1,9 @@
+{
+  "Device requests while locked": "ロック中のデバイスリクエスト",
+  "Keep a short-lived access token in memory to read requests; approval always requires unlocking": "短期間のアクセストークンをメモリに保持してリクエストを読み取ります。承認には必ずロック解除が必要です",
+  "Monitor device sign-in requests while locked": "ロック中にデバイスのログインリクエストを監視する",
+  "Windows automatic updates": "Windows の自動更新",
+  "Install signed MSIX updates through Windows App Installer": "Windows アプリ インストーラーで署名済みの MSIX 更新をインストールする",
+  "Configure…": "設定…",
+  "Device request monitoring could not be configured. Unlock and try again.": "デバイスリクエストの監視を設定できませんでした。ロックを解除してから再試行してください。"
+}

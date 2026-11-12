@@ -63,13 +63,43 @@ public class WebAuthnAssertionServiceTests
             "github.com",
             [WireId(credential)],
             ApprovalEvidence: VerifiedApproval,
-            CrossOrigin: true);
+            CrossOrigin: true,
+            TopOrigin: "https://example.com");
 
         var assertion = WebAuthnAssertionService.CreateAssertion(credential, request);
 
         var clientDataJson = WebAuthnCrypto.DecodeBase64Url(assertion.ClientDataJson);
         using var clientData = JsonDocument.Parse(clientDataJson);
         Assert.True(clientData.RootElement.GetProperty("crossOrigin").GetBoolean());
+        Assert.Equal("https://example.com", clientData.RootElement.GetProperty("topOrigin").GetString());
+    }
+
+    [Fact]
+    public void CreateAssertion_CrossOriginWithoutTrustedTopOrigin_IsRejected()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var credential = Credential(key);
+        var request = new WebAuthnGetAssertionRequest(
+            "https://github.com", "AQIDBA", "github.com", [WireId(credential)],
+            VerifiedApproval, CrossOrigin: true);
+
+        Assert.Throws<InvalidOperationException>(() => WebAuthnAssertionService.CreateAssertion(credential, request));
+    }
+
+    [Fact]
+    public void CreateAssertion_OfficialBitwardenUuid_PreservesSyncedBackupFlags()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var credential = Credential(key, "08d70b74-e9f5-4522-a425-e5dcd40107e7");
+        var request = new WebAuthnGetAssertionRequest(
+            "https://github.com", "AQIDBA", "github.com", [WireId(credential)], VerifiedApproval);
+
+        var assertion = WebAuthnAssertionService.CreateAssertion(credential, request);
+        var authData = WebAuthnCrypto.DecodeBase64Url(assertion.AuthenticatorData);
+
+        Assert.Equal(0x1d, authData[32]);
+        using var clientData = JsonDocument.Parse(WebAuthnCrypto.DecodeBase64Url(assertion.ClientDataJson));
+        Assert.False(clientData.RootElement.TryGetProperty("topOrigin", out _));
     }
 
     [Fact]

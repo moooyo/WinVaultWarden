@@ -92,7 +92,7 @@ public sealed class DeviceApprovalWindowService(
             or InvalidOperationException)
         {
             if (reopenDismissed)
-                NoticeRaised?.Invoke("无法加载登录请求，请先解锁密码库并检查网络连接。");
+                NoticeRaised?.Invoke(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB231D0A932C3B829));
         }
         finally
         {
@@ -108,11 +108,15 @@ public sealed class DeviceApprovalWindowService(
     public void OpenRequest(AuthRequestItem item)
         => _ = OpenFreshRequestAsync(item);
 
+    /// <summary>Displays metadata reloaded after a locked-session unlock; approval still revalidates it.</summary>
+    public void OpenRevalidatedRequest(AuthRequestItem item, VaultSessionLease lease) =>
+        OpenRequestFromLease(item, lease);
+
     private async Task OpenFreshRequestAsync(AuthRequestItem item)
     {
         if (session.IsDemo || session.State != VaultState.Unlocked || !_decisions.IsPending(item))
         {
-            NoticeRaised?.Invoke("登录请求已过期或当前账户不可用。");
+            NoticeRaised?.Invoke(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5B5E15E29FCB72C2));
             return;
         }
         try
@@ -123,7 +127,7 @@ public sealed class DeviceApprovalWindowService(
             if (fresh is not null)
                 OpenRequestFromLease(fresh, lease);
             else if (session.IsCurrent(lease))
-                NoticeRaised?.Invoke("登录请求已处理或过期。");
+                NoticeRaised?.Invoke(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text04308BA8C199CC2D));
         }
         catch (OperationCanceledException ex) when (UiExceptionPolicy.IsGenuineCancellation(ex))
         {
@@ -135,7 +139,7 @@ public sealed class DeviceApprovalWindowService(
         }
         catch (Exception ex) when (ex is HttpRequestException or AuthRequestOperationException or InvalidOperationException)
         {
-            NoticeRaised?.Invoke("无法加载登录请求，请检查连接后重试。");
+            NoticeRaised?.Invoke(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBA9173FDF16F4B8B));
         }
     }
 
@@ -180,13 +184,13 @@ public sealed class DeviceApprovalWindowService(
             {
                 lock (_stateGate)
                     _dismissed.Add(item.Id);
-                NoticeRaised?.Invoke("登录请求还在等待，可以在“设置 › 设备”里处理。");
+                NoticeRaised?.Invoke(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE72BC45CA5CA7197));
             }
             else if (window.Outcome == DeviceApprovalOutcome.Expired)
             {
                 lock (_stateGate)
                     _pending = _pending.Where(request => request.Id != item.Id).ToArray();
-                NoticeRaised?.Invoke($"{item.DeviceTypeName} 的登录请求已过期。");
+                NoticeRaised?.Invoke(global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextD3C137CE20A01D6B,item.DeviceTypeName));
             }
             PendingRequestsChanged?.Invoke();
             if (window.Outcome != DeviceApprovalOutcome.Cancelled)
@@ -220,7 +224,7 @@ public sealed class DeviceApprovalWindowService(
         {
             lock (_stateGate)
                 _pending = _pending.Where(request => request.Id != item.Id).ToArray();
-            NoticeRaised?.Invoke($"已批准 {item.DeviceTypeName} 登录。");
+            NoticeRaised?.Invoke(global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextEDB3BEA0F957B843,item.DeviceTypeName));
         }
         return result;
     }
@@ -236,7 +240,7 @@ public sealed class DeviceApprovalWindowService(
                 return UiOperationResult.Cancelled();
             lock (_stateGate)
                 _pending = _pending.Where(request => request.Id != item.Id).ToArray();
-            NoticeRaised?.Invoke($"已拒绝 {item.DeviceTypeName} 的登录请求。");
+            NoticeRaised?.Invoke(global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text3A5029DDF66EC2A6,item.DeviceTypeName));
             return UiOperationResult.Success();
         }
         catch (OperationCanceledException ex) when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
@@ -249,7 +253,7 @@ public sealed class DeviceApprovalWindowService(
         }
         catch (Exception ex) when (ex is HttpRequestException or AuthRequestOperationException or InvalidOperationException)
         {
-            return UiOperationResult.Failure("无法拒绝登录请求，请检查网络连接后重试。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text35050C416FFF9DB4));
         }
     }
 

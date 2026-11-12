@@ -118,7 +118,7 @@ public sealed partial class SettingsTwoFactorPage : Page
         LoadingRing.Visibility = Visibility.Visible;
         MethodsContent.Visibility = Visibility.Collapsed;
         LoadErrorBar.IsOpen = false;
-        StatusText.Text = "正在加载…";
+        StatusText.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text21BD738E0D7191A7);
         StatusIcon.Glyph = "\uE8FD";
         StatusIcon.Foreground = ThemeBrushResolver.Resolve(this, "TextFillColorSecondaryBrush");
         var result = await _viewModel.LoadProvidersAsync(_loadCancellation.Token);
@@ -130,9 +130,9 @@ public sealed partial class SettingsTwoFactorPage : Page
         {
             if (result.Status is UiOperationStatus.Failed or UiOperationStatus.Busy)
             {
-                LoadErrorBar.Message = result.Status == UiOperationStatus.Busy ? "另一项安全操作仍在结束，请稍后重试。" : result.Error ?? "无法加载两步登录设置。";
+                LoadErrorBar.Message = result.Status == UiOperationStatus.Busy ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAF93175FD8B57EE7) : result.Error ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDF8C039805EDFA38);
                 LoadErrorBar.IsOpen = true;
-                StatusText.Text = "无法加载";
+                StatusText.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF3F42080D855A931);
                 StatusIcon.Glyph = "\uEA39";
                 StatusIcon.Foreground = ThemeBrushResolver.Resolve(this, "SystemFillColorCriticalBrush");
             }
@@ -150,27 +150,27 @@ public sealed partial class SettingsTwoFactorPage : Page
         WebAuthnRows.Children.Clear();
         var count = _providers.Count(provider => provider.Enabled
             && provider.Type != (int)TwoFactorProviderType.Remember);
-        StatusText.Text = count == 0 ? "未开启" : $"已开启 · {count} 种方式";
+        StatusText.Text = count == 0 ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3CFFA9757B693B52) : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextCA9B43DAC1149DD1,count);
         StatusIcon.Glyph = count == 0 ? "\uE711" : "\uE73E";
         StatusIcon.Foreground = ThemeBrushResolver.Resolve(this, count == 0
             ? "TextFillColorSecondaryBrush" : "SystemFillColorSuccessBrush");
-        AddProvider(TwoFactorProviderType.Authenticator, "\uE916", "身份验证器应用",
-            "用 Microsoft Authenticator 等应用生成 6 位验证码", _enableTotp!);
-        AddProvider(TwoFactorProviderType.Email, "\uE715", "电子邮件",
-            "通过已配置的验证邮箱接收验证码", _enableEmail!);
-        ProviderRows.Children.Add(CreateRow("\uE192", "通行密钥或安全密钥",
-            _webAuthnSnapshot?.Credentials.Count > 0 ? $"· 已添加 {_webAuthnSnapshot.Credentials.Count} 个" : string.Empty,
-            "YubiKey、Windows Hello 等 FIDO2 设备", "添加…", _manageWebAuthn!));
+        AddProvider(TwoFactorProviderType.Authenticator, "\uE916", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0BFE93D95E677A9A),
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8BE28597FC65D03B), _enableTotp!);
+        AddProvider(TwoFactorProviderType.Email, "\uE715", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1B2714B812D42F77),
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA039010DA9C6C342), _enableEmail!);
+        ProviderRows.Children.Add(CreateRow("\uE192", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4671FB290C9D89B0),
+            _webAuthnSnapshot?.Credentials.Count > 0 ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextB8FC936C368B01B5,_webAuthnSnapshot.Credentials.Count) : string.Empty,
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3FA9688B69499706), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text16242928CC42A717), _manageWebAuthn!));
         var yubiKeyEnabled = IsProviderEnabled(TwoFactorProviderType.YubiKey);
         ProviderRows.Children.Add(CreateRow("\uE765", "YubiKey OTP",
-            yubiKeyEnabled ? "· 已开启" : string.Empty,
-            "轻触 YubiKey 输入一次性密码；在网页版中管理",
-            yubiKeyEnabled ? "关闭" : "打开网页版", yubiKeyEnabled
+            yubiKeyEnabled ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text38050252C51911CD) : string.Empty,
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0CA10504B5B7069D),
+            yubiKeyEnabled ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3FD47EDCE45B3603) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text47691943215E3493), yubiKeyEnabled
                 ? () => _disableProvider!(_providers.Where(provider => provider.Type == (int)TwoFactorProviderType.YubiKey).ToArray())
                 : OpenWebVaultAsync));
         ProviderRows.Children.Add(CreateRow("\uEA18", "Duo",
-            IsProviderEnabled(TwoFactorProviderType.Duo) ? "· 已开启" : string.Empty,
-            "需要 Duo 管理后台里的应用信息，在网页版中设置", "打开网页版", OpenWebVaultAsync));
+            IsProviderEnabled(TwoFactorProviderType.Duo) ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text38050252C51911CD) : string.Empty,
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA04B3DC011BC2406), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text47691943215E3493), OpenWebVaultAsync));
         foreach (var provider in _providers.Where(provider => provider.Enabled
             && provider.Type != (int)TwoFactorProviderType.Authenticator
             && provider.Type != (int)TwoFactorProviderType.Email
@@ -180,23 +180,23 @@ public sealed partial class SettingsTwoFactorPage : Page
             && provider.Type != (int)TwoFactorProviderType.Remember))
         {
             ProviderRows.Children.Add(CreateRow("\uEA18",
-                SettingsViewModel.GetTwoFactorProviderDisplayName(provider.Type), "· 已开启",
-                "服务器已配置的其他验证方式", "关闭",
+                SettingsViewModel.GetTwoFactorProviderDisplayName(provider.Type), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text38050252C51911CD),
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9EC5065A44A1E58A), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3FD47EDCE45B3603),
                 () => _disableProvider!(new[] { provider })));
         }
-        RecoveryRows.Children.Add(CreateRow("\uE8D7", "恢复代码", string.Empty,
-            "丢失所有验证方式时用它登录，登录后两步登录会全部关闭", "查看…", _showRecovery!));
+        RecoveryRows.Children.Add(CreateRow("\uE8D7", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC5674F920EF6D556), string.Empty,
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextED8DC25279B054AF), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCBE3C1369FA23D66), _showRecovery!));
         WebAuthnGroup.Visibility = _webAuthnSnapshot?.Credentials.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (_webAuthnSnapshot is null)
-            WebAuthnRows.Children.Add(CreateRow("\uE8D7", "安全密钥列表暂时无法获取", string.Empty,
-                "重新验证后查看服务器上已添加的密钥", "查看…", _reloadWebAuthn!));
+            WebAuthnRows.Children.Add(CreateRow("\uE8D7", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text16F5F3573908D49C), string.Empty,
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA94A75647943BCB5), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCBE3C1369FA23D66), _reloadWebAuthn!));
         else
         {
             foreach (var credential in _webAuthnSnapshot.Credentials)
             {
-                var name = string.IsNullOrWhiteSpace(credential.Name) ? $"安全密钥 {credential.Id}" : credential.Name;
+                var name = string.IsNullOrWhiteSpace(credential.Name) ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text8A05D6B461E47BE2,credential.Id) : credential.Name;
                 WebAuthnRows.Children.Add(CreateRow("\uE8D7", name, string.Empty,
-                    credential.Migrated ? "从 U2F 迁移的安全密钥" : "FIDO2 安全密钥", "移除",
+                    credential.Migrated ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text955BD28E1EE67C07) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7BD3DD315113306C), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6135D4159E892541),
                     () => _removeWebAuthn!(credential.Id)));
             }
         }
@@ -208,8 +208,8 @@ public sealed partial class SettingsTwoFactorPage : Page
     private void AddProvider(TwoFactorProviderType type, string glyph, string title, string description, Func<Task> configure)
     {
         var enabled = IsProviderEnabled(type);
-        ProviderRows.Children.Add(CreateRow(glyph, title, enabled ? "· 已开启" : string.Empty,
-            description, enabled ? "关闭" : "设置…", enabled
+        ProviderRows.Children.Add(CreateRow(glyph, title, enabled ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text38050252C51911CD) : string.Empty,
+            description, enabled ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3FD47EDCE45B3603) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDA9FC8BA94970B9D), enabled
                 ? () => _disableProvider!(_providers.Where(provider => provider.Type == (int)type).ToArray())
                 : configure));
     }
@@ -294,7 +294,7 @@ public sealed partial class SettingsTwoFactorPage : Page
         {
             if (_isActive)
             {
-                LoadErrorBar.Message = "操作未完成，请重试。";
+                LoadErrorBar.Message = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDCD31A1D6390879C);
                 LoadErrorBar.IsOpen = true;
             }
         }

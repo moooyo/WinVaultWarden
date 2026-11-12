@@ -130,7 +130,7 @@ public sealed partial class SettingsPasswordPage : Page
             && !_viewModel.IsBusy && _operationCts is null;
         PasswordFields.IsEnabled = canEdit;
         ChangePasswordButton.IsEnabled = canEdit;
-        ChangePasswordButton.Content = _operationCts is null ? "更改主密码" : "正在更改…";
+        ChangePasswordButton.Content = _operationCts is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6B444E0F3275A327) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8383D9D715A38EA3);
         CancelButton.IsEnabled = _isActive;
     }
 
@@ -139,7 +139,7 @@ public sealed partial class SettingsPasswordPage : Page
 
     private void OnNewPasswordChanged(object sender, RoutedEventArgs e)
     {
-        SetFieldError(NewPasswordBox, NewPasswordError, NewErrorUnderline, string.Empty, "至少 12 个字符");
+        SetFieldError(NewPasswordBox, NewPasswordError, NewErrorUnderline, string.Empty, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text50A65A87586C1E1E));
         UpdateStrength();
     }
 
@@ -148,7 +148,7 @@ public sealed partial class SettingsPasswordPage : Page
 
     private void OnPasswordHintChanged(object sender, TextChangedEventArgs e) =>
         SetFieldError(PasswordHintBox, PasswordHintError, HintErrorUnderline, string.Empty,
-            "忘记主密码时可以发到你的邮箱，不能包含主密码本身");
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1B1FF65A19522D00));
 
     private void OnRevealPasswordsChanged(object sender, RoutedEventArgs e) =>
         SetRevealMode(RevealPasswordsButton.IsChecked == true);
@@ -158,7 +158,7 @@ public sealed partial class SettingsPasswordPage : Page
         var mode = reveal ? PasswordRevealMode.Visible : PasswordRevealMode.Hidden;
         NewPasswordBox.PasswordRevealMode = mode;
         ConfirmPasswordBox.PasswordRevealMode = mode;
-        var label = reveal ? "隐藏新主密码和确认主密码" : "显示新主密码和确认主密码";
+        var label = reveal ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3968680BC595E4ED) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text461805030E4A4564);
         AutomationProperties.SetName(RevealPasswordsButton, label);
         ToolTipService.SetToolTip(RevealPasswordsButton, label);
         RevealPasswordsIcon.Glyph = reveal ? "\uED1A" : "\uE890";
@@ -181,14 +181,14 @@ public sealed partial class SettingsPasswordPage : Page
 
         StrengthLabel.Text = !hasPassword ? string.Empty : score switch
         {
-            <= 1 => "弱",
-            2 => "中等",
-            3 => "强",
-            _ => "非常强",
+            <= 1 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDEFA376EABAF2FFF),
+            2 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC7092C51FDCF2F65),
+            3 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF038053BEDB1B9ED),
+            _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE6471576029B77BB),
         };
         StrengthLabel.Foreground = filledBrush;
         AutomationProperties.SetName(StrengthLabel,
-            hasPassword ? $"密码强度：{StrengthLabel.Text}" : "尚未输入新主密码");
+            hasPassword ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text6246597499366985,StrengthLabel.Text) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text56984203BA7BB282));
     }
 
     private bool ValidateForm()
@@ -197,14 +197,14 @@ public sealed partial class SettingsPasswordPage : Page
         Control? firstInvalid = null;
         if (string.IsNullOrEmpty(CurrentPasswordBox.Password))
         {
-            SetFieldError(CurrentPasswordBox, CurrentPasswordError, CurrentErrorUnderline, "请输入当前主密码");
+            SetFieldError(CurrentPasswordBox, CurrentPasswordError, CurrentErrorUnderline, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEF5269DAABBFD99A));
             firstInvalid = CurrentPasswordBox;
         }
 
         var nextError = NewPasswordBox.Password.Length < 12
-            ? "新主密码至少需要 12 个字符"
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextED6725991ECC7734)
             : string.Equals(NewPasswordBox.Password, CurrentPasswordBox.Password, StringComparison.Ordinal)
-                ? "新主密码不能和当前的一样" : string.Empty;
+                ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text95DA8FC5D4AF678E) : string.Empty;
         if (nextError.Length > 0)
         {
             SetFieldError(NewPasswordBox, NewPasswordError, NewErrorUnderline, nextError);
@@ -213,14 +213,14 @@ public sealed partial class SettingsPasswordPage : Page
 
         if (!string.Equals(NewPasswordBox.Password, ConfirmPasswordBox.Password, StringComparison.Ordinal))
         {
-            SetFieldError(ConfirmPasswordBox, ConfirmPasswordError, ConfirmErrorUnderline, "两次输入的主密码不一致");
+            SetFieldError(ConfirmPasswordBox, ConfirmPasswordError, ConfirmErrorUnderline, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text61153D5C7DD3DA51));
             firstInvalid ??= ConfirmPasswordBox;
         }
 
         if (NewPasswordBox.Password.Length > 0
             && PasswordHintBox.Text.Contains(NewPasswordBox.Password, StringComparison.OrdinalIgnoreCase))
         {
-            SetFieldError(PasswordHintBox, PasswordHintError, HintErrorUnderline, "提示不能包含主密码");
+            SetFieldError(PasswordHintBox, PasswordHintError, HintErrorUnderline, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text190B7B43774B5AFE));
             firstInvalid ??= PasswordHintBox;
         }
 
@@ -233,10 +233,10 @@ public sealed partial class SettingsPasswordPage : Page
     private void ClearFieldErrors()
     {
         SetFieldError(CurrentPasswordBox, CurrentPasswordError, CurrentErrorUnderline, string.Empty);
-        SetFieldError(NewPasswordBox, NewPasswordError, NewErrorUnderline, string.Empty, "至少 12 个字符");
+        SetFieldError(NewPasswordBox, NewPasswordError, NewErrorUnderline, string.Empty, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text50A65A87586C1E1E));
         SetFieldError(ConfirmPasswordBox, ConfirmPasswordError, ConfirmErrorUnderline, string.Empty);
         SetFieldError(PasswordHintBox, PasswordHintError, HintErrorUnderline, string.Empty,
-            "忘记主密码时可以发到你的邮箱，不能包含主密码本身");
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1B1FF65A19522D00));
     }
 
     private static void SetFieldError(Control field, TextBlock message, Border underline, string error, string help = "")
@@ -290,7 +290,7 @@ public sealed partial class SettingsPasswordPage : Page
                 return;
             if (operation.Status == UiOperationStatus.Failed)
             {
-                OperationErrorInfoBar.Message = operation.Error ?? "操作失败，请稍后重试";
+                OperationErrorInfoBar.Message = operation.Error ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB10D00FCBB7711DC);
                 OperationErrorInfoBar.Visibility = Visibility.Visible;
                 OperationErrorInfoBar.IsOpen = true;
             }

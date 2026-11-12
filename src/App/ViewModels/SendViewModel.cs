@@ -39,22 +39,22 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
 
     public string ListTitle => SelectedFilterTag switch
     {
-        "send:text" => "文本 Send",
-        "send:file" => "文件 Send",
-        _ => "全部 Send",
+        "send:text" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDFF2BA37F1CE5081),
+        "send:file" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text285713F32C4C8DB3),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text08F06E58676001CE),
     };
     public string ListCountLabel => $"{FilteredItems.Count}";
     public string EmptyTitle => !string.IsNullOrWhiteSpace(SearchQuery)
-        ? $"没有找到“{SearchQuery.Trim()}”"
+        ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text5DC5C08ECE0671A5,SearchQuery.Trim())
         : SelectedFilterTag switch
         {
-            "send:text" => "还没有文本 Send",
-            "send:file" => "还没有文件 Send",
-            _ => "还没有 Send",
+            "send:text" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4EBAA1266C4751FE),
+            "send:file" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCD4AA0A045838BDF),
+            _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0C9D4E8D96CA1F1C),
         };
     public string EmptyHint => !string.IsNullOrWhiteSpace(SearchQuery)
-        ? "名称、文本内容和文件名都会被搜索"
-        : "用链接安全地分享文本或文件，到期自动删除。";
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDB87EBF6DE6B6BA6)
+        : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6F466A68943632D8);
     public bool ShowSearchEmptyActions => !string.IsNullOrWhiteSpace(SearchQuery);
     public bool ShowSearchAllEmptyAction => ShowSearchEmptyActions && SelectedFilterTag != "send:all";
     public bool ShowCreateEmptyAction => !ShowSearchEmptyActions;
@@ -131,10 +131,10 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     [NotifyPropertyChangedFor(nameof(HasReceivedExpiration))]
     public partial SendReceivedResult? LastReceived { get; set; }
 
-    public string ReceivedSourceText => LastReceived?.Accessed?.CreatorIdentifier is { Length: > 0 } creator ? $"来自 {creator}" : string.Empty;
+    public string ReceivedSourceText => LastReceived?.CreatorIdentifier is { Length: > 0 } creator ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text4E5D1B1D205B4303,creator) : string.Empty;
     public bool HasReceivedSource => !string.IsNullOrEmpty(ReceivedSourceText);
-    public string ReceivedExpirationText => LastReceived?.Accessed?.ExpirationDate is { } expiration
-        ? $"{expiration.ToLocalTime():M 月 d 日 HH:mm} 过期" : string.Empty;
+    public string ReceivedExpirationText => LastReceived?.ExpirationDate is { } expiration
+        ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextC2C6F5E95F2D9881,expiration.ToLocalTime()) : string.Empty;
     public bool HasReceivedExpiration => !string.IsNullOrEmpty(ReceivedExpirationText);
 
     partial void OnLastReceivedChanging(SendReceivedResult? value)
@@ -161,13 +161,13 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     public bool HasCopyFeedback => !string.IsNullOrEmpty(CopyFeedback);
     public bool CanOpenReceivedLink => !IsBusy && !string.IsNullOrWhiteSpace(ReceivedLinkUrl);
     public bool CanReceiveInput => !IsBusy;
-    public string ReceiveButtonText => IsBusy ? "正在打开…" : LastReceived?.Ok == true ? "重新打开" : "打开";
+    public string ReceiveButtonText => IsBusy ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text821FFB8CD6A23594) : LastReceived?.Ok == true ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9F24062367F05167) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC771248E511FBF93);
     public bool IsAllFilter => SelectedFilterTag == "send:all";
     public bool IsTextFilter => SelectedFilterTag == "send:text";
     public bool IsFileFilter => SelectedFilterTag == "send:file";
-    public string AllFilterLabel => $"全部 · {Items.Count}";
-    public string TextFilterLabel => $"文本 · {Items.Count(item => item.Type == SendType.Text)}";
-    public string FileFilterLabel => $"文件 · {Items.Count(item => item.Type == SendType.File)}";
+    public string AllFilterLabel => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextBDCCA87BC4DDC01F,Items.Count);
+    public string TextFilterLabel => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text5CF78DC119C9A278,Items.Count(item => item.Type == SendType.Text));
+    public string FileFilterLabel => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextD32741192CB2390F,Items.Count(item => item.Type == SendType.File));
 
     internal SendViewModel(
         ISendUiService service,
@@ -287,7 +287,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         }
         catch (HttpRequestException)
         {
-            const string message = "无法加载 Send，请检查网络后重试。";
+            var message = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text29CFDC6C9F21C924);
             if (!TryCommitForExpectedSession(expectedSession, () =>
                 {
                     if (requestId != Volatile.Read(ref _loadRequestId))
@@ -466,7 +466,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         if (!TryCommitForExpectedSession(expectedSession, static () => true))
             return UiOperationResult.Cancelled();
         if (!draft.HasRequiredData())
-            return UiOperationResult.Failure("请填写 Send 必填项。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5EA7D2C9D46CC3A5));
         if (!_writeGate.TryEnter(out var operation))
             return UiOperationResult.Busy();
 
@@ -548,11 +548,11 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         if (!TryCommitForExpectedSession(expectedSession, static () => true))
             return UiOperationResult.Cancelled();
         if (!draft.HasRequiredData())
-            return UiOperationResult.Failure("请填写 Send 必填项。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5EA7D2C9D46CC3A5));
         if (Items.All(existing => existing.Id != item.Id))
-            return UiOperationResult.Failure("要更新的 Send 已不存在。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF0F5474965782B06));
         if (!item.CanModify)
-            return UiOperationResult.Failure("该 Send 正在等待服务器对账，暂时不能修改。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text63E3CCCCD3D26E16));
         if (!_writeGate.TryEnter(out var operation))
             return UiOperationResult.Busy();
 
@@ -595,9 +595,9 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
                         return false;
                     var replacement = new SendListItem(
                         uncertain.Replacement.SendId,
-                        "已提交的 Send",
+                        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text641CF762D56CA5C1),
                         item.Type,
-                        "待服务器确认",
+                        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7EE0F1015D52DB6B),
                         null,
                         SendReconciliationState.ReplacementNewPending);
                     MarkReplacementPending(uncertain.ExistingSendId, replacement);
@@ -656,25 +656,25 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
     {
         if (exception is Vault.SendUploadCompensationException)
         {
-            return "文件上传未完成，服务器可能保留了未完成的 Send。请刷新列表，确认并删除该条目后再重试。";
+            return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB46954B063E1EF25);
         }
         if (RequestTimeoutClassifier.IsTimeout(exception))
-            return "文件传输长时间没有进展，请检查连接后重试。";
+            return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2019E7CD5801502A);
 
         return exception switch
         {
-            ArgumentOutOfRangeException => "文件超过 500 MiB 上限。",
-            Vault.SendStateStaleException => "离线数据为只读。请先成功同步密码库，再修改 Send。",
+            ArgumentOutOfRangeException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFC35EAAAAD04F005),
+            Vault.SendStateStaleException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text58474BA7DECC46E5),
             OrganizationPolicyException => exception.Message,
-            UnauthorizedAccessException => "没有读取所选文件的权限。",
-            IOException => "读取或上传文件失败，请确认文件仍可访问后重试。",
-            InvalidDataException => "文件在读取或上传过程中已被修改，请重新选择文件后重试。",
+            UnauthorizedAccessException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA2DAD4AAC80F11EE),
+            IOException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCA8D995DCC461C2C),
+            InvalidDataException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE703C225884E501D),
             Vault.SendPasswordRequiredForReplacementException =>
-                "此 Send 已设置密码。替换文件时请重新输入原密码或设置新密码。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0DCAC88E947C603A),
             Vault.SendUnsupportedAuthenticationException =>
-                "此 Send 使用当前版本尚不支持的验证方式，暂时不能修改。",
-            HttpRequestException => "网络请求失败，请检查连接后重试。",
-            _ => "保存 Send 失败。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE982AD674F1812B1),
+            HttpRequestException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBD573FBAE00C37F5),
+            _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3D272C0EDE2F2F5A),
         };
     }
 
@@ -692,16 +692,16 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         if (RequestTimeoutClassifier.IsTimeout(exception)
             || exception is HttpRequestException or IOException)
         {
-            return "无法确认删除结果，请刷新列表检查该 Send 是否仍存在后再操作。";
+            return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7445C1ACFE1DA340);
         }
 
         return exception switch
         {
-            UnauthorizedAccessException => "没有删除此 Send 的权限，请重新登录或联系管理员后重试。",
-            Vault.SendStateStaleException => "离线数据为只读。请先成功同步密码库，再删除 Send。",
+            UnauthorizedAccessException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8E3331AEDD14EFA1),
+            Vault.SendStateStaleException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE3195AD3EDB1487E),
             OrganizationPolicyException => exception.Message,
-            SendMutationInProgressException => "另一项 Send 操作仍在进行，请稍后重试。",
-            _ => "删除 Send 失败，请刷新列表后重试。",
+            SendMutationInProgressException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text24E4F0237595FF9E),
+            _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text97332CE635B030AE),
         };
     }
 
@@ -718,7 +718,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
         {
             TryCommitForExpectedSession(expectedSession, () =>
             {
-                Notice = "该 Send 正在等待服务器对账，暂时不能编辑或删除。";
+                Notice = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC72CB7230007DF42);
                 return true;
             });
             return;
@@ -845,12 +845,12 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
                 SendReconciliationState.ReplacementOriginalPending or
                 SendReconciliationState.ReplacementNewPending))
         {
-            Notice = "文件替换已上传，但旧 Send 的删除结果尚未确认。相关条目已锁定，请刷新并等待服务器完成对账。";
+            Notice = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text76FF57910C807607);
             return;
         }
 
         Notice = Items.Any(item => item.ReconciliationState == SendReconciliationState.CommittedPendingRefresh)
-            ? "更改已保存到服务器，但列表尚未刷新。该条目已锁定，请稍后重新加载。"
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9C84F79C173481F6)
             : null;
     }
 
@@ -869,26 +869,26 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
                 var link = _service.CopyShareLink(item);
                 if (string.IsNullOrWhiteSpace(link) || _clipboard is null)
                 {
-                    Error = "链接尚不可用，请刷新列表后重试。";
+                    Error = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text97CA9BAE0FF9E0AF);
                     return true;
                 }
 
                 _clipboard.SetSecretText(link);
-                (_clipboard as IClipboardStatus)?.SetLabel("链接");
+                (_clipboard as IClipboardStatus)?.SetLabel(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text305378DDD2B86B60));
                 Error = null;
                 var availability = item.GetAvailability(DateTimeOffset.UtcNow);
                 CopyFeedback = availability.State switch
                 {
-                    SendAvailabilityState.Available => "链接已复制。请仅与预期接收者分享。",
+                    SendAvailabilityState.Available => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0A06CC0DBF502809),
                     SendAvailabilityState.Unknown or SendAvailabilityState.AwaitingConfirmation =>
-                        "链接已复制。请同步确认接收者的访问状态。",
-                    _ => "链接已复制。此 Send 当前不可访问，请检查停用状态、访问期限和访问次数。",
+                        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text157248F5EF6A1DCF),
+                    _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF50AA7E15F08AFD7),
                 };
             }
             catch (Exception ex) when (ex is InvalidOperationException
                 or System.Runtime.InteropServices.COMException or UnauthorizedAccessException)
             {
-                Error = "无法复制链接，请稍后重试。";
+                Error = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text236CA12167D7B860);
             }
             return true;
         });
@@ -958,7 +958,7 @@ public partial class SendViewModel : ObservableObject, ISensitiveState
             ReceivedFileName = result.FileName;
         else
         {
-            ReceivedTextRevealed = result.Accessed?.TextHidden != true;
+            ReceivedTextRevealed = !result.TextHidden;
             ReceivedText = result.TextContent;
         }
     }

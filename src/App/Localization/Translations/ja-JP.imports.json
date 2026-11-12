@@ -1,0 +1,10 @@
+{
+  "Preserve source folders": "元のフォルダーを保持",
+  "The import result is uncertain. Some or all items may already have been saved. Sync and check the vault before choosing the file to import again.": "インポートの結果を確認できません。一部またはすべての項目が既に保存されている可能性があります。ファイルを選び直して再度インポートする前に、同期してボールトを確認してください。",
+  "Import destination folder": "インポート先フォルダー",
+  "KeePass XML excludes the recycle bin. Password history is retained. Attachments and unsupported data stop the entire import.": "KeePass XML のごみ箱は除外され、パスワード履歴は保持されます。添付ファイルや未対応のデータがあると、インポート全体を中止します。",
+  "1Password archives are processed only in memory. Attachments, archived records, documents and unsupported data stop the entire import.": "1Password のアーカイブはメモリ内でのみ処理します。添付ファイル、アーカイブ済みの項目、ドキュメント、未対応のデータがあると、インポート全体を中止します。",
+  "Imports add new items. Unsupported data stops the entire import so that information is not silently discarded.": "インポートでは新しい項目を追加します。情報が黙って破棄されないように、未対応のデータがあるとインポート全体を中止します。",
+  "Choose a backup file in one of the supported import formats.": "対応するインポート形式のバックアップファイルを選択してください。",
+  "1Password (.1pux)": "1Password (.1pux)", "KeePass 2 (.xml)": "KeePass 2 (.xml)", "Chrome (.csv)": "Chrome (.csv)", "Edge (.csv)": "Edge (.csv)", "Firefox (.csv)": "Firefox (.csv)", "LastPass (.csv)": "LastPass (.csv)"
+}

@@ -123,10 +123,75 @@ public sealed class WebAuthnRequestPolicyTests
         Assert.True(allowed.Context!.IsCrossOrigin);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(7)]
+    public void SameOriginGet_RejectsExplicitPermissionsPolicyDenial(int frameId)
+    {
+        var result = _policy.Evaluate(
+            BrowserPasskeyOperation.Get,
+            Context("https://example.com", "https://example.com", frameId, false),
+            "example.com");
+
+        Assert.False(result.Allowed);
+        Assert.Equal(PasskeyErrorCodes.SecurityPermissionsPolicy, result.ErrorCode);
+    }
+
+    [Fact]
+    public void Create_RejectsTopLevelPermissionsPolicyDenial()
+    {
+        var result = _policy.Evaluate(
+            BrowserPasskeyOperation.Create,
+            Context("https://example.com", "https://example.com", 0, true) with
+            {
+                PublicKeyCredentialsCreateAllowed = false,
+            },
+            "example.com");
+
+        Assert.False(result.Allowed);
+        Assert.Equal(PasskeyErrorCodes.SecurityPermissionsPolicy, result.ErrorCode);
+    }
+
+    [Fact]
+    public void Get_UsesFullAncestorEvidenceWhenFrameAndTopOriginsMatch()
+    {
+        var result = _policy.Evaluate(
+            BrowserPasskeyOperation.Get,
+            Context("https://example.com", "https://example.com", 7, true) with
+            {
+                SameOriginWithAncestors = false,
+            },
+            "example.com");
+
+        Assert.True(result.Allowed);
+        Assert.True(result.Context!.IsCrossOrigin);
+    }
+
+    [Theory]
+    [InlineData(0, "https://example.com", "https://example.com", false)]
+    [InlineData(0, "https://example.com", "https://other.example", false)]
+    [InlineData(7, "https://example.com", "https://other.example", true)]
+    public void Get_RejectsInconsistentTrustedAncestorEvidence(
+        int frameId, string frame, string top, bool sameOriginWithAncestors)
+    {
+        var result = _policy.Evaluate(
+            BrowserPasskeyOperation.Get,
+            Context(frame, top, frameId, true) with
+            {
+                SameOriginWithAncestors = sameOriginWithAncestors,
+            },
+            "example.com");
+
+        Assert.False(result.Allowed);
+        Assert.Equal(PasskeyErrorCodes.SecuritySender, result.ErrorCode);
+    }
+
     private static BrowserRequestContext Context(
         string frame,
         string top,
         int frameId,
         bool policy) =>
-        new(frame, top, 42, frameId, "document-1", policy);
+        new(frame, top, 42, frameId, "document-1", policy,
+            SameOriginWithAncestors: frame == top,
+            PublicKeyCredentialsCreateAllowed: true);
 }

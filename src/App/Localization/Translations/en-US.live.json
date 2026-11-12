@@ -1,0 +1,21 @@
+{
+  "Unable to verify the device request. Unlock and reload your device requests.": "Unable to verify the device request. Unlock and reload your device requests.",
+  "The request list could not be verified.": "The request list could not be verified.",
+  "The PIN restart policy could not be changed.": "The PIN restart policy could not be changed.",
+  "Compare this phrase on the requesting device:": "Compare this phrase on the requesting device:",
+  "SSH agent running": "SSH agent running",
+  "Your vault is locked. Unlock the same account, then review the freshly verified request before approving it.": "Your vault is locked. Unlock the same account, then review the freshly verified request before approving it.",
+  "Require master password before using PIN after restart": "Require master password before using PIN after restart",
+  "Unlock and review": "Unlock and review",
+  "The first PIN unlock in each application process requires prior master-password verification": "The first PIN unlock in each application process requires prior master-password verification",
+  "SSH agent disabled": "SSH agent disabled",
+  "Expires in {0}:{1:00}": "Expires in {0}:{1:00}",
+  "Unlock the same account and review this device sign-in request": "Unlock the same account and review this device sign-in request",
+  "SSH agent stopped": "SSH agent stopped",
+  "Device sign-in request": "Device sign-in request",
+  "Require master password after restart": "Require master password after restart",
+  "Unlock with the master password once after restarting the application before using this account's PIN.": "Unlock with the master password once after restarting the application before using this account's PIN.",
+  "The device request changed or is no longer pending. Review it again.": "The device request changed or is no longer pending. Review it again.",
+  "Windows must trust the package publisher certificate. The vault will lock, discard unsaved drafts and clear copied secrets before the installer opens.": "Windows must trust the package publisher certificate. The vault will lock, discard unsaved drafts and clear copied secrets before the installer opens.",
+  "A device is requesting sign-in": "A device is requesting sign-in"
+}

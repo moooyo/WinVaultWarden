@@ -1,0 +1,21 @@
+{
+  "Unable to verify the device request. Unlock and reload your device requests.": "無法驗證裝置請求。請解鎖並重新載入裝置請求。",
+  "The request list could not be verified.": "無法驗證請求清單。",
+  "The PIN restart policy could not be changed.": "無法變更 PIN 重新啟動原則。",
+  "Compare this phrase on the requesting device:": "請在提出請求的裝置上核對以下短語：",
+  "SSH agent running": "SSH 代理程式正在執行",
+  "Your vault is locked. Unlock the same account, then review the freshly verified request before approving it.": "保險庫已鎖定。請解鎖同一個帳戶，重新核對已驗證的請求後再核准。",
+  "Require master password before using PIN after restart": "重新啟動後使用 PIN 前需要驗證主密碼",
+  "Unlock and review": "解鎖並檢視",
+  "The first PIN unlock in each application process requires prior master-password verification": "每次啟動應用程式後，首次使用 PIN 解鎖前需要先驗證主密碼",
+  "SSH agent disabled": "SSH 代理程式未啟用",
+  "Expires in {0}:{1:00}": "將在 {0}:{1:00} 後到期",
+  "Unlock the same account and review this device sign-in request": "解鎖同一個帳戶並檢視此裝置登入請求",
+  "SSH agent stopped": "SSH 代理程式已停止",
+  "Device sign-in request": "裝置登入請求",
+  "Require master password after restart": "重新啟動後先驗證主密碼",
+  "Unlock with the master password once after restarting the application before using this account's PIN.": "重新啟動應用程式後，請先用主密碼解鎖一次，再使用此帳戶的 PIN。",
+  "The device request changed or is no longer pending. Review it again.": "裝置請求已變更或不再等待處理，請重新核對。",
+  "Windows must trust the package publisher certificate. The vault will lock, discard unsaved drafts and clear copied secrets before the installer opens.": "Windows 必須信任安裝套件發行者的憑證。開啟安裝程式前，保險庫會鎖定、捨棄未儲存的草稿並清除已複製的敏感內容。",
+  "A device is requesting sign-in": "有裝置正在請求登入"
+}

@@ -19,8 +19,8 @@ public partial class EmergencyAccessViewModel : ObservableObject, ISensitiveStat
 
     // 网络层真实失败为 VaultApiException/VaultWriteException(均 : HttpRequestException)。文案固定脱敏,
     // 绝不回显 ex.Message(服务端错误可能夹带被授权账户/资源标识)。
-    private const string NetworkLoadError = "无法加载紧急访问信息，请检查网络后重试。";
-    private const string NetworkOperationError = "网络请求失败，请检查连接后重试。";
+    private static readonly string NetworkLoadError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text76A3F99219927920);
+    private static readonly string NetworkOperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBD573FBAE00C37F5);
 
     // ── 两个显示集合 ──────────────────────────────────────────────────────────
 
@@ -250,11 +250,37 @@ public partial class EmergencyAccessViewModel : ObservableObject, ISensitiveStat
         GrantedAccess item,
         CancellationToken ct = default)
     {
+        Core.Session.VaultSessionLease? lease = null;
+        if (_session is not null)
+        {
+            try { lease = _session.CaptureLease(); }
+            catch (InvalidOperationException) { return UiOperationResult<RecoveredVault>.Cancelled(); }
+            if (!_session.IsUnlocked(lease))
+                return UiOperationResult<RecoveredVault>.Cancelled();
+        }
+        using var linked = lease is null
+            ? CancellationTokenSource.CreateLinkedTokenSource(ct)
+            : CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
         var result = await RunAsync(
             token => _service.ViewAsync(item.Id, item.Email ?? string.Empty, token),
-            ct);
+            linked.Token);
         if (result.IsSuccess && result.Value is { } recovered)
-            RecoveredItems.Add(recovered);
+        {
+            var committed = false;
+            void Commit()
+            {
+                if (linked.IsCancellationRequested)
+                    return;
+                RecoveredItems.Add(recovered);
+                committed = true;
+            }
+            if (lease is null)
+                Commit();
+            else
+                _session!.TryRunIfUnlocked(lease, Commit);
+            if (!committed)
+                return UiOperationResult<RecoveredVault>.Cancelled();
+        }
         return result;
     }
 
@@ -265,7 +291,7 @@ public partial class EmergencyAccessViewModel : ObservableObject, ISensitiveStat
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(newPassword))
-            return UiOperationResult.Failure("新主密码不能为空");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text328C8EE0AFD4F640));
         var result = await RunAsync(
             async token =>
             {

@@ -36,7 +36,7 @@ public sealed class MockVaultHealthUiService : IVaultHealthUiService
         IProgress<HealthAnalysisProgress>? progress = null,
         CancellationToken ct = default)
     {
-        progress?.Report(new HealthAnalysisProgress(100, 100, "分析完成"));
+        progress?.Report(new HealthAnalysisProgress(100, 100, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0FF9CC7E060EA234)));
         return Task.FromResult(_report);
     }
 

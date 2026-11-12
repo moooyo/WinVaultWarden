@@ -1,4 +1,4 @@
-﻿using App.Interop;
+using App.Interop;
 using App.Views;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ShellRoot.Language = global::App.Localization.UiText.DisplayCulture.Name;
         // Frame 就绪后注入导航服务(须在任何导航如 ShowLogin 之前)。
         _nav.Initialize(ContentFrame, LoginFrame);
         ContentFrame.Navigated += (_, _) => UpdateNavigationContext();
@@ -383,6 +384,8 @@ public sealed partial class MainWindow : Window
             if (AppPreferences.Current.AllowBrowserIntegration && !AboutInfo.IsPackaged)
                 global::App.App.Services.GetRequiredService<Services.PasskeyBridgeServer>().Start();
 
+            StartOptionalVaultIntegrations();
+
             phase = "timeout";
             _timeout.Start();
             EnforceCurrentTimeoutPolicy();
@@ -568,9 +571,9 @@ public sealed partial class MainWindow : Window
         {
             var dialog = new ContentDialog
             {
-                Title = "保存结果待确认",
-                Content = "请先同步确认新条目的保存结果，再离开密码库。",
-                CloseButtonText = "知道了",
+                Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7CE0519134D785E8),
+                Content = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF7AD961286576FA0),
+                CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDE32E20193AD1042),
                 DefaultButton = ContentDialogButton.Close,
                 XamlRoot = Nav.XamlRoot,
             };
@@ -609,9 +612,9 @@ public sealed partial class MainWindow : Window
             case "logout":
                 if (await global::App.Views.DialogHelper.ConfirmAsync(
                     Nav.XamlRoot,
-                    "退出登录",
-                    "确定退出登录?将清除本地会话,需重新登录。",
-                    "退出登录"))
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3AB8CC15939F3B5C),
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD5101A3BF38DFDB0),
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3AB8CC15939F3B5C)))
                 {
                     await _lifecycle.RequestAsync(AppLifecycleIntent.Logout);
                 }
@@ -643,8 +646,8 @@ public sealed partial class MainWindow : Window
                 if (!session.IsUnlocked(lease))
                     break;
                 if (history.ClearRequested
-                    && await DialogHelper.ConfirmAsync(Nav.XamlRoot, lease, "清除历史记录",
-                        "清除本次解锁期间复制的全部记录？已保存的条目不受影响。", "清除")
+                    && await DialogHelper.ConfirmAsync(Nav.XamlRoot, lease, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0855A60751CB08D3),
+                        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFBB6575FDF8C59B4), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBCE2377283C2455A))
                     && !_lifecycle.TryRunSensitive(() => session.TryRunIfUnlocked(lease,
                         () => dialog.ViewModel.ClearHistoryCommand.Execute(null))))
                     break;

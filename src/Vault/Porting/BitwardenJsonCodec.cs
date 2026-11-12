@@ -20,7 +20,10 @@ public static class BitwardenJsonCodec
                 folderIndexById[folders[i].Id] = i;
         }
 
-        var bwFolders = folders.Select((f, i) => new BwFolder(i.ToString(CultureInfo.InvariantCulture), f.Name)).ToArray();
+        var bwFolders = folders.Select((f, i) => new BwFolder(
+            i.ToString(CultureInfo.InvariantCulture),
+            f.Name,
+            f.RevisionDate == default ? null : f.RevisionDate)).ToArray();
 
         var bwItems = ciphers.Select(c =>
         {
@@ -48,7 +51,9 @@ public static class BitwardenJsonCodec
                 BankAccount: c.BankAccount is null ? null : ToBw(c.BankAccount),
                 DriversLicense: c.DriversLicense is null ? null : ToBw(c.DriversLicense),
                 Passport: c.Passport is null ? null : ToBw(c.Passport),
-                ArchivedDate: c.ArchivedDate);
+                ArchivedDate: c.ArchivedDate,
+                CreationDate: c.CreationDate == default ? null : c.CreationDate,
+                RevisionDate: c.RevisionDate == default ? null : c.RevisionDate);
         }).ToArray();
 
         var export = new BwExport(Encrypted: false, Folders: bwFolders, Items: bwItems);
@@ -68,6 +73,7 @@ public static class BitwardenJsonCodec
         {
             Id = f.Id ?? string.Empty,
             Name = f.Name ?? string.Empty,
+            RevisionDate = f.RevisionDate ?? default,
         }).ToArray();
 
         var folderIndexById = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -101,6 +107,8 @@ public static class BitwardenJsonCodec
         Favorite = item.Favorite,
         Reprompt = item.Reprompt != 0,
         ArchivedDate = item.ArchivedDate,
+        CreationDate = item.CreationDate ?? default,
+        RevisionDate = item.RevisionDate ?? default,
         Name = item.Name ?? string.Empty,
         Notes = item.Notes,
         Login = item.Login is null ? null : FromBw(item.Login),
@@ -126,7 +134,9 @@ public static class BitwardenJsonCodec
     private static BwLogin ToBw(CipherLogin l) => new(
         l.Username, l.Password, l.Totp,
         l.Uris.Count == 0 ? null : l.Uris.Select(u => new BwUri(u.Uri, u.Match)).ToArray(),
-        l.Fido2Credentials.Count == 0 ? null : l.Fido2Credentials.Select(ToBw).ToArray());
+        l.Fido2Credentials.Count == 0 ? null : l.Fido2Credentials.Select(ToBw).ToArray(),
+        l.PasswordRevisionDate,
+        l.AutofillOnPageLoad);
 
     private static CipherLogin FromBw(BwLogin l) => new(
         l.Username, l.Password, l.Totp,
@@ -135,6 +145,8 @@ public static class BitwardenJsonCodec
         Fido2Credentials = l.Fido2Credentials is null
             ? Array.Empty<CipherFido2Credential>()
             : l.Fido2Credentials.Select(FromBw).ToArray(),
+        PasswordRevisionDate = l.PasswordRevisionDate,
+        AutofillOnPageLoad = l.AutofillOnPageLoad,
     };
 
     private static BwFido2Credential ToBw(CipherFido2Credential c) => new(

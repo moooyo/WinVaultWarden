@@ -19,6 +19,7 @@ public partial class App : Application
 
     public App()
     {
+        global::App.Localization.AppLocalization.Initialize();
         InitializeComponent();
         Services = ServiceConfiguration.Build();
     }
@@ -52,6 +53,7 @@ public partial class App : Application
         }
 
         MainWindow = new MainWindow();
+        MainWindow.InitializeLockedDeviceRequestIntegration();
         ThemeManager.Apply(AppPreferences.Current.ThemeIndex);
 
         // 浏览器集成(passkey 桥接)不再在启动时仅凭偏好启动:锁定的登录页绝不监听。bridge 只在 vault
@@ -60,6 +62,36 @@ public partial class App : Application
         ViewModels.SettingsViewModel.AllowBrowserIntegrationSettingChanged += OnBrowserIntegrationChanged;
 
         MainWindow.Activate();
+        _ = InitializeWindowsPasskeysAsync();
+        _ = CheckAutomaticReleaseAsync();
+    }
+
+    private static async Task InitializeWindowsPasskeysAsync()
+    {
+        try
+        {
+            new AppInstallerEnrollmentService().CleanupRetainedMetadata();
+            await Services.GetRequiredService<IWindowsPasskeyProvider>().StartAsync();
+        }
+        catch (Exception exception)
+        {
+            CrashLogger.WriteRedacted("WindowsPasskeyStartup", exception);
+        }
+    }
+
+    private static async Task CheckAutomaticReleaseAsync()
+    {
+        try
+        {
+            var result = await AutomaticReleaseCheck.CheckIfDueAsync(
+                AboutInfo.AppVersion, AboutInfo.Architecture, AboutInfo.IsPackaged);
+            if (result?.Status == ReleaseUpdateStatus.UpdateAvailable)
+                MainWindow?.ShowNotice(result.Message);
+        }
+        catch (Exception exception)
+        {
+            CrashLogger.WriteRedacted("AutomaticReleaseCheck", exception);
+        }
     }
 
     private static void OnBrowserIntegrationChanged(bool enabled)

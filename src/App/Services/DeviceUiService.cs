@@ -74,7 +74,7 @@ public sealed class DeviceUiService : IDeviceUiService
 
         return new DeviceItem(
             device.Id,
-            string.IsNullOrWhiteSpace(device.Name) ? "未知设备" : device.Name,
+            string.IsNullOrWhiteSpace(device.Name) ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8CA01A9BA438675D) : device.Name,
             GlyphFor(device.Type),
             RegisteredText(device),
             isCurrent,
@@ -92,6 +92,6 @@ public sealed class DeviceUiService : IDeviceUiService
     private static string RegisteredText(DeviceInfo device)
     {
         var date = device.CreationDate?.LocalDateTime.ToString("yyyy/M/d HH:mm");
-        return date is null ? "登记时间未知" : $"登记于 {date}";
+        return date is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7B45158CD0496B5C) : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextD009E2E8D815D2A8,date);
     }
 }

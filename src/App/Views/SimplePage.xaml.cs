@@ -13,7 +13,7 @@ public sealed partial class SimplePage : Page
         {
             Title.Text = p.Item1;
             Icon.Glyph = p.Item2;
-            Subtitle.Text = $"{p.Item1}正在开发中";
+            Subtitle.Text = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text94D1662EC694E0B5,p.Item1);
         }
     }
 }

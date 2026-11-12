@@ -43,10 +43,17 @@ public sealed class VaultHealthService : IVaultHealthService
             .Select(g => new ReusedGroup(g.Count(), g.Select(Ref).ToArray()))
             .ToArray();
 
-        var weak = passwordLogins
-            .Select(c => (c, score: _evaluator.Evaluate(c.Login!.Password!).Score))
-            .Where(x => x.score <= 2)
-            .Select(x => new WeakFinding(Ref(x.c), x.score))
+        var strengthResults = passwordLogins
+            .Select(cipher => (Cipher: cipher, Strength: _evaluator.Evaluate(cipher.Login!.Password!)))
+            .ToArray();
+        var weak = strengthResults
+            .Where(result => result.Strength.IsComplete && result.Strength.Score <= 2)
+            .Select(result => new WeakFinding(Ref(result.Cipher), result.Strength.Score))
+            .ToArray();
+        var unassessed = strengthResults
+            .Where(result => !result.Strength.IsComplete)
+            .Select(result => Ref(result.Cipher))
+            .DistinctBy(item => item.CipherId)
             .ToArray();
 
         var unsecured = logins
@@ -55,7 +62,10 @@ public sealed class VaultHealthService : IVaultHealthService
                 .Select(u => new UnsecuredFinding(Ref(c), u.Uri!)))
             .ToArray();
 
-        return new HealthReport(reused, weak, unsecured);
+        return new HealthReport(reused, weak, unsecured)
+        {
+            UnassessedPasswords = unassessed,
+        };
     }
 
     // Task 14

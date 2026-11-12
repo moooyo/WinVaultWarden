@@ -18,7 +18,21 @@ public sealed class NotificationsConnection : INotificationsConnection
     internal const int MaxHandshakeResponseSize = 16 * 1024;
     private static readonly byte[] SuccessfulHandshakeResponse = [0x7b, 0x7d, 0x1e];
 
+    private readonly object _connectionGate = new();
+    private readonly TimeSpan _closeTimeout;
     private ClientWebSocket? _ws;
+    private Task? _disposal;
+
+    public NotificationsConnection() : this(TimeSpan.FromSeconds(2))
+    {
+    }
+
+    internal NotificationsConnection(TimeSpan closeTimeout)
+    {
+        if (closeTimeout <= TimeSpan.Zero || closeTimeout == Timeout.InfiniteTimeSpan)
+            throw new ArgumentOutOfRangeException(nameof(closeTimeout));
+        _closeTimeout = closeTimeout;
+    }
 
     // ----------------------------------------------------------------
     // Static helper (tested by WebSocketUrlTests)
@@ -62,15 +76,20 @@ public sealed class NotificationsConnection : INotificationsConnection
     /// <inheritdoc />
     public async Task ConnectAsync(string notificationsEndpoint, string accessToken, CancellationToken ct)
     {
-        _ws?.Dispose();
-        _ws = new ClientWebSocket();
+        ClientWebSocket socket;
+        lock (_connectionGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            _ws?.Dispose();
+            _ws = socket = new ClientWebSocket();
+        }
 
         // Bitwarden client identification headers expected by some server-side logging.
-        _ws.Options.SetRequestHeader("Bitwarden-Client-Name", ClientHeadersHandler.ClientName);
-        _ws.Options.SetRequestHeader("Bitwarden-Client-Version", ClientHeadersHandler.ClientVersion);
+        socket.Options.SetRequestHeader("Bitwarden-Client-Name", ClientHeadersHandler.ClientName);
+        socket.Options.SetRequestHeader("Bitwarden-Client-Version", ClientHeadersHandler.ClientVersion);
 
         var endpoint = new ServerEndpoint(notificationsEndpoint);
-        await _ws.ConnectAsync(new Uri(ToHubUrl(endpoint, accessToken)), ct)
+        await socket.ConnectAsync(new Uri(ToHubUrl(endpoint, accessToken)), ct)
             .ConfigureAwait(false);
 
         // ---- SignalR handshake ----
@@ -79,7 +98,7 @@ public sealed class NotificationsConnection : INotificationsConnection
         SignalRMessagePack.HandshakeBytes.CopyTo(handshakeBuffer, 0);
         handshakeBuffer[^1] = 0x1e;
 
-        await _ws.SendAsync(
+        await socket.SendAsync(
             new ArraySegment<byte>(handshakeBuffer),
             WebSocketMessageType.Text,
             endOfMessage: true,
@@ -94,7 +113,7 @@ public sealed class NotificationsConnection : INotificationsConnection
         WebSocketReceiveResult ackResult;
         do
         {
-            ackResult = await _ws.ReceiveAsync(new ArraySegment<byte>(ackChunk), ct)
+            ackResult = await socket.ReceiveAsync(new ArraySegment<byte>(ackChunk), ct)
                 .ConfigureAwait(false);
 
             if (ackResult.MessageType == WebSocketMessageType.Close)
@@ -117,8 +136,8 @@ public sealed class NotificationsConnection : INotificationsConnection
     public async IAsyncEnumerable<NotificationMessage> ReadAsync(
         [EnumeratorCancellation] CancellationToken ct)
     {
-        if (_ws is null)
-            throw new InvalidOperationException("Call ConnectAsync before ReadAsync.");
+        var socket = Volatile.Read(ref _ws)
+            ?? throw new InvalidOperationException("Call ConnectAsync before ReadAsync.");
 
         // Accumulate one complete WebSocket message within the protocol receive limit.
         var buf = new byte[4096];
@@ -134,7 +153,7 @@ public sealed class NotificationsConnection : INotificationsConnection
                 // Accumulate all fragments of one logical message.
                 do
                 {
-                    result = await _ws.ReceiveAsync(new ArraySegment<byte>(buf), ct)
+                    result = await socket.ReceiveAsync(new ArraySegment<byte>(buf), ct)
                         .ConfigureAwait(false);
 
                     if (result.MessageType == WebSocketMessageType.Close)
@@ -155,6 +174,10 @@ public sealed class NotificationsConnection : INotificationsConnection
             catch (WebSocketException)
             {
                 // Remote end closed / network fault → end enumeration gracefully.
+                yield break;
+            }
+            catch (ObjectDisposedException)
+            {
                 yield break;
             }
 
@@ -209,26 +232,45 @@ public sealed class NotificationsConnection : INotificationsConnection
     }
 
     /// <inheritdoc />
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (_ws is null) return;
-
-        if (_ws.State is WebSocketState.Open or WebSocketState.CloseReceived)
+        lock (_connectionGate)
         {
-            try
+            if (_disposal is null)
             {
-                await _ws.CloseAsync(
+                var socket = _ws;
+                _ws = null;
+                _disposal = socket is null
+                    ? Task.CompletedTask
+                    : CloseAndDisposeAsync(socket);
+            }
+            return new ValueTask(_disposal);
+        }
+    }
+
+    private async Task CloseAndDisposeAsync(ClientWebSocket socket)
+    {
+        try
+        {
+            if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+            {
+                // A failed SignalR message can leave the transport open. Never let a peer
+                // withholding its close reply block notification shutdown or vault locking.
+                using var deadline = new CancellationTokenSource(_closeTimeout);
+                await socket.CloseAsync(
                     WebSocketCloseStatus.NormalClosure,
                     "Disposing",
-                    CancellationToken.None).ConfigureAwait(false);
-            }
-            catch
-            {
-                // Best-effort close; ignore errors on disposal.
+                    deadline.Token).ConfigureAwait(false);
             }
         }
-
-        _ws.Dispose();
-        _ws = null;
+        catch
+        {
+            // Graceful closure is best effort. Abort terminates any pending transport work.
+            socket.Abort();
+        }
+        finally
+        {
+            socket.Dispose();
+        }
     }
 }

@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-
 namespace Crypto.PasswordStrength;
 
 public sealed class Omnimatch
@@ -12,6 +10,7 @@ public sealed class Omnimatch
 
     public IReadOnlyList<Match> Match(string password)
     {
+        PasswordStrengthBudget.ValidateMatcherInput(password);
         var matches = new List<Match>(_dict.Match(password));
         matches.AddRange(RepeatMatches(password));
         matches.AddRange(SequenceMatches(password));
@@ -23,9 +22,42 @@ public sealed class Omnimatch
 
     private static IEnumerable<Match> RepeatMatches(string p)
     {
-        foreach (System.Text.RegularExpressions.Match m in Regex.Matches(p, @"(.+?)\1+"))
-            if (m.Length >= 3)
-                yield return new Match(m.Index, m.Index + m.Length - 1, m.Value, StrengthMatchType.Repeat);
+        // Find the earliest, shortest repeated unit, then consume its complete
+        // repetitions. Bounded span comparisons avoid regex backtracking.
+        var start = 0;
+        while (start + 1 < p.Length)
+        {
+            var repeatedLength = 0;
+            for (var unitLength = 1; unitLength <= (p.Length - start) / 2; unitLength++)
+            {
+                var unit = p.AsSpan(start, unitLength);
+                if (!unit.SequenceEqual(p.AsSpan(start + unitLength, unitLength)))
+                    continue;
+
+                repeatedLength = 2 * unitLength;
+                while (start + repeatedLength + unitLength <= p.Length
+                    && unit.SequenceEqual(p.AsSpan(start + repeatedLength, unitLength)))
+                {
+                    repeatedLength += unitLength;
+                }
+                break;
+            }
+
+            if (repeatedLength == 0)
+            {
+                start++;
+                continue;
+            }
+            if (repeatedLength >= 3)
+            {
+                yield return new Match(
+                    start,
+                    start + repeatedLength - 1,
+                    p.Substring(start, repeatedLength),
+                    StrengthMatchType.Repeat);
+            }
+            start += repeatedLength;
+        }
     }
 
     private static IEnumerable<Match> SequenceMatches(string p)
@@ -75,7 +107,15 @@ public sealed class Omnimatch
 
     private static IEnumerable<Match> DateMatches(string p)
     {
-        foreach (System.Text.RegularExpressions.Match m in Regex.Matches(p, @"(19|20)\d{2}"))
-            yield return new Match(m.Index, m.Index + m.Length - 1, m.Value, StrengthMatchType.Date);
+        for (var start = 0; start + 3 < p.Length; start++)
+        {
+            if ((p[start] == '1' && p[start + 1] == '9'
+                    || p[start] == '2' && p[start + 1] == '0')
+                && char.IsDigit(p[start + 2]) && char.IsDigit(p[start + 3]))
+            {
+                yield return new Match(start, start + 3, p.Substring(start, 4), StrengthMatchType.Date);
+                start += 3;
+            }
+        }
     }
 }

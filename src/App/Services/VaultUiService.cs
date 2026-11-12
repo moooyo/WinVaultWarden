@@ -84,7 +84,7 @@ public sealed class VaultUiService : IVaultUiService
                     collection.OrganizationId == organization.Id && !collection.ReadOnly)))
         {
             destinations.Add(new CipherDestinationOption(
-                $"{organization.Name}（组织）",
+                global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextD7091527C4D6ACEE,organization.Name),
                 organization.Id,
                 null));
         }
@@ -452,18 +452,18 @@ public sealed class VaultUiService : IVaultUiService
 
         var filters = new List<FilterNode>
         {
-            new() { Label = "所有项目", Glyph = GlyphAllItems, Kind = FilterKind.AllItems, Count = items.Count(i => !i.IsDeleted && !i.IsArchived) },
-            new() { Label = "收藏", Glyph = GlyphFavorite, Kind = FilterKind.Favorites, Count = items.Count(i => i.Favorite && !i.IsDeleted && !i.IsArchived) },
-            new() { Label = "归档", Glyph = GlyphArchive, Kind = FilterKind.Archive, Count = items.Count(i => i.IsArchived && !i.IsDeleted) },
-            new() { Label = "回收站", Glyph = GlyphTrash, Kind = FilterKind.Trash, Count = items.Count(i => i.IsDeleted) },
-            new() { Label = "登录", Glyph = GlyphLogin, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Login, Count = CountType(VaultItemKind.Login) },
-            new() { Label = "银行卡", Glyph = GlyphCard, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Card, Count = CountType(VaultItemKind.Card) },
-            new() { Label = "身份", Glyph = GlyphIdentity, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Identity, Count = CountType(VaultItemKind.Identity) },
-            new() { Label = "笔记", Glyph = GlyphNote, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Note, Count = CountType(VaultItemKind.Note) },
-            new() { Label = "SSH 密钥", Glyph = GlyphSsh, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Ssh, Count = CountType(VaultItemKind.Ssh) },
-            new() { Label = "银行账户", Glyph = GlyphBankAccount, Kind = FilterKind.Type, TypeFilter = VaultItemKind.BankAccount, Count = CountType(VaultItemKind.BankAccount) },
-            new() { Label = "驾驶证", Glyph = GlyphDriversLicense, Kind = FilterKind.Type, TypeFilter = VaultItemKind.DriversLicense, Count = CountType(VaultItemKind.DriversLicense) },
-            new() { Label = "护照", Glyph = GlyphPassport, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Passport, Count = CountType(VaultItemKind.Passport) },
+            new() { Label = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC7A4E66EB765582E), Glyph = GlyphAllItems, Kind = FilterKind.AllItems, Count = items.Count(i => !i.IsDeleted && !i.IsArchived) },
+            new() { Label = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text60A53514EB9228A2), Glyph = GlyphFavorite, Kind = FilterKind.Favorites, Count = items.Count(i => i.Favorite && !i.IsDeleted && !i.IsArchived) },
+            new() { Label = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5292AB1A36C56A6B), Glyph = GlyphArchive, Kind = FilterKind.Archive, Count = items.Count(i => i.IsArchived && !i.IsDeleted) },
+            new() { Label = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBA35DC23B245E61E), Glyph = GlyphTrash, Kind = FilterKind.Trash, Count = items.Count(i => i.IsDeleted) },
+            new() { Label = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1E2DF9C3075AE9E4), Glyph = GlyphLogin, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Login, Count = CountType(VaultItemKind.Login) },
+            new() { Label = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text063B78481D2EAB5F), Glyph = GlyphCard, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Card, Count = CountType(VaultItemKind.Card) },
+            new() { Label = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2A9C9E9976421A9D), Glyph = GlyphIdentity, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Identity, Count = CountType(VaultItemKind.Identity) },
+            new() { Label = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB778E307964FB978), Glyph = GlyphNote, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Note, Count = CountType(VaultItemKind.Note) },
+            new() { Label = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBF18658907FB9C66), Glyph = GlyphSsh, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Ssh, Count = CountType(VaultItemKind.Ssh) },
+            new() { Label = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC4C25EEB5DAF09EA), Glyph = GlyphBankAccount, Kind = FilterKind.Type, TypeFilter = VaultItemKind.BankAccount, Count = CountType(VaultItemKind.BankAccount) },
+            new() { Label = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text61B7153092BCDCCB), Glyph = GlyphDriversLicense, Kind = FilterKind.Type, TypeFilter = VaultItemKind.DriversLicense, Count = CountType(VaultItemKind.DriversLicense) },
+            new() { Label = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD24F1B9E50C3D3C8), Glyph = GlyphPassport, Kind = FilterKind.Type, TypeFilter = VaultItemKind.Passport, Count = CountType(VaultItemKind.Passport) },
         };
 
         filters.AddRange(_vault.GetOrganizations()
@@ -894,10 +894,9 @@ public sealed class VaultUiService : IVaultUiService
             return "—";
         var local = timestamp.LocalDateTime;
         var today = DateTime.Today;
-        var date = local.Date == today ? "今天"
-            : local.ToString(local.Year == today.Year ? "M 月 d 日" : "yyyy 年 M 月 d 日",
-                System.Globalization.CultureInfo.InvariantCulture);
-        return $"{date} {local.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture)}";
+        var date = local.Date == today ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD5F5A7A010731FEB)
+            : local.ToString(local.Year == today.Year ? "M" : "d", global::App.Localization.UiText.DisplayCulture);
+        return $"{date} {local.ToString("t", global::App.Localization.UiText.DisplayCulture)}";
     }
 
     private static IReadOnlyList<PasskeyDetail> MapPasskeys(IReadOnlyList<CipherFido2Credential>? credentials) =>
@@ -947,17 +946,17 @@ public sealed class VaultUiService : IVaultUiService
     private static string SubtitleFor(Cipher cipher) => cipher.Type switch
     {
         CipherType.Login => cipher.Login?.Username ?? string.Empty,
-        CipherType.Card => cipher.Card?.Brand ?? "银行卡",
-        CipherType.Identity => "身份",
-        CipherType.SecureNote => "笔记",
-        CipherType.SshKey => "SSH 密钥",
-        CipherType.BankAccount => NonEmptyOrFallback(cipher.BankAccount?.BankName, "银行账户"),
+        CipherType.Card => cipher.Card?.Brand ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text063B78481D2EAB5F),
+        CipherType.Identity => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2A9C9E9976421A9D),
+        CipherType.SecureNote => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB778E307964FB978),
+        CipherType.SshKey => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBF18658907FB9C66),
+        CipherType.BankAccount => NonEmptyOrFallback(cipher.BankAccount?.BankName, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC4C25EEB5DAF09EA)),
         CipherType.DriversLicense => DocumentSubtitle(
-            "驾驶证",
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text61B7153092BCDCCB),
             JoinNonEmpty(" ", cipher.DriversLicense?.FirstName, cipher.DriversLicense?.MiddleName, cipher.DriversLicense?.LastName),
             JoinNonEmpty(", ", cipher.DriversLicense?.IssuingState, cipher.DriversLicense?.IssuingCountry)),
         CipherType.Passport => DocumentSubtitle(
-            "护照",
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD24F1B9E50C3D3C8),
             JoinNonEmpty(" ", cipher.Passport?.GivenName, cipher.Passport?.Surname),
             cipher.Passport?.IssuingCountry),
         _ => string.Empty,

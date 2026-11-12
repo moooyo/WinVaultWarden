@@ -120,24 +120,24 @@ public sealed partial class CipherEditorDraft : ObservableObject
         var errors = new List<string>();
 
         if (string.IsNullOrWhiteSpace(Name))
-            errors.Add("项目名称为必填项。");
+            errors.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6A88C361CBDA48A7));
 
         if (!string.IsNullOrWhiteSpace(OrganizationId))
         {
             if (CollectionIds.Count == 0 && string.IsNullOrWhiteSpace(CollectionId))
-                errors.Add("组织条目至少需要选择一个集合。");
+                errors.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text973F96163ED9F3D9));
             if (CollectionIds.Distinct(StringComparer.Ordinal).Count() != CollectionIds.Count)
-                errors.Add("不能重复选择同一个集合。");
+                errors.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5703FA02FE6E40C9));
         }
 
         if (Type == VaultItemKind.Ssh)
         {
             if (string.IsNullOrWhiteSpace(SshKey.PrivateKey))
-                errors.Add("SSH 私钥为必填项。");
+                errors.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBC2775F74A9BA05C));
             if (string.IsNullOrWhiteSpace(SshKey.PublicKey))
-                errors.Add("SSH 公钥为必填项。");
+                errors.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7E84CC4F12012CC1));
             if (string.IsNullOrWhiteSpace(SshKey.KeyFingerprint))
-                errors.Add("SSH 指纹为必填项。");
+                errors.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBBD2E77499D1327F));
         }
 
         return errors;
@@ -210,14 +210,14 @@ public sealed partial class LoginUriEditorDraft : ObservableObject
 
     public string MatchSummary => Match switch
     {
-        null => "网站匹配 · 默认",
-        0 => "网站匹配 · 基础域名",
-        1 => "网站匹配 · 主机",
-        2 => "网站匹配 · 开头匹配",
-        3 => "网站匹配 · 完全匹配",
-        4 => "网站匹配 · 正则表达式",
-        5 => "网站匹配 · 不匹配",
-        _ => $"网站匹配 · 服务器规则 ({Match})",
+        null => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFF5C3B1DD0B13451),
+        0 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3B65A1F4FFF42BF4),
+        1 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7E69F1EAB51DCC3C),
+        2 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE000AD805D71B27D),
+        3 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3F2CC439D29B760B),
+        4 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text73CEB6F830AD385F),
+        5 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4F539898C61FB248),
+        _ => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextD9B9FB8A9578A716,Match),
     };
 }
 

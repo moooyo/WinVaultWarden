@@ -13,18 +13,18 @@ namespace App.Services;
 
 internal static class SendUiErrorMessages
 {
-    public const string DemoUnavailable = "演示保险库为本地离线数据，无法打开外部 Send 链接。";
-    public const string InvalidLink = "Send 链接格式不正确，请检查链接后重试。";
-    public const string UnsupportedAuthentication = "此 Send 使用当前版本尚不支持的验证方式，暂时无法打开。";
-    public const string UnsupportedContent = "此 Send 的内容类型当前版本暂不支持。";
-    public const string InvalidContent = "无法验证该 Send 的内容，请确认链接完整且未被修改。";
-    public const string AccessDenied = "无法访问该 Send，请确认链接有效且未过期。";
-    public const string SendUnavailable = "未找到该 Send，它可能已被删除或已过期。";
-    public const string RateLimited = "请求过于频繁，请稍后再试。";
-    public const string ServiceUnavailable = "Send 服务暂时不可用，请稍后再试。";
-    public const string NetworkFailure = "无法连接 Send 服务，请检查网络和链接地址后重试。";
-    public const string ReadFailure = "无法读取该 Send 的内容，请确认链接完整后重试。";
-    public const string GenericFailure = "无法打开该 Send 链接，请检查链接是否完整，并稍后重试。";
+    public static string DemoUnavailable => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text405F821B89042F3C);
+    public static string InvalidLink => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text219389CD630C3B9E);
+    public static string UnsupportedAuthentication => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3C5087300FC4AC3A);
+    public static string UnsupportedContent => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text586C8D83B9B652B3);
+    public static string InvalidContent => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6888798B23D1706A);
+    public static string AccessDenied => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text57E707EED4273FF7);
+    public static string SendUnavailable => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4BB14C399650447F);
+    public static string RateLimited => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC7DCEDFB83090600);
+    public static string ServiceUnavailable => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0A2E1EA21B7C86B4);
+    public static string NetworkFailure => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBF7D3433E7C0A71E);
+    public static string ReadFailure => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE2AAAA6C7BB09601);
+    public static string GenericFailure => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8FD21BB981FDCE63);
 
     public static bool IsRecoverableAccessFailure(Exception exception) =>
         RequestTimeoutClassifier.IsTimeout(exception)
@@ -68,23 +68,19 @@ internal static class SendUiErrorMessages
         };
     }
 
-    public static string SanitizeAccessResultError(string? message) => message switch
+    public static string SanitizeAccessResultError(string? message)
     {
-        DemoUnavailable => DemoUnavailable,
-        UiExceptionPolicy.RequestTimeoutMessage => UiExceptionPolicy.RequestTimeoutMessage,
-        InvalidLink => InvalidLink,
-        UnsupportedAuthentication => UnsupportedAuthentication,
-        UnsupportedContent => UnsupportedContent,
-        InvalidContent => InvalidContent,
-        AccessDenied => AccessDenied,
-        SendUnavailable => SendUnavailable,
-        RateLimited => RateLimited,
-        ServiceUnavailable => ServiceUnavailable,
-        NetworkFailure => NetworkFailure,
-        ReadFailure => ReadFailure,
-        GenericFailure => GenericFailure,
-        _ => GenericFailure,
-    };
+        // This is a fixed presentation allowlist, not a protocol discriminator. Unknown values
+        // remain redacted; a translated UI must never expose an arbitrary server error string.
+        string[] approved =
+        [
+            DemoUnavailable, UiExceptionPolicy.RequestTimeoutMessage, InvalidLink,
+            UnsupportedAuthentication, UnsupportedContent, InvalidContent, AccessDenied,
+            SendUnavailable, RateLimited, ServiceUnavailable, NetworkFailure, ReadFailure, GenericFailure,
+        ];
+        return approved.FirstOrDefault(value => string.Equals(value, message, StringComparison.Ordinal))
+            ?? GenericFailure;
+    }
 }
 
 // 真实 Send UI 服务:把 App 层 SendEditorDraft/SendListItem(SendType Text=0,File=1)
@@ -263,7 +259,7 @@ public sealed class SendUiService : ISendUiService
         if (id is null)
         {
             if (file is null)
-                throw new InvalidOperationException("创建文件 Send 必须选择文件。");
+                throw new InvalidOperationException(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB11600C048A7A2BB));
             return await _write.CreateFileSendAsync(model, file, expectedSession, ct);
         }
         if (file is null)
@@ -348,7 +344,10 @@ public sealed class SendUiService : ISendUiService
             TextContent: accessed.TextContent,
             FileName: accessed.FileName,
             Error: null,
-            Accessed: accessed.Type == CoreSendType.File ? accessed : null);
+            Accessed: accessed.Type == CoreSendType.File ? accessed : null,
+            TextHidden: accessed.TextHidden,
+            CreatorIdentifier: accessed.CreatorIdentifier,
+            ExpirationDate: accessed.ExpirationDate);
         if (accessed.Type != CoreSendType.File)
             accessed.Dispose();
         return result;
@@ -755,7 +754,7 @@ public sealed class SendUiService : ISendUiService
         string sendId,
         AppSendType type,
         SendReconciliationState state) =>
-        new(sendId, "已提交的 Send", type, "待服务器确认", null, state);
+        new(sendId, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text641CF762D56CA5C1), type, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7EE0F1015D52DB6B), null, state);
 
     private SendListItem ToListItem(Send send, bool isReadOnly = false)
     {

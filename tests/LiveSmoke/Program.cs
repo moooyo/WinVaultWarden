@@ -873,6 +873,15 @@ try
         pinSvc.ClearPin();
         Step("pin: cleared", !pinSvc.IsPinSet);
     }
+
+    // Completion checks create API credentials and restored copies. Enable only
+    // against a disposable server database and a synthetic account.
+    if (Environment.GetEnvironmentVariable("WVW_COMPLETION_FEATURES") == "1")
+    {
+        await CompletionFeatureSmoke.RunAsync(
+            serverUrl, email, password, auth, clients, session, crypto, tokenStore,
+            sync, writeService, encryptor, cache, $"WVW-Completion-{run}-", Step);
+    }
 }
 catch (Exception ex)
 {

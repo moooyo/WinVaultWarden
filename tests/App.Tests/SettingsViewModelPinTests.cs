@@ -17,13 +17,13 @@ public class SettingsViewModelPinTests : AppPreferencesTestBase
     }
 
     [Fact]
-    public void V2Account_DisablesPinAndRejectsProtectorCreation()
+    public void UnavailableSession_DisablesPinAndRejectsProtectorCreation()
     {
         var pin = new FakePin();
         var vm = new SettingsViewModel(pin, supportsLocalUnlock: () => false);
 
         Assert.False(vm.CanUsePinUnlock);
-        Assert.Contains("V2", vm.PinUnlockDescription, StringComparison.Ordinal);
+        Assert.False(string.IsNullOrWhiteSpace(vm.PinUnlockDescription));
         Assert.Throws<InvalidOperationException>(() => vm.SetPin("123456"));
         Assert.Null(pin.LastSet);
         Assert.False(pin.IsPinSet);

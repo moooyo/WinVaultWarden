@@ -1,0 +1,9 @@
+{
+  "Device requests while locked": "鎖定時接收裝置請求",
+  "Keep a short-lived access token in memory to read requests; approval always requires unlocking": "在記憶體中保留短期存取權杖以讀取請求；核准前一律需要解鎖",
+  "Monitor device sign-in requests while locked": "鎖定時監測裝置登入請求",
+  "Windows automatic updates": "Windows 自動更新",
+  "Install signed MSIX updates through Windows App Installer": "透過 Windows 應用程式安裝程式安裝已簽署的 MSIX 更新",
+  "Configure…": "設定…",
+  "Device request monitoring could not be configured. Unlock and try again.": "無法設定裝置請求監測。請解鎖後重試。"
+}

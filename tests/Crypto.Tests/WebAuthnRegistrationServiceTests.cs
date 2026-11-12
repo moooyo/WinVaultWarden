@@ -39,7 +39,7 @@ public class WebAuthnRegistrationServiceTests
         Assert.False(string.IsNullOrWhiteSpace(result.Credential.KeyValue));
         Assert.False(string.IsNullOrWhiteSpace(result.Credential.CredentialId));
 
-        Assert.StartsWith(CredentialId.Base64Prefix, result.Credential.CredentialId);
+        Assert.True(Guid.TryParseExact(result.Credential.CredentialId, "D", out _));
         Assert.False(result.Payload.CredentialId.StartsWith(
             CredentialId.Base64Prefix,
             StringComparison.Ordinal));
@@ -100,9 +100,9 @@ public class WebAuthnRegistrationServiceTests
     }
 
     [Theory]
-    [InlineData(false, false, 0x40)]
-    [InlineData(true, false, 0x41)]
-    [InlineData(true, true, 0x45)]
+    [InlineData(false, false, 0x58)]
+    [InlineData(true, false, 0x59)]
+    [InlineData(true, true, 0x5d)]
     public void CreateAttestation_MapsApprovalEvidenceToAtUpUvFlags(
         bool userPresent,
         bool userVerified,
@@ -142,5 +142,20 @@ public class WebAuthnRegistrationServiceTests
 
         Assert.Throws<ArgumentException>(() =>
             WebAuthnRegistrationService.CreateAttestation(request));
+    }
+
+    [Fact]
+    public void NewlyRegisteredCredential_PreservesBackupFlagsWhenUsedForAssertion()
+    {
+        var registration = WebAuthnRegistrationService.CreateAttestation(Req([-7]));
+        var assertion = WebAuthnAssertionService.CreateAssertion(
+            registration.Credential,
+            new WebAuthnGetAssertionRequest("https://github.com", "BQYHCA", "github.com",
+                [registration.Payload.CredentialId], VerifiedApproval));
+
+        var registrationFlags = WebAuthnCrypto.DecodeBase64Url(registration.Payload.AuthData)[32];
+        var assertionFlags = WebAuthnCrypto.DecodeBase64Url(assertion.AuthenticatorData)[32];
+        Assert.Equal(0x18, registrationFlags & 0x18);
+        Assert.Equal(registrationFlags & 0x18, assertionFlags & 0x18);
     }
 }

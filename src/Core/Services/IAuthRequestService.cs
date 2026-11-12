@@ -11,6 +11,10 @@ public interface IAuthRequestService
     /// <summary>列出当前账户所有待审批的登录请求。</summary>
     Task<IReadOnlyList<PendingAuthRequest>> ListPendingAsync(CancellationToken ct = default);
 
+    /// <summary>Reloads one request and returns it only while it is still pending.</summary>
+    async Task<PendingAuthRequest?> GetPendingRequestAsync(string id, CancellationToken ct = default) =>
+        (await ListPendingAsync(ct)).SingleOrDefault(request => request.Id == id);
+
     /// <summary>
     /// 批准指定登录请求。
     /// 调用方需先用 <paramref name="publicKey"/> 加密会话密钥后再传入（服务端不做此加密）。

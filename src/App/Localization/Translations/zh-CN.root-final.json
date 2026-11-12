@@ -1,0 +1,9 @@
+{
+  "Device requests while locked": "锁定时接收设备请求",
+  "Keep a short-lived access token in memory to read requests; approval always requires unlocking": "在内存中保留短期访问令牌以读取请求；批准前始终需要解锁",
+  "Monitor device sign-in requests while locked": "锁定时监测设备登录请求",
+  "Windows automatic updates": "Windows 自动更新",
+  "Install signed MSIX updates through Windows App Installer": "通过 Windows 应用安装程序安装已签名的 MSIX 更新",
+  "Configure…": "配置…",
+  "Device request monitoring could not be configured. Unlock and try again.": "无法配置设备请求监测。请解锁后重试。"
+}

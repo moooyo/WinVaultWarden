@@ -32,9 +32,9 @@ public sealed record AuthRequestItem(
         get
         {
             if (ExpiresAt is not { } expiry)
-                return "无法确认过期时间";
+                return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7A0F8DF6F3DB95E9);
             var seconds = (long)Math.Ceiling((expiry - DateTimeOffset.UtcNow).TotalSeconds);
-            return seconds > 0 ? $"{seconds / 60}:{seconds % 60:00} 后过期" : "已过期";
+            return seconds > 0 ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text5DA50FD12252290E,seconds / 60,seconds % 60) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2FE0E3339AC4D1BB);
         }
     }
 

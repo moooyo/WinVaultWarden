@@ -18,7 +18,7 @@ public partial class VaultViewModel
         if (!CanEditEditorDraft)
             return UiOperationResult.Busy();
         if (string.IsNullOrWhiteSpace(name))
-            return UiOperationResult.Failure("文件夹名称不能为空。");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB0223FA30FCFA275));
 
         var lifecycleEpoch = _lifecycleEpoch;
         var draftVersion = _editorDraftVersion;
@@ -45,14 +45,14 @@ public partial class VaultViewModel
                 catch (Api.FolderCreateSuccessResponseReadException)
                 {
                     DataStale = true;
-                    OperationWarning = "文件夹可能已创建。请先同步确认，避免重复新建。";
-                    OperationError = "无法读取新文件夹的服务器记录。";
+                    OperationWarning = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB779DBE474B1E775);
+                    OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0B7046E787B253BA);
                     return UiOperationResult.Failure(OperationError);
                 }
                 catch (Core.Services.VaultRefreshException)
                 {
                     DataStale = true;
-                    OperationWarning = "文件夹已创建，但本地刷新失败。请先同步，再从文件夹菜单选择。";
+                    OperationWarning = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text03EBE3B65C4815D8);
                     ReloadFilters();
                     if (token.IsCancellationRequested || !IsCurrent())
                         return UiOperationResult.Cancelled();
@@ -61,7 +61,7 @@ public partial class VaultViewModel
                 }
                 catch (NotSupportedException)
                 {
-                    OperationError = "当前服务不支持在编辑器中新建文件夹。";
+                    OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2FBDDDE710FFE11B);
                     return UiOperationResult.Failure(OperationError);
                 }
 
@@ -82,7 +82,7 @@ public partial class VaultViewModel
                 else
                 {
                     DataStale = true;
-                    OperationWarning = "文件夹已创建，但暂时无法在本地找到。请先同步，再从文件夹菜单选择。";
+                    OperationWarning = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC1CBA76C737AFBE3);
                 }
                 FoldersChanged?.Invoke(this, EventArgs.Empty);
                 return UiOperationResult.Success();

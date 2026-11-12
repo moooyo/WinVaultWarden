@@ -78,8 +78,8 @@ public sealed class SecurityIssueGroup(
 
 public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
 {
-    private const string OfflineAnalysisFailureMessage = "无法完成安全报告分析，请稍后重试。";
-    private const string ExposureCheckFailureMessage = "无法完成暴露密码检查，请稍后重试。";
+    private static readonly string OfflineAnalysisFailureMessage = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4BB53121C8DC2FB6);
+    private static readonly string ExposureCheckFailureMessage = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFD1534F31D1BF516);
     private static readonly string[] IssueCategories = ["breach", "reuse", "weak", "http"];
     private static readonly StringComparer NameComparer =
         StringComparer.Create(CultureInfo.GetCultureInfo("zh-CN"), ignoreCase: true);
@@ -112,6 +112,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     public ObservableCollection<WeakFinding> WeakItems { get; } = new SensitiveCollection<WeakFinding>();
     public ObservableCollection<UnsecuredFinding> UnsecuredItems { get; } = new SensitiveCollection<UnsecuredFinding>();
     public ObservableCollection<ExposedFinding> ExposedItems { get; } = new SensitiveCollection<ExposedFinding>();
+    public ObservableCollection<HealthItemRef> UnassessedItems { get; } = new SensitiveCollection<HealthItemRef>();
     public ObservableCollection<SecurityIssueGroup> IssueGroups { get; } = new SensitiveCollection<SecurityIssueGroup>();
     public ObservableCollection<SecurityIssueRow> ResolvedItems { get; } = new SensitiveCollection<SecurityIssueRow>();
 
@@ -124,24 +125,27 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
 
     public string PageTitle => Category switch
     {
-        "breach" => "已泄露的密码",
-        "reuse" => "重复使用的密码",
-        "weak" => "弱密码",
-        "http" => "不安全的网址",
-        "done" => "本次已处理",
-        "ignored" => "已忽略的提醒",
-        _ => "安全报告",
+        "breach" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2A425E41491FBFA8),
+        "reuse" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9CAE975C32F18B17),
+        "weak" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEAC3BB39F8F0C574),
+        "http" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text35CB23E74DACE235),
+        "done" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4BB9578CA0B97C1F),
+        "ignored" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0D5BE9569D449381),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text89E32ABCA54127DD),
     };
 
     public string CategorySummary => Category switch
     {
+        "all" when HasUnassessed => _overviewIssues.Count == 0
+            ? $"No confirmed issues; {UnassessedCount} password strengths were not assessed"
+            : $"{_overviewIssues.Count} items need attention; {UnassessedCount} password strengths were not assessed",
         "all" => _overviewIssues.Count == 0
-            ? "没有需要处理的问题"
-            : $"还有 {_overviewIssues.Count} 项需要处理",
-        "done" => $"已处理 {_resolvedIssues.Count} 项",
-        "ignored" => $"{_ignoredRows.Count} 项 · 不计入问题数，列表里也不再标出",
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5DEB6E6A719DDF59)
+            : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextED5467E8FFC50B7F,_overviewIssues.Count),
+        "done" => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text3324FF0B70C14651,_resolvedIssues.Count),
+        "ignored" => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextCBAB2EB145F82A55,_ignoredRows.Count),
         "breach" when !_hasExposureSnapshot => string.Empty,
-        _ => $"{_currentIssues.Count(item => item.Category == Category)} 项 · {GetCategoryDescription(Category)}",
+        _ => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text31ACF8EAFC04C829,_currentIssues.Count(item => item.Category == Category),GetCategoryDescription(Category)),
     };
 
     public string LastCheckedText
@@ -149,22 +153,22 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         get
         {
             if (ShowOfflineLoading || IsCheckingExposed)
-                return "正在检查…";
+                return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6B72C3D6855CB87D);
             if (!_hasExposureSnapshot)
-                return ExposureState == ExposureCheckState.Failed ? "泄露检查失败" : "还没有检查过泄露";
+                return ExposureState == ExposureCheckState.Failed ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text336F2D8A36C308A0) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE0A145380D71D93C);
             if (_lastCheckedAt is not { } checkedAt)
-                return "尚未检查";
+                return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCDBC0434F568FC9E);
 
             var elapsed = DateTimeOffset.Now - checkedAt;
-            var relative = elapsed.TotalMinutes < 1 ? "刚刚"
-                : elapsed.TotalHours < 1 ? $"{Math.Max(1, (int)elapsed.TotalMinutes)} 分钟前"
-                : elapsed.TotalDays < 1 ? $"{(int)elapsed.TotalHours} 小时前"
-                : $"{(int)elapsed.TotalDays} 天前";
-            var status = ExposureState == ExposureCheckState.Failed ? " · 暴露密码检查失败"
-                : _exposureSnapshotNeedsRefresh ? " · 暴露密码待复查"
-                : !_hasExposureSnapshot ? " · 暴露密码尚未检查"
+            var relative = elapsed.TotalMinutes < 1 ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDE6785D99E028971)
+                : elapsed.TotalHours < 1 ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text66F93FE5E9067CD8,Math.Max(1, (int)elapsed.TotalMinutes))
+                : elapsed.TotalDays < 1 ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text6504A911F9E16273,(int)elapsed.TotalHours)
+                : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text09F12DA9A77F2347,(int)elapsed.TotalDays);
+            var status = ExposureState == ExposureCheckState.Failed ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBA8B42A3467A9C2E)
+                : _exposureSnapshotNeedsRefresh ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9A2EB1FFC5C1ADCB)
+                : !_hasExposureSnapshot ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2DEEA59FC1B457E3)
                 : string.Empty;
-            return $"上次检查 · {relative}{status}";
+            return global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text2B6C49A3EF88DCF0,relative,status);
         }
     }
 
@@ -173,6 +177,12 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         ? ResolvedItems.Count > 0
         : ShowPriority || IssueGroups.Count > 0;
     public bool HasResolvedItems => ResolvedItems.Count > 0;
+    public bool HasUnassessed => UnassessedCount > 0;
+    public int UnassessedCount => _offlineSnapshot?.UnassessedPasswords.Count ?? 0;
+    public bool IsReportComplete => ExposedChecked && !HasUnassessed;
+    public bool ShowUnassessedPasswords => Category == "all" && ShowOfflineContent && HasUnassessed;
+    public string UnassessedSummary =>
+        $"{UnassessedCount} password strengths could not be assessed";
     public bool ShowResolvedHeader => Category == "all";
     public bool ShowFirstExposureCheck => (Category is "all" or "breach")
         && ShowOfflineContent && !_hasExposureSnapshot && !IsCheckingExposed;
@@ -181,28 +191,29 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     public bool ShowEmptyMessage => !HasVisibleIssues && !ShowFirstExposureCheck
         && !IsCheckingExposed;
     public string FirstExposureCheckDescription =>
-        "检查时只把每个密码哈希值的前 5 位发给 Have I Been Pwned，密码本身不会离开这台电脑。"
-        + (Category == "all" ? "弱密码和重复密码在本机就能算出，已经显示在下面。" : string.Empty);
+        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2633905B29908710)
+        + (Category == "all" ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text97D951354CF8B968) : string.Empty);
     public string ExposureProgressText =>
-        "正在检查密码是否泄露 · 只发送密码哈希的前 5 位，不会上传密码";
+        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD10D8376FD2861E5);
 
     public string EmptyMessage => Category switch
     {
-        "done" => "这次还没有处理过条目，可以从“概览”里的第一项开始。",
-        "ignored" => "没有忽略的提醒。确定某个问题不用管，可以在报告里点“忽略”。",
-        "breach" when IsCheckingExposed => "正在检查暴露密码…",
-        "breach" when ExposureState == ExposureCheckState.Failed => "暴露密码检查失败，请重试。",
-        "breach" when _exposureSnapshotNeedsRefresh => "请重新检查暴露密码，确认最近的修改。",
-        "breach" when !ExposedChecked => "还没有检查暴露密码。运行检查后才能确认结果。",
-        "all" when ShowOfflineLoading => "正在检查密码库…",
-        "all" when ShowOfflineError => "安全报告暂时无法完成，请重试。",
-        "all" when IsCheckingExposed => "离线检查未发现问题，正在检查暴露密码。",
-        "all" when ExposureState == ExposureCheckState.Failed => "离线检查未发现问题，暴露密码检查失败，请重试。",
-        "all" when _exposureSnapshotNeedsRefresh => "离线检查未发现问题，请重新检查暴露密码。",
-        "all" when !ExposedChecked => "离线检查未发现问题，暴露密码尚未检查。",
-        "all" when IgnoredCount > 0 => "没有需要处理的问题。已忽略的提醒可以在“已忽略”中恢复。",
-        "all" => "所有条目都通过了检查。",
-        _ => "这一类没有需要处理的条目。",
+        "done" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA29F88DFDA5753BE),
+        "ignored" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text27E69852EB8E1851),
+        "breach" when IsCheckingExposed => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDAFBC213B690D689),
+        "breach" when ExposureState == ExposureCheckState.Failed => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text419E2094A7E958CA),
+        "breach" when _exposureSnapshotNeedsRefresh => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5DF28F04EDA330A1),
+        "breach" when !ExposedChecked => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text07E019F9530EC5DF),
+        "all" when ShowOfflineLoading => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text23F97E2C8B4EEB66),
+        "all" when ShowOfflineError => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB092A04D30E63DC6),
+        "all" when HasUnassessed => "Some password strengths could not be assessed. Review the listed items before considering this report complete.",
+        "all" when IsCheckingExposed => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text91074AFABA14CA0B),
+        "all" when ExposureState == ExposureCheckState.Failed => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB355774A78AD0D4C),
+        "all" when _exposureSnapshotNeedsRefresh => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text14AE8EBB196D901D),
+        "all" when !ExposedChecked => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF8BDF9EEAA072B28),
+        "all" when IgnoredCount > 0 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text91016010670E5C1A),
+        "all" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text502551074C4512DA),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text515E0ED4A9136455),
     };
 
     [ObservableProperty]
@@ -227,29 +238,29 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
 
     public string ExposureStatusLabel => ExposureState switch
     {
-        ExposureCheckState.Checking => "检查中",
-        ExposureCheckState.Failed => "检查失败",
-        _ when _exposureSnapshotNeedsRefresh => "待复查",
-        ExposureCheckState.NotStarted => "未检查",
+        ExposureCheckState.Checking => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFC2DB52DAAA9955B),
+        ExposureCheckState.Failed => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4F6F06254D160F17),
+        _ when _exposureSnapshotNeedsRefresh => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text525ABCFA6D227457),
+        ExposureCheckState.NotStarted => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text451A805775B5DA03),
         _ => string.Empty,
     };
 
     public string ExposureStatusMessage => ExposureState switch
     {
-        ExposureCheckState.Checking => "正在检查暴露密码。",
-        ExposureCheckState.Failed => "暴露密码检查失败，请重试。",
-        _ when _exposureSnapshotNeedsRefresh => "显示上次暴露密码检查结果，请重新检查以确认最近的修改。",
-        ExposureCheckState.Succeeded => "暴露密码检查已完成。",
-        _ => "暴露密码检查尚未运行。",
+        ExposureCheckState.Checking => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5DF6277C6CCE4002),
+        ExposureCheckState.Failed => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text419E2094A7E958CA),
+        _ when _exposureSnapshotNeedsRefresh => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB4B6BECE19A3550B),
+        ExposureCheckState.Succeeded => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB35B93E53DBE8C4A),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text709BF610E70CCB2F),
     };
 
     public string ExposureMetricAccessibleName => ExposureState switch
     {
-        ExposureCheckState.Checking => "暴露密码，正在检查",
-        ExposureCheckState.Failed => "暴露密码，检查失败",
-        _ when _exposureSnapshotNeedsRefresh => $"暴露密码，上次检查 {ExposedCount} 项，待复查",
-        ExposureCheckState.Succeeded => $"暴露密码，{ExposedCount} 项",
-        _ => "暴露密码，尚未检查",
+        ExposureCheckState.Checking => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9CAD22F3AF320D11),
+        ExposureCheckState.Failed => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1E06F9386A1AA944),
+        _ when _exposureSnapshotNeedsRefresh => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text7F2EDF72740C8381,ExposedCount),
+        ExposureCheckState.Succeeded => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text3B0E0B924EDFA8F8,ExposedCount),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD46D04493C0D4AE1),
     };
 
     public bool HasReused => ReusedCount > 0;
@@ -283,15 +294,23 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     {
         get
         {
+            if (HasUnassessed)
+            {
+                var confirmedSummary = TotalIssueCount == 0
+                    ? "No confirmed issues"
+                    : $"{TotalIssueCount} confirmed findings";
+                return $"{confirmedSummary}; {UnassessedCount} password strengths were not assessed"
+                    + (ExposedChecked ? "." : "; exposure verification is incomplete.");
+            }
             if (ExposedChecked)
-                return TotalIssueCount == 0 ? "未发现问题" : $"发现 {TotalIssueCount} 项可改进";
-            var offlineSummary = TotalIssueCount == 0 ? "离线检查未发现问题" : $"发现 {TotalIssueCount} 项可改进";
+                return TotalIssueCount == 0 ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE5E8B8F3181BFAB0) : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text377B8519E0195B95,TotalIssueCount);
+            var offlineSummary = TotalIssueCount == 0 ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFBF23C6B15FD9819) : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text377B8519E0195B95,TotalIssueCount);
             var exposureSummary = ExposureState switch
             {
-                ExposureCheckState.Checking => "正在检查暴露密码",
-                ExposureCheckState.Failed => "暴露检查失败",
-                _ when _exposureSnapshotNeedsRefresh => "暴露检查待复查",
-                _ => "暴露检查尚未运行",
+                ExposureCheckState.Checking => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAE667419EACB2DB2),
+                ExposureCheckState.Failed => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text313CBF1E10185ED1),
+                _ when _exposureSnapshotNeedsRefresh => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE50E7F80B63570D3),
+                _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA34B47F5C3228DB3),
             };
             return $"{offlineSummary}，{exposureSummary}";
         }
@@ -300,7 +319,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     public SecuritySeverity OverallSeverity =>
         (WeakCount > 0 || ExposedCount > 0) ? SecuritySeverity.Critical :
         (ReusedCount > 0 || UnsecuredCount > 0) ? SecuritySeverity.Caution :
-        ExposedChecked ? SecuritySeverity.Good : SecuritySeverity.Unknown;
+        IsReportComplete ? SecuritySeverity.Good : SecuritySeverity.Unknown;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowOfflineLoading))]
@@ -322,7 +341,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     public partial int OfflineProgressTotal { get; set; } = 100;
 
     public string OfflineProgressText =>
-        $"正在分析密码库 · 已完成 {Math.Min(OfflineProgress, OfflineProgressTotal)} / {OfflineProgressTotal}";
+        global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text1D8047C5BFC1A9FF,Math.Min(OfflineProgress, OfflineProgressTotal),OfflineProgressTotal);
 
     [ObservableProperty]
     public partial string? OfflineError { get; set; }
@@ -338,6 +357,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         WeakItems.CollectionChanged += (_, _) => SourcesChanged();
         UnsecuredItems.CollectionChanged += (_, _) => SourcesChanged();
         ExposedItems.CollectionChanged += (_, _) => SourcesChanged();
+        UnassessedItems.CollectionChanged += (_, _) => SourcesChanged();
     }
 
     partial void OnCategoryChanged(string value)
@@ -370,6 +390,8 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
             nameof(TotalIssueCount), nameof(HasAnyIssue), nameof(SummaryText), nameof(OverallSeverity),
             nameof(ExposedChecked), nameof(ShowExposedCount), nameof(ExposureStatusLabel),
             nameof(ExposureStatusMessage), nameof(ExposureMetricAccessibleName),
+            nameof(HasUnassessed), nameof(UnassessedCount), nameof(IsReportComplete),
+            nameof(ShowUnassessedPasswords), nameof(UnassessedSummary),
         })
             OnPropertyChanged(property);
     }
@@ -409,7 +431,8 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
             OfflineProgress = OfflineProgressTotal;
             if (!IsCurrentOfflineRequest(requestId, token))
                 return UiOperationResult<HealthReport>.Cancelled();
-            OfflineState = report.Reused.Count + report.Weak.Count + report.Unsecured.Count == 0
+            OfflineState = report.Reused.Count + report.Weak.Count + report.Unsecured.Count
+                + report.UnassessedPasswords.Count == 0
                 ? DataPageState.Empty
                 : DataPageState.Content;
             return IsCurrentOfflineRequest(requestId, token)
@@ -468,7 +491,10 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     {
         var snapshot = new HealthReport(
             report.Reused.Select(group => new ReusedGroup(group.Count, group.Items.ToArray())).ToArray(),
-            report.Weak.ToArray(), report.Unsecured.ToArray());
+            report.Weak.ToArray(), report.Unsecured.ToArray())
+        {
+            UnassessedPasswords = report.UnassessedPasswords.DistinctBy(item => item.CipherId).ToArray(),
+        };
         if (!IsCurrentOfflineRequest(requestId, token))
             return false;
 
@@ -674,24 +700,24 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
     {
         var rows = new List<(SecurityIssueRow Row, int BreachCount)>();
         foreach (var finding in _exposureSnapshot)
-            rows.Add((CreateRow(finding.Item, "breach", $"密码出现在 {finding.BreachCount} 次已知泄露中"), finding.BreachCount));
+            rows.Add((CreateRow(finding.Item, "breach", global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text04E5C452E2998952,finding.BreachCount)), finding.BreachCount));
         foreach (var group in _offlineSnapshot?.Reused ?? Array.Empty<ReusedGroup>())
         {
             foreach (var item in group.Items)
             {
                 var other = group.Items.Where(candidate => candidate.CipherId != item.CipherId)
                     .OrderBy(candidate => candidate.Name, NameComparer).FirstOrDefault();
-                var reason = other is null ? "与其他条目使用相同的密码" : $"与“{other.Name}”用的是同一个密码";
+                var reason = other is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4BAFF73252EF45C3) : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text52A1713289D5C83B,other.Name);
                 rows.Add((CreateRow(item, "reuse", reason), 0));
             }
         }
         foreach (var finding in _offlineSnapshot?.Weak ?? Array.Empty<WeakFinding>())
-            rows.Add((CreateRow(finding.Item, "weak", "密码过于简单或容易被猜到"), 0));
+            rows.Add((CreateRow(finding.Item, "weak", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text12ED3F9C95761DBB)), 0));
         foreach (var finding in _offlineSnapshot?.Unsecured ?? Array.Empty<UnsecuredFinding>())
         {
             var reason = Uri.TryCreate(finding.Uri, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Host)
-                ? $"{uri.Host} 没有用 HTTPS"
-                : "登录网址使用未加密的 HTTP 连接";
+                ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text7377B96AC5BB849C,uri.Host)
+                : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBFB0B1413264CC7E);
             rows.Add((CreateRow(finding.Item, "http", reason), 0));
         }
 
@@ -705,13 +731,13 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
 
     private static SecurityIssueRow CreateRow(HealthItemRef item, string category, string reason)
     {
-        var name = string.IsNullOrWhiteSpace(item.Name) ? "未命名条目" : item.Name;
+        var name = string.IsNullOrWhiteSpace(item.Name) ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD03438B702B564F3) : item.Name;
         var username = item.Username ?? string.Empty;
         var description = GetCategoryDescription(category);
         return new SecurityIssueRow(item.CipherId, name, username,
             StringInfo.GetNextTextElement(name.Trim()).ToUpperInvariant(), reason,
             string.IsNullOrWhiteSpace(username) ? description : $"{description} · {username}",
-            category, category == "http" ? "编辑网址" : "更换密码", string.Empty,
+            category, category == "http" ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text439A8EA0C52B423D) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEC9F62A12F85A370), string.Empty,
             category == "breach" ? "critical" : "warning");
     }
 
@@ -730,11 +756,13 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
                 IsIgnored = true,
                 Username = string.Empty,
                 Reason = $"{GetCategoryTitle(row.Category)} · {row.Reason}",
-                ActionLabel = "恢复提醒",
+                ActionLabel = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4B03BE14C1F488E8),
             }).ToList();
         _currentIssues = allIssues.Where(row => !_ignoredIssueKeys.Contains((row.Category, row.CipherId))).ToList();
         _overviewIssues = _currentIssues.DistinctBy(item => item.CipherId).ToList();
-        var currentIds = allIssues.Select(item => item.CipherId).ToHashSet(StringComparer.Ordinal);
+        var currentIds = allIssues.Select(item => item.CipherId)
+            .Concat((_offlineSnapshot?.UnassessedPasswords ?? []).Select(item => item.CipherId))
+            .ToHashSet(StringComparer.Ordinal);
 
         // Only a successful check can clear its own baseline category. Unknown exposure is never a clean result.
         _resolvedIssues = _offlineBaselineCaptured
@@ -773,6 +801,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
             nameof(OverviewIssueCount), nameof(ResolvedCount), nameof(IgnoredCount),
             nameof(ShowResolvedHeader), nameof(ShowFirstExposureCheck), nameof(ShowExposureReminder),
             nameof(FirstExposureCheckDescription), nameof(ShowEmptyMessage),
+            nameof(ShowUnassessedPasswords), nameof(IsReportComplete),
         })
         {
             if (!IsCurrent())
@@ -805,37 +834,38 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
         if (!ReplaceItems(ReusedGroups,
                 (offlineSnapshot?.Reused ?? Array.Empty<ReusedGroup>()).Select(group => new ReusedPasswordGroup(group)), IsCurrent)
             || !ReplaceItems(WeakItems, offlineSnapshot?.Weak ?? Array.Empty<WeakFinding>(), IsCurrent)
-            || !ReplaceItems(UnsecuredItems, offlineSnapshot?.Unsecured ?? Array.Empty<UnsecuredFinding>(), IsCurrent))
+            || !ReplaceItems(UnsecuredItems, offlineSnapshot?.Unsecured ?? Array.Empty<UnsecuredFinding>(), IsCurrent)
+            || !ReplaceItems(UnassessedItems, offlineSnapshot?.UnassessedPasswords ?? [], IsCurrent))
             return;
         ReplaceItems(ExposedItems, exposureSnapshot, IsCurrent);
     }
 
     private static string GetCategoryTitle(string category) => category switch
     {
-        "breach" => "已泄露的密码",
-        "reuse" => "重复使用的密码",
-        "weak" => "弱密码",
-        "http" => "不安全的网址",
-        _ => "安全报告",
+        "breach" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2A425E41491FBFA8),
+        "reuse" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9CAE975C32F18B17),
+        "weak" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEAC3BB39F8F0C574),
+        "http" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text35CB23E74DACE235),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text89E32ABCA54127DD),
     };
 
     private static string GetCategoryDescription(string category) => category switch
     {
-        "breach" => "出现在公开的数据泄露中，应尽快修改",
-        "reuse" => "一处泄露就会波及其他账户",
-        "weak" => "太短或容易被猜到",
-        "http" => "未加密的连接可能泄露登录信息",
+        "breach" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCB64045AD564B199),
+        "reuse" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text20A2BE9BB8EF0E14),
+        "weak" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4F075F17958838D5),
+        "http" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7FA83EAEA4B9954B),
         _ => string.Empty,
     };
 
     // Findings do not reveal whether an item was edited, archived, or deleted.
     private static string GetResultLabel(string category) => category switch
     {
-        "breach" => "不再出现在暴露密码结果中",
-        "reuse" => "不再与其他条目共用密码",
-        "weak" => "不再出现在弱密码结果中",
-        "http" => "不再使用未加密的登录网址",
-        _ => "不再有已知问题",
+        "breach" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3433349B93919350),
+        "reuse" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC092B8FE1FA458E2),
+        "weak" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0D86E1C282EB9087),
+        "http" => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC1201C3CD2B4EBDD),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text27A1E176EDADD054),
     };
 
     private sealed class SensitiveCollection<T> : ObservableCollection<T>
@@ -891,6 +921,7 @@ public partial class SecurityReportViewModel : ObservableObject, ISensitiveState
             ClearSensitiveCollection(WeakItems);
             ClearSensitiveCollection(UnsecuredItems);
             ClearSensitiveCollection(ExposedItems);
+            ClearSensitiveCollection(UnassessedItems);
             ExposureState = ExposureCheckState.NotStarted;
             ExposedError = null;
             OfflineError = null;

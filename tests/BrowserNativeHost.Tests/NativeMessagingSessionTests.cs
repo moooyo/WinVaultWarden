@@ -32,6 +32,20 @@ public class NativeMessagingSessionTests
     private const string Id61 = "00000000000000000000000000000061";
 
     [Fact]
+    public async Task UnsupportedProtocolVersion_FailsBeforeCallingBridge()
+    {
+        var bridge = new ControlledBridge();
+        await using var fixture = await SessionFixture.StartAsync(bridge);
+
+        await fixture.SendAsync(Request(Id11, TimeSpan.FromSeconds(60)) with { Version = 2 });
+
+        var response = Assert.Single(fixture.ResponsesFor(Id11));
+        Assert.False(response.Ok);
+        Assert.Equal("invalid_request", response.Error?.Code);
+        Assert.Equal(0, bridge.SendCalls);
+    }
+
+    [Fact]
     public async Task ReadLoop_DoesNotWaitForFirstBusinessTask()
     {
         var first = new TaskCompletionSource<BrowserPasskeyResponse>(
@@ -314,7 +328,7 @@ public class NativeMessagingSessionTests
     }
 
     internal static BrowserRequestContext Context() =>
-        new("https://example.com", "https://example.com", 42, 7, "doc-1", true);
+        new("https://example.com", "https://example.com", 42, 7, "doc-1", true, true, true);
 
     // ── Deterministic in-memory transport ────────────────────────────────────────────────────
 

@@ -20,7 +20,8 @@ public sealed class RecoverableUiException : Exception
 /// </summary>
 public static class UiExceptionPolicy
 {
-    public const string RequestTimeoutMessage = "网络请求超时，请检查连接后重试。";
+    public static string RequestTimeoutMessage => global::App.Localization.UiText.Get(
+        global::App.Localization.UiStringKey.Text2033AACE6023096E);
 
     public static bool IsGenuineCancellation(
         OperationCanceledException exception,

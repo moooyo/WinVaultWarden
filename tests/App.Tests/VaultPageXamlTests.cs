@@ -113,7 +113,7 @@ public class VaultPageXamlTests
 
         Assert.Contains("lockReadOnlyAssignments: true", code, StringComparison.Ordinal);
         Assert.Contains("IsEnabled = option.CanSelect", code, StringComparison.Ordinal);
-        Assert.Contains("请选择至少一个集合", code, StringComparison.Ordinal);
+        LocalizedSourceAssert.ContainsText("请选择至少一个集合", code);
     }
 
     [Fact]
@@ -135,7 +135,7 @@ public class VaultPageXamlTests
         Assert.Contains("DialogHelper.ConfirmAsync(", handler, StringComparison.Ordinal);
         Assert.Contains("lease,", handler, StringComparison.Ordinal);
         Assert.Contains("AbandonPendingCipherCreateAsync(expected)", handler, StringComparison.Ordinal);
-        Assert.Contains("服务器已经返回成功", handler, StringComparison.Ordinal);
+        LocalizedSourceAssert.ContainsText("服务器已经返回成功", handler);
         Assert.DoesNotContain("SaveDraftAsync", handler, StringComparison.Ordinal);
     }
 

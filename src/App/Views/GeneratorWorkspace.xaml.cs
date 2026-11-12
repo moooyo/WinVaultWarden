@@ -22,7 +22,7 @@ public sealed partial class GeneratorWorkspace : UserControl
     public GeneratorViewModel ViewModel { get; }
     public event EventHandler? HistoryRequested;
     public event EventHandler? NewLoginRequested;
-    public static string StateLabel(bool enabled) => enabled ? "开" : "关";
+    public static string StateLabel(bool enabled) => enabled ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text39EAE64CFC41EF37) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5D0AE622F61F8EBF);
 
     public GeneratorWorkspace()
     {

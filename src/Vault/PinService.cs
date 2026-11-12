@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Core.Abstractions;
+using Core.Enums;
 using Core.Models;
 using Core.Services;
 using Crypto;
@@ -22,7 +23,22 @@ public sealed class PinService : IPinService
     public bool IsPinSet =>
         _tokenStore.TryLoad(out var p) && !string.IsNullOrEmpty(p.PinProtectedUserKey);
 
-    public void SetPin(string pin)
+    public bool RequireMasterPasswordOnRestart =>
+        _tokenStore.TryLoad(out var persisted) && persisted.RequireMasterPasswordOnRestart;
+
+    public bool CanRequireMasterPasswordOnRestart =>
+        _tokenStore.TryLoad(out var persisted) && HasMasterPasswordUnlock(persisted);
+
+    public bool RequiresMasterPasswordBeforePin =>
+        _tokenStore.TryLoad(out var persisted)
+        && PinUnlockSessionPolicy.RequiresMasterPassword(_session, persisted);
+
+    public void SetPin(string pin) => SetPinCore(pin, null);
+
+    public void SetPin(string pin, bool requireMasterPasswordOnRestart) =>
+        SetPinCore(pin, requireMasterPasswordOnRestart);
+
+    private void SetPinCore(string pin, bool? requireMasterPasswordOnRestart)
     {
         VaultPolicyEvaluator.ThrowIfEnabled(
             _session,
@@ -32,7 +48,7 @@ public sealed class PinService : IPinService
             throw new ArgumentException($"PIN 至少需要 {PinPolicy.MinLength} 位。", nameof(pin));
 
         var lease = _session.CaptureLease();
-        if (!_session.TryCopyUserKey(lease, out var copiedKey))
+        if (!_session.TryCopyUserKeyMaterial(lease, out var copiedKey) || copiedKey is null)
             throw new InvalidOperationException("Vault is locked.");
         using var userKey = copiedKey;
         if (!_tokenStore.TryLoad(out var persisted)
@@ -40,6 +56,10 @@ public sealed class PinService : IPinService
             || persisted.Endpoints != lease.Endpoints
             || persisted.Generation != lease.Generation)
             throw new InvalidOperationException("No matching saved session.");
+
+        LocalUnlockKeyProtection.RequireUserKeyBinding(userKey, persisted);
+        if (requireMasterPasswordOnRestart == true && !HasMasterPasswordUnlock(persisted))
+            throw new InvalidOperationException("This account has no master-password unlock method.");
 
         var pinKey = _crypto.DeriveMasterKey(
             pin,
@@ -50,13 +70,22 @@ public sealed class PinService : IPinService
             persisted.KdfParallelism);
         try
         {
-            var wrapped = _crypto.ProtectUserKey(pinKey, userKey!);
-            if (!_session.TryCommit(lease, () =>
-                _tokenStore.Save(persisted with
+            using var stretchedKey = _crypto.StretchMasterKey(pinKey);
+            var wrapped = LocalUnlockKeyProtection.Protect(_crypto, userKey, stretchedKey);
+            if (!LocalUnlockKeyProtection.TryUpdate(_session, _tokenStore, lease, latest =>
+            {
+                LocalUnlockKeyProtection.RequireUnchangedKeyBinding(persisted, latest);
+                var requireMasterPassword = requireMasterPasswordOnRestart
+                    ?? latest.RequireMasterPasswordOnRestart;
+                if (requireMasterPassword && !HasMasterPasswordUnlock(latest))
+                    throw new InvalidOperationException("This account has no master-password unlock method.");
+                return latest with
                 {
-                    PinProtectedUserKey = wrapped.ToString(),
+                    PinProtectedUserKey = wrapped,
                     PinFailedAttempts = 0,
-                })))
+                    RequireMasterPasswordOnRestart = requireMasterPassword,
+                };
+            }, (before, after) => PinUnlockSessionPolicy.RebindAfterPinChange(_session, before, after)))
                 throw new OperationCanceledException(lease.CancellationToken);
         }
         finally
@@ -74,8 +103,30 @@ public sealed class PinService : IPinService
             || persisted.Generation != lease.Generation)
             return;
 
-        if (!_session.TryCommit(lease, () =>
-            _tokenStore.Save(persisted with { PinProtectedUserKey = null, PinFailedAttempts = 0 })))
+        if (!LocalUnlockKeyProtection.TryUpdate(_session, _tokenStore, lease,
+            latest => latest with { PinProtectedUserKey = null, PinFailedAttempts = 0 },
+            (_, after) => PinUnlockSessionPolicy.Forget(_session, after)))
             throw new OperationCanceledException(lease.CancellationToken);
     }
+
+    public void SetRequireMasterPasswordOnRestart(bool value)
+    {
+        var lease = _session.CaptureLease();
+        if (!_session.IsUnlocked(lease))
+            throw new InvalidOperationException("Unlock the vault before changing its PIN policy.");
+        if (!LocalUnlockKeyProtection.TryUpdate(_session, _tokenStore, lease, latest =>
+        {
+            if (string.IsNullOrEmpty(latest.PinProtectedUserKey))
+                throw new InvalidOperationException("Configure a PIN before changing its restart policy.");
+            if (value && !HasMasterPasswordUnlock(latest))
+                throw new InvalidOperationException("This account has no master-password unlock method.");
+            return latest with { RequireMasterPasswordOnRestart = value };
+        }))
+            throw new OperationCanceledException(lease.CancellationToken);
+    }
+
+    private static bool HasMasterPasswordUnlock(PersistedSession persisted) =>
+        persisted.UnlockMethod == PersistedSessionUnlockMethod.MasterPassword
+        && persisted.HasMasterPassword != false
+        && !string.IsNullOrEmpty(persisted.ProtectedUserKey);
 }

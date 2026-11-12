@@ -13,7 +13,7 @@ using Core.Session;
 
 namespace Api;
 
-public sealed class ApiClient :
+public sealed partial class ApiClient :
     IIdentityApiClient,
     IRegistrationApiClient,
     IPublicSendApiClient,
@@ -1674,6 +1674,8 @@ public sealed class ApiClient :
         yield return new("grant_type", request.GrantType);
         yield return new("scope", request.Scope);
         yield return new("client_id", request.ClientId);
+        if (request.GrantType == "client_credentials" && !string.IsNullOrEmpty(request.ClientSecret))
+            yield return new("client_secret", request.ClientSecret);
         yield return new("deviceIdentifier", request.DeviceIdentifier);
         yield return new("deviceName", request.DeviceName);
         yield return new("deviceType", request.DeviceType);

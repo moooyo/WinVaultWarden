@@ -34,6 +34,27 @@ public class GeneratorViewModelTests
     }
 
     [Fact]
+    public void OversizedPassphrase_ShowsUnassessedStrengthAndRecoversForNormalInput()
+    {
+        var strength = new PasswordStrengthEvaluator(new Omnimatch(new DictionaryMatcher(FrequencyDictionaries.Load())));
+        var vm = new GeneratorViewModel(strength: strength)
+        {
+            Mode = GeneratorMode.Passphrase,
+            PassphraseSeparator = new string('-', PasswordStrengthEvaluator.MaximumAnalyzedLength),
+        };
+
+        Assert.False(vm.IsStrengthComplete);
+        Assert.Equal("Not assessed", vm.StrengthLabel);
+        Assert.Equal(0, vm.StrengthFraction);
+        Assert.Equal(0, vm.StrengthSegments);
+
+        vm.PassphraseSeparator = "-";
+
+        Assert.True(vm.IsStrengthComplete);
+        Assert.NotEqual("Not assessed", vm.StrengthLabel);
+    }
+
+    [Fact]
     public void CopyCommand_CopiesGeneratedPassword()
     {
         var clipboard = new RecordingClipboard();

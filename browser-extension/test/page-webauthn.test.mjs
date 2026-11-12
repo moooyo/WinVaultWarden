@@ -70,14 +70,16 @@ function createPageHarness({ answerHandshake = true } = {}) {
   const origin = "https://example.com";
   const win = makeWindow(origin);
   const counts = { get: 0, create: 0 };
+  const nativeCreateArguments = [];
   const navigator = {
     credentials: {
       get: async () => {
         counts.get += 1;
         return { __native: "get" };
       },
-      create: async () => {
+      create: async (options) => {
         counts.create += 1;
+        nativeCreateArguments.push(options);
         return { __native: "create" };
       },
     },
@@ -137,6 +139,7 @@ function createPageHarness({ answerHandshake = true } = {}) {
     get nativeCreateCalls() {
       return counts.create;
     },
+    nativeCreateArguments,
     get credentials() {
       return navigator.credentials;
     },
@@ -270,4 +273,30 @@ test("requests without publicKey pass straight through to native", async () => {
   assert.equal(harness.nativeGetCalls, 1);
   assert.equal(harness.nativeCreateCalls, 1);
   assert.equal(harness.posted.length, 0);
+});
+
+test("cross-platform and invalid attachment selectors pass the original options to native WebAuthn", async () => {
+  for (const attachment of ["cross-platform", "invalid", null, 5]) {
+    const harness = createPageHarness();
+    const options = { publicKey: { authenticatorSelection: { authenticatorAttachment: attachment } } };
+    const result = await harness.credentials.create(options);
+    assert.equal(result.__native, "create");
+    assert.equal(harness.nativeCreateCalls, 1);
+    assert.equal(harness.nativeCreateArguments[0], options);
+    assert.equal(harness.posted.length, 0, `attachment=${attachment} must not start a vault ceremony`);
+  }
+});
+
+test("platform attachment survives mapping to the vault registration payload", async () => {
+  const harness = createPageHarness();
+  const operation = harness.credentials.create({ publicKey: {
+    challenge: new Uint8Array([9]),
+    rp: { id: "example.com", name: "Example" },
+    user: { id: new Uint8Array([1]), name: "user", displayName: "User" },
+    pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+    authenticatorSelection: { authenticatorAttachment: "platform", residentKey: "required" },
+  } });
+  assert.equal(harness.posted.at(-1).request.payload.authenticatorSelection.authenticatorAttachment, "platform");
+  harness.respond("client_not_handled");
+  await operation;
 });

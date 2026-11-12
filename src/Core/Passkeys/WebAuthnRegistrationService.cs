@@ -17,7 +17,8 @@ public sealed record WebAuthnMakeCredentialRequest(
     IReadOnlyList<int> Algorithms,
     PasskeyApprovalEvidence ApprovalEvidence,
     bool CredProps,
-    bool CrossOrigin = false);
+    bool CrossOrigin = false,
+    string? TopOrigin = null);
 
 public sealed record WebAuthnRegistrationResult(CipherFido2Credential Credential, PasskeyCreateAttestationPayload Payload);
 
@@ -47,17 +48,20 @@ public static class WebAuthnRegistrationService
             throw new InvalidOperationException("The requested rpId is not valid for the origin.");
 
         var (pkcs8, cose, spki) = WebAuthnCrypto.GenerateEs256KeyPair();
-        var credentialId = RandomNumberGenerator.GetBytes(16);
+        var storedCredentialId = Guid.NewGuid().ToString("D");
+        var credentialId = CredentialId.DecodeStorage(storedCredentialId);
         var authData = WebAuthnCrypto.BuildAttestedAuthenticatorData(
             rpId: effectiveRpId,
             counter: 0,
             evidence: request.ApprovalEvidence,
             aaguid: new byte[16],
             credentialId: credentialId,
-            coseKey: cose);
+            coseKey: cose,
+            backupState: PasskeyBackupState.Synced);
         var attestationObject = WebAuthnCrypto.BuildNoneAttestationObject(authData);
         var clientDataJson = JsonSerializer.SerializeToUtf8Bytes(
-            new ClientDataJson("webauthn.create", request.Challenge, request.Origin, request.CrossOrigin),
+            new ClientDataJson("webauthn.create", request.Challenge, request.Origin, request.CrossOrigin,
+                WebAuthnAssertionService.ClientDataTopOrigin(request.CrossOrigin, request.TopOrigin)),
             PasskeyJsonContext.Default.ClientDataJson);
 
         JsonElement? extensions = request.CredProps
@@ -66,7 +70,6 @@ public static class WebAuthnRegistrationService
                 PasskeyJsonContext.Default.CredPropsExtensions)
             : null;
 
-        var storedCredentialId = CredentialId.EncodeForStorage(credentialId);
         var wireCredentialId = CredentialId.EncodeForWire(credentialId);
         var credential = new CipherFido2Credential(
             CredentialId: storedCredentialId,

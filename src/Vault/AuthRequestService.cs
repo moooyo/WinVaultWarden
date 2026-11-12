@@ -66,6 +66,25 @@ public sealed class AuthRequestService : IAuthRequestService
         return pending;
     }
 
+    public async Task<PendingAuthRequest?> GetPendingRequestAsync(string id, CancellationToken ct = default)
+    {
+        var lease = CaptureLeaseForApproval();
+        var persisted = LoadPersisted(lease);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.CancellationToken);
+        var api = _clients.GetAuthenticated<IAuthRequestApiClient>(lease);
+        var response = await api.GetAsync(id, linked.Token).ConfigureAwait(false);
+        _session.ThrowIfExpired(lease);
+        if (!string.Equals(response.Id, id, StringComparison.Ordinal)
+            || response.RequestApproved is not null || response.ResponseDate is not null
+            || !string.IsNullOrEmpty(response.Key) || !string.IsNullOrEmpty(response.MasterPasswordHash))
+            return null;
+        var fingerprint = DeriveFingerprint(response.PublicKey, persisted.Email);
+        if (string.IsNullOrWhiteSpace(fingerprint))
+            return null;
+        return new PendingAuthRequest(response.Id, response.RequestDeviceType, response.RequestIpAddress,
+            response.CreationDate, response.PublicKey) { FingerprintPhrase = fingerprint };
+    }
+
     // 尽力派生;邮箱缺失或公钥非法 base64 时返回空串(UI 显示为空 → 阻止盲目批准)。
     private string DeriveFingerprint(string publicKeyBase64, string email)
     {

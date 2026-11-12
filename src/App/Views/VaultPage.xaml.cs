@@ -504,16 +504,16 @@ public sealed partial class VaultPage : Page
     // 校验交由 IItemRepromptGate.AuthorizeAsync 完成,本方法不自持校验逻辑。
     private async Task<string?> PromptMasterPasswordAsync(CancellationToken ct)
     {
-        var passwordBox = new PasswordBox { PlaceholderText = "主密码", MinWidth = 320 };
+        var passwordBox = new PasswordBox { PlaceholderText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF36F5F11EDEFB912), MinWidth = 320 };
         var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(new TextBlock { Text = "该条目要求主密码重提示", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text196B02B8BB16DE30), TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(passwordBox);
         var dialog = new ContentDialog
         {
-            Title = "验证主密码",
+            Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9BFBC275409B8007),
             Content = panel,
-            PrimaryButtonText = "确认",
-            CloseButtonText = "取消",
+            PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text36F33ADAF0942634),
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot,
         };
@@ -536,7 +536,7 @@ public sealed partial class VaultPage : Page
     {
         if (ViewModel.SelectedItem is not { } item)
             return;
-        if (await VerifySensitiveActionAsync("显示敏感字段"))
+        if (await VerifySensitiveActionAsync(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCE40A37665C20C21)))
             await ViewModel.UnlockDetailAsync(item.Id, PromptMasterPasswordAsync);
     }
 
@@ -556,7 +556,7 @@ public sealed partial class VaultPage : Page
     {
         if (RowItem(sender) is { } item)
         {
-            if (!await ConfirmLeaveEditorAsync() || !await VerifySensitiveActionAsync("编辑条目"))
+            if (!await ConfirmLeaveEditorAsync() || !await VerifySensitiveActionAsync(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2D8C735968F1D001)))
                 return;
             var authorized = await ViewModel.BeginEditAsync(item.Id, PromptMasterPasswordAsync);
             if (authorized.IsSuccess)
@@ -568,7 +568,7 @@ public sealed partial class VaultPage : Page
     {
         if (RowItem(sender) is { } item)
         {
-            if (!await ConfirmLeaveEditorAsync() || !await VerifySensitiveActionAsync("创建条目副本"))
+            if (!await ConfirmLeaveEditorAsync() || !await VerifySensitiveActionAsync(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC38B50B3E02030E7)))
                 return;
             var authorized = await ViewModel.BeginCloneAsync(item.Id, PromptMasterPasswordAsync);
             if (authorized.IsSuccess)
@@ -609,7 +609,7 @@ public sealed partial class VaultPage : Page
     private async void OnRowPermanentDeleteClick(object sender, RoutedEventArgs e)
     {
         if (RowItem(sender) is { } item
-            && await ConfirmAsync("永久删除", $"确定要永久删除“{item.Name}”吗?此操作无法撤销。", "永久删除"))
+            && await ConfirmAsync(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4E01A4D26A03423B), global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text299963D5CD099C4E,item.Name), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4E01A4D26A03423B)))
             await ViewModel.PermanentDeleteAsync(item.Id);
     }
 
@@ -643,7 +643,7 @@ public sealed partial class VaultPage : Page
             if (await ConfirmLeaveEditorAsync())
             {
                 RestoreWorkspaceContext("vault:item:" + itemId);
-                if (await VerifySensitiveActionAsync("编辑条目")
+                if (await VerifySensitiveActionAsync(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2D8C735968F1D001))
                     && (await ViewModel.BeginEditAsync(itemId, PromptMasterPasswordAsync)).IsSuccess)
                     SyncEditorTypeSelection();
             }
@@ -738,7 +738,7 @@ public sealed partial class VaultPage : Page
             flyout.Items.Add(new MenuFlyoutItem { Text = uri.MatchSummary, IsEnabled = false });
             flyout.Items.Add(new MenuFlyoutSeparator());
         }
-        string[] labels = ["默认", "基础域名", "主机", "开头匹配", "完全匹配", "正则表达式", "不匹配"];
+        string[] labels = [global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text844B8CC8DFF7C1D8), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB2DF1BCC98D7ACED), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE87D9F23A3F5A830), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE73A72A1C075060E), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6D42CA8A297BC1E7), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAF33E62808CA6837), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB7D961B0C1545107)];
         for (var index = 0; index < labels.Length; index++)
         {
             var item = new ToggleMenuFlyoutItem
@@ -841,7 +841,7 @@ public sealed partial class VaultPage : Page
             }
             _ = RefreshDetailSecurityAsync();
             UpdateDetailTemplate();
-            ShowToast(isNew ? $"已创建“{name}”" : $"已保存“{name}”");
+            ShowToast(isNew ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text770755CBC54CA507,name) : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextDFBFD1445B27E2C2,name));
         }
         else if (string.IsNullOrWhiteSpace(ViewModel.EditorDraft?.Name))
             CipherEditorNameBox.Focus(FocusState.Programmatic);
@@ -866,18 +866,18 @@ public sealed partial class VaultPage : Page
         }
 
         var risk = expected.CommitConfirmed
-            ? "服务器已经返回成功，该条目很可能已经创建。"
-            : "服务器仍可能已经创建该条目。";
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF4C6018F1B79C026)
+            : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC5350FAD58FD6AD7);
         var duplicateRisk = ViewModel.HasRecoverablePendingDraft
-            ? "解除防重复保护后再次保存当前草稿，可能创建重复条目。"
-            : "解除防重复保护后重新创建同一条目，可能产生重复项。";
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8253670BABF2DFA2)
+            : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text47BCCAE6094CFBF2);
         var confirmed = await DialogHelper.ConfirmAsync(
             XamlRoot,
             lease,
-            "放弃待确认状态？",
-            $"{risk}此操作只会清除本机的待确认记录，不会删除服务器条目，也不会重新提交。{duplicateRisk}",
-            "仍要放弃",
-            "返回检查");
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5D350DA8608A8FD5),
+            global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text413FE631089E6711,risk,duplicateRisk),
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3A4BFD3D7E93B671),
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text84EEF12F27A433D7));
         if (!confirmed)
             return;
 
@@ -946,7 +946,7 @@ public sealed partial class VaultPage : Page
     {
         MoveFolderFlyout.Items.Clear();
 
-        var noFolder = new MenuFlyoutItem { Text = "无文件夹" };
+        var noFolder = new MenuFlyoutItem { Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text767541AFFA3F793B) };
         noFolder.Click += (_, _) => ViewModel.MoveSelectedToFolderCommand.Execute(null);
         MoveFolderFlyout.Items.Add(noFolder);
 
@@ -967,10 +967,10 @@ public sealed partial class VaultPage : Page
 
         var dialog = new ContentDialog
         {
-            Title = "永久删除所选项目？",
-            Content = $"此操作不可撤销，将从回收站彻底移除 {count} 项。",
-            PrimaryButtonText = "永久删除",
-            CloseButtonText = "取消",
+            Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDBF4F24DD58A38BD),
+            Content = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text60812B4651E4E634,count),
+            PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4E01A4D26A03423B),
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = this.XamlRoot,
         };
@@ -986,7 +986,7 @@ public sealed partial class VaultPage : Page
     {
         if (ViewModel.SelectedItem is { } item)
         {
-            if (!await ConfirmLeaveEditorAsync() || !await VerifySensitiveActionAsync("编辑条目"))
+            if (!await ConfirmLeaveEditorAsync() || !await VerifySensitiveActionAsync(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2D8C735968F1D001)))
                 return;
             var authorized = await ViewModel.BeginEditAsync(item.Id, PromptMasterPasswordAsync);
             if (authorized.IsSuccess)
@@ -1006,7 +1006,7 @@ public sealed partial class VaultPage : Page
         }
         catch (InvalidOperationException)
         {
-            ViewModel.OperationError = "条目已发生变化，请刷新后重试。";
+            ViewModel.OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text900F25C5EEB86157);
             return;
         }
 
@@ -1034,7 +1034,7 @@ public sealed partial class VaultPage : Page
         }
         catch (InvalidOperationException)
         {
-            ViewModel.OperationError = "条目已发生变化，请刷新后重试。";
+            ViewModel.OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text900F25C5EEB86157);
             return;
         }
 
@@ -1043,8 +1043,8 @@ public sealed partial class VaultPage : Page
             baseline.CollectionIds,
             lockReadOnlyAssignments: true);
         var collectionIds = await PromptCollectionSelectionAsync(
-            "管理集合",
-            "选择此条目所属的集合。只读集合会保留且不能取消。",
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCA300C4C59F200E6),
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAAAF73C83A37F1BD),
             options);
         if (collectionIds is null)
             return;
@@ -1056,15 +1056,15 @@ public sealed partial class VaultPage : Page
         if (!ViewModel.CanTransferSelectionToOrganization)
         {
             ViewModel.OperationError = string.IsNullOrEmpty(ViewModel.SelectionPlacementError)
-                ? "所选条目不能批量转移到组织。"
+                ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4FE1427C33B99A1D)
                 : ViewModel.SelectionPlacementError;
             return;
         }
 
         var result = await PromptOrganizationTransferAsync(
-            "批量转移到组织",
-            $"将 {ViewModel.SelectedCount} 个个人条目转移到同一组织。请选择至少一个集合。",
-            "转移所选");
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text35C9379515526013),
+            global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextBBE3CF590D470BFC,ViewModel.SelectedCount),
+            global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC45FB3A7C8511388));
         if (result is null)
             return;
 
@@ -1085,7 +1085,7 @@ public sealed partial class VaultPage : Page
             || ViewModel.SelectedOrganizationId is not { } organizationId)
         {
             ViewModel.OperationError = string.IsNullOrEmpty(ViewModel.SelectionPlacementError)
-                ? "所选条目不能批量更改集合。"
+                ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text235A72E4BA7B9262)
                 : ViewModel.SelectionPlacementError;
             return;
         }
@@ -1093,7 +1093,7 @@ public sealed partial class VaultPage : Page
         var options = ViewModel.GetCipherCollectionOptions(organizationId);
         if (options.Count == 0)
         {
-            ViewModel.OperationError = "此组织没有可写集合。";
+            ViewModel.OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5C9B7178B4F098F3);
             return;
         }
 
@@ -1101,10 +1101,10 @@ public sealed partial class VaultPage : Page
             filter.Kind == FilterKind.Organization
             && string.Equals(filter.OrganizationId, organizationId, StringComparison.Ordinal))?.Label
             ?? organizationId;
-        var action = removeCollections ? "移出" : "加入";
+        var action = removeCollections ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text95861C4B5CD64436) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text451755E3831FA39E);
         var collectionIds = await PromptCollectionSelectionAsync(
-            $"批量{action}集合",
-            $"组织：{organizationName}\n选择要将 {ViewModel.SelectedCount} 个条目{action}的集合。",
+            global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextECE6EFB98E03C7C9,action),
+            global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextB0B9AF3A76E93CAF,organizationName,ViewModel.SelectedCount,action),
             options,
             primaryButtonText: action,
             requireSelection: true);
@@ -1118,20 +1118,22 @@ public sealed partial class VaultPage : Page
     }
 
     private async Task<OrganizationTransferDialogResult?> PromptOrganizationTransferAsync(
-        string title = "转移到组织",
+        string? title = null,
         string? message = null,
-        string primaryButtonText = "转移")
+        string? primaryButtonText = null)
     {
+        title ??= global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6878EDAE77002370);
+        primaryButtonText ??= global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAE7C4C83CAEB18A5);
         var destinations = ViewModel.GetOrganizationDestinations();
         if (destinations.Count == 0)
         {
-            ViewModel.OperationError = "当前账户没有可写入的组织集合。";
+            ViewModel.OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5653C78185583B4B);
             return null;
         }
 
         var organizationBox = new ComboBox
         {
-            Header = "组织",
+            Header = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB4D203DEA5B9121C),
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         foreach (var candidate in destinations)
@@ -1148,11 +1150,11 @@ public sealed partial class VaultPage : Page
         var content = new StackPanel { Spacing = 10 };
         content.Children.Add(new TextBlock
         {
-            Text = message ?? "转移后条目将由组织管理。请选择至少一个集合。",
+            Text = message ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE948BD0BD3F1E98B),
             TextWrapping = TextWrapping.Wrap,
         });
         content.Children.Add(organizationBox);
-        content.Children.Add(new TextBlock { Text = "集合" });
+        content.Children.Add(new TextBlock { Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text528E5174C2D4E5C8) });
         content.Children.Add(new ScrollViewer { MaxHeight = 280, Content = collectionsPanel });
 
         var dialog = new ContentDialog
@@ -1160,7 +1162,7 @@ public sealed partial class VaultPage : Page
             Title = title,
             Content = content,
             PrimaryButtonText = primaryButtonText,
-            CloseButtonText = "取消",
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Close,
             IsPrimaryButtonEnabled = false,
             XamlRoot = XamlRoot,
@@ -1221,9 +1223,10 @@ public sealed partial class VaultPage : Page
         string title,
         string message,
         IReadOnlyList<CipherCollectionOption> options,
-        string primaryButtonText = "保存",
+        string? primaryButtonText = null,
         bool requireSelection = false)
     {
+        primaryButtonText ??= global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA3030BF8F16DC63C);
         var boxes = new List<(string Id, CheckBox Box)>();
         var collectionsPanel = new StackPanel { Spacing = 4 };
         foreach (var option in options)
@@ -1246,7 +1249,7 @@ public sealed partial class VaultPage : Page
             Title = title,
             Content = content,
             PrimaryButtonText = primaryButtonText,
-            CloseButtonText = "取消",
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
         };
@@ -1296,7 +1299,7 @@ public sealed partial class VaultPage : Page
     {
         if (ViewModel.SelectedItem is not { } item)
             return;
-        if (await ConfirmAsync("永久删除", $"确定要永久删除“{item.Name}”吗?此操作无法撤销。", "永久删除"))
+        if (await ConfirmAsync(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4E01A4D26A03423B), global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text299963D5CD099C4E,item.Name), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4E01A4D26A03423B)))
             await ViewModel.PermanentDeleteAsync(item.Id);
     }
 
@@ -1304,7 +1307,7 @@ public sealed partial class VaultPage : Page
 
     public Task CreateFolderAsync() => RunFolderInteractionAsync(async lease =>
     {
-        var name = await PromptTextAsync("新建文件夹", "文件夹名称", string.Empty, lease);
+        var name = await PromptTextAsync(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text84244ABC71DE03AC), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBACF701908D8CF45), string.Empty, lease);
         if (!string.IsNullOrWhiteSpace(name) && CanContinueFolderInteraction(lease))
             await ViewModel.SaveFolderAsync(null, name);
     });
@@ -1320,7 +1323,7 @@ public sealed partial class VaultPage : Page
     {
         if (ViewModel.FolderFilters.All(folder => folder.FolderId != folderId))
             return;
-        var name = await PromptTextAsync("重命名文件夹", "文件夹名称", folderName, lease);
+        var name = await PromptTextAsync(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDA2F8F756E74459F), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBACF701908D8CF45), folderName, lease);
         if (!string.IsNullOrWhiteSpace(name) && CanContinueFolderInteraction(lease)
             && ViewModel.FolderFilters.Any(folder => folder.FolderId == folderId))
             await ViewModel.SaveFolderAsync(folderId, name);
@@ -1337,8 +1340,8 @@ public sealed partial class VaultPage : Page
     {
         if (ViewModel.FolderFilters.All(folder => folder.FolderId != folderId))
             return;
-        if (await DialogHelper.ConfirmAsync(XamlRoot, lease, "删除文件夹",
-                $"确定要删除文件夹“{folderName}”吗？其中的条目会移出该文件夹。", "删除")
+        if (await DialogHelper.ConfirmAsync(XamlRoot, lease, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text780DFC4C114297D3),
+                global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextA448B10971461483,folderName), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2F9DAA828907B93F))
             && CanContinueFolderInteraction(lease)
             && ViewModel.FolderFilters.Any(folder => folder.FolderId == folderId))
             await ViewModel.DeleteFolderAsync(folderId);
@@ -1369,8 +1372,8 @@ public sealed partial class VaultPage : Page
     {
         if (!ViewModel.HasTrashItems)
             return;
-        if (await ConfirmAsync("清空回收站",
-                $"确定永久删除回收站中的全部 {ViewModel.TrashCount} 项？此操作无法撤销。", "永久删除"))
+        if (await ConfirmAsync(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text08735AC0D2D4FAE3),
+                global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text7DFC46C399C41545,ViewModel.TrashCount), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4E01A4D26A03423B)))
             await ViewModel.EmptyRecycleBinCommand.ExecuteAsync(null);
     }
 
@@ -1382,8 +1385,8 @@ public sealed partial class VaultPage : Page
         {
             Title = title,
             Content = input,
-            PrimaryButtonText = "确定",
-            CloseButtonText = "取消",
+            PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFAC2A67AD87807C4),
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
         };
@@ -1428,7 +1431,7 @@ public sealed partial class VaultPage : Page
         {
             var maxSizeText = global::App.Services.AttachmentSizePolicy.FormatSize(
                 global::App.Services.AttachmentSizePolicy.MaxBytes);
-            ViewModel.OperationError = $"文件超过附件上限 {maxSizeText}。";
+            ViewModel.OperationError = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextB4A1ECA9FFDC2E33,maxSizeText);
         }
         catch (OperationCanceledException ex)
             when (UiExceptionPolicy.IsGenuineCancellation(ex))
@@ -1436,7 +1439,7 @@ public sealed partial class VaultPage : Page
         }
         catch (Exception ex) when (IsRecoverableFileTransferException(ex))
         {
-            ViewModel.OperationError = FileTransferError(ex, "上传附件失败");
+            ViewModel.OperationError = FileTransferError(ex, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBE82800AE6D382CA));
         }
     }
 
@@ -1455,7 +1458,7 @@ public sealed partial class VaultPage : Page
                 SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads,
                 SuggestedFileName = attachment.FileName,
             };
-            picker.FileTypeChoices.Add("文件", new System.Collections.Generic.List<string> { "." });
+            picker.FileTypeChoices.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text39932F24FE11A6BA), new System.Collections.Generic.List<string> { "." });
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
             WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
@@ -1495,7 +1498,7 @@ public sealed partial class VaultPage : Page
         }
         catch (Exception ex) when (IsRecoverableFileTransferException(ex))
         {
-            ViewModel.OperationError = FileTransferError(ex, "保存附件失败");
+            ViewModel.OperationError = FileTransferError(ex, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1EBA62CF95D99D67));
         }
     }
 
@@ -1512,16 +1515,16 @@ public sealed partial class VaultPage : Page
     private static string FileTransferError(Exception exception, string fallback)
     {
         if (Api.RequestTimeoutClassifier.IsTimeout(exception))
-            return "文件传输长时间没有进展，请检查连接后重试。";
+            return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2019E7CD5801502A);
 
         return exception switch
         {
-            UnauthorizedAccessException => "没有访问所选文件的权限。",
+            UnauthorizedAccessException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8BACF90B63A4C664),
             InvalidDataException or System.Security.Cryptography.CryptographicException =>
-                "附件完整性校验失败，文件未保存。",
-            HttpRequestException => "网络请求失败，请检查连接后重试。",
-            IOException => "文件读写失败，请检查磁盘和文件状态后重试。",
-            ObjectDisposedException => "操作已取消，文件未保存。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1C31EFE4E486F2E3),
+            HttpRequestException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBD573FBAE00C37F5),
+            IOException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4E5B2A0D6F93849C),
+            ObjectDisposedException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA6A6B2306CD940BF),
             _ => fallback,
         };
     }
@@ -1549,7 +1552,7 @@ public sealed partial class VaultPage : Page
             || (sender as FrameworkElement)?.DataContext is not AttachmentItem attachment)
             return;
 
-        if (await ConfirmAsync("删除附件", $"确定要删除附件“{attachment.FileName}”吗?此操作无法撤销。", "删除"))
+        if (await ConfirmAsync(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC49EB9A278D3C8C0), global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextF29AA78C618B8366,attachment.FileName), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2F9DAA828907B93F)))
             await ViewModel.DeleteAttachmentAsync(item.Id, attachment.Id);
     }
 
@@ -1567,7 +1570,7 @@ public sealed partial class VaultPage : Page
 
         if (ViewModel.SavedViews.Count == 0)
         {
-            SavedViewsFlyout.Items.Insert(0, new MenuFlyoutItem { Text = "暂无已保存视图", IsEnabled = false });
+            SavedViewsFlyout.Items.Insert(0, new MenuFlyoutItem { Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text238A761A3EB51189), IsEnabled = false });
             return;
         }
 
@@ -1577,7 +1580,7 @@ public sealed partial class VaultPage : Page
             var applyItem = new MenuFlyoutItem { Text = view.Name };
             applyItem.Click += (_, _) => ViewModel.ApplyViewCommand.Execute(view);
 
-            var deleteItem = new MenuFlyoutItem { Text = $"删除“{view.Name}”" };
+            var deleteItem = new MenuFlyoutItem { Text = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text319A5ADECF261BE4,view.Name) };
             deleteItem.Click += (_, _) => ViewModel.DeleteViewCommand.Execute(view.Name);
 
             SavedViewsFlyout.Items.Insert(insertAt++, applyItem);
@@ -1587,15 +1590,15 @@ public sealed partial class VaultPage : Page
 
     private async void OnSaveCurrentViewClick(object sender, RoutedEventArgs e)
     {
-        var input = new TextBox { PlaceholderText = "视图名称" };
+        var input = new TextBox { PlaceholderText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text786C2050CFB6E020) };
         AutomationProperties.SetAutomationId(input, "VaultSaveViewNameTextBox");
 
         var dialog = new ContentDialog
         {
-            Title = "保存当前视图",
+            Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA31D94CD063F92FD),
             Content = input,
-            PrimaryButtonText = "确认",
-            CloseButtonText = "取消",
+            PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text36F33ADAF0942634),
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot,
         };
@@ -1637,7 +1640,7 @@ public sealed partial class VaultPage : Page
 
     public async Task ChangePasswordAsync(string itemId, string? generatedPassword = null)
     {
-        if (!await ConfirmLeaveEditorAsync() || !await VerifySensitiveActionAsync("更换密码"))
+        if (!await ConfirmLeaveEditorAsync() || !await VerifySensitiveActionAsync(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEC9F62A12F85A370)))
             return;
         var result = await ViewModel.BeginEditAsync(itemId, PromptMasterPasswordAsync);
         if (!result.IsSuccess || ViewModel.EditorDraft is not { IsLogin: true } draft)
@@ -1662,7 +1665,7 @@ public sealed partial class VaultPage : Page
         try
         {
             if (!await DialogHelper.ConfirmAsync(XamlRoot, lease,
-                    "放弃未保存的更改？", "你所做的更改尚未保存。", "放弃更改"))
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAEA9D6B5BDF48FF8), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text46280D9428172091), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEF804EDA908B10F1)))
                 return false;
             return TryCancelExpectedEditor(draft, lease);
         }
@@ -1792,7 +1795,7 @@ public sealed partial class VaultPage : Page
                 return false;
             if (!reveal)
                 return await ViewModel.AuthorizeFieldCopyAsync(id, PromptMasterPasswordAsync, ct);
-            if (reveal && !await VerifySensitiveActionAsync("显示敏感字段", ct))
+            if (reveal && !await VerifySensitiveActionAsync(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCE40A37665C20C21), ct))
                 return false;
             if (ViewModel.Detail?.Id != id)
                 return false;
@@ -1828,11 +1831,11 @@ public sealed partial class VaultPage : Page
                     DetailCopyStrip.BeginRelay();
             }
             else
-                ViewModel.OperationError = "无法打开网站。请检查默认浏览器设置。";
+                ViewModel.OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text71233F869A501AB9);
         }
         catch (Exception exception) when (exception is System.Runtime.InteropServices.ExternalException or InvalidOperationException)
         {
-            ViewModel.OperationError = "无法打开网站。请稍后重试。";
+            ViewModel.OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text990BCF071BA2C85C);
         }
     }
 
@@ -1844,7 +1847,7 @@ public sealed partial class VaultPage : Page
 
     private async void OnDetailCloneClick(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.SelectedItem is not { } item || !await VerifySensitiveActionAsync("创建条目副本"))
+        if (ViewModel.SelectedItem is not { } item || !await VerifySensitiveActionAsync(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC38B50B3E02030E7)))
             return;
         if ((await ViewModel.BeginCloneAsync(item.Id, PromptMasterPasswordAsync)).IsSuccess)
             SyncEditorTypeSelection();
@@ -1946,7 +1949,7 @@ public sealed partial class VaultPage : Page
         editing && isNew ? Visibility.Visible : Visibility.Collapsed;
 
     public static string DraftName(string? name, VaultItemKind kind) => !string.IsNullOrWhiteSpace(name)
-        ? name : $"未命名{kind switch { VaultItemKind.Login => "登录", VaultItemKind.Card => "支付卡", VaultItemKind.Identity => "身份", VaultItemKind.Note => "安全笔记", VaultItemKind.Ssh => "SSH 密钥", _ => "条目" }}";
+        ? name : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextE02FE18117424908,kind switch { VaultItemKind.Login => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1E2DF9C3075AE9E4), VaultItemKind.Card => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7BB5BFB842DCB7BF), VaultItemKind.Identity => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2A9C9E9976421A9D), VaultItemKind.Note => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3B0221743F79E8A4), VaultItemKind.Ssh => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBF18658907FB9C66), _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFEE60AE594C1109F) });
 
     private void OnFieldUsed(object? sender, EventArgs e)
     {
@@ -1968,7 +1971,7 @@ public sealed partial class VaultPage : Page
         if (ViewModel.Detail is not LoginDetail { HasPasswordHistory: true, IsDeleted: false } login
             || !TryCaptureExpectedLease(out var lease))
             return;
-        if (!await VerifySensitiveActionAsync("查看密码历史")
+        if (!await VerifySensitiveActionAsync(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0DA51C715122884B))
             || !await ViewModel.AuthorizeFieldCopyAsync(login.Id, PromptMasterPasswordAsync)
             || !ReferenceEquals(ViewModel.Detail, login)
             || !global::App.App.Services.GetRequiredService<Vault.VaultSession>().IsUnlocked(lease))
@@ -1981,7 +1984,7 @@ public sealed partial class VaultPage : Page
         var content = new StackPanel { Spacing = 16 };
         var dialog = new ContentDialog
         {
-            Title = "密码历史", CloseButtonText = "关闭",
+            Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6C3107A011039DA2), CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3FD47EDCE45B3603),
             DefaultButton = ContentDialogButton.None, XamlRoot = XamlRoot,
         };
         using var passwordPrompt = new DialogPasswordPrompt(dialog, content, HistoryContextIsCurrent);
@@ -1996,12 +1999,12 @@ public sealed partial class VaultPage : Page
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, historyCancellation.Token);
             return HistoryContextIsCurrent() && !linked.IsCancellationRequested
-                && await VerifySensitiveActionAsync($"WinVaultWarden 想要显示“{login.Name}”的旧密码。", linked.Token, passwordPrompt.PromptAsync)
+                && await VerifySensitiveActionAsync(global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text05C9EB12C6C566F8,login.Name), linked.Token, passwordPrompt.PromptAsync)
                 && HistoryContextIsCurrent() && !linked.IsCancellationRequested;
         }
         content.Children.Add(new TextBlock
         {
-            Text = $"“{login.Name}”以前用过的密码，最多保留 5 个。改回旧密码前，先确认它没有出现在数据泄露里。",
+            Text = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text7595DE808F2D6414,login.Name),
             FontSize = 14, LineHeight = 20, TextWrapping = TextWrapping.Wrap,
             Foreground = ThemeBrushResolver.Resolve(this, "TextFillColorSecondaryBrush"),
         });
@@ -2010,7 +2013,7 @@ public sealed partial class VaultPage : Page
         {
             var row = new FieldRow
             {
-                Label = $"{entry.DateLabel} 换掉", Value = entry.Password,
+                Label = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextF5DE709D315F1A67,entry.DateLabel), Value = entry.Password,
                 IsSecret = true, IsTrailingLabel = true,
             };
             row.AuthorizeItemAsync = AuthorizeHistoryItemAsync;
@@ -2083,7 +2086,7 @@ public sealed partial class VaultPage : Page
     private void OnAttachmentLabelLoaded(object sender, RoutedEventArgs e)
     {
         if (sender is TextBlock { DataContext: AttachmentItem attachment } label)
-            label.Text = ViewModel.Detail?.Attachments.FirstOrDefault()?.Id == attachment.Id ? "附件" : string.Empty;
+            label.Text = ViewModel.Detail?.Attachments.FirstOrDefault()?.Id == attachment.Id ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC7225DBF105EEED5) : string.Empty;
     }
 
     private void OnEditorFolderFlyoutOpening(object sender, object e)
@@ -2098,7 +2101,7 @@ public sealed partial class VaultPage : Page
         {
             var item = new ToggleMenuFlyoutItem
             {
-                Text = folder?.Label ?? "无文件夹", IsChecked = folder?.FolderId == draft.FolderId,
+                Text = folder?.Label ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text767541AFFA3F793B), IsChecked = folder?.FolderId == draft.FolderId,
             };
             item.Click += (_, _) =>
             {
@@ -2113,7 +2116,7 @@ public sealed partial class VaultPage : Page
         foreach (var folder in ViewModel.FolderFilters)
             AddFolder(folder);
         EditorFolderFlyout.Items.Add(new MenuFlyoutSeparator());
-        var create = new MenuFlyoutItem { Text = "新建文件夹…", Icon = new FontIcon { Glyph = "\uE8F4" } };
+        var create = new MenuFlyoutItem { Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFE33CF222F5B4D78), Icon = new FontIcon { Glyph = "\uE8F4" } };
         AutomationProperties.SetAutomationId(create, "VaultEditorCreateFolderMenuItem");
         create.Click += async (_, _) => await CreateFolderFromEditorAsync(draft, lease, version);
         EditorFolderFlyout.Items.Add(create);
@@ -2137,8 +2140,8 @@ public sealed partial class VaultPage : Page
         var revealed = box.PasswordRevealMode == PasswordRevealMode.Visible;
         if (button.Content is FontIcon icon)
             icon.Glyph = revealed ? "\uED1A" : "\uE890";
-        AutomationProperties.SetName(button, revealed ? "隐藏敏感字段" : "显示敏感字段");
-        ToolTipService.SetToolTip(button, revealed ? "隐藏" : "显示");
+        AutomationProperties.SetName(button, revealed ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE2B5C93DEE1B9C8D) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCE40A37665C20C21));
+        ToolTipService.SetToolTip(button, revealed ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text145219E726B87790) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4E1449E7D5E50593));
     }
 
     private void ResetEditorSecretActions()
@@ -2337,18 +2340,21 @@ public sealed partial class VaultPage : Page
         var reports = global::App.App.Services.GetRequiredService<SecurityReportViewModel>();
         var exposed = reports.ExposedItems.FirstOrDefault(finding => finding.Item.CipherId == item.Id);
         if (exposed is not null && !reports.IsIssueIgnored("breach", item.Id))
-            return ($"密码出现在 {exposed.BreachCount} 次已知数据泄露中" + (reports.ExposedChecked ? string.Empty : " · 待复查"), "\uEA39", "SystemFillColorCriticalBrush", true);
+            return (global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text5B250AD7BD54C573,exposed.BreachCount) + (reports.ExposedChecked ? string.Empty : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC5DCF7CB782494CB)), "\uEA39", "SystemFillColorCriticalBrush", true);
         var reused = reports.IsIssueIgnored("reuse", item.Id) ? null
             : _detailHealthReport?.Reused.FirstOrDefault(group => group.Items.Any(entry => entry.CipherId == item.Id));
         if (reused is not null)
-            return ($"与“{reused.Items.FirstOrDefault(entry => entry.CipherId != item.Id)?.Name}”用的是同一个密码", "\uE7BA", "SystemFillColorCautionBrush", true);
+            return (global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text52A1713289D5C83B,reused.Items.FirstOrDefault(entry => entry.CipherId != item.Id)?.Name), "\uE7BA", "SystemFillColorCautionBrush", true);
         if (!reports.IsIssueIgnored("weak", item.Id)
             && _detailHealthReport?.Weak.Any(finding => finding.Item.CipherId == item.Id) == true)
-            return ("密码较弱，建议更换", "\uE7BA", "SystemFillColorCautionBrush", true);
+            return (global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text915976CAC614471B), "\uE7BA", "SystemFillColorCautionBrush", true);
         if (!reports.IsIssueIgnored("http", item.Id)
             && _detailHealthReport?.Unsecured.Any(finding => finding.Item.CipherId == item.Id
                 && Uri.TryCreate(finding.Uri, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttp) == true)
-            return ("这个网站没有使用 HTTPS", "\uE7BA", "SystemFillColorCautionBrush", false);
+            return (global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8A8E00FC5DEE6B26), "\uE7BA", "SystemFillColorCautionBrush", false);
+        if (_detailHealthReport?.UnassessedPasswords.Any(entry => entry.CipherId == item.Id) == true)
+            return ("Password strength was not assessed because this value exceeds the analysis limit.",
+                "\uE946", "TextFillColorSecondaryBrush", false);
         return (string.Empty, string.Empty, "TextFillColorSecondaryBrush", false);
     }
 
@@ -2380,12 +2386,13 @@ public sealed partial class VaultPage : Page
         if (!string.IsNullOrEmpty(issue.Text))
             facts.Add(issue.Text);
         else if (detail.IsDeleted)
-            facts.Add("在回收站中");
+            facts.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3787B976EA77203A));
         else if (detail is LoginDetail login && !string.IsNullOrEmpty(login.Password))
         {
-            var score = global::App.App.Services.GetRequiredService<Crypto.PasswordStrength.PasswordStrengthEvaluator>().Evaluate(login.Password).Score;
-            facts.Add(score >= 4 ? "密码很强" : score >= 3 ? "密码强度良好" : "密码强度一般");
-            if (_detailHealthReport is not null && _detailHealthItems.Contains(item))
+            var strength = global::App.App.Services.GetRequiredService<Crypto.PasswordStrength.PasswordStrengthEvaluator>().Evaluate(login.Password);
+            facts.Add(!strength.IsComplete ? "Password strength was not assessed."
+                : strength.Score >= 4 ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text13BC2A732563DC48) : strength.Score >= 3 ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text76BC37F7BA2DB6DF) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB06FA32B653C2079));
+            if (strength.IsComplete && _detailHealthReport is not null && _detailHealthItems.Contains(item))
             {
                 statusGlyph = "\uE930";
                 statusBrush = "SystemFillColorSuccessBrush";
@@ -2394,11 +2401,11 @@ public sealed partial class VaultPage : Page
         else if (detail is CardDetail card)
             facts.Add(string.Join(" · ", new[] { card.Brand, card.Expiry }.Where(value => !string.IsNullOrWhiteSpace(value))));
         if (detail.IsArchived)
-            facts.Add("已归档");
+            facts.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text82395D423099A07A));
         if (!detail.IsDeleted && detail is LoginDetail loginDetails)
         {
-            if (item.HasTotp) facts.Add("已开启两步验证");
-            if (loginDetails.HasPasskeys) facts.Add("存有通行密钥");
+            if (item.HasTotp) facts.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9BB0302137323810));
+            if (loginDetails.HasPasskeys) facts.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF3465AE426941504));
             if (loginDetails.PasswordRevisionDate is { } changedAt)
             {
                 var now = DateTimeOffset.UtcNow;
@@ -2406,13 +2413,13 @@ public sealed partial class VaultPage : Page
                 if (changedAt.AddYears(years) > now)
                     years--;
                 if (years >= 2)
-                    facts.Add($"{years} 年没换过密码");
+                    facts.Add(global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text9161DD05260E9772,years));
             }
         }
         if (!detail.IsDeleted)
         {
             if (detail.Reprompt)
-                facts.Add(detail.SensitiveUnlocked ? "已验证主密码" : "需要主密码重新验证");
+                facts.Add(detail.SensitiveUnlocked ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6CD7D8FB5CF5BA26) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text34F059CE1AEE5C18));
             facts.Add(RecentUseText(ViewModel.GetLastUsedAt(item.Id)));
         }
         DetailStatusText.Text = string.Join(" · ", facts.Where(value => !string.IsNullOrWhiteSpace(value)));
@@ -2425,15 +2432,15 @@ public sealed partial class VaultPage : Page
     private static string RecentUseText(DateTimeOffset? lastUsed)
     {
         if (lastUsed is null)
-            return "还没用过";
+            return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2084C18AC3C102B3);
         var elapsed = DateTimeOffset.UtcNow - lastUsed.Value;
-        if (elapsed.TotalMinutes < 1) return "刚刚用过";
-        if (elapsed.TotalHours < 1) return $"{(int)elapsed.TotalMinutes} 分钟前用过";
-        if (elapsed.TotalDays < 1) return $"{(int)elapsed.TotalHours} 小时前用过";
-        if (elapsed.TotalDays < 2) return "昨天用过";
-        if (elapsed.TotalDays < 30) return $"{(int)elapsed.TotalDays} 天前用过";
-        if (elapsed.TotalDays < 365) return $"{(int)(elapsed.TotalDays / 30)} 个月前用过";
-        return $"{(int)(elapsed.TotalDays / 365)} 年前用过";
+        if (elapsed.TotalMinutes < 1) return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7FEF9D4C74A38638);
+        if (elapsed.TotalHours < 1) return global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextD593D8F5BF7961AC,(int)elapsed.TotalMinutes);
+        if (elapsed.TotalDays < 1) return global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text6227FED640FC8163,(int)elapsed.TotalHours);
+        if (elapsed.TotalDays < 2) return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF299BDF907C11828);
+        if (elapsed.TotalDays < 30) return global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextFD5492271C945014,(int)elapsed.TotalDays);
+        if (elapsed.TotalDays < 365) return global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text982E329A7CD2BE4C,(int)(elapsed.TotalDays / 30));
+        return global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text2F0C6F507C6356B9,(int)(elapsed.TotalDays / 365));
     }
 
     private async void OnChangePasswordClick(object sender, RoutedEventArgs e)
@@ -2470,7 +2477,7 @@ public sealed partial class VaultPage : Page
         if (!result.IsSuccess)
         {
             if (result.Status == UiOperationStatus.Failed)
-                ViewModel.OperationError = result.Error ?? "复制失败，请重试。";
+                ViewModel.OperationError = result.Error ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0E7E0391BAE51CDD);
             return;
         }
         ResetRowCopyFeedback();
@@ -2630,7 +2637,7 @@ public sealed partial class VaultPage : Page
         if (item.IsDeleted || !await ConfirmLeaveEditorAsync())
             return;
         if ((await ViewModel.SoftDeleteAsync(item.Id)).IsSuccess)
-            ShowToast($"已将“{item.Name}”移到回收站", () => ViewModel.RestoreAsync(item.Id));
+            ShowToast(global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text3C1FD5F69EFCA107,item.Name), () => ViewModel.RestoreAsync(item.Id));
     }
 
     private async Task ArchiveWithUndoAsync(CipherListItem item)
@@ -2638,7 +2645,7 @@ public sealed partial class VaultPage : Page
         if (!await ConfirmLeaveEditorAsync())
             return;
         if ((await ViewModel.ArchiveAsync(item.Id)).IsSuccess)
-            ShowToast($"已归档“{item.Name}”", () => ViewModel.UnarchiveAsync(item.Id));
+            ShowToast(global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text957A5C9B4E4BF77A,item.Name), () => ViewModel.UnarchiveAsync(item.Id));
     }
 
     private async Task UnarchiveWithUndoAsync(CipherListItem item)
@@ -2646,7 +2653,7 @@ public sealed partial class VaultPage : Page
         if (!await ConfirmLeaveEditorAsync())
             return;
         if ((await ViewModel.UnarchiveAsync(item.Id)).IsSuccess)
-            ShowToast($"已取消归档“{item.Name}”", () => ViewModel.ArchiveAsync(item.Id));
+            ShowToast(global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextFC80B9496A83B366,item.Name), () => ViewModel.ArchiveAsync(item.Id));
     }
 
     private async void OnUndoClick(object sender, RoutedEventArgs e)
@@ -2656,11 +2663,11 @@ public sealed partial class VaultPage : Page
         _undoAction = null;
         var result = await undo();
         if (result.IsSuccess)
-            ShowToast("已撤销");
+            ShowToast(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFEF96E34F77B742B));
         else
         {
             VaultToast.Visibility = Visibility.Collapsed;
-            ViewModel.OperationError = result.Error ?? "无法撤销，请同步后重试。";
+            ViewModel.OperationError = result.Error ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEDE001C569345935);
         }
     }
 

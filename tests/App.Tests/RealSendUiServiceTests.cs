@@ -15,6 +15,104 @@ namespace App.Tests;
 
 public class RealSendUiServiceTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ReceivedText_RealMapperPreservesVisibilityAndMetadataUntilSensitiveCleanup(bool textHidden)
+    {
+        var expiration = DateTimeOffset.Parse("2026-12-01T10:30:00Z");
+        var accessed = new SendAccessResult
+        {
+            Type = CoreSendType.Text,
+            Name = "Received note",
+            AccessId = "received-access",
+            Seed = new byte[16],
+            TextContent = "private note content",
+            TextHidden = textHidden,
+            CreatorIdentifier = "sender@example.test",
+            ExpirationDate = expiration,
+        };
+        var service = new SendUiService(
+            new FakeSendService(),
+            new FakeSendWriteService(),
+            new FakeSendAccessService { Result = accessed });
+        var viewModel = new App.ViewModels.SendViewModel(service);
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.ReceivedLinkUrl = "https://vault.example/#/send/received-access/seed";
+
+        await viewModel.OpenReceivedLinkCommand.ExecuteAsync(null);
+
+        Assert.NotNull(viewModel.LastReceived);
+        Assert.Null(viewModel.LastReceived.Accessed);
+        Assert.Equal(textHidden, viewModel.LastReceived.TextHidden);
+        Assert.Equal("sender@example.test", viewModel.LastReceived.CreatorIdentifier);
+        Assert.Equal(expiration, viewModel.LastReceived.ExpirationDate);
+        Assert.Equal(textHidden, viewModel.HasHiddenReceivedText);
+        Assert.Equal(!textHidden, viewModel.ReceivedTextRevealed);
+        Assert.Equal(textHidden ? string.Empty : "private note content", viewModel.DisplayedReceivedText);
+        Assert.True(viewModel.HasReceivedSource);
+        Assert.Contains("sender@example.test", viewModel.ReceivedSourceText);
+        Assert.True(viewModel.HasReceivedExpiration);
+        Assert.Throws<ObjectDisposedException>(() => accessed.CopySeed());
+
+        viewModel.RevealReceivedTextCommand.Execute(null);
+        Assert.Equal("private note content", viewModel.DisplayedReceivedText);
+
+        viewModel.ClearSensitive();
+
+        Assert.Null(viewModel.LastReceived);
+        Assert.Null(viewModel.ReceivedText);
+        Assert.False(viewModel.ReceivedTextRevealed);
+        Assert.Empty(viewModel.DisplayedReceivedText);
+        Assert.False(viewModel.HasReceivedSource);
+        Assert.Empty(viewModel.ReceivedSourceText);
+        Assert.False(viewModel.HasReceivedExpiration);
+        Assert.Empty(viewModel.ReceivedExpirationText);
+    }
+
+    [Fact]
+    public async Task ReceivedFile_RealMapperPreservesMetadataAndOwnsAccessHandleUntilSensitiveCleanup()
+    {
+        var expiration = DateTimeOffset.Parse("2026-12-01T10:30:00Z");
+        var accessed = new SendAccessResult
+        {
+            Type = CoreSendType.File,
+            Name = "Received file",
+            FileName = "document.pdf",
+            AccessId = "received-file-access",
+            Seed = new byte[16],
+            CreatorIdentifier = "sender@example.test",
+            ExpirationDate = expiration,
+        };
+        var service = new SendUiService(
+            new FakeSendService(),
+            new FakeSendWriteService(),
+            new FakeSendAccessService { Result = accessed });
+        var viewModel = new App.ViewModels.SendViewModel(service);
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.ReceivedLinkUrl = "https://vault.example/#/send/received-file-access/seed";
+
+        await viewModel.OpenReceivedLinkCommand.ExecuteAsync(null);
+
+        Assert.NotNull(viewModel.LastReceived);
+        Assert.Same(accessed, viewModel.LastReceived.Accessed);
+        Assert.Equal("document.pdf", viewModel.ReceivedFileName);
+        Assert.True(viewModel.HasReceivedFile);
+        Assert.Equal("sender@example.test", viewModel.LastReceived.CreatorIdentifier);
+        Assert.Equal(expiration, viewModel.LastReceived.ExpirationDate);
+        Assert.True(viewModel.HasReceivedSource);
+        Assert.True(viewModel.HasReceivedExpiration);
+        Assert.Equal(16, accessed.CopySeed().Length);
+
+        viewModel.ClearSensitive();
+
+        Assert.Null(viewModel.LastReceived);
+        Assert.Null(viewModel.ReceivedFileName);
+        Assert.False(viewModel.HasReceivedSource);
+        Assert.False(viewModel.HasReceivedExpiration);
+        Assert.Throws<ObjectDisposedException>(() => accessed.CopySeed());
+    }
+
     [Fact]
     public async Task GetSendsAsync_PreservesAccessAndRetentionMetadataIndependently()
     {

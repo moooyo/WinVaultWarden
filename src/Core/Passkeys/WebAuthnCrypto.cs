@@ -11,7 +11,8 @@ public static class WebAuthnCrypto
     public static byte[] BuildAuthenticatorData(
         string rpId,
         uint signatureCounter,
-        PasskeyApprovalEvidence evidence)
+        PasskeyApprovalEvidence evidence,
+        PasskeyBackupState backupState = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rpId);
 
@@ -19,7 +20,7 @@ public static class WebAuthnCrypto
         SHA256.HashData(
             Encoding.UTF8.GetBytes(rpId),
             authenticatorData.AsSpan(0, 32));
-        authenticatorData[32] = BuildFlags(evidence);
+        authenticatorData[32] = BuildFlags(evidence, backupState);
         BinaryPrimitives.WriteUInt32BigEndian(
             authenticatorData.AsSpan(33, 4),
             signatureCounter);
@@ -37,15 +38,22 @@ public static class WebAuthnCrypto
             throw new ArgumentException("Client data JSON is required.", nameof(clientDataJson));
 
         var privateKey = DecodeBase64Url(pkcs8PrivateKeyBase64Url);
-        using var ecdsa = ECDsa.Create();
-        ecdsa.ImportPkcs8PrivateKey(privateKey, out _);
+        try
+        {
+            using var ecdsa = ECDsa.Create();
+            ecdsa.ImportPkcs8PrivateKey(privateKey, out _);
 
-        var clientDataHash = SHA256.HashData(clientDataJson);
-        var signedData = new byte[authenticatorData.Length + clientDataHash.Length];
-        authenticatorData.CopyTo(signedData);
-        clientDataHash.CopyTo(signedData.AsSpan(authenticatorData.Length));
+            var clientDataHash = SHA256.HashData(clientDataJson);
+            var signedData = new byte[authenticatorData.Length + clientDataHash.Length];
+            authenticatorData.CopyTo(signedData);
+            clientDataHash.CopyTo(signedData.AsSpan(authenticatorData.Length));
 
-        return ecdsa.SignData(signedData, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
+            return ecdsa.SignData(signedData, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(privateKey);
+        }
     }
 
     public static string EncodeBase64Url(ReadOnlySpan<byte> value) =>
@@ -63,7 +71,7 @@ public static class WebAuthnCrypto
         return Convert.FromBase64String(base64);
     }
 
-    private static byte BuildFlags(PasskeyApprovalEvidence evidence)
+    private static byte BuildFlags(PasskeyApprovalEvidence evidence, PasskeyBackupState backupState)
     {
         if (evidence.UserVerified && !evidence.UserPresent)
         {
@@ -72,11 +80,16 @@ public static class WebAuthnCrypto
                 nameof(evidence));
         }
 
+        backupState.Validate();
         byte flags = 0;
         if (evidence.UserPresent)
             flags |= 0x01;
         if (evidence.UserVerified)
             flags |= 0x04;
+        if (backupState.Eligible)
+            flags |= 0x08;
+        if (backupState.BackedUp)
+            flags |= 0x10;
         return flags;
     }
 
@@ -85,10 +98,17 @@ public static class WebAuthnCrypto
     {
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var pkcs8 = ecdsa.ExportPkcs8PrivateKey();
-        var spki = ecdsa.ExportSubjectPublicKeyInfo();
-        var p = ecdsa.ExportParameters(false);
-        var cose = EncodeCoseEc2(LeftPad32(p.Q.X!), LeftPad32(p.Q.Y!));
-        return (EncodeBase64Url(pkcs8), cose, spki);
+        try
+        {
+            var spki = ecdsa.ExportSubjectPublicKeyInfo();
+            var p = ecdsa.ExportParameters(false);
+            var cose = EncodeCoseEc2(LeftPad32(p.Q.X!), LeftPad32(p.Q.Y!));
+            return (EncodeBase64Url(pkcs8), cose, spki);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(pkcs8);
+        }
     }
 
     // authData(注册):rpIdHash(32)‖flags(1)‖counter(4)‖aaguid(16)‖credIdLen(2,BE)‖credId‖coseKey。
@@ -98,7 +118,8 @@ public static class WebAuthnCrypto
         PasskeyApprovalEvidence evidence,
         byte[] aaguid,
         byte[] credentialId,
-        byte[] coseKey)
+        byte[] coseKey,
+        PasskeyBackupState backupState = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rpId);
         if (aaguid.Length != 16)
@@ -106,7 +127,7 @@ public static class WebAuthnCrypto
 
         var head = new byte[37];
         SHA256.HashData(Encoding.UTF8.GetBytes(rpId), head.AsSpan(0, 32));
-        head[32] = (byte)(BuildFlags(evidence) | 0x40);
+        head[32] = (byte)(BuildFlags(evidence, backupState) | 0x40);
         BinaryPrimitives.WriteUInt32BigEndian(head.AsSpan(33, 4), counter);
 
         var credLen = new byte[2];

@@ -170,8 +170,8 @@ public sealed partial class SendPage : Page
         var draft = _draft;
         var generation = Volatile.Read(ref _selectionRequest);
         var snapshot = CaptureEditorSnapshot();
-        var confirmed = await DialogHelper.ConfirmAsync(XamlRoot, "放弃未保存的更改？",
-            $"“{(string.IsNullOrWhiteSpace(draft.Name) ? "新 Send" : draft.Name)}”的更改还没有保存。", "放弃更改");
+        var confirmed = await DialogHelper.ConfirmAsync(XamlRoot, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAEA9D6B5BDF48FF8),
+            global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextBA6B12BAF2CCC5B8,(string.IsNullOrWhiteSpace(draft.Name) ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3CD2814CDF6C7A1C) : draft.Name)), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEF804EDA908B10F1));
         if (!ReferenceEquals(draft, _draft) || generation != Volatile.Read(ref _selectionRequest)
             || snapshot != CaptureEditorSnapshot()) return false;
         if (confirmed) CloseEditor();
@@ -394,28 +394,28 @@ public sealed partial class SendPage : Page
         _detailDraft = null;
         DetailName.Text = item.Name;
         DetailGlyph.Glyph = item.Glyph;
-        DetailSubtitle.Text = $"{item.TypeLabel} Send";
+        DetailSubtitle.Text = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text7FE4A03629B8D81B,item.TypeLabel);
         DetailStatus.Text = StatusText(item);
         UpdateStatusAction(item);
         EditSelectedSendButton.IsEnabled = ViewModel.CanModifySend(item);
         SelectedMoreButton.DataContext = item;
         SetShareLinkDisplay(item.Link);
-        ShareLinkLabel.Text = "分享链接";
+        ShareLinkLabel.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text10BA647975FEB6FF);
         SetSelectedLinkCopyState(false);
         CopySelectedLinkButton.IsEnabled = !string.IsNullOrEmpty(item.Link);
         ShareLinkProgress.Visibility = Visibility.Collapsed;
         _copiedLinkVersion = 0;
         DetailDeletion.Text = FormatDate(item.DeletionDateTime);
-        DetailDeletionHint.Text = $"{item.DeletionRelativeLabel}连同链接一起删除";
-        DetailExpiration.Text = item.ExpirationDate is { } expiration ? FormatDate(expiration) : "永不过期";
-        DetailAccessLimit.Text = item.MaxAccessCount is { } max ? $"{max} 次" : "不限";
-        DetailAccessCount.Text = $"已访问 {item.AccessCount} 次";
-        DetailPassword.Text = item.HasPassword ? "已设置 · 对方打开链接时需要输入" : "未设置";
+        DetailDeletionHint.Text = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text617D95815D89849C,item.DeletionRelativeLabel);
+        DetailExpiration.Text = item.ExpirationDate is { } expiration ? FormatDate(expiration) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2C60316D5EA6B49C);
+        DetailAccessLimit.Text = item.MaxAccessCount is { } max ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text2AA79928FCE832D1,max) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF203D577D14268CD);
+        DetailAccessCount.Text = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text74F5BA738617CBDD,item.AccessCount);
+        DetailPassword.Text = item.HasPassword ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8F0B7BD98A6A172F) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2F5F1D6FBFB061ED);
         DetailHideEmail.Text = "—";
         SendTextContent.Text = item.TextContent ?? string.Empty;
         DetailFileName.Text = item.FileName ?? item.Name;
         DetailFileSize.Text = FormatSize(item.FileSize);
-        DetailModified.Text = item.RevisionDate is { } revision ? $"修改于 {FormatDate(revision)}" : string.Empty;
+        DetailModified.Text = item.RevisionDate is { } revision ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text30D233A280B1A3C6,FormatDate(revision)) : string.Empty;
         NotesDetailRow.Visibility = Visibility.Collapsed;
         TextDetailBlock.Visibility = item.Type == SendType.Text ? Visibility.Visible : Visibility.Collapsed;
         FileDetailBlock.Visibility = item.Type == SendType.File ? Visibility.Visible : Visibility.Collapsed;
@@ -433,7 +433,7 @@ public sealed partial class SendPage : Page
                     _detailDraft = detail;
                     SendTextContent.Text = detail.Text;
                     DetailFileName.Text = detail.FileName;
-                    DetailHideEmail.Text = detail.HideEmail ? "是 · 对方看不到是谁发送的" : "否";
+                    DetailHideEmail.Text = detail.HideEmail ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text19213DA910F2DFA3) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0C70665B6EB65F1A);
                     DetailNotes.Text = detail.Notes;
                     NotesDetailRow.Visibility = string.IsNullOrWhiteSpace(detail.Notes) ? Visibility.Collapsed : Visibility.Visible;
                 }))
@@ -444,12 +444,13 @@ public sealed partial class SendPage : Page
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException)
         {
-            TryCommitPageRequest(request, () => ViewModel.Error = "无法加载 Send 详情，请刷新后重试。");
+            TryCommitPageRequest(request, () => ViewModel.Error = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text803062EAD47A99E1));
         }
     }
 
     private static string FormatDate(DateTimeOffset? date) =>
-        date is { } value ? value.ToLocalTime().ToString("M 月 d 日 HH:mm") : "待服务器确认";
+        date is { } value ? value.ToLocalTime().ToString("g", global::App.Localization.UiText.DisplayCulture)
+            : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7EE0F1015D52DB6B);
 
     private static string FormatSize(long? bytes) => bytes switch
     {
@@ -463,14 +464,14 @@ public sealed partial class SendPage : Page
     {
         var state = item.GetAvailability(DateTimeOffset.UtcNow).State switch
         {
-            SendAvailabilityState.Available => "可以访问",
-            SendAvailabilityState.Disabled => "已禁用，任何人都打不开这个链接",
-            SendAvailabilityState.Expired => $"已于 {FormatDate(item.ExpirationDate)} 过期",
-            SendAvailabilityState.Deleted => "已到删除时间",
-            SendAvailabilityState.AccessLimitReached => "已达到最大访问次数",
-            _ => "等待服务器确认",
+            SendAvailabilityState.Available => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text165577EC1B033A30),
+            SendAvailabilityState.Disabled => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0BB46B05BDE0113F),
+            SendAvailabilityState.Expired => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text014B96AD483A1FFA,FormatDate(item.ExpirationDate)),
+            SendAvailabilityState.Deleted => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDCB9E19FE323DCD1),
+            SendAvailabilityState.AccessLimitReached => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF3508BE4CF2C7311),
+            _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDBA89EC86A14EB9E),
         };
-        return $"{state} · {item.DeletionRelativeLabel}自动删除 · 已访问 {item.AccessCount} 次{(item.HasPassword ? " · 需要访问密码" : string.Empty)}";
+        return global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text9E66D2A91374ECC9,state,item.DeletionRelativeLabel,item.AccessCount,(item.HasPassword ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0A6813F5831C2823) : string.Empty));
     }
 
     private void UpdateStatusAction(SendListItem item)
@@ -478,9 +479,9 @@ public sealed partial class SendPage : Page
         var state = item.GetAvailability(DateTimeOffset.UtcNow).State;
         var label = state switch
         {
-            SendAvailabilityState.Disabled => "启用",
-            SendAvailabilityState.Expired => "延长有效期",
-            SendAvailabilityState.AccessLimitReached => "提高上限",
+            SendAvailabilityState.Disabled => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF4F0EAD1116B5B62),
+            SendAvailabilityState.Expired => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE0B9A93D3DF07D42),
+            SendAvailabilityState.AccessLimitReached => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text18B347D43C4B46F0),
             _ => null,
         };
         DetailStatusAction.Content = label;
@@ -546,7 +547,7 @@ public sealed partial class SendPage : Page
             TryCommitPageRequest(request, () =>
             {
                 ViewModel.Error = Api.RequestTimeoutClassifier.IsTimeout(ex, token)
-                    ? UiExceptionPolicy.RequestTimeoutMessage : "无法加载 Send 详情，请刷新后重试。";
+                    ? UiExceptionPolicy.RequestTimeoutMessage : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text803062EAD47A99E1);
             });
             return null;
         }
@@ -569,12 +570,12 @@ public sealed partial class SendPage : Page
         Draft = draft;
         Bindings.Update();
         EditorGlyph.Glyph = draft.IsFile ? "\uE8A5" : "\uE8E4";
-        SaveEditorButton.Content = item is null ? "创建并复制链接" : "保存";
-        ToolTipService.SetToolTip(SaveEditorButton, $"{SaveEditorButton.Content} · Ctrl+S");
-        SendPasswordBox.PlaceholderText = draft.ExistingHasPassword ? "已设置 · 留空则保持不变" : "可选";
+        SaveEditorButton.Content = item is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA71BF6DF75763893) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA3030BF8F16DC63C);
+        ToolTipService.SetToolTip(SaveEditorButton, global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text00D331A49C8881FB,SaveEditorButton.Content));
+        SendPasswordBox.PlaceholderText = draft.ExistingHasPassword ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE4C47C23589FEC42) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text537352400C495FB8);
         UpdatePasswordActions();
         MaxAccessTextBox.Text = draft.MaxAccessCount?.ToString() ?? string.Empty;
-        EditorAccessHint.Text = item is null ? "留空表示不限次数" : $"已访问 {item.AccessCount} 次 · 留空表示不限";
+        EditorAccessHint.Text = item is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3354EE1CF1F1D402) : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextAFD0C28C8D300E77,item.AccessCount);
         EditorTypeRow.Visibility = item is null ? Visibility.Visible : Visibility.Collapsed;
         UpdateEditorFileSummary();
         FillDateChoices(draft, item is not null);
@@ -601,17 +602,29 @@ public sealed partial class SendPage : Page
 
     private void FillDateChoices(SendEditorDraft draft, bool editing)
     {
-        DeletionChoice.Items.Clear();
-        if (editing) DeletionChoice.Items.Add($"保持不变 · {FormatDate(draft.DeletionDate)}");
-        foreach (var label in new[] { "1 小时后", "1 天后", "2 天后", "3 天后", "7 天后", "30 天后", "自定义" }) DeletionChoice.Items.Add(label);
-        DeletionChoice.SelectedIndex = editing ? 0 : 4;
+        FillDateChoices(DeletionChoice, SendDatePresetOptions.CreateDeletionOptions(editing, draft.DeletionDate),
+            editing ? SendDatePreset.KeepExisting : draft.DeletionPreset);
         CustomDeletionEditorPanel.Visibility = Visibility.Collapsed;
-        ExpirationChoice.Items.Clear();
-        if (editing && draft.ExpirationDate is not null) ExpirationChoice.Items.Add($"保持不变 · {FormatDate(draft.ExpirationDate)}");
-        foreach (var label in new[] { "永不过期", "1 小时后", "1 天后", "2 天后", "3 天后", "7 天后", "自定义" }) ExpirationChoice.Items.Add(label);
-        ExpirationChoice.SelectedIndex = 0;
+        var keepExpiration = editing && draft.ExpirationDate is not null;
+        FillDateChoices(ExpirationChoice, SendDatePresetOptions.CreateExpirationOptions(keepExpiration, draft.ExpirationDate),
+            keepExpiration ? SendDatePreset.KeepExisting : draft.ExpirationPreset);
         CustomExpirationEditorPanel.Visibility = Visibility.Collapsed;
         UpdateEditorDateHint();
+    }
+
+    private static void FillDateChoices(
+        ComboBox combo,
+        IReadOnlyList<SendDatePresetOption> options,
+        SendDatePreset selected)
+    {
+        combo.Items.Clear();
+        foreach (var option in options)
+        {
+            var item = new ComboBoxItem { Content = option.Label, Tag = option.Value };
+            combo.Items.Add(item);
+            if (option.Value == selected)
+                combo.SelectedItem = item;
+        }
     }
 
     private void OnDraftChanged(object? sender, PropertyChangedEventArgs e)
@@ -671,46 +684,36 @@ public sealed partial class SendPage : Page
         RefreshSendRowSelectionIndicators();
         if (_draft is null) return;
         DraftRowName.Text = string.IsNullOrWhiteSpace(_draft.Name)
-            ? _draft.IsFile ? "新建文件 Send" : "新建文本 Send" : _draft.Name;
+            ? _draft.IsFile ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA3EB22D84F84156C) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text80774221469D4826) : _draft.Name;
         DraftRowGlyph.Glyph = _draft.IsFile ? "\uE8A5" : "\uE8E4";
     }
     private void OnDeletionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_initializingEditor || _draft is null || DeletionChoice.SelectedItem is not string label) return;
-        CustomDeletionEditorPanel.Visibility = label == "自定义" ? Visibility.Visible : Visibility.Collapsed;
-        if (label == "自定义")
-        {
-            _draft.DeletionDateLabel = "自定义";
-            _draft.DeletionDate ??= DateTimeOffset.UtcNow.AddDays(7);
-            return;
-        }
-        if (label.StartsWith("保持不变", StringComparison.Ordinal))
+        if (_initializingEditor || _isSavingEditor || _draft is null
+            || DeletionChoice.SelectedItem is not ComboBoxItem { Tag: SendDatePreset preset }) return;
+        CustomDeletionEditorPanel.Visibility = preset == SendDatePreset.Custom ? Visibility.Visible : Visibility.Collapsed;
+        if (preset == SendDatePreset.KeepExisting)
         {
             if (_editorBaseline is { } baseline)
             {
-                _draft.DeletionDateLabel = baseline.DeletionDateLabel;
+                _draft.DeletionPreset = baseline.DeletionPreset;
                 _draft.DeletionDate = baseline.DeletionDate;
             }
             return;
         }
-        _draft.DeletionDateLabel = "自定义";
-        _draft.DeletionDate = RelativeDate(label);
+        _draft.SelectDeletion(preset, DateTimeOffset.UtcNow);
     }
     private void OnExpirationChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_initializingEditor || _draft is null || ExpirationChoice.SelectedItem is not string label) return;
-        CustomExpirationEditorPanel.Visibility = label == "自定义" ? Visibility.Visible : Visibility.Collapsed;
-        if (label == "自定义")
-        {
-            _draft.SelectExpiration(SendExpirationSelection.CustomLabel, DateTimeOffset.UtcNow);
-            return;
-        }
-        if (label.StartsWith("保持不变", StringComparison.Ordinal))
+        if (_initializingEditor || _isSavingEditor || _draft is null
+            || ExpirationChoice.SelectedItem is not ComboBoxItem { Tag: SendDatePreset preset }) return;
+        CustomExpirationEditorPanel.Visibility = preset == SendDatePreset.Custom ? Visibility.Visible : Visibility.Collapsed;
+        if (preset == SendDatePreset.KeepExisting)
         {
             if (_editorBaseline is { } baseline) _draft.ExpirationDate = baseline.ExpirationDate;
             return;
         }
-        _draft.ExpirationDate = label == "永不过期" ? null : RelativeDate(label);
+        _draft.SelectExpiration(preset, DateTimeOffset.UtcNow);
     }
 
     private void OnCustomDeletionDateChanged(CalendarDatePicker sender, CalendarDatePickerDateChangedEventArgs args)
@@ -730,7 +733,7 @@ public sealed partial class SendPage : Page
     private void UpdateEditorDateHint()
     {
         var invalid = _draft is { ExpirationDate: { } expiration } draft && expiration > draft.ToDeletionDate();
-        ExpirationEditorHint.Text = invalid ? "过期时间不能晚于删除时间" : "过期后打不开，到删除时间才会删除";
+        ExpirationEditorHint.Text = invalid ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text55EE8047070A7ED5) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE01A80721B7B6FE5);
         ExpirationEditorHint.Foreground = ThemeBrushResolver.Resolve(this,
             invalid ? "SystemFillColorCriticalBrush" : "TextFillColorSecondaryBrush");
     }
@@ -739,16 +742,13 @@ public sealed partial class SendPage : Page
         draft.Type, draft.Name, draft.Text, draft.FileName, draft.Notes, draft.Password,
         draft.HideTextByDefault, draft.HideEmail, draft.Disabled, draft.RemovePassword,
         int.TryParse(MaxAccessTextBox.Text, out var count) ? count : null,
-        draft.DeletionDateLabel, draft.DeletionDate, draft.ExpirationDate, draft.ReplacementFile);
+        draft.DeletionPreset, draft.DeletionDate, draft.ExpirationDate, draft.ReplacementFile);
 
     private sealed record EditorSnapshot(
         SendType Type, string Name, string Text, string FileName, string Notes, string Password,
         bool HideText, bool HideEmail, bool Disabled, bool RemovePassword, int? MaxAccessCount,
-        string DeletionDateLabel, DateTimeOffset? DeletionDate, DateTimeOffset? ExpirationDate,
+        SendDatePreset DeletionPreset, DateTimeOffset? DeletionDate, DateTimeOffset? ExpirationDate,
         Core.Models.SendFileSource? ReplacementFile);
-    private static DateTimeOffset RelativeDate(string label) => label == "1 小时后"
-        ? DateTimeOffset.UtcNow.AddHours(1)
-        : DateTimeOffset.UtcNow.AddDays(int.Parse(label.Split(' ')[0], System.Globalization.CultureInfo.InvariantCulture));
     private void OnMaxAccessBeforeTextChanging(TextBox sender, TextBoxBeforeTextChangingEventArgs args) =>
         args.Cancel = args.NewText.Any(character => !char.IsAsciiDigit(character));
 
@@ -768,23 +768,23 @@ public sealed partial class SendPage : Page
             draft.ReplacementFile = source;
             draft.FileName = file.Name;
             if (string.IsNullOrWhiteSpace(draft.Name)) draft.Name = System.IO.Path.GetFileNameWithoutExtension(file.Name);
-            ChooseFileButton.Content = "更换文件…";
+            ChooseFileButton.Content = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC28BBBFA516EBE4F);
             UpdateEditorFileSummary();
             _editorDirty = true;
             if (_editingItem is not null)
             {
                 SendEditorErrorInfoBar.Severity = InfoBarSeverity.Warning;
-                SendEditorErrorInfoBar.Message = "更换文件会创建新的 Send，原链接失效。保存后请向接收者发送新链接。";
+                SendEditorErrorInfoBar.Message = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBDBC0F991F8213EB);
                 SendEditorErrorInfoBar.Visibility = Visibility.Visible;
                 SendEditorErrorInfoBar.IsOpen = true;
                 if (draft.ExistingHasPassword && !draft.RemovePassword)
-                    SendPasswordBox.PlaceholderText = "更换文件需要重新输入访问密码";
+                    SendPasswordBox.PlaceholderText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text411F775524FE9C8B);
             }
         }
         catch (OperationCanceledException ex)
             when (UiExceptionPolicy.IsGenuineCancellation(ex, _pageLifetimeCts?.Token ?? default)) { }
         catch (Exception ex) when (ex is ArgumentOutOfRangeException or IOException or UnauthorizedAccessException)
-        { ShowEditorError(ex is ArgumentOutOfRangeException ? "文件超过 500 MiB 上限。" : "无法读取所选文件，请重新选择。"); }
+        { ShowEditorError(ex is ArgumentOutOfRangeException ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFC35EAAAAD04F005) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text51BDBEFBC0C88421)); }
     }
 
     private async void OnSaveEditorClick(object sender, RoutedEventArgs e)
@@ -792,26 +792,26 @@ public sealed partial class SendPage : Page
         var draft = _draft;
         var item = _editingItem;
         if (draft is null || _isSavingEditor) return;
-        if (string.IsNullOrWhiteSpace(draft.Name)) { EditorNameError.Visibility = Visibility.Visible; ShowEditorError("请填写名称"); SendNameTextBox.Focus(FocusState.Programmatic); return; }
-        if (draft.IsText && string.IsNullOrWhiteSpace(draft.Text)) { EditorTextError.Visibility = Visibility.Visible; ShowEditorError("请填写要分享的内容"); SendTextBox.Focus(FocusState.Programmatic); return; }
-        if (draft.IsFile && (string.IsNullOrWhiteSpace(draft.FileName) || (item is null && draft.ReplacementFile is null))) { ShowEditorError("请选择要分享的文件"); return; }
+        if (string.IsNullOrWhiteSpace(draft.Name)) { EditorNameError.Visibility = Visibility.Visible; ShowEditorError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFBC79033BFA23D52)); SendNameTextBox.Focus(FocusState.Programmatic); return; }
+        if (draft.IsText && string.IsNullOrWhiteSpace(draft.Text)) { EditorTextError.Visibility = Visibility.Visible; ShowEditorError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5490F72FC3FC3B4B)); SendTextBox.Focus(FocusState.Programmatic); return; }
+        if (draft.IsFile && (string.IsNullOrWhiteSpace(draft.FileName) || (item is null && draft.ReplacementFile is null))) { ShowEditorError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text86A22F01B362998D)); return; }
         if (draft.ExpirationDate is { } expiration && expiration > draft.ToDeletionDate())
         {
-            ShowEditorError("过期时间不能晚于删除时间");
+            ShowEditorError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text55EE8047070A7ED5));
             ExpirationChoice.Focus(FocusState.Programmatic);
             return;
         }
         var replacingFile = item is not null && draft.IsFile && draft.ReplacementFile is not null;
         if (replacingFile && draft.ExistingHasPassword && !draft.RemovePassword && string.IsNullOrWhiteSpace(draft.Password))
         {
-            ShowEditorError("原 Send 已设置访问密码。更换文件需要重新输入原密码或设置新密码，也可以明确选择移除密码。");
+            ShowEditorError(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6BC108E1C3299364));
             SendPasswordBox.Focus(FocusState.Programmatic);
             return;
         }
         draft.MaxAccessCount = int.TryParse(MaxAccessTextBox.Text, out var limit) ? limit : null;
         _isSavingEditor = true;
         SetEditorBusy(true);
-        SaveEditorButton.Content = item is null ? "正在创建…" : "正在保存…";
+        SaveEditorButton.Content = item is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7C0305BC0CE607B2) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6BDB4435095E5D28);
         using var saveCts = CancellationTokenSource.CreateLinkedTokenSource(_pageLifetimeCts?.Token ?? default);
         _editorSaveCts = saveCts;
         try
@@ -819,11 +819,11 @@ public sealed partial class SendPage : Page
             if (replacingFile)
             {
                 var passwordMessage = draft.ExistingHasPassword && draft.RemovePassword
-                    ? " 新的 Send 将不再设置访问密码。" : string.Empty;
+                    ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text41F77B20297C7856) : string.Empty;
                 if (draft.OriginatingSession is not { } expectedSession
-                    || !await DialogHelper.ConfirmAsync(XamlRoot, expectedSession, "更换文件并创建新链接？",
-                        "更换文件会创建新的 Send，原链接失效。原 Send 会被删除，接收者需要使用新的分享链接。" + passwordMessage,
-                        "更换文件")
+                    || !await DialogHelper.ConfirmAsync(XamlRoot, expectedSession, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7B4EB5FD002106F1),
+                        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBCC4B47B810D5602) + passwordMessage,
+                        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEAA8249AD98560BB))
                     || !ReferenceEquals(draft, _draft)
                     || saveCts.IsCancellationRequested)
                     return;
@@ -832,7 +832,7 @@ public sealed partial class SendPage : Page
                 ? await ViewModel.CreateSendAsync(draft, draft.ReplacementFile, saveCts.Token)
                 : await ViewModel.UpdateSendFromDraftAsync(item, draft, draft.ReplacementFile, saveCts.Token);
             if (!ReferenceEquals(draft, _draft)) return;
-            if (!result.IsSuccess) { if (result.Status == UiOperationStatus.Failed) ShowEditorError(result.Error ?? "保存 Send 失败，请重试。"); return; }
+            if (!result.IsSuccess) { if (result.Status == UiOperationStatus.Failed) ShowEditorError(result.Error ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8715DD8F2827D9A3)); return; }
             var committed = ViewModel.LastCommittedItem;
             var name = draft.Name;
             CloseEditor();
@@ -843,16 +843,16 @@ public sealed partial class SendPage : Page
                     ViewModel.SelectFilterByTag("send:all");
                     ViewModel.SearchQuery = string.Empty;
                     ViewModel.CopyLinkCommand.Execute(committed);
-                    if (ViewModel.HasCopyFeedback) ViewModel.CopyFeedback = $"已创建“{name}” · 链接已复制，可以直接粘贴给对方";
+                    if (ViewModel.HasCopyFeedback) ViewModel.CopyFeedback = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text00A26BDA6B54914B,name);
                 }
                 else if (replacingFile && committed.ReconciliationState == SendReconciliationState.None)
                 {
                     ViewModel.CopyLinkCommand.Execute(committed);
                     if (ViewModel.HasCopyFeedback)
-                        ViewModel.CopyFeedback = "已创建并复制新链接，原链接已失效。请将新链接发送给接收者。";
+                        ViewModel.CopyFeedback = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA418CDF8F9730169);
                 }
                 else if (committed.ReconciliationState == SendReconciliationState.None)
-                    ViewModel.CopyFeedback = $"已保存“{name}”";
+                    ViewModel.CopyFeedback = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextDFBFD1445B27E2C2,name);
                 _changingSelection = true;
                 SendsList.SelectedItem = ViewModel.FilteredItems.FirstOrDefault(value => value.Id == committed.Id);
                 _changingSelection = false;
@@ -864,7 +864,7 @@ public sealed partial class SendPage : Page
             _editorSaveCts = null;
             _isSavingEditor = false;
             SetEditorBusy(false);
-            SaveEditorButton.Content = _editingItem is null ? "创建并复制链接" : "保存";
+            SaveEditorButton.Content = _editingItem is null ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA71BF6DF75763893) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA3030BF8F16DC63C);
         }
     }
 
@@ -966,7 +966,7 @@ public sealed partial class SendPage : Page
         if (ViewModel.HasCopyFeedback)
         {
             _copiedLinkVersion = _clipboardStatus?.WriteVersion ?? 0;
-            ShareLinkLabel.Text = "✓ 已复制";
+            ShareLinkLabel.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBC860F5A90103162);
             SetSelectedLinkCopyState(true);
             UpdateLinkCopyFeedback();
             _copyTimer.Start();
@@ -977,7 +977,7 @@ public sealed partial class SendPage : Page
         if (_clipboardStatus is null || _copiedLinkVersion == 0) return;
         if (!_clipboardStatus.HasContent || _clipboardStatus.WriteVersion != _copiedLinkVersion)
         {
-            ShareLinkLabel.Text = "分享链接";
+            ShareLinkLabel.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text10BA647975FEB6FF);
             ShareLinkProgress.Visibility = Visibility.Collapsed;
             SetSelectedLinkCopyState(false);
             _copyTimer.Stop();
@@ -985,19 +985,19 @@ public sealed partial class SendPage : Page
         }
         if (_clipboardStatus.ClearAt is not { } clearAt)
         {
-            ShareLinkLabel.Text = "✓ 已复制";
+            ShareLinkLabel.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBC860F5A90103162);
             ShareLinkProgress.Visibility = Visibility.Collapsed;
             return;
         }
         var seconds = Math.Max(0, (int)Math.Ceiling((clearAt - DateTimeOffset.UtcNow).TotalSeconds));
-        ShareLinkLabel.Text = $"✓ 已复制 · {seconds} 秒";
+        ShareLinkLabel.Text = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextD906CFE40897E21B,seconds);
         ShareLinkProgress.Visibility = Visibility.Visible;
         ShareLinkProgress.Value = Math.Clamp(seconds / (double)Math.Max(1, _clipboardStatus.TotalSeconds), 0, 1);
     }
     private void SetSelectedLinkCopyState(bool copied)
     {
         CopySelectedLinkGlyph.Glyph = copied ? "\uE73E" : "\uE71B";
-        CopySelectedLinkText.Text = copied ? "已复制" : "复制链接";
+        CopySelectedLinkText.Text = copied ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8F6F8D979C981CED) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8E86F9B1D54F2C51);
     }
     private void CopyText(string? text)
     {
@@ -1006,10 +1006,10 @@ public sealed partial class SendPage : Page
         {
             var clipboard = global::App.App.Services.GetRequiredService<IClipboardService>();
             clipboard.SetSecretText(text);
-            (clipboard as IClipboardStatus)?.SetLabel("文本");
-            ViewModel.CopyFeedback = "文本已复制";
+            (clipboard as IClipboardStatus)?.SetLabel(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDD81861811E57BF7));
+            ViewModel.CopyFeedback = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text714207E324062C61);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException or UnauthorizedAccessException) { ViewModel.Error = "无法复制文本，请稍后重试。"; }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException or UnauthorizedAccessException) { ViewModel.Error = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB231003B3F9267B2); }
     }
     private void OnCopyTextClick(object sender, RoutedEventArgs e) => CopyText(_detailDraft?.Text ?? _selectedItem?.TextContent);
     private void OnCopyReceivedTextClick(object sender, RoutedEventArgs e)
@@ -1132,7 +1132,7 @@ public sealed partial class SendPage : Page
                 Task detailTask = Task.CompletedTask;
                 if (TryCommitPageRequest(request, () =>
                 {
-                    ViewModel.CopyFeedback = committed.Disabled ? $"已禁用“{item.Name}”，链接暂时打不开" : $"已启用“{item.Name}”";
+                    ViewModel.CopyFeedback = committed.Disabled ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextA99EAF37CF61D865,item.Name) : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text9CBF4D3457ACC26C,item.Name);
                     detailTask = ShowDetailAsync(committed);
                 })) await detailTask;
             }
@@ -1144,7 +1144,7 @@ public sealed partial class SendPage : Page
     {
         if (item is null || !ViewModel.CanModifySend(item) || ViewModel.LoadedSession is not { } expectedSession
             || !TryBeginPageRequest(out var request)) return;
-        if (!await DialogHelper.ConfirmAsync(XamlRoot, expectedSession, $"删除“{item.Name}”？", "链接将立即失效，分享的内容会永久删除，无法撤销。", "删除")) return;
+        if (!await DialogHelper.ConfirmAsync(XamlRoot, expectedSession, global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text591F8EBAE3D1A223,item.Name), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBF402D7E00319243), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2F9DAA828907B93F))) return;
         if (!IsCurrentPageRequest(request)) return;
         await ViewModel.DeleteSendCommand.ExecuteAsync(new SendDeleteRequest(item, expectedSession));
         if (ViewModel.Items.All(existing => existing.Id != item.Id))
@@ -1152,7 +1152,7 @@ public sealed partial class SendPage : Page
             TryCommitPageRequest(request, () =>
             {
             if (_selectedItem?.Id == item.Id) { _selectedItem = null; DetailScroll.Visibility = Visibility.Collapsed; ChooseSendHint.Visibility = Visibility.Visible; }
-            ViewModel.CopyFeedback = $"已删除“{item.Name}”";
+            ViewModel.CopyFeedback = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text85E9EF438B3B0D24,item.Name);
             SendsList.SelectedItem = ViewModel.FilteredItems.FirstOrDefault();
             });
         }
@@ -1160,7 +1160,7 @@ public sealed partial class SendPage : Page
     private void OnSortClick(object sender, RoutedEventArgs e)
     {
         ViewModel.SortByDeletion = sender is FrameworkElement { Tag: "deletion" };
-        SortButton.Content = ViewModel.SortByDeletion ? "即将删除" : "最近修改";
+        SortButton.Content = ViewModel.SortByDeletion ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF5C342DCC3A751DA) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAD3BF1EEA84B70E4);
         ReconcileFilteredSelection();
     }
     private async void OnEditAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { if (!CanHandleListShortcut()) return; args.Handled = true; await EditItemAsync(_selectedItem); }
@@ -1212,7 +1212,7 @@ public sealed partial class SendPage : Page
         if (ViewModel.IsBusy) return;
         if (string.IsNullOrWhiteSpace(ViewModel.ReceivedLinkUrl))
         {
-            ViewModel.Error = "请先粘贴链接";
+            ViewModel.Error = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE5BD7D078C8EA770);
             ReceivedLinkTextBox.Focus(FocusState.Programmatic);
             return;
         }
@@ -1278,10 +1278,10 @@ public sealed partial class SendPage : Page
     {
         if (_draft is null) return;
         var hasFile = !string.IsNullOrWhiteSpace(_draft.FileName);
-        ChooseFileButton.Content = hasFile ? "更换文件…" : "选择文件…";
+        ChooseFileButton.Content = hasFile ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC28BBBFA516EBE4F) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text29D75B8EB8866BB4);
         EditorFileIcon.Visibility = hasFile ? Visibility.Visible : Visibility.Collapsed;
         EditorFileName.Visibility = hasFile ? Visibility.Visible : Visibility.Collapsed;
-        EditorFileSize.Text = hasFile ? FormatSize(_draft.ReplacementFileLength ?? _editingItem?.FileSize) : "最大 500 MB";
+        EditorFileSize.Text = hasFile ? FormatSize(_draft.ReplacementFileLength ?? _editingItem?.FileSize) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBA312869EDE848F7);
         UpdateEditorValueLayout();
     }
     private async void OnBackToListClick(object sender, RoutedEventArgs e)
@@ -1319,7 +1319,7 @@ public sealed partial class SendPage : Page
         if (_selectedItem?.Link is not { } link) return;
         SelectFilter("send:receive");
         ViewModel.ReceivedLinkUrl = link;
-        ViewModel.CopyFeedback = "已填入文件链接。打开并验证后即可下载。";
+        ViewModel.CopyFeedback = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text56DD41C08C715C7F);
     }
 
     private async void OnSaveReceivedFileClick(object sender, RoutedEventArgs e)
@@ -1351,7 +1351,7 @@ public sealed partial class SendPage : Page
                     SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads,
                     SuggestedFileName = received.FileName ?? "send-file",
                 };
-                picker.FileTypeChoices.Add("文件", new System.Collections.Generic.List<string> { "." });
+                picker.FileTypeChoices.Add(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text39932F24FE11A6BA), new System.Collections.Generic.List<string> { "." });
                 var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
                 WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
@@ -1453,17 +1453,17 @@ public sealed partial class SendPage : Page
     private static string FileTransferError(Exception exception)
     {
         if (Api.RequestTimeoutClassifier.IsTimeout(exception))
-            return "文件传输长时间没有进展，请检查连接后重试。";
+            return global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2019E7CD5801502A);
 
         return exception switch
         {
-            UnauthorizedAccessException => "没有访问所选文件的权限。",
+            UnauthorizedAccessException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8BACF90B63A4C664),
             InvalidDataException or System.Security.Cryptography.CryptographicException =>
-                "Send 文件完整性校验失败，文件未保存。",
-            HttpRequestException => "网络请求失败，请检查连接后重试。",
-            IOException => "文件写入失败，请检查磁盘状态后重试。",
-            ObjectDisposedException => "操作已取消，文件未保存。",
-            _ => "保存 Send 文件失败。",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF3039FD9EA3627AA),
+            HttpRequestException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBD573FBAE00C37F5),
+            IOException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1A46F15D1AE566A7),
+            ObjectDisposedException => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA6A6B2306CD940BF),
+            _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF10034AFD900EE5E),
         };
     }
 

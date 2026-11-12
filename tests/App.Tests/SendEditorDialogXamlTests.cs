@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using App.ViewModels.Models;
 using Xunit;
 
 namespace App.Tests;
@@ -72,8 +73,11 @@ public class SendEditorDialogXamlTests
     public void Dialog_DeletionCombo_IncludesCustomOption()
     {
         var doc = LoadDialogXaml();
-        var strings = doc.Descendants(X + "String").Select(e => e.Value).ToList();
-        Assert.Contains("自定义", strings);
+        var combo = doc.Descendants(Xaml + "ComboBox")
+            .Single(element => element.Attribute(X + "Name")?.Value == "DeletionPresetChoice");
+        Assert.Empty(combo.Elements(X + "String"));
+        Assert.Contains(SendDatePresetOptions.CreateDeletionOptions(compact: true),
+            option => option.Value == SendDatePreset.Custom);
     }
 
     [Fact]
@@ -90,7 +94,7 @@ public class SendEditorDialogXamlTests
     }
 
     [Fact]
-    public void Dialog_CustomExpirationUsesOneWayInitializationAndExplicitChangeHandlers()
+    public void Dialog_CustomExpirationUsesStablePresetInitializationAndExplicitChangeHandlers()
     {
         var doc = LoadDialogXaml();
         var expirationCombo = doc
@@ -100,13 +104,12 @@ public class SendEditorDialogXamlTests
             .Descendants(Xaml + "CalendarDatePicker")
             .Single(element => element.Attribute("Header")?.Value == "自定义过期日期");
 
-        Assert.Equal(
-            "{x:Bind Draft.ExpirationDateLabel, Mode=OneWay}",
-            expirationCombo.Attribute("SelectedItem")?.Value);
+        Assert.Equal("ExpirationPresetChoice", expirationCombo.Attribute(X + "Name")?.Value);
+        Assert.Null(expirationCombo.Attribute("SelectedItem"));
         Assert.Equal("OnExpirationLabelChanged", expirationCombo.Attribute("SelectionChanged")?.Value);
-        Assert.Contains(
-            expirationCombo.Elements(X + "String"),
-            element => element.Value == "自定义");
+        Assert.Empty(expirationCombo.Elements(X + "String"));
+        Assert.Contains(SendDatePresetOptions.CreateExpirationOptions(compact: true),
+            option => option.Value == SendDatePreset.Custom);
         Assert.Equal(
             "{x:Bind Draft.CustomExpirationDate, Mode=OneWay}",
             customPicker.Attribute("Date")?.Value);
@@ -119,6 +122,7 @@ public class SendEditorDialogXamlTests
         Assert.True(initialBindingUpdate >= 0);
         Assert.True(expirationChangesEnabled > initialBindingUpdate);
         Assert.Contains("if (!_canApplyExpirationChanges", code);
+        Assert.Contains("Tag: SendDatePreset preset", code);
     }
 
     [Fact]

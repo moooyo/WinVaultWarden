@@ -71,8 +71,46 @@ public sealed record ConnectTokenRequest(
     string? CodeVerifier = null,
     string? RedirectUri = null,
     string? NewDeviceOtp = null,
-    string? AuthRequestId = null)
+    string? AuthRequestId = null,
+    string? ClientSecret = null)
 {
+    public static ConnectTokenRequest UserApiKey(
+        string clientId,
+        string clientSecret,
+        string deviceIdentifier,
+        string deviceName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(clientId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(clientSecret);
+        ArgumentException.ThrowIfNullOrWhiteSpace(deviceName);
+        if (!clientId.StartsWith("user.", StringComparison.Ordinal)
+            || !Guid.TryParseExact(clientId.AsSpan(5), "D", out var userId)
+            || userId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "A personal API client ID must have the form user.<account UUID>.",
+                nameof(clientId));
+        }
+        if (clientSecret.Length > 8192 || clientSecret.Any(char.IsControl))
+            throw new ArgumentException("The API secret has an invalid shape.", nameof(clientSecret));
+
+        return new ConnectTokenRequest(
+            "client_credentials",
+            null,
+            null,
+            "api",
+            $"user.{userId:D}",
+            NormalizeRequiredGuid(deviceIdentifier, nameof(deviceIdentifier)),
+            deviceName,
+            "6",
+            null,
+            null,
+            ClientSecret: clientSecret);
+    }
+
+    public override string ToString() =>
+        $"ConnectTokenRequest {{ GrantType = {GrantType}, Scope = {Scope}, Credentials = [redacted] }}";
+
     public static ConnectTokenRequest Password(
         string username,
         string password,

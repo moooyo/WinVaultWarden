@@ -9,6 +9,111 @@ namespace App.Tests;
 public class SecurityReportViewModelTests
 {
     [Fact]
+    public async Task UnassessedStrength_RemainsUnknownAfterSuccessfulExposureCheck()
+    {
+        var sourceItems = new[] { new HealthItemRef("long", "Long password", "user@example.test") };
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport([], [], []) { UnassessedPasswords = sourceItems },
+        };
+        var viewModel = new SecurityReportViewModel(service);
+
+        await viewModel.LoadOfflineAsync();
+        sourceItems[0] = new HealthItemRef("replaced", "Changed later", null);
+        await viewModel.RunExposedCheckCommand.ExecuteAsync(null);
+
+        Assert.Equal(DataPageState.Content, viewModel.OfflineState);
+        Assert.Equal("long", Assert.Single(viewModel.UnassessedItems).CipherId);
+        Assert.Equal(1, viewModel.UnassessedCount);
+        Assert.Empty(viewModel.WeakItems);
+        Assert.Equal(0, viewModel.TotalIssueCount);
+        Assert.True(viewModel.ExposedChecked);
+        Assert.True(viewModel.ShowUnassessedPasswords);
+        Assert.False(viewModel.IsReportComplete);
+        Assert.Equal(SecuritySeverity.Unknown, viewModel.OverallSeverity);
+        Assert.Contains("not assessed", viewModel.SummaryText, StringComparison.Ordinal);
+        Assert.Contains("not assessed", viewModel.CategorySummary, StringComparison.Ordinal);
+        Assert.DoesNotContain("所有条目都通过了检查", viewModel.EmptyMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task UnassessedStrength_DoesNotMarkPreviousFindingResolved()
+    {
+        var item = new HealthItemRef("entry", "Entry", null);
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport([], [new WeakFinding(item, 1)], []),
+        };
+        var viewModel = new SecurityReportViewModel(service);
+        await viewModel.LoadOfflineAsync();
+
+        service.Report = new HealthReport([], [], []) { UnassessedPasswords = [item] };
+        await viewModel.LoadOfflineAsync();
+
+        Assert.Empty(viewModel.ResolvedItems);
+        Assert.Equal(0, viewModel.ResolvedCount);
+        Assert.True(viewModel.HasUnassessed);
+        Assert.False(viewModel.IsReportComplete);
+
+        service.Report = new HealthReport([], [], []);
+        await viewModel.LoadOfflineAsync();
+
+        Assert.Equal("entry", Assert.Single(viewModel.ResolvedItems).CipherId);
+        Assert.False(viewModel.HasUnassessed);
+    }
+
+    [Fact]
+    public async Task UnassessedStrength_IsCountedSeparatelyFromConfirmedFindings()
+    {
+        var unknown = new HealthItemRef("long", "Long password", null);
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport([], [new WeakFinding(new("weak", "Weak", null), 1)], [])
+            {
+                UnassessedPasswords = [unknown, unknown],
+            },
+        };
+        var viewModel = new SecurityReportViewModel(service);
+
+        await viewModel.LoadOfflineAsync();
+
+        Assert.Equal(1, viewModel.UnassessedCount);
+        Assert.Equal(1, viewModel.TotalIssueCount);
+        Assert.Equal(1, viewModel.OverviewIssueCount);
+        Assert.Equal("weak", viewModel.PriorityIssue?.CipherId);
+        Assert.Equal(SecuritySeverity.Critical, viewModel.OverallSeverity);
+        viewModel.Category = "weak";
+        Assert.False(viewModel.ShowUnassessedPasswords);
+        Assert.Equal("weak", Assert.Single(Assert.Single(viewModel.IssueGroups).Items).CipherId);
+    }
+
+    [Fact]
+    public async Task ClearSensitive_PurgesUnassessedMetadataDuringCollectionNotification()
+    {
+        var service = new StubHealthUiService
+        {
+            Report = new HealthReport([], [], [])
+            {
+                UnassessedPasswords = [new HealthItemRef("entry", "Entry", "user@example.test")],
+            },
+        };
+        var viewModel = new SecurityReportViewModel(service);
+        viewModel.UnassessedItems.CollectionChanged += (_, args) =>
+        {
+            if (args.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add)
+                viewModel.ClearSensitive();
+        };
+
+        await viewModel.LoadOfflineAsync();
+
+        Assert.Empty(viewModel.UnassessedItems);
+        Assert.Equal(0, viewModel.UnassessedCount);
+        Assert.False(viewModel.HasUnassessed);
+        Assert.False(viewModel.IsReportComplete);
+        Assert.Empty(viewModel.ResolvedItems);
+    }
+
+    [Fact]
     public async Task ReusedGroups_ProjectIndependentItemSnapshotsWithExactNavigationIds()
     {
         var sourceItems = new[]

@@ -599,6 +599,7 @@ public sealed class VaultSession : IVaultSnapshot
                 RemoveSecurityStampNoLock((accountId, endpoints));
                 ClearSensitiveState();
                 Account = AccountInfo.Empty;
+                PinUnlockSessionPolicy.Clear(this);
                 State = VaultState.LoggedOut;
             }
 
@@ -991,6 +992,7 @@ public sealed class VaultSession : IVaultSnapshot
                 }
                 ClearSensitiveState();
                 Account = AccountInfo.Empty;
+                PinUnlockSessionPolicy.Clear(this);
                 State = VaultState.LoggedOut;
             }
         }

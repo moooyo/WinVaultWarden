@@ -8,7 +8,7 @@ namespace Vault.Porting;
 
 public sealed record BwExport(bool Encrypted, IReadOnlyList<BwFolder> Folders, IReadOnlyList<BwItem> Items);
 
-public sealed record BwFolder(string? Id, string? Name);
+public sealed record BwFolder(string? Id, string? Name, DateTimeOffset? RevisionDate = null);
 
 public sealed record BwItem(
     string? Id,
@@ -30,14 +30,18 @@ public sealed record BwItem(
     BwBankAccount? BankAccount = null,
     BwDriversLicense? DriversLicense = null,
     BwPassport? Passport = null,
-    DateTimeOffset? ArchivedDate = null);
+    DateTimeOffset? ArchivedDate = null,
+    DateTimeOffset? CreationDate = null,
+    DateTimeOffset? RevisionDate = null);
 
 public sealed record BwLogin(
     string? Username,
     string? Password,
     string? Totp,
     IReadOnlyList<BwUri>? Uris,
-    IReadOnlyList<BwFido2Credential>? Fido2Credentials = null);
+    IReadOnlyList<BwFido2Credential>? Fido2Credentials = null,
+    DateTimeOffset? PasswordRevisionDate = null,
+    bool? AutofillOnPageLoad = null);
 
 public sealed record BwUri(string? Uri, int? Match);
 

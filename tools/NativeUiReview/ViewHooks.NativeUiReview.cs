@@ -197,6 +197,24 @@ namespace App.Views
             NativeReviewSelectSection("account");
             OnChangePasswordCardClick(this, new RoutedEventArgs());
         }
+
+        internal void NativeReviewShowAccountManagement()
+        {
+            NativeReviewSelectSection("account");
+            OnAccountManagementClick(this, new RoutedEventArgs());
+        }
+
+        internal AccountManagementPage? NativeReviewAccountManagement => SettingsContentFrame.Content as AccountManagementPage;
+        internal ImportExportPage? NativeReviewImportExport => SettingsContentFrame.Content as ImportExportPage;
+    }
+
+    public sealed partial class AccountManagementPage
+    {
+        internal bool NativeReviewFieldsMeasured => VerificationTokenBox.ActualWidth >= 120
+            && NewEmailBox.ActualWidth >= 120 && EmailPasswordBox.ActualWidth >= 120;
+        internal bool NativeReviewInitialSecurityState => ViewModel.CanRequestEmailChange
+            && !ViewModel.CanConfirmEmailChange && !EmailCodeBox.IsEnabled
+            && string.IsNullOrEmpty(EmailPasswordBox.Password) && string.IsNullOrEmpty(RevokePasswordBox.Password);
     }
 
     public sealed partial class LoginPage

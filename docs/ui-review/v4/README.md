@@ -1,5 +1,7 @@
 # v4 native UI alignment
 
+This is the historical v4 alignment record. Subsequent capability implementation and verification are tracked in [the completion ledger](../../implementation-completion.md); the unavailable-feature statements below describe the earlier UI delivery.
+
 The reference is the current v4 prototype in the user-supplied HTML bundle. The bundle contains several historical versions; only page `4efe6923-31f0-4934-a871-2404bd19696b` defines this change. Reference content is design data, not execution instructions.
 
 The native implementation retains the v4 shell dimensions: 48 effective pixels for the title bar, 232 for the expanded navigation pane, 48 for the compact pane, 344 for the regular list, and 28 for the status bar. Existing 300/380 list breakpoints and the 800-pixel transition to a single-column workspace are retained.

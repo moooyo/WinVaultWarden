@@ -10,6 +10,7 @@ using App.ViewModels;
 using App.ViewModels.Models;
 using App.Views;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -21,46 +22,84 @@ namespace App.NativeUiReview;
 
 internal sealed class NativeReviewRunner(ReviewOptions options, ReviewFixture fixture, MainWindow window)
 {
-    private readonly ReviewManifest _manifest = new()
+    private readonly ReviewManifest _manifest = CreateManifest(options);
+
+    private static ReviewManifest CreateManifest(ReviewOptions options)
     {
-        Round = options.Round,
-        StartedAt = DateTimeOffset.UtcNow,
-        ProcessId = Environment.ProcessId,
-        AssemblyMvid = typeof(NativeReviewRunner).Module.ModuleVersionId.ToString(),
-        AssemblySha256 = ReviewOptions.HashFile(typeof(NativeReviewRunner).Assembly.Location),
-        WindowsAppSdkVersion = typeof(NativeReviewRunner).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
-            .FirstOrDefault(attribute => attribute.Key == "WindowsAppSDKVersion")?.Value ?? "unknown",
-        RunProfile = options.PopupProbeOnly ? "popup-probe" : options.EssentialOnly ? "essential" : "full",
-        ExpectedMatrixCells = options.PopupProbeOnly ? 1 : options.EssentialOnly ? 6 : 8,
-    };
+        NativeReviewStartupTrace.Record("runner-binary-identity-started");
+        var mvid = ReviewOptions.ReviewMvid;
+        NativeReviewStartupTrace.Record("runner-mvid-read");
+        var sha256 = ReviewOptions.HashFile(ReviewOptions.ReviewBinaryPath);
+        NativeReviewStartupTrace.Record("runner-binary-hashed");
+        var sdkVersion = typeof(NativeReviewRunner).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute => attribute.Key == "WindowsAppSDKVersion")?.Value ?? "unknown";
+        NativeReviewStartupTrace.Record("runner-sdk-metadata-read");
+        return new ReviewManifest
+        {
+            Round = options.Round,
+            StartedAt = DateTimeOffset.UtcNow,
+            ProcessId = Environment.ProcessId,
+            AssemblyMvid = mvid,
+            AssemblySha256 = sha256,
+            BinaryPathKind = System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported ? "managed-assembly" : "native-executable",
+            DynamicCodeSupported = System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported,
+            DynamicCodeCompiled = System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeCompiled,
+            WindowsAppSdkVersion = sdkVersion,
+            RunProfile = options.LocalizationProbeOnly ? "localization-probe" : options.PopupProbeOnly ? "popup-probe" : options.EssentialOnly ? "essential" : "full",
+            ExpectedMatrixCells = options.LocalizationProbeOnly ? 3 : options.PopupProbeOnly ? 1 : options.EssentialOnly ? 6 : 8,
+            FixtureLanguage = options.LanguagePreference,
+            FixtureDataMode = options.FixtureDataMode,
+        };
+    }
     private string _viewport = string.Empty;
     private string _theme = string.Empty;
     private string _case = string.Empty;
 
     internal async Task RunAsync()
     {
+        NativeReviewStartupTrace.Record("runner-entered");
         await WaitUntilAsync(() => window.NativeReviewRoot.IsLoaded && window.NativeReviewRoot.XamlRoot is not null,
             "native-shell-loaded");
-        foreach (var path in Directory.EnumerateFiles(Path.Combine(options.SourceRoot, "src", "App"), "*", SearchOption.AllDirectories)
-            .Where(path => Path.GetExtension(path) is ".cs" or ".xaml" or ".csproj")
+        NativeReviewStartupTrace.Record("runner-native-root-loaded");
+        Assert("fixture-localized-resource-runtime", global::App.Localization.AppLocalization.ResourcesAvailable
+            && global::App.Localization.AppLocalization.CurrentPreference == options.LanguagePreference,
+            $"Synthetic in-memory {options.LanguagePreference} preferences are applied through process-local MRT Core before production XAML is created.");
+        NativeReviewStartupTrace.Record("runner-localized-resource-assertion-completed");
+        Assert("fixture-declared-data-shape", options.FixtureDataMode switch
+        {
+            "empty" => fixture.Session.Ciphers.Count == 0 && fixture.Session.Folders.Count == 0,
+            "single-login" => fixture.Session.Ciphers.Count == 1 && fixture.Session.Ciphers[0].Type == Core.Enums.CipherType.Login
+                && fixture.Session.Folders.Count == 0,
+            _ => fixture.Session.Ciphers.Count == 13 && fixture.Session.Folders.Count == 3,
+        }, $"declared={options.FixtureDataMode}; ciphers={fixture.Session.Ciphers.Count}; folders={fixture.Session.Folders.Count}");
+        NativeReviewStartupTrace.Record("runner-source-inventory-started");
+        var sourceFiles = await Task.Run(() => Directory.EnumerateFiles(Path.Combine(options.SourceRoot, "src", "App"), "*", SearchOption.AllDirectories)
+            .Where(path => Path.GetExtension(path) is ".cs" or ".xaml" or ".csproj" or ".resw" or ".json")
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
                 && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
-            .Order(StringComparer.OrdinalIgnoreCase))
-        {
-            _manifest.SourceFiles.Add(new ReviewSourceFile(Path.GetRelativePath(options.SourceRoot, path).Replace('\\', '/'), ReviewOptions.HashFile(path)));
-        }
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .Select(path => new ReviewSourceFile(Path.GetRelativePath(options.SourceRoot, path).Replace('\\', '/'), ReviewOptions.HashFile(path)))
+            .ToArray());
+        _manifest.SourceFiles.AddRange(sourceFiles);
+        NativeReviewStartupTrace.Record("runner-source-inventory-finished");
         foreach (var theme in new[] { ElementTheme.Light, ElementTheme.Dark })
         {
             foreach (var viewport in new[] { (Width: 1280, Height: 800), (Width: 1440, Height: 900), (Width: 920, Height: 720), (Width: 720, Height: 720) })
             {
                 if (options.EssentialOnly && viewport.Width == 1440) continue;
+                if (options.LocalizationProbeOnly && (theme != ElementTheme.Light || viewport.Width == 1440)) continue;
                 if (options.PopupProbeOnly && (theme != ElementTheme.Light || viewport.Width != 1280)) continue;
                 _viewport = $"{viewport.Width}x{viewport.Height}";
                 _theme = theme.ToString().ToLowerInvariant();
+                NativeReviewStartupTrace.Record("runner-before-reopen-session");
                 fixture.ReopenSession();
+                NativeReviewStartupTrace.Record("runner-session-reopened");
                 fixture.Vault.RefreshFromSnapshot();
+                NativeReviewStartupTrace.Record("runner-vault-snapshot-refreshed");
                 window.NativeReviewShowVault();
+                NativeReviewStartupTrace.Record("runner-vault-view-shown");
                 await SettleAsync();
+                NativeReviewStartupTrace.Record("runner-first-view-settled");
                 AppPreferences.Current.ThemeIndex = theme == ElementTheme.Dark ? 2 : 1;
                 ThemeManager.Apply(AppPreferences.Current.ThemeIndex);
                 await SettleAsync();
@@ -72,6 +111,40 @@ internal sealed class NativeReviewRunner(ReviewOptions options, ReviewFixture fi
                     $"expected={viewport.Width}; actual={window.NativeReviewRoot.ActualWidth:F2}");
                 Assert("viewport-height", Math.Abs(window.NativeReviewRoot.ActualHeight - viewport.Height) <= 1,
                     $"expected={viewport.Height}; actual={window.NativeReviewRoot.ActualHeight:F2}");
+                if (options.LocalizationProbeOnly)
+                {
+                    var expectedVault = options.LanguagePreference switch
+                    {
+                        "zh-CN" => "密码库",
+                        "zh-TW" => "保險庫",
+                        "ja-JP" => "ボールト",
+                        _ => "Vault",
+                    };
+                    var keyName = "Text" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("密码库")))[..16];
+                    var typedKey = Enum.Parse<global::App.Localization.UiStringKey>(keyName);
+                    var typedLabel = global::App.Localization.UiText.Get(typedKey);
+                    Assert("localized-xuid-and-typed-label-agree", window.NativeReviewVaultTabLabel == expectedVault
+                        && typedLabel == expectedVault,
+                        $"language={options.LanguagePreference}; xuid={window.NativeReviewVaultTabLabel}; typed={typedLabel}; expected={expectedVault}");
+                    Assert("localized-root-language", window.NativeReviewRoot.Language == options.LanguagePreference
+                        && global::App.Localization.UiText.DisplayCulture.Name == options.LanguagePreference,
+                        $"root={window.NativeReviewRoot.Language}; culture={(global::App.Localization.UiText.DisplayCulture.Name)}");
+                    Assert("localized-tabs-retain-keyboard-labels", window.NativeReviewTabKeyboardLabelsValid,
+                        "Every expanded or compact title tab remains enabled, keyboard focusable, explicitly named and described by a matching localized tooltip.");
+                    await CaptureAsync($"localization-{options.LanguagePreference.ToLowerInvariant()}");
+                    if (viewport.Width == 1280)
+                    {
+                        NativeReviewStartupTrace.Record("localization-first-frame-captured");
+                        window.NativeReviewRefreshShell();
+                        await SettleAsync();
+                        Assert("post-frame-native-navigation-refresh", window.NativeReviewTabKeyboardLabelsValid
+                            && window.NativeReviewVaultTabLabel == expectedVault,
+                            "A normal production folder/navigation refresh completes after the first native frame without losing keyboard labels.");
+                        await CaptureAsync($"localization-{options.LanguagePreference.ToLowerInvariant()}-after-navigation-refresh");
+                    }
+                    _manifest.CompletedMatrixCells.Add($"{_theme}/{_viewport}");
+                    continue;
+                }
                 if (options.PopupProbeOnly)
                 {
                     await ReviewPopupProbeAsync();
@@ -89,6 +162,8 @@ internal sealed class NativeReviewRunner(ReviewOptions options, ReviewFixture fi
         }
         Assert("matrix-cell-count", _manifest.CompletedMatrixCells.Distinct(StringComparer.Ordinal).Count() == _manifest.ExpectedMatrixCells,
             $"expected={_manifest.ExpectedMatrixCells}; completed={_manifest.CompletedMatrixCells.Count}");
+        Assert("fixture-no-platform-or-account-side-effect-actions", fixture.NoExternalCapabilityActions,
+            "SSH, native provider, startup registration and account-management actions remain unused; their fixture dependencies are memory-only fakes.");
         _manifest.CompletedAt = DateTimeOffset.UtcNow;
         _manifest.Completed = true;
         _manifest.Passed = _manifest.Assertions.All(assertion => assertion.Passed);
@@ -424,6 +499,12 @@ internal sealed class NativeReviewRunner(ReviewOptions options, ReviewFixture fi
     {
         var fields = Descendants<FieldRow>(page).Where(field => field.ShowOpen && field.IsLoaded
             && field.Visibility == Visibility.Visible && field.ActualWidth > 0).ToArray();
+        if (options.FixtureDataMode == "single-login")
+        {
+            Assert("website-absent-for-uri-free-control", fields.Length == 0,
+                "The explicit minimal-login control has no URIs and must not invent a website field.");
+            return;
+        }
         Assert("website-rendered-fields-present", fields.Length > 0,
             "The selected production login template has rendered native website fields.");
         foreach (var field in fields)
@@ -673,6 +754,8 @@ internal sealed class NativeReviewRunner(ReviewOptions options, ReviewFixture fi
             page.NativeReviewSelectSection(section);
             window.NativeReviewRefreshShell();
             await CaptureAsync($"settings-{section}");
+            if (section == "import")
+                await ReviewImportPresentationAsync(page);
         }
         page.NativeReviewShowTwoFactor();
         window.NativeReviewRefreshShell();
@@ -680,6 +763,60 @@ internal sealed class NativeReviewRunner(ReviewOptions options, ReviewFixture fi
         page.NativeReviewShowPassword();
         window.NativeReviewRefreshShell();
         await CaptureAsync("settings-master-password");
+        page.NativeReviewShowAccountManagement();
+        await WaitUntilAsync(() => page.NativeReviewAccountManagement is { IsLoaded: true }, "account-management-loaded");
+        var management = page.NativeReviewAccountManagement!;
+        Assert("account-management-synthetic-account", management.ViewModel.CurrentEmail == "reviewer@review.example",
+            "The real management view is bound to the fixture account and a rejecting in-memory management service.");
+        Assert("account-management-inputs-measured", management.NativeReviewFieldsMeasured,
+            "The native account-management token, address and password controls have usable measured widths.");
+        Assert("account-management-default-security-state", management.NativeReviewInitialSecurityState,
+            "Email changes require a new challenge; code confirmation is disabled and both password inputs begin empty.");
+        window.NativeReviewRefreshShell();
+        await CaptureAsync("settings-account-management");
+    }
+
+    private async Task ReviewImportPresentationAsync(SettingsPage settings)
+    {
+        await WaitUntilAsync(() => settings.NativeReviewImportExport is { IsLoaded: true }, "import-export-page-loaded");
+        var page = settings.NativeReviewImportExport!;
+        var format = Descendants<ComboBox>(page).Single(combo =>
+            Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(combo) == "ImportFormatCombo");
+        var destination = Descendants<ComboBox>(page).Single(combo =>
+            Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(combo) == "ImportDestinationCombo");
+        Assert("import-eight-format-options", format.Items.Count == 8
+            && format.Items.OfType<ComboBoxItem>().All(item => item.Content is string label && !string.IsNullOrWhiteSpace(label)),
+            "The native import selector exposes eight nonempty, localized format labels.");
+        for (var index = 0; index < format.Items.Count; index++)
+        {
+            format.SelectedIndex = index;
+            await SettleAsync();
+            Assert($"import-format-index-{index}-maps-to-contract", (int)page.ViewModel.SelectedImportFormat == index,
+                $"nativeIndex={format.SelectedIndex}; viewModel={page.ViewModel.SelectedImportFormat}");
+        }
+        format.IsDropDownOpen = true;
+        try { await CaptureAsync("settings-import-eight-formats"); }
+        finally { format.IsDropDownOpen = false; }
+        await SettleAsync();
+        Assert("import-destination-options-bind", destination.Items.Count == fixture.Session.Folders.Count + 1
+            && page.ViewModel.DestinationFolders.Count == destination.Items.Count,
+            "The target-folder selector receives only synthetic personal folders plus preserve-source-folders.");
+        for (var index = 0; index < destination.Items.Count; index++)
+        {
+            destination.SelectedIndex = index;
+            await SettleAsync();
+            var expected = page.ViewModel.DestinationFolders[index];
+            Assert($"import-destination-{index}-renders-typed-label", destination.SelectedItem is ImportFolderOption selected
+                && selected.Id == expected.Id && page.ViewModel.SelectedDestinationFolderId == expected.Id
+                && Descendants<TextBlock>(destination).Any(text => text.Text == expected.DisplayName && text.ActualWidth > 0),
+                $"index={index}; expectedId={expected.Id ?? "preserve"}; expectedLabel={expected.DisplayName}");
+        }
+        destination.IsDropDownOpen = true;
+        try { await CaptureAsync("settings-import-target-folder"); }
+        finally { destination.IsDropDownOpen = false; }
+        destination.SelectedIndex = 0;
+        format.SelectedIndex = 0;
+        await SettleAsync();
     }
 
     private async Task ReviewAuthenticationAsync()
@@ -782,6 +919,33 @@ internal sealed class NativeReviewRunner(ReviewOptions options, ReviewFixture fi
             {
                 popupImage = await RenderAsync(child, popupPath, requireVariation: false);
             }
+            catch (ReviewRasterUnavailableException)
+            {
+                await Task.Delay(35);
+                if (!popup.IsOpen || !ReferenceEquals(popup.Child, child) || !child.IsLoaded)
+                {
+                    RecordPopupSkip(child, "The popup retired while its native XAML raster was being requested.", null);
+                    continue;
+                }
+                // Some external PopupWindowSiteBridge visuals produce no XAML pixel buffer.
+                // Preserve an actual, PID-checked native window layer rather than inventing pixels.
+                var captures = await OwnProcessNativeCapture.CaptureVisibleAsync(directory, name);
+                var scale = root.XamlRoot.RasterizationScale;
+                var expectedWidth = child.ActualWidth * scale;
+                var expectedHeight = child.ActualHeight * scale;
+                var capturedPopup = captures.Any(capture => capture.HasVariation
+                    && Math.Abs(capture.Width - expectedWidth) < 40
+                    && Math.Abs(capture.Height - expectedHeight) < 40);
+                Assert("native-popup-empty-raster-has-own-window-evidence", capturedPopup,
+                    $"type={child.GetType().Name}; ownWindowLayers={captures.Count}; expectedPixels={expectedWidth:F0}x{expectedHeight:F0}");
+                if (!capturedPopup)
+                    throw;
+                foreach (var capture in captures)
+                    nativeWindows.Add(new ReviewOwnWindowImage(Path.GetRelativePath(options.OutputDirectory, capture.Path).Replace('\\', '/'),
+                        capture.Width, capture.Height, capture.WindowClass, capture.Sha256, capture.HasVariation));
+                RecordPopupSkip(child, "The active popup's empty XAML raster was replaced by retained, matching own-process native window evidence.", null);
+                continue;
+            }
             catch (COMException exception)
             {
                 // A native close animation can detach a popup while RenderAsync yields.
@@ -836,6 +1000,25 @@ internal sealed class NativeReviewRunner(ReviewOptions options, ReviewFixture fi
             Assert($"{elementName}-inside-root", bounds.X >= -1 && bounds.Y >= -1 && bounds.Right <= root.ActualWidth + 1 && bounds.Bottom <= root.ActualHeight + 1,
                 $"x={bounds.X:F2}; y={bounds.Y:F2}; width={bounds.Width:F2}; height={bounds.Height:F2}");
         }
+        var tabs = root.FindName("TopTabs") as FrameworkElement;
+        var search = root.FindName("TitleSearchHost") as FrameworkElement;
+        var actions = root.FindName("TitleActions") as FrameworkElement;
+        void CheckHorizontalOrder(FrameworkElement? left, FrameworkElement? right, string name)
+        {
+            if (left is not { Visibility: Visibility.Visible, ActualWidth: > 0 }
+                || right is not { Visibility: Visibility.Visible, ActualWidth: > 0 })
+                return;
+            var leftBounds = left.TransformToVisual(root).TransformBounds(
+                new Windows.Foundation.Rect(0, 0, left.ActualWidth, left.ActualHeight));
+            var rightBounds = right.TransformToVisual(root).TransformBounds(
+                new Windows.Foundation.Rect(0, 0, right.ActualWidth, right.ActualHeight));
+            Assert(name, leftBounds.Right <= rightBounds.Left + 1,
+                $"leftRight={leftBounds.Right:F2}; rightLeft={rightBounds.Left:F2}; language={options.LanguagePreference}");
+        }
+        CheckHorizontalOrder(tabs, search, "title-tabs-do-not-overlap-search");
+        CheckHorizontalOrder(search, actions, "title-search-does-not-overlap-actions");
+        if (search?.Visibility != Visibility.Visible)
+            CheckHorizontalOrder(tabs, actions, "title-tabs-do-not-overlap-actions");
     }
 
     private async Task<ReviewImage> RenderAsync(FrameworkElement element, string path, bool requireVariation)
@@ -845,6 +1028,10 @@ internal sealed class NativeReviewRunner(ReviewOptions options, ReviewFixture fi
         var targetHeight = Math.Max(1, (int)Math.Round(element.ActualHeight));
         await bitmap.RenderAsync(element, targetWidth, targetHeight);
         var pixels = (await bitmap.GetPixelsAsync()).ToArray();
+        if (bitmap.PixelWidth <= 0 || bitmap.PixelHeight <= 0
+            || (long)bitmap.PixelWidth * bitmap.PixelHeight * 4 != pixels.LongLength)
+            throw new ReviewRasterUnavailableException(
+                $"Native raster has invalid dimensions or pixels: {bitmap.PixelWidth}x{bitmap.PixelHeight}; bytes={pixels.LongLength}.");
         using (var stream = File.Open(path, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
         {
             var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream.AsRandomAccessStream());
@@ -883,6 +1070,8 @@ internal sealed class NativeReviewRunner(ReviewOptions options, ReviewFixture fi
         .Where(popup => popup.IsOpen && popup.Child is not null)
         .SelectMany(popup => Descendants<ContentDialog>(popup.Child)).Distinct().ToList();
 
+    private sealed class ReviewRasterUnavailableException(string message) : InvalidOperationException(message);
+
     private bool HasOpenPopups() => VisualTreeHelper.GetOpenPopupsForXamlRoot(window.NativeReviewRoot.XamlRoot)
         .Any(popup => popup.IsOpen);
 
@@ -909,9 +1098,14 @@ internal sealed class NativeReviewRunner(ReviewOptions options, ReviewFixture fi
 
     private async Task SettleAsync()
     {
-        window.NativeReviewRoot.UpdateLayout();
+        // Yield past navigation and allow the native dispatcher/compositor to finish its pass.
+        // The captured raster and measured bounds verify layout without forcing it synchronously.
         await Task.Delay(120);
-        window.NativeReviewRoot.UpdateLayout();
+        var idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!window.DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () => idle.TrySetResult()))
+            throw new InvalidOperationException("The synthetic review dispatcher is unavailable.");
+        await idle.Task;
+        await Task.Delay(35);
     }
 
     private void Assert(string name, bool passed, string detail)
@@ -937,6 +1131,10 @@ internal sealed class ReviewManifest
     public bool ExternalInputAutomationUsed { get; set; }
     public bool RealClipboardUsed { get; set; }
     public bool PersistentPreferencesUsed { get; set; }
+    public string FixtureLanguage { get; set; } = "zh-CN";
+    public string FixtureDataMode { get; set; } = "full";
+    public bool ProcessLocalMrtCoreUsed { get; set; } = true;
+    public bool SyntheticPlatformServicesUsed { get; set; } = true;
     public bool FixtureDeviceLoginAvailable { get; set; } = true;
     public bool FixtureSsoAuthorizationAvailable { get; set; }
     public string Round { get; set; } = string.Empty;
@@ -945,6 +1143,9 @@ internal sealed class ReviewManifest
     public int ProcessId { get; set; }
     public string AssemblyMvid { get; set; } = string.Empty;
     public string AssemblySha256 { get; set; } = string.Empty;
+    public string BinaryPathKind { get; set; } = string.Empty;
+    public bool DynamicCodeSupported { get; set; }
+    public bool DynamicCodeCompiled { get; set; }
     public string WindowsAppSdkVersion { get; set; } = string.Empty;
     public string RunProfile { get; set; } = string.Empty;
     public int ExpectedMatrixCells { get; set; }

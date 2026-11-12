@@ -13,6 +13,90 @@ namespace Vault.Tests;
 
 public class BrowserPasskeyRequestHandlerTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CommittedCreate_NotifiesTheHostAfterSavingEvenWhenRefreshFailed(bool refreshFailed)
+    {
+        var write = new FakeVaultWriteService
+        {
+            SaveException = refreshFailed
+                ? new VaultRefreshException("Synthetic committed write.", new IOException("Synthetic refresh failure."))
+                : null,
+        };
+        var approval = new CapturingApprovalService(approve: true)
+        {
+            CreateResult = new PasskeyCreateApprovalResult(new(true, true, true), true, null),
+        };
+        var notices = 0;
+        var handler = new BrowserPasskeyRequestHandler(
+            new FakeVaultService(VaultState.Unlocked, []), write, approval,
+            vaultChanged: _ =>
+            {
+                Assert.NotNull(write.Saved);
+                notices++;
+            });
+        using var payload = CreatePayload();
+
+        var response = await handler.HandleAsync(new("committed-notice", "passkey.create", payload.RootElement, Context: Ctx()));
+
+        Assert.True(response.Ok);
+        Assert.Equal(1, notices);
+    }
+
+    [Fact]
+    public async Task FailedCreate_DoesNotPublishACommittedPresentationChange()
+    {
+        var write = new FakeVaultWriteService { SaveException = new InvalidOperationException("Synthetic rejected write.") };
+        var approval = new CapturingApprovalService(approve: true)
+        {
+            CreateResult = new PasskeyCreateApprovalResult(new(true, true, true), true, null),
+        };
+        var notices = 0;
+        var handler = new BrowserPasskeyRequestHandler(new FakeVaultService(VaultState.Unlocked, []), write, approval,
+            vaultChanged: _ => notices++);
+        using var payload = CreatePayload();
+
+        var response = await handler.HandleAsync(new("rejected-notice", "passkey.create", payload.RootElement, Context: Ctx()));
+
+        Assert.False(response.Ok);
+        Assert.Equal(0, notices);
+    }
+
+    [Fact]
+    public async Task PresentationFailure_DoesNotUndoTheCommittedAttestation()
+    {
+        var approval = new CapturingApprovalService(approve: true)
+        {
+            CreateResult = new PasskeyCreateApprovalResult(new(true, true, true), true, null),
+        };
+        var handler = new BrowserPasskeyRequestHandler(new FakeVaultService(VaultState.Unlocked, []),
+            new FakeVaultWriteService(), approval, vaultChanged: _ => throw new IOException("Synthetic observer failure."));
+        using var payload = CreatePayload();
+
+        var response = await handler.HandleAsync(new("observer-failure", "passkey.create", payload.RootElement, Context: Ctx()));
+
+        Assert.True(response.Ok);
+    }
+
+    [Fact]
+    public async Task CancellationDuringPresentation_DoesNotReleaseAnAttestation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var approval = new CapturingApprovalService(approve: true)
+        {
+            CreateResult = new PasskeyCreateApprovalResult(new(true, true, true), true, null),
+        };
+        var handler = new BrowserPasskeyRequestHandler(new FakeVaultService(VaultState.Unlocked, []),
+            new FakeVaultWriteService(), approval, vaultChanged: _ => cancellation.Cancel());
+        using var payload = CreatePayload();
+
+        var response = await handler.HandleAsync(new("observer-cancel", "passkey.create", payload.RootElement, Context: Ctx()), cancellation.Token);
+
+        Assert.False(response.Ok);
+        Assert.Equal(PasskeyErrorCodes.OperationAborted, response.Error?.Code);
+    }
+
     [Fact]
     public async Task HandleGet_LockDuringApproval_DoesNotSign()
     {
@@ -74,6 +158,29 @@ public class BrowserPasskeyRequestHandlerTests
         Assert.Null(write.Saved);
     }
 
+    [Theory]
+    [InlineData("cross-platform")]
+    [InlineData("invalid-attachment")]
+    public async Task HandleCreate_UnsupportedAttachment_DelegatesBeforeApproval(string attachment)
+    {
+        var approval = new CapturingApprovalService(approve: true);
+        var handler = CreateHandler([], approval);
+        using var document = CreatePayload();
+        var payload = document.RootElement.Deserialize(PasskeyJsonContext.Default.PasskeyCreatePayload)! with
+        {
+            AuthenticatorSelection = JsonSerializer.SerializeToElement(
+                new Dictionary<string, string> { ["authenticatorAttachment"] = attachment }),
+        };
+
+        var response = await handler.HandleAsync(new BrowserPasskeyRequest("roaming-create", "passkey.create",
+            JsonSerializer.SerializeToElement(payload, PasskeyJsonContext.Default.PasskeyCreatePayload), Context: Ctx()),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(response.Ok);
+        Assert.Equal(PasskeyErrorCodes.ClientNotHandled, response.Error?.Code);
+        Assert.Null(approval.CreateRequest);
+    }
+
     [Fact]
     public async Task HandleAsync_GetAssertion_SignsMatchingCredentialAfterApproval()
     {
@@ -122,6 +229,27 @@ public class BrowserPasskeyRequestHandlerTests
         Assert.False(string.IsNullOrWhiteSpace(assertion.Signature));
         Assert.Equal("github.com", approval.Request?.Source.RpId);
         Assert.Equal("GitHub", Assert.Single(approval.Request!.Candidates).CipherName);
+    }
+
+    [Fact]
+    public async Task HandleGet_CrossOriginAncestorChain_SignsTrustedTopOrigin()
+    {
+        var cipher = ExistingCredentialCipher();
+        var approval = new CapturingApprovalService(approve: true);
+        var handler = CreateHandler([cipher], approval);
+        using var payload = GetPayload();
+        var context = Ctx(frameId: 7) with { SameOriginWithAncestors = false };
+
+        var response = await handler.HandleAsync(
+            new BrowserPasskeyRequest("ancestor-get", "passkey.get", payload.RootElement, Context: context),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(response.Ok);
+        Assert.True(approval.Request!.Source.IsCrossOrigin);
+        var assertion = response.Payload!.Value.Deserialize(PasskeyJsonContext.Default.PasskeyGetAssertionPayload)!;
+        using var clientData = JsonDocument.Parse(WebAuthnCrypto.DecodeBase64Url(assertion.ClientDataJson));
+        Assert.True(clientData.RootElement.GetProperty("crossOrigin").GetBoolean());
+        Assert.Equal("https://github.com", clientData.RootElement.GetProperty("topOrigin").GetString());
     }
 
     // Browser-task-7 remediation (review L3): credential_unusable must never forward ex.Message onto
@@ -540,7 +668,7 @@ public class BrowserPasskeyRequestHandlerTests
         Assert.Equal(CipherType.Login, write.Saved!.Type);
         var cred = Assert.Single(write.Saved.Login!.Fido2Credentials);
         Assert.Equal("github.com", cred.RpId);
-        Assert.StartsWith(CredentialId.Base64Prefix, cred.CredentialId);
+        Assert.True(Guid.TryParseExact(cred.CredentialId, "D", out _));
         Assert.True(CredentialId.StorageIdEqualsWire(cred.CredentialId, payload.CredentialId));
     }
 
@@ -796,12 +924,12 @@ public class BrowserPasskeyRequestHandlerTests
     }
 
     [Theory]
-    [InlineData("required", PasskeyUserVerificationRequirement.Required, true, true, true, true, null, 0x45)]
+    [InlineData("required", PasskeyUserVerificationRequirement.Required, true, true, true, true, null, 0x5d)]
     [InlineData("required", PasskeyUserVerificationRequirement.Required, true, true, false, false, "user_verification_failed", 0)]
-    [InlineData("preferred", PasskeyUserVerificationRequirement.Preferred, true, true, true, true, null, 0x45)]
-    [InlineData("preferred", PasskeyUserVerificationRequirement.Preferred, true, true, false, true, null, 0x41)]
-    [InlineData("discouraged", PasskeyUserVerificationRequirement.Discouraged, true, true, true, true, null, 0x45)]
-    [InlineData("discouraged", PasskeyUserVerificationRequirement.Discouraged, true, true, false, true, null, 0x41)]
+    [InlineData("preferred", PasskeyUserVerificationRequirement.Preferred, true, true, true, true, null, 0x5d)]
+    [InlineData("preferred", PasskeyUserVerificationRequirement.Preferred, true, true, false, true, null, 0x59)]
+    [InlineData("discouraged", PasskeyUserVerificationRequirement.Discouraged, true, true, true, true, null, 0x5d)]
+    [InlineData("discouraged", PasskeyUserVerificationRequirement.Discouraged, true, true, false, true, null, 0x59)]
     [InlineData("discouraged", PasskeyUserVerificationRequirement.Discouraged, false, false, false, false, "user_cancelled", 0)]
     [InlineData("preferred", PasskeyUserVerificationRequirement.Preferred, true, false, true, false, "user_verification_failed", 0)]
     public async Task HandleCreate_UserVerificationRequirementAndEvidenceMatrix(
@@ -904,7 +1032,9 @@ public class BrowserPasskeyRequestHandlerTests
             tabId,
             frameId,
             "document-1",
-            publicKeyCredentialsGetAllowed);
+            publicKeyCredentialsGetAllowed,
+            frameOrigin == (topOrigin ?? frameOrigin),
+            PublicKeyCredentialsCreateAllowed: true);
 
     private static BrowserPasskeyRequestHandler CreateHandler(
         Cipher[] ciphers,

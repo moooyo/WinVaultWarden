@@ -43,8 +43,8 @@ function makeWindow(origin, { isTop = true } = {}) {
       const event = { data, source: win, origin };
       for (const fn of messageListeners.slice()) fn(event);
     },
-    dispatch(type) {
-      for (const fn of (namedListeners.get(type) ?? []).slice()) fn({ type });
+    dispatch(type, detail = {}) {
+      for (const fn of (namedListeners.get(type) ?? []).slice()) fn({ type, ...detail });
     },
   };
   win.self = win;
@@ -60,6 +60,7 @@ function makePort() {
   const port = {
     name: null,
     postMessage(message) {
+      if (state.disconnectCalled) throw new Error("Disconnected port");
       posted.push(message);
     },
     onMessage: { addListener: (fn) => messageListeners.push(fn) },
@@ -76,15 +77,17 @@ function makePort() {
       for (const fn of messageListeners.slice()) fn(message);
     },
     emitDisconnect: () => {
+      state.disconnectCalled = true;
       for (const fn of disconnectListeners.slice()) fn();
     },
   };
 }
 
-function createContentHarness({ isTop = true, policy = "allow", lastErrorMessage = null } = {}) {
+function createContentHarness({ isTop = true, policy = "allow", createPolicy = policy, lastErrorMessage = null } = {}) {
   const origin = "https://frame.example";
   const win = makeWindow(origin, { isTop });
   const portHandle = makePort();
+  const portHandles = [];
   const connectCalls = [];
   const chrome = {
     runtime: {
@@ -92,9 +95,11 @@ function createContentHarness({ isTop = true, policy = "allow", lastErrorMessage
         return lastErrorMessage ? { message: lastErrorMessage } : null;
       },
       connect(options) {
-        portHandle.port.name = options?.name;
+        const handle = portHandles.length === 0 ? portHandle : makePort();
+        handle.port.name = options?.name;
+        portHandles.push(handle);
         connectCalls.push(options);
-        return portHandle.port;
+        return handle.port;
       },
     },
   };
@@ -106,7 +111,8 @@ function createContentHarness({ isTop = true, policy = "allow", lastErrorMessage
   // `public-key-credentials-get` must never yield a verdict.
   const allowsFeature = (feature) => {
     queriedFeatures.push(feature);
-    return grants && feature === "publickey-credentials-get";
+    if (feature === "publickey-credentials-get") return grants;
+    return feature === "publickey-credentials-create" && ["allow", "featurePolicy"].includes(createPolicy);
   };
   const policyObject = policy === "absent" ? undefined : { allowsFeature };
   const document = {
@@ -148,6 +154,7 @@ function createContentHarness({ isTop = true, policy = "allow", lastErrorMessage
     context,
     connectCalls,
     portHandle,
+    portHandles,
     fromIsolated,
     queriedFeatures,
     channelId: ready?.channelId,
@@ -156,6 +163,9 @@ function createContentHarness({ isTop = true, policy = "allow", lastErrorMessage
     },
     pagehide() {
       win.dispatch("pagehide");
+    },
+    pageshow() {
+      win.dispatch("pageshow", { persisted: true });
     },
   };
 }
@@ -378,7 +388,7 @@ test("port disconnect completes active requests as operation_aborted without lea
   assert.doesNotMatch(JSON.stringify(aborted), /secret detail/u);
 });
 
-test("top-level frames always allow publickey-credentials-get", () => {
+test("top-level frames honor an explicit publickey-credentials-get denial", () => {
   const harness = createContentHarness({ isTop: true, policy: "deny" });
   const id = randomHex(16);
   harness.sendFromMain({
@@ -387,7 +397,7 @@ test("top-level frames always allow publickey-credentials-get", () => {
     kind: "request",
     request: { v: 1, id, type: "passkey.get", payload: {} },
   });
-  assert.equal(harness.portHandle.posted[0].publicKeyCredentialsGetAllowed, true);
+  assert.equal(harness.portHandle.posted[0].publicKeyCredentialsGetAllowed, false);
 });
 
 test("sub-frames honour the Permissions Policy verdict", () => {
@@ -436,4 +446,87 @@ test("queries the canonical publickey-credentials-get token, never the misspelle
   );
   // A delegated sub-frame using the canonical token is granted.
   assert.equal(harness.portHandle.posted[0].publicKeyCredentialsGetAllowed, true);
+});
+
+function sendRequest(harness, id = randomHex(16), type = "passkey.get") {
+  harness.sendFromMain({ channelId: harness.channelId, id, kind: "request", request: { v: 1, id, type, payload: {} } });
+  return id;
+}
+
+test("creation policy is read independently from retrieval policy in the top document", () => {
+  const harness = createContentHarness({ policy: "allow", createPolicy: "deny" });
+  sendRequest(harness, randomHex(16), "passkey.create");
+  assert.equal(harness.portHandle.posted[0].publicKeyCredentialsGetAllowed, true);
+  assert.equal(harness.portHandle.posted[0].publicKeyCredentialsCreateAllowed, false);
+  assert.ok(harness.queriedFeatures.includes("publickey-credentials-create"));
+});
+
+test("BFCache restoration reconnects for new ceremonies without replaying cancelled requests", () => {
+  const harness = createContentHarness();
+  const oldId = sendRequest(harness);
+  harness.pagehide();
+  harness.pageshow();
+  const nextId = sendRequest(harness);
+
+  assert.equal(harness.connectCalls.length, 2);
+  assert.equal(harness.portHandle.state.disconnectCalled, true);
+  assert.equal(harness.portHandles[1].posted.length, 1);
+  assert.equal(harness.portHandles[1].posted[0].id, nextId);
+  assert.equal(harness.fromIsolated.find((message) => message.id === oldId)?.response.error.code, "operation_aborted");
+  assert.equal(harness.fromIsolated.filter((message) => message.id === nextId && message.kind === "response").length, 0);
+
+  harness.pagehide();
+  harness.pageshow();
+  sendRequest(harness);
+  assert.equal(harness.connectCalls.length, 3, "every BFCache cycle must reconnect");
+});
+
+test("an ordinary disconnect aborts its ceremony and reconnects only for a later request", () => {
+  const harness = createContentHarness();
+  const firstId = sendRequest(harness);
+  harness.portHandle.emitDisconnect();
+  assert.equal(harness.connectCalls.length, 1);
+  const secondId = sendRequest(harness);
+  assert.equal(harness.connectCalls.length, 2);
+  assert.equal(harness.portHandles[1].posted[0].id, secondId);
+  assert.equal(harness.fromIsolated.find((message) => message.id === firstId)?.response.error.code, "operation_aborted");
+});
+
+test("late responses on a retired connection cannot settle a reused id", () => {
+  const harness = createContentHarness();
+  const id = sendRequest(harness);
+  harness.portHandle.emitDisconnect();
+  sendRequest(harness, id);
+  const before = harness.fromIsolated.filter((message) => message.kind === "response").length;
+  harness.portHandle.emitMessage({ id, response: { ok: true, payload: { stale: true } } });
+  assert.equal(harness.fromIsolated.filter((message) => message.kind === "response").length, before);
+  harness.portHandles[1].emitMessage({ id, response: { ok: true, payload: { stale: false } } });
+  assert.equal(harness.fromIsolated.at(-1).response.payload.stale, false);
+});
+
+test("pagehide after an abrupt port write failure remains harmless", () => {
+  const harness = createContentHarness();
+  harness.portHandle.port.postMessage = () => { throw new Error("Disconnected"); };
+  sendRequest(harness);
+  assert.doesNotThrow(() => harness.pagehide());
+});
+
+test("an active document rebuilds its identity port after worker disconnection without replay", async () => {
+  const harness = createContentHarness();
+  const id = sendRequest(harness);
+  harness.portHandle.emitDisconnect();
+  await new Promise((resolve) => setTimeout(resolve, 130));
+  assert.equal(harness.connectCalls.length, 2);
+  assert.equal(harness.portHandles[1].posted.length, 0, "interrupted ceremonies must never be replayed");
+  harness.portHandles[1].emitMessage({ kind: "frame.ready" });
+  assert.equal(harness.fromIsolated.filter((message) => message.id === id).length, 1);
+  harness.pagehide();
+});
+
+test("pagehide cancels an identity reconnect scheduled after worker disconnection", async () => {
+  const harness = createContentHarness();
+  harness.portHandle.emitDisconnect();
+  harness.pagehide();
+  await new Promise((resolve) => setTimeout(resolve, 130));
+  assert.equal(harness.connectCalls.length, 1);
 });

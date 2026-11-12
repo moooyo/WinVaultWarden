@@ -24,4 +24,18 @@ public class PatternMatcherTests
 
     [Fact] public void Bruteforce_AlwaysPresent() =>
         Assert.Contains(_omni.Match("x7q2zk9w"), m => m.Type == StrengthMatchType.Bruteforce);
+
+    [Theory]
+    [InlineData("abcabcabc", 0, 8)]
+    [InlineData("xxabcabcabczz", 2, 10)]
+    [InlineData("ab\nab\nab\n", 0, 8)]
+    public void RepeatedUnit_HasExactSpan(string password, int start, int end) =>
+        Assert.Contains(_omni.Match(password), match => match.Type == StrengthMatchType.Repeat
+            && match.I == start && match.J == end
+            && match.Token == password.Substring(start, end - start + 1));
+
+    [Fact]
+    public void OversizedPatternInput_FailsBeforeRegexOrPatternSearch() =>
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => _omni.Match(new string('1', PasswordStrengthEvaluator.MaximumAnalyzedLength + 1)));
 }

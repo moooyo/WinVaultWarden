@@ -42,14 +42,14 @@ public sealed partial class VaultPage
         var version = ++_editorFolderInteractionVersion;
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lease.CancellationToken);
         _editorFolderCancellation = cancellation;
-        var input = new TextBox { Header = "文件夹名称" };
+        var input = new TextBox { Header = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBACF701908D8CF45) };
         AutomationProperties.SetAutomationId(input, "VaultEditorFolderNameTextBox");
         var dialog = new ContentDialog
         {
-            Title = "新建文件夹",
+            Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text84244ABC71DE03AC),
             Content = input,
-            PrimaryButtonText = "新建",
-            CloseButtonText = "取消",
+            PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text50EF2F4CF6A46924),
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Primary,
             IsPrimaryButtonEnabled = false,
             XamlRoot = XamlRoot,

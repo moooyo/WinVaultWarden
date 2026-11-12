@@ -15,7 +15,7 @@ using Crypto.V2;
 
 namespace Vault;
 
-public sealed class AuthService : IAuthService
+public sealed partial class AuthService : IAuthService
 {
     private const string DeviceName = "WinVaultWarden";
     // Bitwarden TwoFactorProviderType.Email。启用邮箱 2FA 的账户在此值出现于 providers 时需登录期发码。
@@ -1864,7 +1864,8 @@ public sealed class AuthService : IAuthService
             persisted,
             userKey,
             wrappedPrivateKey,
-            ct);
+            ct,
+            masterPasswordVerified: true);
     }
 
     public async Task<AuthResult> UnlockWithKeyConnectorAsync(
@@ -2265,14 +2266,15 @@ public sealed class AuthService : IAuthService
             return deletionBlock;
         }
 
-        if (persisted.UserKeySecurityVersion != 1)
+        if (PinUnlockSessionPolicy.RequiresMasterPassword(_session, persisted))
         {
-            AbandonAuthenticationAttempt(attempt);
+            if (!_session.TryRestorePersistedSession(attempt, persisted, out _))
+                return AuthenticationExpired();
             return SafeFailure(
-                "PIN unlock is not available for this V2 account. Use the master password instead.");
+                "Unlock this account with its master password once after restarting the application before using its PIN.");
         }
 
-        SymmetricCryptoKey userKey;
+        VaultUserKey userKey;
         try
         {
             var stretchedKey = DeriveStretchedKey(
@@ -2280,7 +2282,11 @@ public sealed class AuthService : IAuthService
                 persisted.KdfIterations, persisted.KdfMemory, persisted.KdfParallelism);
             try
             {
-                userKey = _crypto.DecryptUserKey(stretchedKey, EncString.Parse(persisted.PinProtectedUserKey));
+                userKey = UnwrapUserKey(
+                    stretchedKey,
+                    persisted.PinProtectedUserKey,
+                    persisted.UserKeySecurityVersion,
+                    persisted.UserKeyId);
             }
             catch (Exception ex) when (ex is CryptographicException or FormatException)
             {
@@ -2298,11 +2304,29 @@ public sealed class AuthService : IAuthService
             return ClassifyExpectedFailure(ex, ct);
         }
 
-        // 成功解包 → 清零失败计数,经 normalized 记录在解锁门禁内落盘。
+        string? wrappedPrivateKey;
+        try
+        {
+            wrappedPrivateKey = ValidateAccountCryptographicState(
+                userKey,
+                persisted.AccountCryptographicState);
+        }
+        catch (Exception ex) when (IsExpectedAuthException(ex))
+        {
+            userKey.Dispose();
+            if (!_session.TryRestorePersistedSession(attempt, persisted, out _))
+                return AuthenticationExpired();
+            return new AuthResult.Failure(
+                "The saved account cryptographic state could not be authenticated.",
+                AuthFailureKind.InvalidResponse);
+        }
+
+        // Reset the failure count only after the account state has been authenticated.
         return await FinishLocalUnlockAsync(
             attempt,
             persisted with { PinFailedAttempts = 0 },
             userKey,
+            wrappedPrivateKey,
             ct,
             isPinUnlock: true);
     }
@@ -2314,22 +2338,29 @@ public sealed class AuthService : IAuthService
     {
         if (!_session.TryRestorePersistedSession(attempt, persisted, out var lease))
             return AuthenticationExpired();
-        var n = persisted.PinFailedAttempts + 1;
-        if (n >= 5)
+        var n = 0;
+        var updated = false;
+        _session.TryCommit(lease!, () =>
         {
-            _session.TryCommit(lease!, () => _tokenStore.Save(persisted with
+            if (!TryLoadLocalUnlockRecord(lease!, persisted, out var latest)
+                || latest.PinProtectedUserKey != persisted.PinProtectedUserKey
+                || PinUnlockSessionPolicy.RequiresMasterPassword(_session, latest))
+                return;
+            n = latest.PinFailedAttempts + 1;
+            _tokenStore.Save(latest with
             {
-                PinProtectedUserKey = null,
-                PinFailedAttempts = 0,
+                PinProtectedUserKey = n >= 5 ? null : latest.PinProtectedUserKey,
+                PinFailedAttempts = n >= 5 ? 0 : n,
                 Generation = lease!.Generation,
-            }));
+            });
+            if (n >= 5)
+                PinUnlockSessionPolicy.Forget(_session, latest);
+            updated = true;
+        });
+        if (!updated)
+            return SessionExpiredFailure();
+        if (n >= 5)
             return new AuthResult.PinCleared("PIN 已因多次错误被清除，请用主密码解锁。");
-        }
-        _session.TryCommit(lease!, () => _tokenStore.Save(persisted with
-        {
-            PinFailedAttempts = n,
-            Generation = lease!.Generation,
-        }));
         return SafeFailure($"PIN 错误，还可尝试 {5 - n} 次。");
     }
 
@@ -2379,33 +2410,35 @@ public sealed class AuthService : IAuthService
             AbandonAuthenticationAttempt(attempt);
             return deletionBlock;
         }
-        if (persisted.UserKeySecurityVersion != 1)
-        {
-            CryptographicOperations.ZeroMemory(signature);
-            AbandonAuthenticationAttempt(attempt);
-            return SafeFailure(
-                "Windows Hello unlock is not available for this V2 account. Use the master password instead.");
-        }
-
-        SymmetricCryptoKey userKey;
+        VaultUserKey userKey;
         try
         {
             using var helloKey = _crypto.DeriveKeyFromSecret(signature);
             try
             {
-                userKey = _crypto.DecryptUserKey(helloKey, EncString.Parse(persisted.HelloProtectedUserKey));
+                userKey = UnwrapUserKey(
+                    helloKey,
+                    persisted.HelloProtectedUserKey,
+                    persisted.UserKeySecurityVersion,
+                    persisted.UserKeyId);
             }
             catch (Exception ex) when (ex is CryptographicException or FormatException)
             {
                 // Hello 凭据失效(重录/移除)或数据损坏 → 经恢复出的 locked lease 门禁清除 Hello,回退主密码。
                 if (!_session.TryRestorePersistedSession(attempt, persisted, out var lease))
                     return AuthenticationExpired();
-                _session.TryCommit(lease!, () => _tokenStore.Save(persisted with
+                _session.TryCommit(lease!, () =>
                 {
-                    HelloProtectedUserKey = null,
-                    HelloChallenge = null,
-                    Generation = lease!.Generation,
-                }));
+                    if (!TryLoadLocalUnlockRecord(lease!, persisted, out var latest)
+                        || latest.HelloProtectedUserKey != persisted.HelloProtectedUserKey)
+                        return;
+                    _tokenStore.Save(latest with
+                    {
+                        HelloProtectedUserKey = null,
+                        HelloChallenge = null,
+                        Generation = lease!.Generation,
+                    });
+                });
                 return SafeFailure("Windows Hello 解锁失败，请用主密码解锁。");
             }
         }
@@ -2419,7 +2452,30 @@ public sealed class AuthService : IAuthService
             CryptographicOperations.ZeroMemory(signature);
         }
 
-        return await FinishLocalUnlockAsync(attempt, persisted, userKey, ct);
+        string? wrappedPrivateKey;
+        try
+        {
+            wrappedPrivateKey = ValidateAccountCryptographicState(
+                userKey,
+                persisted.AccountCryptographicState);
+        }
+        catch (Exception ex) when (IsExpectedAuthException(ex))
+        {
+            userKey.Dispose();
+            if (!_session.TryRestorePersistedSession(attempt, persisted, out _))
+                return AuthenticationExpired();
+            return new AuthResult.Failure(
+                "The saved account cryptographic state could not be authenticated.",
+                AuthFailureKind.InvalidResponse);
+        }
+
+        return await FinishLocalUnlockAsync(
+            attempt,
+            persisted,
+            userKey,
+            wrappedPrivateKey,
+            ct,
+            isHelloUnlock: true);
     }
 
     // 主密码/PIN/Hello 三入口共用:恢复绑定 → 门禁落 UserKey + 归一化持久化 → 缓存即时出数据 →
@@ -2447,7 +2503,9 @@ public sealed class AuthService : IAuthService
         VaultUserKey userKey,
         string? wrappedPrivateKey,
         CancellationToken ct,
-        bool isPinUnlock = false)
+        bool isPinUnlock = false,
+        bool isHelloUnlock = false,
+        bool masterPasswordVerified = false)
     {
         if (GetAccountDeletionUnlockBlock(persisted) is { } deletionBlock)
         {
@@ -2475,17 +2533,21 @@ public sealed class AuthService : IAuthService
             {
                 if (!_session.TryCommit(lease!, () =>
                 {
-                    if (_tokenStore.TryLoad(out var latest)
-                        && latest.HasValidBinding
-                        && latest.AccountId == lease.AccountId
-                        && latest.Endpoints == lease.Endpoints)
+                    if (!TryLoadLocalUnlockRecord(lease!, persisted, out var latest)
+                        || isPinUnlock
+                            && latest.PinProtectedUserKey != persisted.PinProtectedUserKey
+                        || isPinUnlock
+                            && PinUnlockSessionPolicy.RequiresMasterPassword(_session, latest)
+                        || isHelloUnlock
+                            && latest.HelloProtectedUserKey != persisted.HelloProtectedUserKey)
                     {
-                        normalized = normalized with
-                        {
-                            RefreshToken = latest.RefreshToken,
-                            HasMasterPassword = latest.HasMasterPassword,
-                        };
+                        return;
                     }
+                    normalized = latest with
+                    {
+                        Generation = lease.Generation,
+                        PinFailedAttempts = isPinUnlock ? 0 : latest.PinFailedAttempts,
+                    };
                     // Persist the rotated generation before transferring key and refresh-token ownership.
                     _tokenStore.Save(normalized);
                     _session.SetUnlockedKey(userKey);
@@ -2494,8 +2556,10 @@ public sealed class AuthService : IAuthService
                     _deviceTrust?.SetCurrentSessionCapability(
                         lease,
                         normalized.SupportsDeviceTrust);
+                    if (masterPasswordVerified)
+                        PinUnlockSessionPolicy.RecordVerified(_session, normalized);
                     transferred = true;
-                }))
+                }) || !transferred)
                     return SessionExpiredFailure();
             }
             catch (Exception ex) when (IsExpectedPersistenceException(ex))
@@ -2536,6 +2600,17 @@ public sealed class AuthService : IAuthService
             return FinishUnlockOffline(lease!, fromCache);
         }
     }
+
+    private bool TryLoadLocalUnlockRecord(
+        VaultSessionLease lease,
+        PersistedSession expected,
+        out PersistedSession latest) =>
+        _tokenStore.TryLoad(out latest)
+        && latest.HasValidBinding
+        && latest.AccountId == lease.AccountId
+        && latest.Endpoints == lease.Endpoints
+        && (latest.Generation == expected.Generation || latest.Generation == lease.Generation)
+        && LocalUnlockKeyProtection.HasSameKeyBinding(expected, latest);
 
     // 网络刷新/整库同步失败后的收尾:有缓存 → 保持已解锁状态(DataStale 已由 TryLoadInto 置 true),
     // 离线解锁成功;无缓存 → 回滚(Lock 清零 UserKey)并失败。两条分支都在租约门禁内提交。
@@ -2684,9 +2759,23 @@ public sealed class AuthService : IAuthService
             newPasswordHash = _crypto.ComputeMasterPasswordHash(
                 newMasterKey,
                 newPassword);
-            wrappedUserKey = _crypto.ProtectUserKey(
-                newMasterKey,
-                pending.UserKey).ToString();
+            if (pending.UserKey.Legacy is { } legacy)
+            {
+                wrappedUserKey = _crypto.ProtectUserKey(newMasterKey, legacy).ToString();
+            }
+            else
+            {
+                using var stretchedKey = _crypto.StretchMasterKey(newMasterKey);
+                var transport = pending.UserKey.V2!.ExportTransport();
+                try
+                {
+                    wrappedUserKey = _crypto.Encrypt(transport, stretchedKey).ToString();
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(transport);
+                }
+            }
         }
         catch (Exception ex) when (ex is CryptographicException or ArgumentException)
         {
@@ -2710,7 +2799,8 @@ public sealed class AuthService : IAuthService
         var unlockData = new UnlockData(
             pending.MasterPasswordSalt,
             kdf,
-            wrappedUserKey);
+            wrappedUserKey,
+            pending.UserKey.KeyId);
 
         try
         {
@@ -2891,6 +2981,7 @@ public sealed class AuthService : IAuthService
 
     private void LogoutCurrentSession()
     {
+        PinUnlockSessionPolicy.Clear(_session);
         var account = _session.Account;
         _session.Lock();
         Exception? persistenceFailure = null;
@@ -3916,13 +4007,14 @@ public sealed class AuthService : IAuthService
     private async Task<AuthResult> CompleteLoginAsync(
         PendingTwoFactorContext context,
         TokenResponse token,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool isApiKeySession = false)
     {
         try
         {
             if (!_session.IsCurrent(context.Attempt))
                 return AuthenticationExpired();
-            if (string.IsNullOrWhiteSpace(token.RefreshToken)
+            if ((!isApiKeySession && string.IsNullOrWhiteSpace(token.RefreshToken))
                 || !AccessTokenSubjectReader.TryReadAccountId(token.AccessToken, out var accountId))
                 return InvalidResponseFailure();
             if (AccessTokenSubjectReader.TryReadEmail(
@@ -4028,39 +4120,27 @@ public sealed class AuthService : IAuthService
 
                 if (passwordChange is not null)
                 {
-                    if (accountKeyKind != AccountKeyKind.LegacyV1)
-                    {
-                        if (!persistedAccountDataRemoved)
-                        {
-                            lock (_authenticationTransitionGate)
-                            {
-                                if (!_session.IsCurrent(context.Attempt))
-                                    return AuthenticationExpired();
-                                if (!TryRemovePersistedAccountData(accountId, context.Endpoints))
-                                {
-                                    return SafeFailure(
-                                        "The previous saved session could not be removed securely.");
-                                }
-                                if (!_session.TryClearMatchingAccountForAuthentication(
-                                        context.Attempt,
-                                        accountId,
-                                        context.Endpoints))
-                                {
-                                    return AuthenticationExpired();
-                                }
-                            }
-                        }
-
-                        return SafeFailure(
-                            "This V2 account requires a master-password update that this client cannot complete yet.");
-                    }
-
-                    SymmetricCryptoKey restrictedUserKey;
+                    VaultUserKey restrictedUserKey;
                     try
                     {
-                        restrictedUserKey = _crypto.DecryptUserKey(
-                            stretchedKey,
-                            EncString.Parse(unlock.ProtectedUserKey));
+                        restrictedUserKey = accountKeyKind == AccountKeyKind.LegacyV1
+                            ? VaultUserKey.TakeOwnership(_crypto.DecryptUserKey(
+                                stretchedKey,
+                                EncString.Parse(unlock.ProtectedUserKey)))
+                            : UnwrapUserKey(
+                                stretchedKey,
+                                unlock.ProtectedUserKey,
+                                2,
+                                unlock.UserKeyId);
+                        try
+                        {
+                            ValidateAccountCryptographicState(restrictedUserKey, accountCryptographicState);
+                        }
+                        catch
+                        {
+                            restrictedUserKey.Dispose();
+                            throw;
+                        }
                     }
                     catch (Exception ex) when (IsExpectedAuthException(ex))
                     {
@@ -4141,6 +4221,8 @@ public sealed class AuthService : IAuthService
                     UserKeySecurityVersion = userKey.SecurityVersion,
                     UserKeyId = userKey.KeyId,
                     AccountCryptographicState = accountCryptographicState,
+                    IsApiKeySession = isApiKeySession,
+                    RequireMasterPasswordOnRestart = priorSession?.RequireMasterPasswordOnRestart ?? false,
                 };
 
                 var transferred = false;
@@ -4159,6 +4241,7 @@ public sealed class AuthService : IAuthService
                         _deviceTrust?.SetCurrentSessionCapability(
                             lease,
                             token.UserDecryptionOptions?.TrustedDeviceOption is not null);
+                        PinUnlockSessionPolicy.RecordVerified(_session, persisted);
                         transferred = true;
                     }))
                         return SessionExpiredFailure();
@@ -4241,7 +4324,7 @@ public sealed class AuthService : IAuthService
         PendingTwoFactorContext login,
         TokenResponse token,
         string accountId,
-        SymmetricCryptoKey userKey,
+        VaultUserKey userKey,
         PasswordChangeRequirement requirement,
         bool persistedAccountDataAlreadyRemoved)
     {
@@ -6537,7 +6620,7 @@ public sealed class AuthService : IAuthService
             string masterPasswordSalt,
             RequiredPasswordChangeReason reason,
             MasterPasswordPolicyRequirements? policy,
-            SymmetricCryptoKey userKey)
+            VaultUserKey userKey)
         {
             Lease = lease;
             Email = email;
@@ -6562,7 +6645,7 @@ public sealed class AuthService : IAuthService
         public string MasterPasswordSalt { get; }
         public RequiredPasswordChangeReason Reason { get; }
         public MasterPasswordPolicyRequirements? Policy { get; }
-        public SymmetricCryptoKey UserKey { get; }
+        public VaultUserKey UserKey { get; }
 
         public bool TryAcquireOperation(out IDisposable operation)
         {

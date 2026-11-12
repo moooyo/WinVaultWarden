@@ -154,26 +154,26 @@ public sealed partial class CopyStrip : UserControl
         switch (detail)
         {
             case LoginDetail:
-                Add("username", "用户名");
-                Add("password", "密码", secret: true);
-                Add("totp", "验证码", secret: true);
+                Add("username", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1A3F0617D6DE8E52));
+                Add("password", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA621AB606DB2A11F), secret: true);
+                Add("totp", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBB015C60BAFC8A96), secret: true);
                 if (ShowAddTotp && detail.SensitiveUnlocked && string.IsNullOrEmpty(ValueOf(detail, "totp")) && !detail.IsDeleted)
-                    _cells.Add(new Cell("totp", "两步验证", add: true));
+                    _cells.Add(new Cell("totp", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0E219BCA12C07FE8), add: true));
                 break;
             case CardDetail:
-                Add("number", "卡号", secret: true);
-                Add("expiry", "有效期");
-                Add("cvv", "安全码", secret: true);
+                Add("number", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDEF61445047A1B1B), secret: true);
+                Add("expiry", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9C2A28E8F98FB5DF));
+                Add("cvv", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE2761180A6F0DF7B), secret: true);
                 break;
             case IdentityDetail:
-                Add("fullName", "姓名");
-                Add("phone", "手机");
-                Add("email", "邮箱");
+                Add("fullName", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text50B5B1D2ABEFBCA6));
+                Add("phone", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2E07333C8C740978));
+                Add("email", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text73075237FD0F05F0));
                 break;
             case SshDetail:
-                Add("publicKey", "公钥", mono: true);
-                Add("fingerprint", "指纹", mono: true);
-                Add("privateKey", "私钥", secret: true);
+                Add("publicKey", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAF515CD999D17795), mono: true);
+                Add("fingerprint", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0D6A14A9AB254EC6), mono: true);
+                Add("privateKey", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3FFE935F9D0FF77E), secret: true);
                 break;
         }
         Visibility = _cells.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
@@ -249,8 +249,8 @@ public sealed partial class CopyStrip : UserControl
             cell.Progress.VerticalAlignment = VerticalAlignment.Bottom;
             cell.Root.Children.Add(cell.Progress);
             CellsGrid.Children.Add(cell.Root);
-            AutomationProperties.SetName(cell.Button, cell.Add ? "添加验证码" : $"复制{cell.Label}");
-            ToolTipService.SetToolTip(cell.Button, cell.Add ? "编辑此条目并保存验证码" : $"点击复制{cell.Label}" + (cell.Key == "password" ? " · Ctrl+C" : string.Empty));
+            AutomationProperties.SetName(cell.Button, cell.Add ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text10BD808B73AA6C73) : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text1752D5F410D92066,cell.Label));
+            ToolTipService.SetToolTip(cell.Button, cell.Add ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC89DA998FBD04B9C) : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text086ED3C2A4FE5EBD,cell.Label) + (cell.Key == "password" ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD711BEE29FB38E27) : string.Empty));
         }
         RenderValues();
         UpdateFeedback();
@@ -269,7 +269,7 @@ public sealed partial class CopyStrip : UserControl
                 var valid = !detail.SensitiveUnlocked
                     || Crypto.TotpGenerator.TryGenerate(value, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), out _);
                 cell.Button.IsEnabled = !detail.IsDeleted && valid;
-                ToolTipService.SetToolTip(cell.Button, valid ? "点击复制验证码" : "验证码密钥无效，编辑此条目以修正");
+                ToolTipService.SetToolTip(cell.Button, valid ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDCCD612F9FBA8E5D) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text61CD069E66AB8D73));
                 continue;
             }
             var revealed = _revealed.Contains(cell.Key) && IsLoaded;
@@ -279,18 +279,18 @@ public sealed partial class CopyStrip : UserControl
             cell.ValueText.FontFamily = cell.Mono || cell.Secret && revealed ? monospace : FontFamily;
             cell.ValueText.Foreground = BrushFor(cell.Add ? "AccentTextFillColorPrimaryBrush" : "TextFillColorPrimaryBrush");
             cell.AddIcon.Foreground = BrushFor("AccentTextFillColorPrimaryBrush");
-            var displayText = cell.Add ? "添加验证码" : string.IsNullOrEmpty(value)
-                ? cell.Secret && !detail.SensitiveUnlocked ? "••••••••" : "未设置"
+            var displayText = cell.Add ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text10BD808B73AA6C73) : string.IsNullOrEmpty(value)
+                ? cell.Secret && !detail.SensitiveUnlocked ? "••••••••" : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2F5F1D6FBFB061ED)
                 : cell.Secret && !revealed ? Mask(cell.Key, value)
                 : cell.Key == "publicKey" ? FieldRow.SummarizeSshPublicKey(value) : value;
-            ToolTipService.SetToolTip(cell.Button, cell.Add ? "编辑此条目并保存验证码"
-                : $"点击复制{cell.Label}" + (cell.Key == "password" ? " · Ctrl+C" : string.Empty)
+            ToolTipService.SetToolTip(cell.Button, cell.Add ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC89DA998FBD04B9C)
+                : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text086ED3C2A4FE5EBD,cell.Label) + (cell.Key == "password" ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD711BEE29FB38E27) : string.Empty)
                     + (cell.Key == "publicKey" && value is not null ? "\n" + value : string.Empty));
             SetCellText(cell, displayText, revealed && cell.Key == "password" && value is not null);
             cell.RevealIcon.Glyph = revealed ? "\uED1A" : "\uE890";
             cell.Reveal.IsEnabled = !_busy;
-            AutomationProperties.SetName(cell.Reveal, $"{(revealed ? "隐藏" : "显示")}{cell.Label}");
-            ToolTipService.SetToolTip(cell.Reveal, revealed ? "隐藏" : "显示（需 Windows Hello）");
+            AutomationProperties.SetName(cell.Reveal, $"{(revealed ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text145219E726B87790) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4E1449E7D5E50593))}{cell.Label}");
+            ToolTipService.SetToolTip(cell.Reveal, revealed ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text145219E726B87790) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC56EDC896A616588));
         }
     }
 
@@ -403,7 +403,7 @@ public sealed partial class CopyStrip : UserControl
         }
         catch (Exception exception) when (exception is ExternalException or InvalidOperationException or OperationCanceledException)
         {
-            ShowMessage("复制失败，请重试。");
+            ShowMessage(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0E7E0391BAE51CDD));
         }
         finally { _operationCancellation = null; _busy = false; RenderValues(); }
     }
@@ -438,7 +438,7 @@ public sealed partial class CopyStrip : UserControl
         }
         catch (Exception exception) when (exception is ExternalException or InvalidOperationException or OperationCanceledException)
         {
-            ShowMessage("无法完成验证，请重试。");
+            ShowMessage(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0947B2C7535917D6));
         }
         finally { _operationCancellation = null; _busy = false; RenderValues(); }
     }
@@ -454,7 +454,7 @@ public sealed partial class CopyStrip : UserControl
             var copied = active && _copiedField == cell.Key;
             var next = !copied && _nextField == cell.Key && Detail?.IsDeleted == false;
             var color = BrushFor(copied ? "SystemFillColorSuccessBrush" : next ? "AccentTextFillColorPrimaryBrush" : "TextFillColorSecondaryBrush");
-            cell.LabelText.Text = copied ? "已复制" + (remaining > 0 ? $" · {remaining} 秒" : string.Empty) : next ? $"下一个 · {cell.Label}" : cell.Label;
+            cell.LabelText.Text = copied ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8F6F8D979C981CED) + (remaining > 0 ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextE5ABAC113AB705EB,remaining) : string.Empty) : next ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text669836E717D43433,cell.Label) : cell.Label;
             cell.LabelText.Foreground = cell.DoneIcon.Foreground = color;
             cell.LabelText.Margin = new Thickness(copied ? 6 : 0, 0, 0, 0);
             cell.LabelText.FontWeight = copied || next ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal;
@@ -467,7 +467,7 @@ public sealed partial class CopyStrip : UserControl
             cell.Progress.Value = next || copied && totalSeconds <= 0 ? 100
                 : totalSeconds > 0 ? 100d * remaining / totalSeconds : 0;
             cell.Flash.Background = BrushFor("WardenCopyFlashBrush");
-            AutomationProperties.SetName(cell.Button, cell.Add ? "添加验证码" : copied ? $"已复制{cell.Label}" : $"复制{cell.Label}");
+            AutomationProperties.SetName(cell.Button, cell.Add ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text10BD808B73AA6C73) : copied ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text3BB47277117D1A61,cell.Label) : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text1752D5F410D92066,cell.Label));
             if (cell.Root.ActualWidth > 0)
                 cell.ValueText.MaxWidth = Math.Max(0, cell.Root.ActualWidth - 24
                     - (cell.Reveal.Visibility == Visibility.Visible ? 40 : cell.Add ? 22 : 0));
@@ -489,7 +489,7 @@ public sealed partial class CopyStrip : UserControl
                     cell.HeaderRing.Foreground = BrushFor(seconds <= 5 ? "SystemFillColorCautionBrush" : "TextFillColorSecondaryBrush");
                     cell.HeaderSeconds.Text = seconds.ToString();
                     cell.HeaderSeconds.Foreground = BrushFor("TextFillColorSecondaryBrush");
-                    ToolTipService.SetToolTip(cell.HeaderCountdown, $"验证码每 {period} 秒刷新");
+                    ToolTipService.SetToolTip(cell.HeaderCountdown, global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text65D7F24549648A91,period));
                     cell.CopyIcon.Opacity = 0;
                 }
             }

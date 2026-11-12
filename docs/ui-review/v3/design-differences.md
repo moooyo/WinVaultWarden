@@ -1,5 +1,7 @@
 # v3 design differences and decisions
 
+This is the historical v3 delivery ledger. For subsequent implementation and verification, see [the current completion ledger](../../implementation-completion.md). Statements about unavailable services below describe that earlier delivery.
+
 ## Review basis
 
 This review compares the v3 handoff and [design specification](design-spec.md) with the delivered native WinUI source and actual application captures. The observed implementation and packaging defects were corrected and recaptured. [Native results](native-results.json) and [delivery evidence](README.md) identify the final executable, successful scope and unexercised external workflows. This is a practical main-page review, not a claim that every possible provider, error state or screen size was exercised.

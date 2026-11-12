@@ -49,6 +49,8 @@ public sealed partial class DeviceApprovalWindow : Window
         _approve = approve;
         _deny = deny;
         InitializeComponent();
+        Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7791C4ED3D7D3245);
+        Root.Language = global::App.Localization.UiText.DisplayCulture.Name;
         _handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(RequestTitleBar);
@@ -62,10 +64,10 @@ public sealed partial class DeviceApprovalWindow : Window
             presenter.IsAlwaysOnTop = true;
         }
 
-        RequestHeading.Text = $"{request.DeviceTypeName} 想登录你的账户";
+        RequestHeading.Text = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text7E843E5FFA4F3108,request.DeviceTypeName);
         RequestSubtitle.Text = $"{request.IpAddress} · {request.CreatedLabel}";
         Fingerprint.Text = string.IsNullOrWhiteSpace(request.FingerprintPhrase)
-            ? "无法验证此请求的指纹短语" : request.FingerprintPhrase;
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA6446085808A4348) : request.FingerprintPhrase;
         Root.PreviewKeyDown += OnPreviewKeyDown;
         Root.Loaded += OnContentLoaded;
         RequestBody.SizeChanged += OnContentSizeChanged;
@@ -144,12 +146,12 @@ public sealed partial class DeviceApprovalWindow : Window
             return;
         }
         var seconds = (long)Math.Ceiling(remaining.Value.TotalSeconds);
-        ExpiryNotice.Text = $"{seconds / 60}:{seconds % 60:00} 后过期 · 关闭窗口可以稍后处理";
+        ExpiryNotice.Text = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text8363D255ECC38C86,seconds / 60,seconds % 60);
         if (QueuedRequestCount > 0)
-            ExpiryNotice.Text += $" · 后面还有 {QueuedRequestCount} 个请求";
+            ExpiryNotice.Text += global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextEC2C9607BC496317,QueuedRequestCount);
         var locked = _session.State != VaultState.Unlocked;
         LockedNotice.Visibility = locked ? Visibility.Visible : Visibility.Collapsed;
-        ApproveButton.Content = locked ? "解锁并批准" : "批准登录";
+        ApproveButton.Content = locked ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDF2F1CC590E3F69F) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4CF066515D0574FE);
         ApproveButton.IsEnabled = !_busy && FingerprintReviewed.IsChecked == true
             && !string.IsNullOrWhiteSpace(request.FingerprintPhrase);
         DenyButton.IsEnabled = !_busy;
@@ -210,7 +212,7 @@ public sealed partial class DeviceApprovalWindow : Window
             }
             else if (result.Status == UiOperationStatus.Failed)
             {
-                FailureNotice.Message = result.Error ?? "请求未完成，请重试。";
+                FailureNotice.Message = result.Error ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9303BEB0C61A21C2);
                 FailureNotice.IsOpen = true;
             }
         }

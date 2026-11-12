@@ -44,8 +44,8 @@ for (const file of manifestFiles) {
     // Passkey bridge stays headless: no stored-password surface anywhere in the manifest.
     assert.doesNotMatch(JSON.stringify(manifest), /password/iu);
 
-    // Native messaging stays the only permission; the persistent port needs it.
-    assert.deepEqual(manifest.permissions, ["nativeMessaging"]);
+    // Native messaging carries ceremonies; webNavigation authenticates the complete ancestor chain.
+    assert.deepEqual(manifest.permissions, ["nativeMessaging", "webNavigation"]);
     assert.equal(manifest.background.service_worker, "src/background.js");
     assert.equal(manifest.background.type, "module");
   });

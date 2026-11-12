@@ -21,12 +21,12 @@ public sealed class ClipboardService : IClipboardService, IClipboardStatus
     public int TotalSeconds { get; private set; }
     public bool HasContent => _latestWrite is not null;
     public DateTimeOffset? LastClearedAt { get; private set; }
-    public string Label { get; private set; } = "内容";
+    public string Label { get; private set; } = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7A688306423BEC17);
     public event EventHandler? Changed;
 
     public void SetLabel(string label)
     {
-        Label = string.IsNullOrWhiteSpace(label) ? "内容" : label;
+        Label = string.IsNullOrWhiteSpace(label) ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7A688306423BEC17) : label;
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -87,7 +87,7 @@ public sealed class ClipboardService : IClipboardService, IClipboardStatus
             _latestWrite = write;
             WriteVersion++;
             LastClearedAt = null;
-            Label = "内容";
+            Label = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7A688306423BEC17);
 
             var seconds = autoClearSeconds
                 ?? ClipboardClearPolicy.SecondsForIndex(AppPreferences.Current.ClearClipboardIndex);

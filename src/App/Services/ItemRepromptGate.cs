@@ -89,7 +89,7 @@ public sealed class ItemRepromptGate(
         catch
         {
             // 无活跃会话 → 无法验证 → 拒绝。
-            return UiOperationResult<bool>.Failure("敏感条目验证会话不可用");
+            return UiOperationResult<bool>.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCDB040C0A39072C8));
         }
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
@@ -102,7 +102,7 @@ public sealed class ItemRepromptGate(
             if (password is null)
                 return UiOperationResult<bool>.Cancelled();
             if (!await account.VerifyMasterPasswordAsync(password, linked.Token))
-                return UiOperationResult<bool>.Failure("主密码不正确");
+                return UiOperationResult<bool>.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1F643C920B554BEB));
 
             // 跨 await 后校验仍为同一会话租约（含 stamp 比较）：期间 Lock/切账户则授权作废。
             if (!session.IsCurrent(lease))

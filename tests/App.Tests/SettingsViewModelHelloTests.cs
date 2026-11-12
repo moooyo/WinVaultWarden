@@ -38,7 +38,7 @@ public class SettingsViewModelHelloTests : AppPreferencesTestBase
     }
 
     [Fact]
-    public async Task V2Account_DisablesHelloBeforeRequestingAnOperatingSystemGesture()
+    public async Task UnavailableSession_DisablesHelloBeforeRequestingAnOperatingSystemGesture()
     {
         var hello = new FakeHello { Available = true, CreateResult = new byte[256] };
         var unlock = new FakeHelloUnlock();
@@ -46,7 +46,7 @@ public class SettingsViewModelHelloTests : AppPreferencesTestBase
         await vm.RefreshWindowsHelloAvailabilityAsync();
 
         Assert.False(vm.CanToggleWindowsHello);
-        Assert.Contains("V2", vm.WindowsHelloDescription, StringComparison.Ordinal);
+        Assert.False(string.IsNullOrWhiteSpace(vm.WindowsHelloDescription));
         Assert.False(await vm.EnableWindowsHelloAsync());
         Assert.Equal(0, hello.CreateCalls);
         Assert.False(unlock.Set);

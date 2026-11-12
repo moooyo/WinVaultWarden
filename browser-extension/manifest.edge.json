@@ -6,7 +6,8 @@
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwR0ymz+kFAyDVdvYb4wSvMza8cQWC/ITUR9c9jzL+5RbQMxfMrIlRMxeViqi9eRFQdNX8yPldXpP8+SxUWXYDoaTp2BKL0IoDQCpkAOb/lVXOK7BrrznNncSSxWip9tB7J3S8N7lXyGBLgWKDWTVsufqOsyFiig7MuKlBhbl0+xQaW/D2yeq8wlO6W/Mt5/IAbaexvQuYoVYKo+tSmOF15HndLjAh6sBUoi5Woe6DsxBilSK0DWt024b0iQF1zP3ELLoz3IqgWWxl4JrdNTp05EgT4DUJc7f7FqSPBLxwCvPwneBrimpwKNPAHDgHdO09HcDPhU7mC9FEjPCBsgn3QIDAQAB",
   "minimum_chrome_version": "116",
   "permissions": [
-    "nativeMessaging"
+    "nativeMessaging",
+    "webNavigation"
   ],
   "background": {
     "service_worker": "src/background.js",

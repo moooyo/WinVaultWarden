@@ -96,9 +96,9 @@ public sealed class DuoWebViewTwoFactorService : IDuoTwoFactorService
         };
         var dialog = new ContentDialog
         {
-            Title = "Duo 两步验证",
+            Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text70CF01F8ACC36449),
             Content = webView,
-            CloseButtonText = "取消",
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = xamlRoot,
         };

@@ -31,16 +31,16 @@ public class ImportExportPageXamlTests
     // Export controls retain the format, policy, and authentication boundaries.
 
     [Fact]
-    public void ExportSection_ExplainsPlaintextFormatAndOnlyOffersSupportedFormats()
+    public void ExportSection_OffersExplicitPlaintextAndEncryptedFormats()
     {
         var doc = LoadXaml();
         var combo = doc.Descendants().Single(e =>
             e.Attribute("AutomationProperties.AutomationId")?.Value == "ExportFormatCombo");
 
-        Assert.Equal(new[] { ".json · 不加密", ".csv · 不加密" },
+        Assert.Equal(new[] { ".json · 不加密", ".csv · 不加密", ".json · 密码保护", ".json · 限定当前账户" },
             combo.Elements().Select(e => e.Attribute("Content")?.Value).ToArray());
         Assert.Contains(doc.Descendants(), e => e.Name.LocalName == "TextBlock"
-            && e.Attribute("Text")?.Value == "不加密：任何拿到文件的人都能看到全部密码");
+            && (e.Attribute("Text")?.Value ?? string.Empty).Contains("ExportFormatDescription"));
     }
 
     [Fact]
@@ -227,12 +227,13 @@ public class ImportExportPageXamlTests
         Assert.Contains("BeginOperation(ImportExportOperationKind.Export)", code, StringComparison.Ordinal);
         Assert.Contains("BeginOperation(ImportExportOperationKind.ChooseImportFile)", code, StringComparison.Ordinal);
         Assert.Contains("var format = operation.ExportFormat;", code, StringComparison.Ordinal);
-        Assert.Contains("ViewModel.ExportToText(format)", code, StringComparison.Ordinal);
+        Assert.Contains("CreateExportTextAsync(operation, sessionLease)", code, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.ExportToTextAsync(operation.ExportFormat", code, StringComparison.Ordinal);
         Assert.Contains("catch (UnsupportedCipherCsvExportException)", code, StringComparison.Ordinal);
-        Assert.Contains("请改用 JSON 格式", code, StringComparison.Ordinal);
+        LocalizedSourceAssert.ContainsText("请改用 JSON 格式", code);
         Assert.DoesNotContain("ViewModel.SelectedExportFormat", code, StringComparison.Ordinal);
 
-        var exportValidation = code.IndexOf("var exportText = ViewModel.ExportToText(format);", StringComparison.Ordinal);
+        var exportValidation = code.IndexOf("var exportText = await CreateExportTextAsync(operation, sessionLease);", StringComparison.Ordinal);
         var filePicker = code.IndexOf("new Windows.Storage.Pickers.FileSavePicker", StringComparison.Ordinal);
         Assert.True(exportValidation >= 0 && exportValidation < filePicker);
     }
@@ -242,9 +243,29 @@ public class ImportExportPageXamlTests
     {
         var code = LoadPageCode();
 
-        Assert.Contains("ApplySelectedImportFile(operation, file.Name, content)", code, StringComparison.Ordinal);
+        Assert.Contains("ApplyPreparedImportFile(operation, file.Name, selectedFormat, canonicalJson, preview)", code, StringComparison.Ordinal);
+        Assert.Contains("PrepareImportPreviewAsync(operation, canonicalJson)", code, StringComparison.Ordinal);
+        Assert.Contains("PrepareImportFileAsync(selectedFormat, bytes, operation.Token)", code, StringComparison.Ordinal);
+        Assert.Contains("ReadImportBytesAsync(source, ct)", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReadTextAsync", code, StringComparison.Ordinal);
         Assert.DoesNotContain("ex.Message", code, StringComparison.Ordinal);
         Assert.DoesNotContain("MinWidth", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ImportSection_OffersAllEightSourceFormatsAndAccountBoundDestination()
+    {
+        var document = LoadXaml();
+        var formats = document.Descendants().Single(element =>
+            element.Attribute("AutomationProperties.AutomationId")?.Value == "ImportFormatCombo");
+        Assert.Equal(8, formats.Elements().Count());
+        var destination = document.Descendants().Single(element =>
+            element.Attribute("AutomationProperties.AutomationId")?.Value == "ImportDestinationCombo");
+        Assert.Contains("DestinationFolders", destination.Attribute("ItemsSource")?.Value);
+        Assert.Contains("ImportDestinationIndex", destination.Attribute("SelectedIndex")?.Value);
+        Assert.Contains(document.Descendants(), element =>
+            element.Name.LocalName == "DataTemplate"
+            && element.Attribute("{http://schemas.microsoft.com/winfx/2006/xaml}DataType")?.Value == "vm:ImportFolderOption");
     }
 
     [Fact]
@@ -252,7 +273,7 @@ public class ImportExportPageXamlTests
     {
         var code = LoadPageCode();
         var passwordVerification = code.IndexOf("ViewModel.VerifyMasterPasswordAsync(", StringComparison.Ordinal);
-        var export = code.IndexOf("ViewModel.ExportToText(format)", StringComparison.Ordinal);
+        var export = code.IndexOf("CreateExportTextAsync(operation, sessionLease)", StringComparison.Ordinal);
 
         Assert.True(passwordVerification >= 0 && passwordVerification < export);
         Assert.Contains("DialogHelper.ShowTrackedAsync(", code);

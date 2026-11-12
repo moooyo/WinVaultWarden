@@ -18,6 +18,10 @@ public interface ISendUiService
     Task<SendEditorDraft?> GetEditDraftAsync(string id, CancellationToken ct = default);
 }
 
+/// <summary>
+/// Snapshots display metadata independently of the disposable access secrets.
+/// Only file results retain an access handle for a later download.
+/// </summary>
 public sealed record SendReceivedResult(
     bool Ok,
     bool WrongPassword,
@@ -26,7 +30,10 @@ public sealed record SendReceivedResult(
     string? TextContent,
     string? FileName,
     string? Error,
-    Core.Models.SendAccessResult? Accessed) : IDisposable
+    Core.Models.SendAccessResult? Accessed,
+    bool TextHidden = false,
+    string? CreatorIdentifier = null,
+    DateTimeOffset? ExpirationDate = null) : IDisposable
 {
     private int _disposed;
 

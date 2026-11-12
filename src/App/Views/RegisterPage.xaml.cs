@@ -52,12 +52,12 @@ public sealed partial class RegisterPage : Page
     // Compiled binding functions must be instance methods.
     private bool Not(bool value) => !value;
 
-    private string RegisterButtonText(bool isBusy) => isBusy ? "正在创建…" : "创建账户";
+    private string RegisterButtonText(bool isBusy) => isBusy ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7C0305BC0CE607B2) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text733DEE6D88971AE1);
 
     private double RegisterButtonOpacity(bool isBusy) => isBusy ? .45 : 1;
 
     private string RegistrationServerTextValue(string serverUrl) =>
-        $"账户会创建在 {(Uri.TryCreate(serverUrl, UriKind.Absolute, out var server) ? server.Authority : serverUrl)}";
+        global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text182D72AA8C3C2240,(Uri.TryCreate(serverUrl, UriKind.Absolute, out var server) ? server.Authority : serverUrl));
 
     private void OnRegisterViewportSizeChanged(object sender, SizeChangedEventArgs e) =>
         RegisterContentRoot.MinHeight = e.NewSize.Height;
@@ -291,17 +291,17 @@ public sealed partial class RegisterPage : Page
 
         if (MasterPasswordBox.Password.Length < 12)
             return ShowFieldError(MasterPasswordBox, MasterPasswordErrorText, MasterPasswordErrorUnderline,
-                "主密码至少需要 12 个字符");
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3A7BBFCB76154C96));
 
         if (MasterPasswordBox.Password != ConfirmPasswordBox.Password)
             return ShowFieldError(ConfirmPasswordBox, ConfirmPasswordErrorText, ConfirmPasswordErrorUnderline,
-                "两次输入的主密码不一致");
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text61153D5C7DD3DA51));
 
         if (MasterPasswordHintTextBox.Text.Contains(MasterPasswordBox.Password, StringComparison.OrdinalIgnoreCase))
         {
             PasswordHintDescription.Visibility = Visibility.Collapsed;
             return ShowFieldError(MasterPasswordHintTextBox, PasswordHintErrorText, PasswordHintErrorUnderline,
-                "提示不能包含主密码");
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text190B7B43774B5AFE));
         }
 
         return true;
@@ -313,7 +313,7 @@ public sealed partial class RegisterPage : Page
             return;
         var reveal = RevealMasterPasswordButton.IsChecked == true;
         MasterPasswordBox.PasswordRevealMode = reveal ? PasswordRevealMode.Visible : PasswordRevealMode.Hidden;
-        var label = reveal ? "隐藏主密码" : "显示主密码";
+        var label = reveal ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEB26C751D7379736) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCDA877C642C146C2);
         AutomationProperties.SetName(RevealMasterPasswordButton, label);
         ToolTipService.SetToolTip(RevealMasterPasswordButton, label);
         RevealMasterPasswordIcon.Glyph = reveal ? "\uED1A" : "\uE890";
@@ -325,7 +325,7 @@ public sealed partial class RegisterPage : Page
             return;
         var reveal = RevealConfirmPasswordButton.IsChecked == true;
         ConfirmPasswordBox.PasswordRevealMode = reveal ? PasswordRevealMode.Visible : PasswordRevealMode.Hidden;
-        var label = reveal ? "隐藏确认主密码" : "显示确认主密码";
+        var label = reveal ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text240C7CCE608F7BED) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text866B4374B231DF49);
         AutomationProperties.SetName(RevealConfirmPasswordButton, label);
         ToolTipService.SetToolTip(RevealConfirmPasswordButton, label);
         RevealConfirmPasswordIcon.Glyph = reveal ? "\uED1A" : "\uE890";
@@ -347,9 +347,9 @@ public sealed partial class RegisterPage : Page
             segments[index].Background = index < segmentsFilled ? filledBrush : emptyBrush;
 
         StrengthLabel.Text = hasPassword
-            ? score switch { <= 1 => "弱", 2 => "中等", 3 => "强", _ => "非常强" }
+            ? score switch { <= 1 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDEFA376EABAF2FFF), 2 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC7092C51FDCF2F65), 3 => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF038053BEDB1B9ED), _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE6471576029B77BB) }
             : string.Empty;
         StrengthLabel.Foreground = filledBrush;
-        AutomationProperties.SetName(StrengthLabel, hasPassword ? $"密码强度：{StrengthLabel.Text}" : string.Empty);
+        AutomationProperties.SetName(StrengthLabel, hasPassword ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text6246597499366985,StrengthLabel.Text) : string.Empty);
     }
 }

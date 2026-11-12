@@ -114,9 +114,9 @@ public sealed partial class DevicesPage : Page
             item,
             (request, ct) => DialogHelper.ConfirmAsync(
                 XamlRoot,
-                "拒绝登录请求",
-                $"确定拒绝来自 {request.DeviceTypeName} 的登录请求吗？",
-                "拒绝",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text087B4AADD297D437),
+                global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text9C1D0F07A8A77D93,request.DeviceTypeName),
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text136DE7A8C46FC803),
                 ct: ct),
             CancellationToken.None);
     }

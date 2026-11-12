@@ -24,15 +24,15 @@
                            AutomationProperties.LiveSetting="Polite" />
             </StackPanel>
             <StackPanel x:Name="ActionsPanel" Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-                <Button x:Name="RevealButton" Visibility="Collapsed" Click="OnReveal" Style="{StaticResource IconButtonStyle}"
+                <Button x:Uid="L8E1A707B572C47DC" x:Name="RevealButton" Visibility="Collapsed" Click="OnReveal" Style="{StaticResource IconButtonStyle}"
                         Width="32" Height="32" AutomationProperties.Name="显示" ToolTipService.ToolTip="显示（需 Windows Hello）">
                     <FontIcon x:Name="RevealIcon" Glyph="&#xE890;" FontSize="16" />
                 </Button>
-                <Button x:Name="OpenButton" Visibility="Collapsed" Click="OnOpen" Style="{StaticResource IconButtonStyle}"
+                <Button x:Uid="LE79B396842D0750F" x:Name="OpenButton" Visibility="Collapsed" Click="OnOpen" Style="{StaticResource IconButtonStyle}"
                         Width="32" Height="32" AutomationProperties.Name="在浏览器中打开" ToolTipService.ToolTip="在浏览器中打开">
                     <FontIcon Glyph="&#xE8A7;" FontSize="16" />
                 </Button>
-                <Button x:Name="CopyButton" Click="OnCopy" Style="{StaticResource IconButtonStyle}"
+                <Button x:Uid="LC49CD99FA7E71B10" x:Name="CopyButton" Click="OnCopy" Style="{StaticResource IconButtonStyle}"
                         MinWidth="32" Height="32" AutomationProperties.Name="字段，复制" ToolTipService.ToolTip="复制">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon x:Name="CopyIcon" Glyph="&#xE8C8;" FontSize="16" />

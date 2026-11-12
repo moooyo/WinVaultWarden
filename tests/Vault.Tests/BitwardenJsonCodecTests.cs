@@ -7,6 +7,38 @@ namespace Vault.Tests;
 
 public class BitwardenJsonCodecTests
 {
+    [Fact]
+    public void RoundTrip_PreservesItemAndLoginMetadata()
+    {
+        var created = DateTimeOffset.Parse("2026-01-02T03:04:05Z", System.Globalization.CultureInfo.InvariantCulture);
+        var revised = created.AddDays(1);
+        var passwordRevised = created.AddHours(2);
+        var source = new Cipher
+        {
+            Id = "original-item",
+            Type = CipherType.Login,
+            FolderId = "original-folder",
+            Name = "Metadata",
+            CreationDate = created,
+            RevisionDate = revised,
+            Login = new CipherLogin("user", "secret", null, [])
+            {
+                PasswordRevisionDate = passwordRevised,
+                AutofillOnPageLoad = false,
+            },
+        };
+        var data = BitwardenJsonCodec.Parse(BitwardenJsonCodec.Serialize(
+            [source],
+            [new Folder { Id = "original-folder", Name = "Work", RevisionDate = revised }]));
+
+        var restored = Assert.Single(data.Ciphers);
+        Assert.Equal(created, restored.CreationDate);
+        Assert.Equal(revised, restored.RevisionDate);
+        Assert.Equal(passwordRevised, restored.Login!.PasswordRevisionDate);
+        Assert.False(restored.Login.AutofillOnPageLoad);
+        Assert.Equal(revised, Assert.Single(data.Folders).RevisionDate);
+    }
+
     private static Cipher Login() => new()
     {
         Id = "c1", Type = CipherType.Login, Name = "GitHub", Notes = "n", Favorite = true, FolderId = "f1",

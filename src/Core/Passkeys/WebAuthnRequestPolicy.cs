@@ -9,7 +9,7 @@ namespace Core.Passkeys;
 // BrowserRequestContext. Order: absolute origin with no user-info/query/fragment/non-root
 // path; HTTPS or one of the three exact loopback HTTP hosts; ServerOrigin normalisation;
 // IDN NFC + A-label round-trip; exact IP RP match; public-suffix rejection; label-boundary
-// RP ownership; create top-level only; cross-origin get Permissions Policy. Denials return
+// RP ownership; trusted ancestor consistency; create top-level only; actual Permissions Policy. Denials return
 // a stable code with no input echoed back.
 public sealed class WebAuthnRequestPolicy
 {
@@ -47,12 +47,19 @@ public sealed class WebAuthnRequestPolicy
         if (!frameIsIp && rpAscii != "localhost" && _suffixes.IsPublicSuffix(rpAscii))
             return Deny(PasskeyErrorCodes.SecurityPublicSuffix);
 
-        var crossOrigin = frame != top;
+        if (context.TabId < 0 || context.FrameId < 0 || string.IsNullOrWhiteSpace(context.DocumentId)
+            || (context.SameOriginWithAncestors && frame != top)
+            || (context.FrameId == 0 && (frame != top || !context.SameOriginWithAncestors)))
+            return Deny(PasskeyErrorCodes.SecuritySender);
+
+        var crossOrigin = !context.SameOriginWithAncestors;
         if (operation == BrowserPasskeyOperation.Create
             && (context.FrameId != 0 || crossOrigin))
             return Deny(PasskeyErrorCodes.SecurityFrame);
+        if (operation == BrowserPasskeyOperation.Create
+            && !context.PublicKeyCredentialsCreateAllowed)
+            return Deny(PasskeyErrorCodes.SecurityPermissionsPolicy);
         if (operation == BrowserPasskeyOperation.Get
-            && crossOrigin
             && !context.PublicKeyCredentialsGetAllowed)
             return Deny(PasskeyErrorCodes.SecurityPermissionsPolicy);
 

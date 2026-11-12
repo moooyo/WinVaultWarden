@@ -29,7 +29,7 @@ public sealed class HelloUnlockService : IHelloUnlockService
         var lease = _session.CaptureLease();
         try
         {
-            if (!_session.TryCopyUserKey(lease, out var copiedKey))
+            if (!_session.TryCopyUserKeyMaterial(lease, out var copiedKey) || copiedKey is null)
                 throw new InvalidOperationException("Vault is locked.");
             using var userKey = copiedKey;
             if (!_tokenStore.TryLoad(out var persisted)
@@ -38,14 +38,19 @@ public sealed class HelloUnlockService : IHelloUnlockService
                 || persisted.Generation != lease.Generation)
                 throw new InvalidOperationException("No matching saved session.");
 
+            LocalUnlockKeyProtection.RequireUserKeyBinding(userKey, persisted);
+
             using var helloKey = _crypto.DeriveKeyFromSecret(signature);
-            var wrapped = _crypto.Encrypt(userKey!.FullKey, helloKey).ToString();
-            if (!_session.TryCommit(lease, () =>
-                _tokenStore.Save(persisted with
+            var wrapped = LocalUnlockKeyProtection.Protect(_crypto, userKey, helloKey);
+            if (!LocalUnlockKeyProtection.TryUpdate(_session, _tokenStore, lease, latest =>
+            {
+                LocalUnlockKeyProtection.RequireUnchangedKeyBinding(persisted, latest);
+                return latest with
                 {
                     HelloProtectedUserKey = wrapped,
                     HelloChallenge = Convert.ToBase64String(challenge),
-                })))
+                };
+            }))
                 throw new OperationCanceledException(lease.CancellationToken);
         }
         finally
@@ -63,8 +68,8 @@ public sealed class HelloUnlockService : IHelloUnlockService
             || persisted.Generation != lease.Generation)
             return;
 
-        if (!_session.TryCommit(lease, () =>
-            _tokenStore.Save(persisted with { HelloProtectedUserKey = null, HelloChallenge = null })))
+        if (!LocalUnlockKeyProtection.TryUpdate(_session, _tokenStore, lease,
+            latest => latest with { HelloProtectedUserKey = null, HelloChallenge = null }))
             throw new OperationCanceledException(lease.CancellationToken);
     }
 

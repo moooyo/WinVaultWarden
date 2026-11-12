@@ -61,14 +61,14 @@ public sealed partial class CipherListItem : System.ComponentModel.INotifyProper
     public DateTimeOffset? LastUsedAt { get; set; }
     public string TypeLabel => Kind switch
     {
-        VaultItemKind.Login => "登录",
-        VaultItemKind.Card => "支付卡",
-        VaultItemKind.Identity => "身份",
-        VaultItemKind.Note => "安全笔记",
-        VaultItemKind.Ssh => "SSH 密钥",
-        VaultItemKind.BankAccount => "银行账户",
-        VaultItemKind.DriversLicense => "驾驶证",
-        VaultItemKind.Passport => "护照",
-        _ => "条目",
+        VaultItemKind.Login => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1E2DF9C3075AE9E4),
+        VaultItemKind.Card => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7BB5BFB842DCB7BF),
+        VaultItemKind.Identity => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2A9C9E9976421A9D),
+        VaultItemKind.Note => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3B0221743F79E8A4),
+        VaultItemKind.Ssh => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBF18658907FB9C66),
+        VaultItemKind.BankAccount => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC4C25EEB5DAF09EA),
+        VaultItemKind.DriversLicense => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text61B7153092BCDCCB),
+        VaultItemKind.Passport => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD24F1B9E50C3D3C8),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFEE60AE594C1109F),
     };
 }

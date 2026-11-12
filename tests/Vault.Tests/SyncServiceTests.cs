@@ -50,6 +50,33 @@ public class SyncServiceTests
     }
 
     [Fact]
+    public async Task SyncCompletedPublishesOriginalLeaseAfterCommitAndIsolatesObserverFailure()
+    {
+        var api = new ControlledReadonlyApiClient(_ => Task.FromResult(SyncResponseFor("Committed")));
+        var session = new VaultSession();
+        var lease = session.BeginAccountSession("u1", "me@example.com", new ServerOrigin(Server));
+        session.SetUnlockedKey(new SymmetricCryptoKey(new byte[64]));
+        var decryptor = new VaultDecryptor(new CryptoService());
+        var cacheStore = new FakeCacheStore();
+        var service = new SyncService(ConfiguredProvider(api), decryptor, session,
+            new VaultCacheService(cacheStore, decryptor, session));
+        VaultSessionLease? observed = null;
+        var committedBeforeEvent = false;
+        service.SyncCompleted += _ => throw new InvalidOperationException("Observer failure");
+        service.SyncCompleted += completed =>
+        {
+            observed = completed;
+            committedBeforeEvent = cacheStore.SaveCount == 1 && !session.DataStale;
+        };
+
+        await service.SyncAsync(lease, TestContext.Current.CancellationToken);
+
+        Assert.Same(lease, observed);
+        Assert.True(committedBeforeEvent);
+        Assert.True(session.IsCurrent(lease));
+    }
+
+    [Fact]
     public async Task SyncAsync_SecurityStampChangeLocksAndRequestsLogoutBeforeCommit()
     {
         var callCount = 0;

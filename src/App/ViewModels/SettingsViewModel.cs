@@ -63,12 +63,12 @@ public partial class SettingsViewModel : ObservableObject
     public bool IsAboutSection => SelectedSectionIndex == 3;
 
     public string BrowserIntegrationDescription => BrowserIntegrationSupported
-        ? "允许已配对的浏览器扩展使用和保存通行密钥；密码库需要保持解锁。"
-        : "此安装方式暂不支持连接浏览器扩展；仅便携版可用。";
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE81BFB4E983139B7)
+        : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC32D0C2BEF865EF7);
 
     public string TrayBehaviorDescription => CanConfigureTrayBehavior
-        ? "保留系统托盘入口，可从托盘重新打开窗口。"
-        : "先启用显示托盘图标，再配置此行为。";
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC7E22CC343B679AE)
+        : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text38B9FF3AF8B5C5F4);
 
     private int _selectedSessionTimeoutIndex = LoadSessionTimeoutIndex();
 
@@ -148,7 +148,7 @@ public partial class SettingsViewModel : ObservableObject
             var constraint = CurrentTimeoutConstraint();
             return constraint.Mode switch
             {
-                MaximumVaultTimeoutMode.Immediately => "立即",
+                MaximumVaultTimeoutMode.Immediately => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6912269DF2EDED7A),
                 MaximumVaultTimeoutMode.Minutes => FormatTimeout(constraint.Minutes),
                 _ => string.Empty,
             };
@@ -180,19 +180,19 @@ public partial class SettingsViewModel : ObservableObject
             var timeout = constraint.Mode switch
             {
                 MaximumVaultTimeoutMode.Immediately =>
-                    "组织策略要求密码库立即超时。",
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6AD653878A4A6460),
                 MaximumVaultTimeoutMode.Minutes when constraint.UsedFailClosedFallback =>
-                    $"组织策略数据无效；当前安全上限为 {FormatTimeout(constraint.Minutes)}。",
+                    global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextE8CDC29C28B46E27,FormatTimeout(constraint.Minutes)),
                 MaximumVaultTimeoutMode.Minutes =>
-                    $"组织策略将密码库超时上限设为 {FormatTimeout(constraint.Minutes)}。",
-                MaximumVaultTimeoutMode.OnSystemLock => "组织策略要求在系统锁定时锁定密码库。",
-                MaximumVaultTimeoutMode.OnAppRestart => "组织策略要求应用重启后锁定密码库。",
+                    global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text6A7D4C46DCFA430B,FormatTimeout(constraint.Minutes)),
+                MaximumVaultTimeoutMode.OnSystemLock => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC3977EA3031F4272),
+                MaximumVaultTimeoutMode.OnAppRestart => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC92B6D8FFD31E80A),
                 _ => string.Empty,
             };
             var action = constraint.RequiredAction switch
             {
-                MaximumVaultTimeoutAction.Lock => " 超时动作由策略设为锁定。",
-                MaximumVaultTimeoutAction.Logout => " 超时动作由策略设为登出。",
+                MaximumVaultTimeoutAction.Lock => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text36E5559877688F79),
+                MaximumVaultTimeoutAction.Logout => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7EDCFB6BD4F9E6E8),
                 _ => string.Empty,
             };
             return (timeout + action).Trim();
@@ -480,7 +480,7 @@ public partial class SettingsViewModel : ObservableObject
     private string? _updatedAccountName;
     public string AccountName => _updatedAccountName ?? _accountUi?.GetAccount().Name ?? string.Empty;
     public string AccountDisplayName => string.IsNullOrWhiteSpace(AccountName) ? AccountEmail : AccountName;
-    public string AccountNameDescription => string.IsNullOrWhiteSpace(AccountName) ? "尚未设置名称" : AccountName;
+    public string AccountNameDescription => string.IsNullOrWhiteSpace(AccountName) ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1ECEE8D703512767) : AccountName;
     public string AccountEmail => _accountUi?.GetAccount().Email ?? string.Empty;
     public string AccountServer => _accountUi?.GetAccount().ServerUrl ?? string.Empty;
     public string AccountInitial => !string.IsNullOrWhiteSpace(_updatedAccountName)
@@ -506,21 +506,24 @@ public partial class SettingsViewModel : ObservableObject
     public static string GetTwoFactorProviderDisplayName(int type) =>
         (TwoFactorProviderType)type switch
         {
-            TwoFactorProviderType.Authenticator => "TOTP 验证器",
-            TwoFactorProviderType.Email => "邮箱验证码",
+            TwoFactorProviderType.Authenticator => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text22A686A1C34C9BA4),
+            TwoFactorProviderType.Email => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3ACDD163E67A08CF),
             TwoFactorProviderType.Duo => "Duo",
             TwoFactorProviderType.YubiKey => "YubiKey OTP",
-            TwoFactorProviderType.U2f => "U2F 安全密钥",
-            TwoFactorProviderType.Remember => "已记住的设备",
-            TwoFactorProviderType.OrganizationDuo => "组织 Duo",
-            TwoFactorProviderType.WebAuthn => "安全密钥 / Windows Hello",
-            TwoFactorProviderType.RecoveryCode => "恢复代码",
-            _ => $"未知（类型 {type}）",
+            TwoFactorProviderType.U2f => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE655E1517173184A),
+            TwoFactorProviderType.Remember => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text89C59CE58F3BE0C5),
+            TwoFactorProviderType.OrganizationDuo => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4F42C08738E301D2),
+            TwoFactorProviderType.WebAuthn => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD43412EE36BE899E),
+            TwoFactorProviderType.RecoveryCode => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC5674F920EF6D556),
+            _ => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text809855BC3A7A40AA,type),
         };
 
     // ── PIN 解锁 ─────────────────────────────────────────────────────────────
 
     public bool IsPinSet => _pin?.IsPinSet ?? false;
+    public bool RequireMasterPasswordOnRestart => _pin?.RequireMasterPasswordOnRestart ?? false;
+    public bool CanConfigurePinRestartPolicy => CanUsePinUnlock && IsPinSet
+        && (RequireMasterPasswordOnRestart || (_pin?.CanRequireMasterPasswordOnRestart ?? false));
     public bool SupportsLocalUnlock => _supportsLocalUnlock?.Invoke() ?? true;
     private bool IsPinAllowedByPolicy => _vault is null || !VaultPolicyEvaluator.IsEnabledForUser(
         _vault.Snapshot,
@@ -528,9 +531,9 @@ public partial class SettingsViewModel : ObservableObject
     public bool CanUsePinUnlock => SupportsLocalUnlock && IsPinAllowedByPolicy;
 
     public string PinUnlockDescription => !SupportsLocalUnlock
-        ? "此账户使用 V2 加密，当前版本暂不支持 PIN 解锁"
-        : !IsPinAllowedByPolicy ? "组织策略不允许使用 PIN 解锁。"
-        : "PIN 只保存在这台设备上，连续输错 5 次会清除 PIN 并需要主密码";
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC464A04460110C65)
+        : !IsPinAllowedByPolicy ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text86D4F8EF4A1B6CF8)
+        : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9A3B277282B9ADBE);
 
     public void ApplyPolicyRestrictions()
     {
@@ -538,6 +541,7 @@ public partial class SettingsViewModel : ObservableObject
         if (!IsPinAllowedByPolicy && IsPinSet)
             ClearPin();
         OnPropertyChanged(nameof(CanUsePinUnlock));
+        OnPropertyChanged(nameof(CanConfigurePinRestartPolicy));
         OnPropertyChanged(nameof(PinUnlockDescription));
         OnPropertyChanged(nameof(SupportsLocalUnlock));
         OnPropertyChanged(nameof(CanToggleWindowsHello));
@@ -590,13 +594,13 @@ public partial class SettingsViewModel : ObservableObject
     private static string FormatTimeout(int minutes)
     {
         if (minutes < 60)
-            return $"{minutes} 分钟";
+            return global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextC65627EAD1308E82,minutes);
 
         var hours = minutes / 60;
         var remainingMinutes = minutes % 60;
         return remainingMinutes == 0
-            ? $"{hours} 小时"
-            : $"{hours} 小时 {remainingMinutes} 分钟";
+            ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text2A1D9519D00A95BE,hours)
+            : global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text3CDE3F0AE16CF4BB,hours,remainingMinutes);
     }
 
     public void SetPin(string pin)
@@ -605,12 +609,28 @@ public partial class SettingsViewModel : ObservableObject
             throw new InvalidOperationException(PinUnlockDescription);
         _pin?.SetPin(pin);
         OnPropertyChanged(nameof(IsPinSet));
+        OnPropertyChanged(nameof(RequireMasterPasswordOnRestart));
+        OnPropertyChanged(nameof(CanConfigurePinRestartPolicy));
     }
 
     public void ClearPin()
     {
         _pin?.ClearPin();
         OnPropertyChanged(nameof(IsPinSet));
+        OnPropertyChanged(nameof(RequireMasterPasswordOnRestart));
+        OnPropertyChanged(nameof(CanConfigurePinRestartPolicy));
+    }
+
+    public void SetPinRestartPolicy(bool value)
+    {
+        if (!CanUsePinUnlock || !IsPinSet || _pin is null)
+            throw new InvalidOperationException("Unlock the account and configure a PIN first.");
+        if (value && !_pin.CanRequireMasterPasswordOnRestart)
+            throw new InvalidOperationException("This account cannot verify a master password after restart.");
+        _pin.SetRequireMasterPasswordOnRestart(value);
+        OnPropertyChanged(nameof(RequireMasterPasswordOnRestart));
+        OnPropertyChanged(nameof(CanConfigurePinRestartPolicy));
+        OnPropertyChanged(nameof(PinUnlockDescription));
     }
 
     // ── Windows Hello 解锁 ───────────────────────────────────────────────────
@@ -624,12 +644,12 @@ public partial class SettingsViewModel : ObservableObject
     public bool CanToggleWindowsHello => SupportsLocalUnlock && IsWindowsHelloAvailable || IsWindowsHelloEnabled;
 
     public string WindowsHelloDescription => !SupportsLocalUnlock
-        ? "此账户使用 V2 加密，当前版本暂不支持 Windows Hello 解锁"
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text727089ED5C885538)
         : IsWindowsHelloAvailable
-        ? "用面部、指纹或 PIN 代替主密码"
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6A3C74D3A3FABE0F)
         : IsWindowsHelloEnabled
-            ? "Windows Hello 当前不可用，仍可关闭已保存的解锁设置。"
-            : "请先在 Windows 设置中配置 Windows Hello。";
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA1FD6942D8E8BC9D)
+            : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4B079D5DA86A58FF);
 
     public async Task RefreshWindowsHelloAvailabilityAsync()
         => IsWindowsHelloAvailable = _hello is not null && await _hello.IsAvailableAsync();
@@ -692,14 +712,14 @@ public partial class SettingsViewModel : ObservableObject
         IsCurrentDeviceTrusted || (_deviceTrust?.CanTrustCurrentDevice ?? false);
 
     public string TrustedDeviceStatus => IsCurrentDeviceTrusted
-        ? "此设备已受信任；锁定后将重新通过企业 SSO 验证信任状态。"
-        : "允许此设备在企业 SSO 后解密保险库。";
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text26E2B1324F3354DC)
+        : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2824D1E45AA17CF0);
 
     public string TrustedDeviceActionText => IsBusy
-        ? "正在建立信任"
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEBA0B24BB96BB7A5)
         : IsCurrentDeviceTrusted
-            ? "已信任"
-            : "信任此设备";
+            ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text451DE083F3FEF441)
+            : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF8B09F728ADC05D1);
 
     public async Task<UiOperationResult> TrustCurrentDeviceAsync(
         CancellationToken ct = default)
@@ -707,7 +727,7 @@ public partial class SettingsViewModel : ObservableObject
         if (IsBusy)
             return UiOperationResult.Busy();
         if (_deviceTrust is null || !CanTrustCurrentDevice)
-            return UiOperationResult.Failure("当前会话不支持可信设备加密");
+            return UiOperationResult.Failure(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF7C6EF14963D18E2));
 
         IsBusy = true;
         OperationError = string.Empty;
@@ -729,12 +749,12 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch (VaultApiException)
         {
-            OperationError = "服务器拒绝了可信设备请求";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text428DDCD7B3EAD930);
             return UiOperationResult.Failure(OperationError);
         }
         catch (HttpRequestException)
         {
-            OperationError = "无法连接服务器，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5758A94998FB0A90);
             return UiOperationResult.Failure(OperationError);
         }
         catch (DeviceTrustException ex)
@@ -767,7 +787,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_accountUi is null)
         {
-            OperationError = "账户服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB742DBD6B37D5897);
             return UiOperationResult.Failure(OperationError);
         }
         if (IsBusy)
@@ -800,7 +820,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch
         {
-            OperationError = "操作失败，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB10D00FCBB7711DC);
             return UiOperationResult.Failure(OperationError);
         }
         finally
@@ -819,7 +839,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_accountUi is null)
         {
-            OperationError = "账户服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB742DBD6B37D5897);
             return UiOperationResult.Failure(OperationError);
         }
         if (IsBusy)
@@ -867,7 +887,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch
         {
-            OperationError = "操作失败，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB10D00FCBB7711DC);
             return UiOperationResult.Failure(OperationError);
         }
         finally
@@ -880,7 +900,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_accountUi is null)
         {
-            OperationError = "账户服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB742DBD6B37D5897);
             return UiOperationResult.Failure(OperationError);
         }
         if (IsBusy)
@@ -913,7 +933,55 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch
         {
-            OperationError = "操作失败，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB10D00FCBB7711DC);
+            return UiOperationResult.Failure(OperationError);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task<UiOperationResult> ChangeKdfAsync(
+        string current,
+        AccountKdfParameters parameters,
+        CancellationToken ct = default)
+    {
+        if (_accountUi is null)
+        {
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD6756B1D151E6333);
+            return UiOperationResult.Failure(OperationError);
+        }
+        if (IsBusy)
+            return UiOperationResult.Busy();
+
+        IsBusy = true;
+        OperationError = string.Empty;
+        try
+        {
+            await _accountUi.ChangeKdfAsync(current, parameters, ct);
+            if (_lifecycle is not null)
+                await _lifecycle.RequestAsync(AppLifecycleIntent.CredentialChanged);
+            return UiOperationResult.Success();
+        }
+        catch (OperationCanceledException ex)
+            when (UiExceptionPolicy.IsGenuineCancellation(ex, ct))
+        {
+            return UiOperationResult.Cancelled();
+        }
+        catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
+        {
+            OperationError = UiExceptionPolicy.RequestTimeoutMessage;
+            return UiOperationResult.Failure(OperationError);
+        }
+        catch (AccountOperationException ex)
+        {
+            OperationError = ex.Message;
+            return UiOperationResult.Failure(OperationError);
+        }
+        catch
+        {
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF52928359D062128);
             return UiOperationResult.Failure(OperationError);
         }
         finally
@@ -928,7 +996,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_accountDeletion is null)
         {
-            OperationError = "账户删除服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5D73DD97F8FB4DB7);
             return UiOperationResult<AccountDeletionPreflight>.Failure(OperationError);
         }
         if (IsBusy)
@@ -942,7 +1010,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch
         {
-            OperationError = "无法检查账户删除条件，请重新在线登录后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2FD4599DC5F84D0A);
             return UiOperationResult<AccountDeletionPreflight>.Failure(OperationError);
         }
     }
@@ -952,7 +1020,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_accountDeletion is null)
         {
-            OperationError = "账户删除服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5D73DD97F8FB4DB7);
             return UiOperationResult<AccountDeletionOtpRequestResult>.Failure(OperationError);
         }
         if (IsBusy)
@@ -977,7 +1045,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch
         {
-            OperationError = "无法请求账户删除验证码，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text191D06B303C26631);
             return UiOperationResult<AccountDeletionOtpRequestResult>.Failure(OperationError);
         }
         finally
@@ -995,7 +1063,7 @@ public partial class SettingsViewModel : ObservableObject
         {
             if (_accountDeletion is null)
             {
-                OperationError = "账户删除服务不可用";
+                OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5D73DD97F8FB4DB7);
                 return UiOperationResult<AccountDeletionResult>.Failure(OperationError);
             }
             if (IsBusy)
@@ -1015,12 +1083,12 @@ public partial class SettingsViewModel : ObservableObject
             }
             catch (Exception ex) when (RequestTimeoutClassifier.IsTimeout(ex))
             {
-                OperationError = "无法确认账户是否已删除。请勿自动重试。";
+                OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF2081F339507465B);
                 return UiOperationResult<AccountDeletionResult>.Failure(OperationError);
             }
             catch
             {
-                OperationError = "账户删除失败，请稍后重试";
+                OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE99217156A626AA4);
                 return UiOperationResult<AccountDeletionResult>.Failure(OperationError);
             }
             finally
@@ -1054,7 +1122,7 @@ public partial class SettingsViewModel : ObservableObject
         var binding = GetAccountDeletionBinding(result);
         if (_lifecycle is null)
         {
-            OperationError = "无法完成账户删除后的安全清理";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8E901959D3CC1983);
             return UiOperationResult.Failure(OperationError);
         }
 
@@ -1068,7 +1136,7 @@ public partial class SettingsViewModel : ObservableObject
         catch
         {
             _lifecycle.FailClosedSynchronously();
-            OperationError = "账户状态已改变，应用已进入安全锁定状态";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF6545A8C1079C1AD);
             return UiOperationResult.Failure(OperationError);
         }
     }
@@ -1118,18 +1186,18 @@ public partial class SettingsViewModel : ObservableObject
     public static string GetAccountDeletionRejectionMessage(
         AccountDeletionRejectionReason reason) => reason switch
     {
-        AccountDeletionRejectionReason.RequiresUnlockedSession => "请先解锁密码库后重试。",
-        AccountDeletionRejectionReason.SessionBindingMismatch => "当前会话已变化，请重新登录后重试。",
-        AccountDeletionRejectionReason.FreshOnlineAuthenticationRequired => "需要重新在线登录后才能删除账户。",
-        AccountDeletionRejectionReason.ClaimedByOrganization => "此账户域名由组织认领，不能从客户端删除。请联系组织管理员。",
-        AccountDeletionRejectionReason.WrongCredentialKind => "所需的验证方式已变化，请重新开始。",
-        AccountDeletionRejectionReason.PendingDeletionExists => "此账户已有未确认的删除请求，请勿重复提交。",
-        AccountDeletionRejectionReason.LocalPersistenceUnavailable => "无法安全记录删除状态，未发送删除请求。",
-        AccountDeletionRejectionReason.LocalPersistenceCorrupt => "本地删除状态损坏，请重新在线登录。",
-        AccountDeletionRejectionReason.ConcurrentStateChange => "账户状态已变化，请重新开始。",
-        AccountDeletionRejectionReason.InvalidCredential => "验证信息不正确。",
-        AccountDeletionRejectionReason.ServerRejected => "服务器拒绝了账户删除请求。",
-        _ => "无法删除账户。",
+        AccountDeletionRejectionReason.RequiresUnlockedSession => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF956935B28E67D27),
+        AccountDeletionRejectionReason.SessionBindingMismatch => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text518CE9FBA621BFDD),
+        AccountDeletionRejectionReason.FreshOnlineAuthenticationRequired => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFBEEE1DD24D7118F),
+        AccountDeletionRejectionReason.ClaimedByOrganization => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3395A41AB0765F68),
+        AccountDeletionRejectionReason.WrongCredentialKind => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text42562D92AED261A5),
+        AccountDeletionRejectionReason.PendingDeletionExists => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7ED493647BE8A8EE),
+        AccountDeletionRejectionReason.LocalPersistenceUnavailable => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7EA02EAA64865DE0),
+        AccountDeletionRejectionReason.LocalPersistenceCorrupt => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text46B889E072F510DB),
+        AccountDeletionRejectionReason.ConcurrentStateChange => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4F95309A439A6B7E),
+        AccountDeletionRejectionReason.InvalidCredential => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCF1931580DD28208),
+        AccountDeletionRejectionReason.ServerRejected => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text055B7EB4E0A4014D),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text27D7C55749DD20DA),
     };
 
     // RenameCommand 供 XAML 绑定（string 参数可正常传递）
@@ -1159,7 +1227,7 @@ public partial class SettingsViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(verification);
         if (_twoFactorUi is null)
         {
-            OperationError = "两步验证服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text308830568944259B);
             WebAuthnState = DataPageState.Error;
             return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
         }
@@ -1191,13 +1259,13 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch (TwoFactorOperationException)
         {
-            OperationError = "无法验证所选信息或加载安全密钥";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD5A7E5C6ED2F0FA2);
             WebAuthnState = DataPageState.Error;
             return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
         }
         catch
         {
-            OperationError = "无法加载安全密钥，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2EED99EDE676CABA);
             WebAuthnState = DataPageState.Error;
             return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
         }
@@ -1212,7 +1280,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_twoFactorUi is null)
         {
-            OperationError = "两步验证服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text308830568944259B);
             return UiOperationResult.Failure(OperationError);
         }
         if (IsBusy)
@@ -1237,12 +1305,12 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch (TwoFactorOperationException)
         {
-            OperationError = "无法发送验证码，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5541675259CD31B7);
             return UiOperationResult.Failure(OperationError);
         }
         catch
         {
-            OperationError = "无法发送验证码，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5541675259CD31B7);
             return UiOperationResult.Failure(OperationError);
         }
         finally
@@ -1285,26 +1353,26 @@ public partial class SettingsViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(verification);
         if (_twoFactorUi is null || _webAuthnRegistration is null)
         {
-            OperationError = "此设备无法注册安全密钥";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC63246824A0CD7B6);
             return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
         }
         if (!_webAuthnRegistration.IsSupported)
         {
-            OperationError = "此设备不支持 Windows WebAuthn";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA88C75CA5E38DEA0);
             return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
         }
         if (IsBusy)
             return UiOperationResult<WebAuthnManagementSnapshot>.Busy();
         if (id <= 0)
         {
-            OperationError = "安全密钥标识无效";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4183155DF5053695);
             return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
         }
 
         var normalizedName = name?.Trim() ?? string.Empty;
         if (string.IsNullOrEmpty(normalizedName))
         {
-            OperationError = "请输入安全密钥名称";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text66ABCE161CD039CA);
             return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
         }
 
@@ -1324,7 +1392,7 @@ public partial class SettingsViewModel : ObservableObject
 
             if (outcome is WebAuthnRegistrationOutcome.OutcomeUncertain uncertain)
             {
-                OperationError = "无法确认安全密钥是否已添加。请刷新列表检查，不要立即重复添加。";
+                OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6B5CECC83FF69531);
                 var observed = uncertain.ObservedDetails is null
                     ? null
                     : ToWebAuthnSnapshot(uncertain.ObservedDetails);
@@ -1357,17 +1425,17 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch (TwoFactorOperationException)
         {
-            OperationError = "无法完成安全密钥注册，请检查验证信息后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text60959C44F8556C42);
             return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
         }
         catch (WebAuthnTwoFactorException)
         {
-            OperationError = "Windows 无法完成安全密钥注册，请重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text53A587091DA9AB54);
             return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
         }
         catch
         {
-            OperationError = "无法添加安全密钥，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF69FA772D5F71318);
             return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
         }
         finally
@@ -1393,7 +1461,7 @@ public partial class SettingsViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(verification);
         if (_twoFactorUi is null)
         {
-            OperationError = "两步验证服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text308830568944259B);
             return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
         }
         if (IsBusy)
@@ -1422,12 +1490,12 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch (TwoFactorOperationException)
         {
-            OperationError = "无法删除安全密钥，请检查验证信息后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAE2404B357A9B328);
             return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
         }
         catch
         {
-            OperationError = "无法删除安全密钥，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1664878C3AB92130);
             return UiOperationResult<WebAuthnManagementSnapshot>.Failure(OperationError);
         }
         finally
@@ -1451,7 +1519,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_twoFactorUi is null)
         {
-            OperationError = "两步验证服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text308830568944259B);
             TwoFactorState = DataPageState.Error;
             return UiOperationResult<IReadOnlyList<TwoFactorProvider>>.Failure(OperationError);
         }
@@ -1489,7 +1557,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch
         {
-            OperationError = "操作失败，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB10D00FCBB7711DC);
             TwoFactorState = DataPageState.Error;
             return UiOperationResult<IReadOnlyList<TwoFactorProvider>>.Failure(OperationError);
         }
@@ -1503,7 +1571,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_twoFactorUi is null)
         {
-            OperationError = "两步验证服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text308830568944259B);
             return UiOperationResult<(string secret, string otpauth)>.Failure(OperationError);
         }
         if (IsBusy)
@@ -1516,7 +1584,7 @@ public partial class SettingsViewModel : ObservableObject
             var setup = await _twoFactorUi.BeginTotpSetupAsync(pw, ct);
             if (string.IsNullOrWhiteSpace(setup.secret) || string.IsNullOrWhiteSpace(setup.otpauth))
             {
-                OperationError = "服务器返回的验证器设置无效，请稍后重试";
+                OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4ED015DD867BFBDF);
                 return UiOperationResult<(string secret, string otpauth)>.Failure(OperationError);
             }
             return UiOperationResult<(string secret, string otpauth)>.Success(setup);
@@ -1538,7 +1606,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch
         {
-            OperationError = "操作失败，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB10D00FCBB7711DC);
             return UiOperationResult<(string secret, string otpauth)>.Failure(OperationError);
         }
         finally
@@ -1551,7 +1619,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_twoFactorUi is null)
         {
-            OperationError = "两步验证服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text308830568944259B);
             return UiOperationResult<TotpActivationResult>.Failure(OperationError);
         }
         if (IsBusy)
@@ -1581,7 +1649,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch
         {
-            OperationError = "操作失败，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB10D00FCBB7711DC);
             return UiOperationResult<TotpActivationResult>.Failure(OperationError);
         }
         finally
@@ -1594,7 +1662,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_twoFactorUi is null)
         {
-            OperationError = "两步验证服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text308830568944259B);
             return UiOperationResult<string>.Failure(OperationError);
         }
         if (IsBusy)
@@ -1607,7 +1675,7 @@ public partial class SettingsViewModel : ObservableObject
             var recoveryCode = await _twoFactorUi.GetRecoveryCodeAsync(pw, ct);
             if (string.IsNullOrWhiteSpace(recoveryCode))
             {
-                OperationError = "服务器暂未返回恢复码，请稍后重试";
+                OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFBB65C47C14D1BEE);
                 return UiOperationResult<string>.Failure(OperationError);
             }
             return UiOperationResult<string>.Success(recoveryCode);
@@ -1629,7 +1697,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch
         {
-            OperationError = "操作失败，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB10D00FCBB7711DC);
             return UiOperationResult<string>.Failure(OperationError);
         }
         finally
@@ -1642,7 +1710,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_twoFactorUi is null)
         {
-            OperationError = "两步验证服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text308830568944259B);
             return UiOperationResult.Failure(OperationError);
         }
         if (IsBusy)
@@ -1672,7 +1740,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch
         {
-            OperationError = "操作失败，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB10D00FCBB7711DC);
             return UiOperationResult.Failure(OperationError);
         }
         finally
@@ -1685,7 +1753,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_twoFactorUi is null)
         {
-            OperationError = "两步验证服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text308830568944259B);
             return UiOperationResult.Failure(OperationError);
         }
         if (IsBusy)
@@ -1715,7 +1783,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch
         {
-            OperationError = "操作失败，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB10D00FCBB7711DC);
             return UiOperationResult.Failure(OperationError);
         }
         finally
@@ -1728,7 +1796,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_twoFactorUi is null)
         {
-            OperationError = "两步验证服务不可用";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text308830568944259B);
             return UiOperationResult.Failure(OperationError);
         }
         if (IsBusy)
@@ -1758,7 +1826,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch
         {
-            OperationError = "操作失败，请稍后重试";
+            OperationError = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB10D00FCBB7711DC);
             return UiOperationResult.Failure(OperationError);
         }
         finally

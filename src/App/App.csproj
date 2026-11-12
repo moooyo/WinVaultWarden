@@ -7,6 +7,7 @@
     <AssemblyName>App</AssemblyName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <DefaultLanguage>zh-CN</DefaultLanguage>
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
     <PublishProfile>Properties\PublishProfiles\win10-$(Platform).pubxml</PublishProfile>
@@ -53,6 +54,7 @@
     <ProjectReference Include="..\Vault\Vault.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Localization\DefaultResources.json" LogicalName="App.Localization.DefaultResources.json" />
     <Content Include="Assets\*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

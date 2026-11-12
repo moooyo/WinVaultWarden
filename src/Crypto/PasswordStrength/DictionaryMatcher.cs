@@ -4,118 +4,142 @@ public sealed class DictionaryMatcher
 {
     private static readonly Dictionary<char, char[]> L33t = new()
     {
-        ['@'] = new[]{'a'}, ['4'] = new[]{'a'}, ['8'] = new[]{'b'}, ['('] = new[]{'c'},
-        ['3'] = new[]{'e'}, ['6'] = new[]{'g'}, ['1'] = new[]{'l','i'}, ['0'] = new[]{'o'},
-        ['$'] = new[]{'s'}, ['5'] = new[]{'s'}, ['7'] = new[]{'t'}, ['!'] = new[]{'i'}, ['|'] = new[]{'l','i'},
+        ['@'] = ['a'], ['4'] = ['a'], ['8'] = ['b'], ['('] = ['c'],
+        ['3'] = ['e'], ['6'] = ['g'], ['1'] = ['l', 'i'], ['0'] = ['o'],
+        ['$'] = ['s'], ['5'] = ['s'], ['7'] = ['t'], ['!'] = ['i'], ['|'] = ['l', 'i'],
     };
 
-    private readonly FrequencyDictionaries _dicts;
-    public DictionaryMatcher(FrequencyDictionaries dicts) => _dicts = dicts;
+    private readonly TrieNode _root = new();
+    private readonly int _maximumWordLength;
+
+    public DictionaryMatcher(FrequencyDictionaries dictionaries)
+    {
+        ArgumentNullException.ThrowIfNull(dictionaries);
+        foreach (var entry in dictionaries.Passwords.Concat(dictionaries.English))
+        {
+            if (entry.Key.Length < 2)
+                continue;
+
+            _maximumWordLength = Math.Max(_maximumWordLength, entry.Key.Length);
+            var node = _root;
+            foreach (var character in entry.Key)
+            {
+                if (!node.Children.TryGetValue(character, out var next))
+                {
+                    next = new TrieNode();
+                    node.Children.Add(character, next);
+                }
+                node = next;
+            }
+
+            // Password-frequency ranks take precedence over English-word ranks,
+            // matching the original two-dictionary lookup order.
+            if (node.Rank == 0)
+                node.Rank = entry.Value;
+        }
+    }
 
     public IReadOnlyList<Match> Match(string password)
     {
+        PasswordStrengthBudget.ValidateMatcherInput(password);
         var result = new List<Match>();
+        var lower = password.ToLowerInvariant();
+        ScanDirect(lower, lower, reversed: false, result);
 
-        // Plain forward scan: token = substring of password
-        ScanDirect(password, result);
-
-        // Reversed scan: reverse the password, scan substrings of reversed string;
-        // but store original token (i.e. the substring in the original password, reversed).
-        var reversedPw = new string(password.Reverse().ToArray());
-        ScanReversed(password, reversedPw, result);
-
-        // L33t scan: substitute l33t chars, scan; store original (l33t) substring as token
-        foreach (var variant in L33tVariants(password))
-            ScanL33t(password, variant, result);
-
+        var reversed = lower.ToCharArray();
+        Array.Reverse(reversed);
+        ScanDirect(new string(reversed), lower, reversed: true, result);
+        ScanL33t(lower, result);
         return result;
     }
 
-    /// <summary>Plain forward: substrings of <paramref name="password"/> searched directly in dictionaries.</summary>
-    private void ScanDirect(string password, List<Match> result)
+    private void ScanDirect(string source, string original, bool reversed, List<Match> result)
     {
-        var lower = password.ToLowerInvariant();
-        for (var i = 0; i < lower.Length; i++)
-            for (var j = i + 2; j <= lower.Length; j++) // token length >= 2
-            {
-                var token = lower.Substring(i, j - i);
-                if (TryRank(token, out var rank))
-                    result.Add(new Match(i, j - 1, token, StrengthMatchType.Dictionary, Rank: rank));
-            }
-    }
-
-    /// <summary>
-    /// Reversed scan: the reversed password string is searched in dictionaries.
-    /// Token stored is the original password substring (which appears reversed in the dictionary).
-    /// </summary>
-    private void ScanReversed(string original, string reversed, List<Match> result)
-    {
-        var lowerRev = reversed.ToLowerInvariant();
-        var n = lowerRev.Length;
-        for (var i = 0; i < n; i++)
-            for (var j = i + 2; j <= n; j++)
-            {
-                var token = lowerRev.Substring(i, j - i);
-                if (TryRank(token, out var rank))
-                {
-                    // Map back to original coordinates: position in original = n - j .. n - i - 1
-                    var origI = n - j;
-                    var origJ = n - i - 1;
-                    // The token in original coordinates (reversed) is the substring of original
-                    var origToken = original.ToLowerInvariant().Substring(origI, j - i);
-                    result.Add(new Match(origI, origJ, origToken, StrengthMatchType.Dictionary, Rank: rank, Reversed: true, L33t: false));
-                }
-            }
-    }
-
-    /// <summary>
-    /// L33t scan: scan the substituted variant's substrings; store the original l33t token.
-    /// </summary>
-    private void ScanL33t(string original, string variant, List<Match> result)
-    {
-        var lowerVariant = variant.ToLowerInvariant();
-        var lowerOriginal = original.ToLowerInvariant();
-        for (var i = 0; i < lowerVariant.Length; i++)
-            for (var j = i + 2; j <= lowerVariant.Length; j++)
-            {
-                var decodedToken = lowerVariant.Substring(i, j - i);
-                if (TryRank(decodedToken, out var rank))
-                {
-                    // Token shown to user is the original l33t substring
-                    var originalToken = lowerOriginal.Substring(i, j - i);
-                    result.Add(new Match(i, j - 1, originalToken, StrengthMatchType.Dictionary, Rank: rank, Reversed: false, L33t: true));
-                }
-            }
-    }
-
-    private bool TryRank(string token, out int rank)
-    {
-        if (_dicts.Passwords.TryGetValue(token, out rank)) return true;
-        if (_dicts.English.TryGetValue(token, out rank)) return true;
-        rank = 0; return false;
-    }
-
-    /// <summary>
-    /// Generate l33t substitution variants. Each variant replaces l33t chars with their letter equivalents.
-    /// </summary>
-    private static IEnumerable<string> L33tVariants(string password)
-    {
-        if (!password.Any(c => L33t.ContainsKey(c))) yield break;
-        var current = new List<char[]> { password.ToLowerInvariant().ToCharArray() };
-        for (var idx = 0; idx < password.Length; idx++)
+        for (var start = 0; start + 1 < source.Length; start++)
         {
-            var ch = password[idx];
-            if (!L33t.TryGetValue(ch, out var repl)) continue;
-            var next = new List<char[]>();
-            foreach (var variant in current)
-                foreach (var r in repl)
-                {
-                    var copy = (char[])variant.Clone();
-                    copy[idx] = r;
-                    next.Add(copy);
-                }
-            current = next.Count > 64 ? next.GetRange(0, 64) : next; // limit explosion
+            var node = _root;
+            var limit = Math.Min(source.Length, start + _maximumWordLength);
+            for (var end = start; end < limit; end++)
+            {
+                if (!node.Children.TryGetValue(source[end], out var next))
+                    break;
+                node = next;
+                if (node.Rank == 0)
+                    continue;
+
+                var length = end - start + 1;
+                var originalStart = reversed ? original.Length - end - 1 : start;
+                result.Add(new Match(
+                    originalStart,
+                    originalStart + length - 1,
+                    original.Substring(originalStart, length),
+                    StrengthMatchType.Dictionary,
+                    Rank: node.Rank,
+                    Reversed: reversed));
+            }
         }
-        foreach (var v in current) yield return new string(v);
     }
+
+    private void ScanL33t(string source, List<Match> result)
+    {
+        if (!source.Any(L33t.ContainsKey))
+            return;
+
+        var current = new List<TrieState>();
+        var next = new List<TrieState>();
+        for (var start = 0; start + 1 < source.Length; start++)
+        {
+            current.Clear();
+            current.Add(new TrieState(_root, false));
+            var limit = Math.Min(source.Length, start + _maximumWordLength);
+            for (var end = start; end < limit && current.Count > 0; end++)
+            {
+                next.Clear();
+                var character = source[end];
+                foreach (var state in current)
+                {
+                    AddCandidate(state, character, state.HasSubstitution, start, end, source, next, result);
+                    if (L33t.TryGetValue(character, out var replacements))
+                    {
+                        foreach (var replacement in replacements)
+                            AddCandidate(state, replacement, true, start, end, source, next, result);
+                    }
+                }
+                (current, next) = (next, current);
+            }
+        }
+    }
+
+    private static void AddCandidate(
+        TrieState state,
+        char candidate,
+        bool hasSubstitution,
+        int start,
+        int end,
+        string source,
+        List<TrieState> next,
+        List<Match> result)
+    {
+        if (!state.Node.Children.TryGetValue(candidate, out var node))
+            return;
+        next.Add(new TrieState(node, hasSubstitution));
+        if (hasSubstitution && node.Rank > 0)
+        {
+            result.Add(new Match(
+                start,
+                end,
+                source.Substring(start, end - start + 1),
+                StrengthMatchType.Dictionary,
+                Rank: node.Rank,
+                L33t: true));
+        }
+    }
+
+    private sealed class TrieNode
+    {
+        internal Dictionary<char, TrieNode> Children { get; } = new();
+        internal int Rank { get; set; }
+    }
+
+    private readonly record struct TrieState(TrieNode Node, bool HasSubstitution);
 }

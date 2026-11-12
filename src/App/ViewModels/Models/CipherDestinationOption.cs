@@ -8,7 +8,7 @@ public sealed partial record CipherDestinationOption(
     string? CollectionId)
 {
     public static CipherDestinationOption Personal { get; } =
-        new("个人密码库", null, null);
+        new(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7271EF50257E8649), null, null);
 }
 
 public sealed partial class CipherCollectionOption : ObservableObject

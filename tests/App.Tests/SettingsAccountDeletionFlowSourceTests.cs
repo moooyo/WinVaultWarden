@@ -17,7 +17,7 @@ public sealed class SettingsAccountDeletionFlowSourceTests
 
         Assert.True(block >= 0);
         Assert.True(dispatch > block);
-        Assert.Contains("客户端不会发送删除请求", source, StringComparison.Ordinal);
+        LocalizedSourceAssert.ContainsText("客户端不会发送删除请求", source);
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public sealed class SettingsAccountDeletionFlowSourceTests
             "AccountDeletionCredentialRequirement.FreshOnlineAuthentication",
             source,
             StringComparison.Ordinal);
-        Assert.Contains("需要重新在线登录", source, StringComparison.Ordinal);
+        LocalizedSourceAssert.ContainsText("需要重新在线登录", source);
     }
 
     [Fact]

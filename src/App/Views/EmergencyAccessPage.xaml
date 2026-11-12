@@ -51,7 +51,7 @@
         <Grid Padding="40,8,40,48" HorizontalAlignment="Stretch">
         <Border MaxWidth="680" HorizontalAlignment="Stretch">
             <StackPanel>
-                <TextBlock Text="指定信任的人。对方发起请求后，如果你在等待期内没有拒绝，对方就能查看或接管你的密码库。"
+                <TextBlock x:Uid="L4120B36600752D2A" Text="指定信任的人。对方发起请求后，如果你在等待期内没有拒绝，对方就能查看或接管你的密码库。"
                            MaxWidth="600" HorizontalAlignment="Left" TextWrapping="Wrap"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <StackPanel Margin="0,28,0,0">
@@ -59,18 +59,18 @@
                              IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
                              Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                              Message="{x:Bind ViewModel.OperationError, Mode=OneWay}" AutomationProperties.LiveSetting="Assertive" />
-                    <ProgressRing x:Name="EmergencyBusyRing" Width="24" Height="24" HorizontalAlignment="Left" Margin="0,0,0,12"
+                    <ProgressRing x:Uid="L55B08D10F425B119" x:Name="EmergencyBusyRing" Width="24" Height="24" HorizontalAlignment="Left" Margin="0,0,0,12"
                                   IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" AutomationProperties.Name="正在处理紧急访问"
                                   Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
                     <StackPanel x:Name="EmergencyLoadingPanel" Visibility="{x:Bind ViewModel.ShowLoading, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="正在加载紧急访问…" Margin="0,0,0,16"
+                        <TextBlock x:Uid="LCEC146895768F5AA" Text="正在加载紧急访问…" Margin="0,0,0,16"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
                     </StackPanel>
                     <StackPanel x:Name="EmergencyLoadErrorPanel" Spacing="12" Margin="0,0,0,24"
                                 Visibility="{x:Bind ViewModel.ShowError, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="无法显示紧急访问信息。请检查连接后重试。" TextWrapping="Wrap"
+                        <TextBlock x:Uid="L6E61CA8811CD1CA1" Text="无法显示紧急访问信息。请检查连接后重试。" TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <Button Content="重试" Click="OnRetryClick" Style="{StaticResource EmergencyActionStyle}"
+                        <Button x:Uid="LC2B6556C53D1E093" Content="重试" Click="OnRetryClick" Style="{StaticResource EmergencyActionStyle}"
                                 IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}" />
                     </StackPanel>
                     <StackPanel x:Name="EmergencyContentPanel"
@@ -78,11 +78,11 @@
                         <StackPanel Margin="0,0,0,32">
                             <Grid Margin="0,0,0,8" ColumnSpacing="8">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <TextBlock Text="你信任的人" Style="{ThemeResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
-                                <HyperlinkButton Grid.Column="1" Content="刷新" Padding="8,4" Margin="0,-4,0,-4"
+                                <TextBlock x:Uid="L02F504C363922772" Text="你信任的人" Style="{ThemeResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
+                                <HyperlinkButton x:Uid="L594D98D37A353983" Grid.Column="1" Content="刷新" Padding="8,4" Margin="0,-4,0,-4"
                                                  Click="OnRetryClick" IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}"
                                                  AutomationProperties.Name="刷新紧急访问" />
-                                <HyperlinkButton Grid.Column="2" Content="添加…" Padding="8,4" Margin="0,-4,-8,-4"
+                                <HyperlinkButton x:Uid="LA358D38E667434F6" Grid.Column="2" Content="添加…" Padding="8,4" Margin="0,-4,-8,-4"
                                                  AutomationProperties.AutomationId="EmergencyInviteButton" Click="OnInviteClick"
                                                  IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}" />
                             </Grid>
@@ -92,7 +92,7 @@
                                             BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                                             AutomationProperties.AutomationId="EmergencyEmptyPanel"
                                             Visibility="{x:Bind ViewModel.HasNoContacts, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                        <TextBlock x:Name="ContactsEmptyText" Text="还没有紧急联系人" Style="{StaticResource EmergencyEmptyStyle}" />
+                                        <TextBlock x:Uid="L12E005FB536A6035" x:Name="ContactsEmptyText" Text="还没有紧急联系人" Style="{StaticResource EmergencyEmptyStyle}" />
                                     </Border>
                                     <ListView x:Name="MyContactsList" ItemsSource="{x:Bind ViewModel.MyContacts, Mode=OneWay}"
                                               SelectionMode="None" ItemContainerStyle="{StaticResource EmergencyItemStyle}"
@@ -122,17 +122,17 @@
                                                                        Style="{StaticResource CaptionSecondaryTextBlockStyle}" MaxLines="1" TextTrimming="CharacterEllipsis" />
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                                            <Button Content="重新发送" Tag="{x:Bind}" Click="OnReinviteClick" Style="{StaticResource EmergencyActionStyle}"
+                                                            <Button x:Uid="LD6CE54E514DD6D40" Content="重新发送" Tag="{x:Bind}" Click="OnReinviteClick" Style="{StaticResource EmergencyActionStyle}"
                                                                     AutomationProperties.AutomationId="EmergencyReinviteButton" Visibility="{x:Bind local:EmergencyAccessPage.ShowReinvite(Status)}" />
-                                                            <Button Content="修改…" Tag="{x:Bind}" Click="OnUpdateClick" Style="{StaticResource EmergencyActionStyle}"
+                                                            <Button x:Uid="L16D88F12BD45ADB7" Content="修改…" Tag="{x:Bind}" Click="OnUpdateClick" Style="{StaticResource EmergencyActionStyle}"
                                                                     AutomationProperties.AutomationId="EmergencyUpdateButton" Visibility="{x:Bind local:EmergencyAccessPage.ShowUpdate(Status)}" />
-                                                            <Button Content="移除" Tag="{x:Bind}" Click="OnRemoveContactClick" Style="{StaticResource EmergencyActionStyle}"
+                                                            <Button x:Uid="LA94392FAAD6C0870" Content="移除" Tag="{x:Bind}" Click="OnRemoveContactClick" Style="{StaticResource EmergencyActionStyle}"
                                                                     AutomationProperties.AutomationId="EmergencyRemoveContactButton" Visibility="{x:Bind local:EmergencyAccessPage.ShowRemove(Status)}" />
-                                                            <Button Content="拒绝" Tag="{x:Bind}" Click="OnRejectClick" Style="{StaticResource EmergencyActionStyle}"
+                                                            <Button x:Uid="L4BA6FC6D27D65AA9" Content="拒绝" Tag="{x:Bind}" Click="OnRejectClick" Style="{StaticResource EmergencyActionStyle}"
                                                                     AutomationProperties.AutomationId="EmergencyRejectButton" Visibility="{x:Bind local:EmergencyAccessPage.ShowReject(Status)}" />
-                                                            <Button Content="确认" Tag="{x:Bind}" Click="OnConfirmClick" Style="{ThemeResource AccentButtonStyle}" Height="32" Padding="12,0"
+                                                            <Button x:Uid="LE2757E49AF01236C" Content="确认" Tag="{x:Bind}" Click="OnConfirmClick" Style="{ThemeResource AccentButtonStyle}" Height="32" Padding="12,0"
                                                                     AutomationProperties.AutomationId="EmergencyConfirmButton" Visibility="{x:Bind local:EmergencyAccessPage.ShowConfirm(Status)}" />
-                                                            <Button Content="批准" Tag="{x:Bind}" Click="OnApproveClick" Style="{ThemeResource AccentButtonStyle}" Height="32" Padding="12,0"
+                                                            <Button x:Uid="L63874E49B724286A" Content="批准" Tag="{x:Bind}" Click="OnApproveClick" Style="{ThemeResource AccentButtonStyle}" Height="32" Padding="12,0"
                                                                     AutomationProperties.AutomationId="EmergencyApproveButton" Visibility="{x:Bind local:EmergencyAccessPage.ShowApprove(Status)}" />
                                                         </StackPanel>
                                                     </Grid>
@@ -144,12 +144,12 @@
                             </Border>
                         </StackPanel>
                         <StackPanel Margin="0,0,0,32">
-                            <TextBlock Text="信任你的人" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,0,0,8" />
+                            <TextBlock x:Uid="LD5E3D5C12978D861" Text="信任你的人" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,0,0,8" />
                             <Border BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
                                 <StackPanel>
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                                             Visibility="{x:Bind ViewModel.HasNoGranted, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                                        <TextBlock x:Name="GrantedEmptyText" Text="还没有人把你设为紧急联系人" Style="{StaticResource EmergencyEmptyStyle}" />
+                                        <TextBlock x:Uid="L1A9026BF5EEB839E" x:Name="GrantedEmptyText" Text="还没有人把你设为紧急联系人" Style="{StaticResource EmergencyEmptyStyle}" />
                                     </Border>
                                     <ListView x:Name="TrustedByOthersList" ItemsSource="{x:Bind ViewModel.TrustedByOthers, Mode=OneWay}"
                                               SelectionMode="None" ItemContainerStyle="{StaticResource EmergencyItemStyle}"
@@ -174,11 +174,11 @@
                                                                        Style="{StaticResource CaptionSecondaryTextBlockStyle}" MaxLines="1" TextTrimming="CharacterEllipsis" />
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                                            <Button Content="请求访问…" Tag="{x:Bind}" Click="OnInitiateClick" Style="{StaticResource EmergencyActionStyle}"
+                                                            <Button x:Uid="L5F196967A5285661" Content="请求访问…" Tag="{x:Bind}" Click="OnInitiateClick" Style="{StaticResource EmergencyActionStyle}"
                                                                     AutomationProperties.AutomationId="EmergencyInitiateButton" Visibility="{x:Bind local:EmergencyAccessPage.ShowInitiate(Status)}" />
-                                                            <Button Content="查看密码库" Tag="{x:Bind}" Click="OnViewClick" Style="{StaticResource EmergencyActionStyle}"
+                                                            <Button x:Uid="L7D7A08498BBF74D4" Content="查看密码库" Tag="{x:Bind}" Click="OnViewClick" Style="{StaticResource EmergencyActionStyle}"
                                                                     AutomationProperties.AutomationId="EmergencyViewButton" Visibility="{x:Bind local:EmergencyAccessPage.ShowView(Status, Type)}" />
-                                                            <Button Content="接管账户" Tag="{x:Bind}" Click="OnTakeoverClick" Style="{StaticResource EmergencyActionStyle}"
+                                                            <Button x:Uid="LE4A863F5EDA1135C" Content="接管账户" Tag="{x:Bind}" Click="OnTakeoverClick" Style="{StaticResource EmergencyActionStyle}"
                                                                     AutomationProperties.AutomationId="EmergencyTakeoverButton" Visibility="{x:Bind local:EmergencyAccessPage.ShowTakeover(Status, Type)}" />
                                                         </StackPanel>
                                                     </Grid>
@@ -190,7 +190,7 @@
                             </Border>
                         </StackPanel>
                         <StackPanel Visibility="{x:Bind ViewModel.HasRecoveredItems, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                            <TextBlock Text="已恢复的密码库 · 只读" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,0,0,8" />
+                            <TextBlock x:Uid="LD6BF3D0EDF4D5E30" Text="已恢复的密码库 · 只读" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,0,0,8" />
                             <Border BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
                                 <ListView x:Name="RecoveredItemsList" ItemsSource="{x:Bind ViewModel.RecoveredItems, Mode=OneWay}"
                                           SelectionMode="None" ItemContainerStyle="{StaticResource EmergencyItemStyle}">
@@ -200,7 +200,7 @@
                                                 <StackPanel Spacing="2">
                                                     <TextBlock Text="{x:Bind GrantorEmail}" TextTrimming="CharacterEllipsis" />
                                                     <TextBlock Style="{StaticResource CaptionSecondaryTextBlockStyle}">
-                                                        <Run Text="条目数：" /><Run Text="{x:Bind Ciphers.Count}" />
+                                                        <Run x:Uid="L38BB624E26E1A370" Text="条目数：" /><Run Text="{x:Bind Ciphers.Count}" />
                                                     </TextBlock>
                                                 </StackPanel>
                                             </Border>

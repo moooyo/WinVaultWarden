@@ -20,13 +20,13 @@ public sealed partial record PasskeyDetail(
     DateTimeOffset? Created)
 {
     public string? DisplayName => string.IsNullOrWhiteSpace(UserDisplayName) ? UserName : UserDisplayName;
-    public string DiscoverableText => Discoverable ? "是" : "否";
+    public string DiscoverableText => Discoverable ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB5141D3D19E9A048) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0C70665B6EB65F1A);
     public string? CreatedText => Created?.LocalDateTime.ToString("yyyy/M/d HH:mm:ss");
     public string DisplaySummary => string.IsNullOrWhiteSpace(DisplayName) ? RpId ?? string.Empty : $"{RpId} · {DisplayName}";
     public string MetadataSummary => string.Join(" · ", new[]
     {
-        Discoverable ? "可发现" : "不可发现",
-        Created is { } date ? $"{date.LocalDateTime:yyyy 年 M 月}创建" : null,
+        Discoverable ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text76D9BFE23ED3FE36) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text206E9C19B999EBB4),
+        Created is { } date ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextEB06F8E57F39E0D7,date.LocalDateTime) : null,
     }.Where(value => value is not null));
 }
 
@@ -40,7 +40,7 @@ public abstract class CipherDetail
     public string? Notes { get; init; }
     public IReadOnlyList<CustomField> CustomFields { get; init; } = Array.Empty<CustomField>();
     public bool HasCustomFields => CustomFields.Count > 0;
-    public string CustomFieldsHeader => $"自定义字段 ({CustomFields.Count})";
+    public string CustomFieldsHeader => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextDB16BBD9F435915F,CustomFields.Count);
     public DateTimeOffset Created { get; init; }
     public DateTimeOffset Edited { get; init; }
     public bool IsDeleted { get; init; }
@@ -58,10 +58,10 @@ public abstract class CipherDetail
     public IReadOnlyList<AttachmentItem> Attachments { get; init; } = Array.Empty<AttachmentItem>();
     public int AttachmentCount => Attachments.Count;
     public bool HasAttachments => Attachments.Count > 0;
-    public string AttachmentHeader => HasAttachments ? $"附件 ({AttachmentCount})" : "附件";
+    public string AttachmentHeader => HasAttachments ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text993CAB6B3938BC78,AttachmentCount) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC7225DBF105EEED5);
 
     public string HistoryText =>
-        $"修改于 {Edited.LocalDateTime:yyyy-MM-dd HH:mm}　创建于 {Created.LocalDateTime:yyyy-MM-dd}";
+        global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextE1C7B861E22734E6,Edited.LocalDateTime,Created.LocalDateTime);
 }
 
 public sealed partial class LoginDetail : CipherDetail
@@ -70,7 +70,7 @@ public sealed partial class LoginDetail : CipherDetail
     public string? Username { get; init; }
     public string? Password { get; init; }
     public DateTimeOffset? PasswordRevisionDate { get; init; }
-    public string PasswordEmptyText => SensitiveUnlocked ? "未设置" : "敏感字段未显示";
+    public string PasswordEmptyText => SensitiveUnlocked ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2F5F1D6FBFB061ED) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAA7973F091718FFF);
     public string? TotpSecret { get; init; }
     public string? Uri { get; init; }
     public IReadOnlyList<string> Uris { get; init; } = Array.Empty<string>();
@@ -78,7 +78,7 @@ public sealed partial class LoginDetail : CipherDetail
         ? Uris
         : string.IsNullOrWhiteSpace(Uri) ? Array.Empty<string>() : new[] { Uri };
     public IReadOnlyList<LoginUriDetail> UriRows => DisplayUris
-        .Select((value, index) => new LoginUriDetail(value, index == 0 ? "网址" : string.Empty))
+        .Select((value, index) => new LoginUriDetail(value, index == 0 ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA8ECB4B6DABEBC09) : string.Empty))
         .ToArray();
     public IReadOnlyList<PasskeyDetail> Passkeys { get; init; } = Array.Empty<PasskeyDetail>();
     public bool HasPasskeys => Passkeys.Count > 0;
@@ -86,9 +86,9 @@ public sealed partial class LoginDetail : CipherDetail
     public bool HasPasswordHistory => PasswordHistory.Count > 0;
     public int PasswordHistoryCount => PasswordHistory.Count;
     public bool HasSecondaryDetails => HasPasskeys || HasPasswordHistory;
-    public string PasswordHistorySummary => $"{PasswordHistoryCount} 个旧密码";
+    public string PasswordHistorySummary => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text7E875776788F755A,PasswordHistoryCount);
     public string LatestPasswordHistoryText => HasPasswordHistory
-        ? $"最近一次更换在 {PasswordHistory[0].DateLabel}"
+        ? global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text1CD6D591BD2676D1,PasswordHistory[0].DateLabel)
         : string.Empty;
 }
 

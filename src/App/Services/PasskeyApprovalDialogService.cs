@@ -7,7 +7,7 @@ namespace App.Services;
 
 public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
 {
-    private readonly SemaphoreSlim _dialogGate = new(1, 1);
+    private readonly SemaphoreSlim _dialogGate = PasskeyApprovalDialogGate.Shared;
     private readonly PasskeyApprovalThrottle _throttle = new(TimeSpan.FromSeconds(2));
 
     private readonly IItemRepromptGate _itemReprompt;
@@ -101,16 +101,16 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         var dialog = new ContentDialog
         {
             XamlRoot = root.XamlRoot,
-            Title = $"使用通行密钥登录 {presentation.RpIdUnicode}？",
-            PrimaryButtonText = "使用 passkey",
-            CloseButtonText = "取消",
+            Title = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextDE14EF7EF3B60F9B,presentation.RpIdUnicode),
+            PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text18ACD281FE25E8F2),
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             // 默认按钮为“取消”:回车不再批准安全敏感操作,须显式点击“使用 passkey”。
             DefaultButton = ContentDialogButton.Close,
             Content = view,
         };
         // preferred:额外提供“验证并批准”次按钮,仅该分支才执行真实 UV 并置 UV=true。
         if (uv == PasskeyUserVerificationRequirement.Preferred)
-            dialog.SecondaryButtonText = "验证并批准";
+            dialog.SecondaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB68D22468F3B6D13);
 
         // 多候选:显式选择前禁用主/次按钮,回车/默认高亮都不会误批准某个账号。
         if (request.Candidates.Count > 1 && view.SelectedCredential is null)
@@ -210,7 +210,7 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         var newRadio = new RadioButton
         {
             GroupName = "PasskeyCreateTarget",
-            Content = $"新建条目「{displayName}」",
+            Content = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextD980AE578E72844F,displayName),
             IsChecked = true,
         };
         newRadio.Checked += (_, _) => existingCombo.IsEnabled = false;
@@ -218,7 +218,7 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         var attachRadio = new RadioButton
         {
             GroupName = "PasskeyCreateTarget",
-            Content = "挂到已有条目",
+            Content = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text64E9EF0D38F3FCD1),
             // 库中没有任何 Login 条目时无处可挂,禁用该选项,避免选中后无法提交。
             IsEnabled = request.ExistingLogins.Count > 0,
         };
@@ -231,12 +231,12 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         };
         panel.Children.Add(new TextBlock
         {
-            Text = "浏览器正在请求为此网站创建一个新的 passkey。",
+            Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text30AE23E04D02770C),
             TextWrapping = TextWrapping.Wrap,
         });
         // 主显 Task 1 校验过的 RP 与帧来源(A-label + Unicode 双行);品牌名仅作次要提示。
         panel.Children.Add(CreateDetailLine("RP ID", request.Source.UnicodeRpId, request.Source.RpId));
-        panel.Children.Add(CreateDetailLine("来源", frameOrigin.Unicode, frameOrigin.Ascii));
+        panel.Children.Add(CreateDetailLine(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA488E93D69CC1296), frameOrigin.Unicode, frameOrigin.Ascii));
         if (request.Source.IsCrossOrigin)
         {
             panel.Children.Add(new InfoBar
@@ -244,12 +244,12 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
                 IsOpen = true,
                 IsClosable = false,
                 Severity = InfoBarSeverity.Warning,
-                Message = "此请求来自跨来源 iframe，已验证 Permissions Policy。",
+                Message = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text719672C176BF61EC),
             });
         }
         if (!string.IsNullOrWhiteSpace(request.RpName))
-            panel.Children.Add(CreateDetailLine("网站自报名称", request.RpName));
-        panel.Children.Add(CreateDetailLine("账户", DisplayAccount(request)));
+            panel.Children.Add(CreateDetailLine(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3EA4BF650E6DD638), request.RpName));
+        panel.Children.Add(CreateDetailLine(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text061246BD31E084A7), DisplayAccount(request)));
         panel.Children.Add(newRadio);
         panel.Children.Add(attachRadio);
         panel.Children.Add(existingCombo);
@@ -257,9 +257,9 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         var dialog = new ContentDialog
         {
             XamlRoot = root.XamlRoot,
-            Title = "创建通行密钥",
-            PrimaryButtonText = "创建",
-            CloseButtonText = "取消",
+            Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF6265BF0C71D6765),
+            PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCDE2CD071D25BBAB),
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             // 与 ConfirmUseAsync 一致:默认按钮为“取消”,创建凭据同样是安全敏感操作,须显式点击“创建”。
             DefaultButton = ContentDialogButton.Close,
             Content = panel,
@@ -331,17 +331,17 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
         if (root.XamlRoot is null)
             return null;
 
-        var passwordBox = new PasswordBox { PlaceholderText = "主密码", MinWidth = 320 };
+        var passwordBox = new PasswordBox { PlaceholderText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF36F5F11EDEFB912), MinWidth = 320 };
         var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(new TextBlock { Text = "该 passkey 条目要求主密码重提示", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text35226DE16142BD95), TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(passwordBox);
         var dialog = new ContentDialog
         {
             XamlRoot = root.XamlRoot,
-            Title = "验证主密码",
+            Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9BFBC275409B8007),
             Content = panel,
-            PrimaryButtonText = "确认",
-            CloseButtonText = "取消",
+            PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text36F33ADAF0942634),
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Primary,
         };
         try
@@ -431,7 +431,7 @@ public sealed class PasskeyApprovalDialogService : IPasskeyApprovalService
     }
 
     private static string DisplayAccount(PasskeyCreateApprovalRequest request) =>
-        FirstNonEmpty(request.UserDisplayName, request.UserName) ?? "未命名账户";
+        FirstNonEmpty(request.UserDisplayName, request.UserName) ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text788DE5242EED1D44);
 
     private static string? FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));

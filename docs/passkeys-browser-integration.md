@@ -95,16 +95,19 @@ pwsh -NoProfile -File .\BrowserIntegration\uninstall-native-host.ps1 -Browser Bo
 
 ## Wire protocol v1
 
-Every message that crosses the extension↔host and host↔App boundary is versioned
-(`"v": 1`) and matches `protocol/browser-passkey-v1.schema.json` exactly (validated in
-`Crypto.Tests`/`BrowserNativeHost.Tests` against `protocol/test-vectors`).
+Requests and responses carry protocol version `"v": 1`. The supported envelopes,
+including the host-only `ping`/`pong` readiness handshake, are described by
+`protocol/browser-passkey-v1.schema.json`. Native parsing and focused contract tests
+enforce required trust fields and unsupported-version rejection; they are not a
+general-purpose runtime JSON Schema engine. Older direct host messages that omit
+`v` retain the v1 default, while the shipped extension always emits it explicitly.
 
-**Request** (page → bridge → App):
+**Request** (trusted background → bridge → App):
 
 ```json
 {
   "v": 1,
-  "id": "3f9c2a1e4b7d6081",
+  "id": "3f9c2a1e4b7d60813f9c2a1e4b7d6081",
   "type": "passkey.get",
   "deadlineUnixMs": 1751600000000,
   "context": {
@@ -113,9 +116,14 @@ Every message that crosses the extension↔host and host↔App boundary is versi
     "tabId": 42,
     "frameId": 0,
     "documentId": "9F1B...",
-    "publicKeyCredentialsGetAllowed": true
+    "publicKeyCredentialsGetAllowed": true,
+    "sameOriginWithAncestors": true,
+    "publicKeyCredentialsCreateAllowed": true
   },
   "payload": {
+    "origin": "https://example.com",
+    "crossOrigin": false,
+    "topOrigin": "https://example.com",
     "rpId": "example.com",
     "challenge": "base64url",
     "allowCredentials": [{ "id": "base64url", "type": "public-key", "transports": ["internal"] }],
@@ -129,20 +137,26 @@ Every message that crosses the extension↔host and host↔App boundary is versi
 **Cancel** (either side, at any time while `id` is in flight):
 
 ```json
-{ "v": 1, "id": "3f9c2a1e4b7d6081", "type": "cancel" }
+{ "v": 1, "id": "3f9c2a1e4b7d60813f9c2a1e4b7d6081", "type": "cancel" }
 ```
 
 **Response** — success carries a `type`-matching `payload`; every failure is
 **code-only**, never a human-readable message:
 
 ```json
-{ "v": 1, "id": "3f9c2a1e4b7d6081", "type": "error", "ok": false, "payload": null, "error": { "code": "user_cancelled" } }
+{ "v": 1, "id": "3f9c2a1e4b7d60813f9c2a1e4b7d6081", "type": "error", "ok": false, "payload": null, "error": { "code": "user_cancelled" } }
 ```
 
 `context` is never page-supplied: the background service worker rebuilds it from the
-browser's own `port.sender` (see below), and the schema's `payload` definition
-explicitly forbids `origin`/`crossOrigin`/`context`/`frameOrigin`/`topOrigin` keys, so a
-page can never smuggle a second, forged origin into the payload it controls.
+browser's own `port.sender` and a fresh `webNavigation.getAllFrames` snapshot (see
+below). The schema distinguishes `pagePayload`, which forbids all origin/context
+fields, from the native `payload`, where the background overwrites `origin`,
+`crossOrigin` and `topOrigin`. The native App derives authority exclusively from
+`context`, regardless of duplicate fields in that trusted mapping.
+
+Both ancestor and create-policy fields are required by the native JSON contract.
+An outdated extension missing that evidence fails closed; update the extension and
+the shipped native host together.
 
 `deadlineUnixMs` is an absolute Unix-epoch millisecond deadline computed by the
 extension from the page's requested `timeout` (clamped to `[1ms, 120s]`, default 60s if
@@ -164,20 +178,29 @@ world observed a fact — never by what the page says about itself:
   unreachable from the page's JS, but shares `window.postMessage` with it, so it also
   treats the channel as pure message correlation, not authority. It reads the frame's
   **real** Permissions Policy (`document.permissionsPolicy`/`featurePolicy`) to compute
-  `publicKeyCredentialsGetAllowed`, deletes any page-supplied
-  `origin`/`crossOrigin`/`context`, and forwards over one persistent
+  both `publicKeyCredentialsGetAllowed` and `publicKeyCredentialsCreateAllowed` even
+  in the top-level document, deletes any page-supplied
+  `origin`/`crossOrigin`/`context`/`topOrigin`/ancestor evidence, and forwards over one persistent
   `chrome.runtime.connect({ name: "winvaultwarden-passkey-frame-v1" })` port — never a
   one-shot `chrome.runtime.sendMessage`.
 - **Background service worker** (`src/background.js`) is the only place trust is
   actually assigned. `chrome.runtime.onConnect` refuses any port whose name is not
   `winvaultwarden-passkey-frame-v1`. For an accepted port,
-  `trusted-context.js#buildTrustedContext` rebuilds `frameOrigin`/`topOrigin` from
-  `port.sender.url`/`port.sender.tab.url`, requires `sender.id` to equal
+  `trusted-context.js#buildTrustedContext` verifies `frameOrigin` against
+  `port.sender.origin`, `port.sender.url` and the matching active `documentId` in a
+  fresh browser frame-tree snapshot. It follows every `parentFrameId` to frame 0,
+  rejects missing, cyclic or inactive chains, derives `topOrigin` from that root and
+  computes `sameOriginWithAncestors` across the entire chain. It requires `sender.id` to equal
   `chrome.runtime.id` (this extension, not a spoofed one) and requires integer
   `tab.id`/`frameId` and a string `documentId` — an opaque (`"null"`) origin or a
   missing identifier throws and the request fails as `security_sender`. The resulting
-  context is frozen and is the **only** source of `origin`/`crossOrigin` written into
-  the outgoing request payload; nothing the page wrote survives.
+  context is frozen and is the **only** source of `origin`/`crossOrigin`/`topOrigin` written into
+  the outgoing request payload; no page-supplied identity survives. The extension
+  requests `webNavigation` permission for this browser-authenticated ancestry check.
+
+The isolated runtime port is re-established on `pageshow` after BFCache restoration
+and on demand after a disconnect. An interrupted ceremony is cancelled rather than
+replayed, and responses from a replaced port cannot settle a new operation.
 
 ## Persistent native/pipe sessions
 
@@ -277,12 +300,34 @@ pass before it reaches the vault, in this fixed order:
 5. **Public Suffix List rejection**: an RP id that is itself a public suffix (e.g.
    `co.uk`) is denied `security_public_suffix` (except the literal `localhost`;
    `PublicSuffixList` is refreshed via `scripts\update-public-suffix-list.ps1`).
-6. **Frame rules**: `create()` is **top-level frame only** (`frameId == 0`) **and**
-   same-origin (`frameOrigin == topOrigin`) — any iframe or cross-origin top-level
-   create is denied `security_frame`. `get()` may run cross-origin **only** when the
-   isolated world's real Permissions Policy verdict
-   (`context.PublicKeyCredentialsGetAllowed`) is `true`; otherwise
-   `security_permissions_policy`.
+6. **Frame and policy rules**: `create()` is **top-level frame only** (`frameId == 0`)
+   and requires the actual `publickey-credentials-create` Permissions Policy grant.
+   Every `get()` requires the actual `publickey-credentials-get` grant, including a
+   same-origin iframe and a top-level document. Any denied operation returns
+   `security_permissions_policy`. Cross-origin status uses all ancestors, so an
+   A-to-B-to-A frame chain remains cross-origin even when its leaf and top match.
+   Cross-origin assertion client data signs the trusted `topOrigin` alongside
+   `crossOrigin: true`; same-origin assertion client data omits `topOrigin`.
+
+## Backup flags and existing credentials
+
+New credentials use the UUID storage form used by the official Bitwarden client.
+Registration and assertions for that form advertise BE=1 and BS=1, matching the
+official client's synchronized-credential model. UP/UV still come only from the
+actual approval evidence.
+
+Older WinVaultWarden releases created opaque `b64.` or bare-base64 IDs with BE=0 and
+BS=0. Assertions retain those flags, because BE is immutable at the relying party;
+changing it during a local upgrade would break an existing registration. A user
+who needs such an older credential to work in the official client must register a
+replacement on the website, synchronize it, verify the replacement works, and only
+then remove the old credential. The application cannot migrate the server's BE
+record or safely infer immutable backup flags for arbitrary imported opaque IDs.
+Those unversioned IDs retain the legacy behavior rather than claiming an automatic
+migration. No API payload field, key or credential ID is rewritten during assertion.
+
+References: [official Bitwarden flags and credential creation](https://github.com/bitwarden/clients/blob/main/libs/common/src/platform/services/fido2/fido2-authenticator.service.ts)
+and [WebAuthn assertion verification](https://www.w3.org/TR/webauthn-3/#sctn-verifying-assertion).
 
 `test-pages/iframe-top.html` + `iframe-child.html` exercise rule 6 end-to-end: one
 iframe declares `allow="publickey-credentials-get"` (rule passes, App is reached),

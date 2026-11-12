@@ -5,7 +5,9 @@
   "oneOf": [
     { "$ref": "#/$defs/request" },
     { "$ref": "#/$defs/cancel" },
-    { "$ref": "#/$defs/response" }
+    { "$ref": "#/$defs/response" },
+    { "$ref": "#/$defs/ping" },
+    { "$ref": "#/$defs/pong" }
   ],
   "$defs": {
     "id": {
@@ -21,7 +23,9 @@
         "tabId",
         "frameId",
         "documentId",
-        "publicKeyCredentialsGetAllowed"
+        "publicKeyCredentialsGetAllowed",
+        "sameOriginWithAncestors",
+        "publicKeyCredentialsCreateAllowed"
       ],
       "properties": {
         "frameOrigin": { "type": "string", "minLength": 1 },
@@ -29,10 +33,13 @@
         "tabId": { "type": "integer", "minimum": 0 },
         "frameId": { "type": "integer", "minimum": 0 },
         "documentId": { "type": "string", "minLength": 1 },
-        "publicKeyCredentialsGetAllowed": { "type": "boolean" }
+        "publicKeyCredentialsGetAllowed": { "type": "boolean" },
+        "sameOriginWithAncestors": { "type": "boolean" },
+        "publicKeyCredentialsCreateAllowed": { "type": "boolean" }
       }
     },
-    "payload": {
+    "pagePayload": {
+      "description": "Page-authored payload before the isolated relay removes untrusted identity fields.",
       "type": "object",
       "not": {
         "anyOf": [
@@ -40,7 +47,25 @@
           { "required": ["crossOrigin"] },
           { "required": ["context"] },
           { "required": ["frameOrigin"] },
-          { "required": ["topOrigin"] }
+          { "required": ["topOrigin"] },
+          { "required": ["sameOriginWithAncestors"] }
+        ]
+      }
+    },
+    "payload": {
+      "description": "Native-host payload after the background worker overwrites origin fields using trusted browser context.",
+      "type": "object",
+      "required": ["origin"],
+      "properties": {
+        "origin": { "type": "string", "minLength": 1 },
+        "crossOrigin": { "type": "boolean" },
+        "topOrigin": { "type": "string", "minLength": 1 }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["context"] },
+          { "required": ["frameOrigin"] },
+          { "required": ["sameOriginWithAncestors"] }
         ]
       }
     },
@@ -73,6 +98,38 @@
       "required": ["code"],
       "properties": {
         "code": { "type": "string", "minLength": 1 }
+      }
+    },
+    "ping": {
+      "description": "Extension-to-native-host readiness handshake; never forwarded to the App.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "id", "type"],
+      "properties": {
+        "v": { "const": 1 },
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "ping" }
+      }
+    },
+    "pong": {
+      "description": "Native-host readiness response.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "id", "type", "ok", "payload"],
+      "properties": {
+        "v": { "const": 1 },
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "pong" },
+        "ok": { "const": true },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "type": "string" },
+            "version": { "type": "string" }
+          }
+        }
       }
     },
     "response": {

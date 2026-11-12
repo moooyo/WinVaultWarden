@@ -53,10 +53,10 @@ internal sealed partial class TotpSetupCredentialsPanel : Grid, IDisposable
             VerticalAlignment = VerticalAlignment.Top,
         };
         AutomationProperties.SetAutomationId(_qrImage, "TotpSetupQrImage");
-        AutomationProperties.SetName(_qrImage, "使用验证器应用扫描此二维码");
+        AutomationProperties.SetName(_qrImage, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4997F3A39C0259BA));
         _qrFallback = new TextBlock
         {
-            Text = "二维码暂不可用，请手动输入密钥",
+            Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD0B4457F3C618000),
             TextWrapping = TextWrapping.Wrap,
             TextAlignment = TextAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
@@ -95,15 +95,15 @@ internal sealed partial class TotpSetupCredentialsPanel : Grid, IDisposable
             IsEnabled = false,
         };
         AutomationProperties.SetAutomationId(_copyButton, "TotpSetupCopySecretButton");
-        AutomationProperties.SetName(_copyButton, "复制验证器设置密钥");
-        ToolTipService.SetToolTip(_copyButton, "复制密钥");
+        AutomationProperties.SetName(_copyButton, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text9B78A3AA55529531));
+        ToolTipService.SetToolTip(_copyButton, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD22D5FD54CA0AEF5));
         _copyButton.Click += OnCopySecretClick;
         _copyStatus = new TextBlock { TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(_copyStatus, "TotpSetupCopyStatusText");
         _manualPanel = new StackPanel { Spacing = 8, MinWidth = 0 };
         _manualPanel.Children.Add(new TextBlock
         {
-            Text = "无法扫描？在应用里手动输入密钥",
+            Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8ADA0070B79DDABF),
             FontSize = 12,
             LineHeight = 16,
             Foreground = global::App.Controls.ThemeBrushResolver.Resolve(this, "TextFillColorSecondaryBrush"),
@@ -202,12 +202,12 @@ internal sealed partial class TotpSetupCredentialsPanel : Grid, IDisposable
             TryPublish(() =>
             {
                 _clipboard.SetSecretText(_secret);
-                _copyStatus.Text = "密钥已复制";
+                _copyStatus.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7BD34F6F20549D54);
             });
         }
         catch (Exception)
         {
-            TryPublish(() => _copyStatus.Text = "无法复制密钥，请重试");
+            TryPublish(() => _copyStatus.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7A241926D3AAB982));
         }
     }
 

@@ -325,7 +325,7 @@ public class AppBridgeSessionTests
 
     private static BrowserPasskeyRequest Request(string id) =>
         new(id, "passkey.get", GetPayload(), DeadlineUnixMs: 1,
-            Context: new BrowserRequestContext("https://example.com", "https://example.com", 1, 0, "doc", true));
+            Context: new BrowserRequestContext("https://example.com", "https://example.com", 1, 0, "doc", true, true, true));
 
     private static BrowserPasskeyResponse Response(string id) =>
         new(id, "passkey.get", true, Nonce: Nonce);

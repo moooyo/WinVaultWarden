@@ -26,6 +26,7 @@ namespace App
         {
             ArgumentNullException.ThrowIfNull(marker);
             InitializeComponent();
+            ShellRoot.Language = global::App.Localization.UiText.DisplayCulture.Name;
             NativeReviewDisableNavigationTransitions(ContentFrame);
             NativeReviewDisableNavigationTransitions(LoginFrame);
             Title = "WinVaultWarden Native UI Review (synthetic)";
@@ -50,6 +51,12 @@ namespace App
         internal bool NativeReviewIsAuth => LoginHost.Visibility == Visibility.Visible;
         internal bool NativeReviewNavigationCollapsed => Nav.Visibility == Visibility.Collapsed;
         internal string NativeReviewSearchQuery => TitleSearch.Text;
+        internal string? NativeReviewVaultTabLabel => VaultTab.Content as string
+            ?? Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(VaultTab);
+        internal bool NativeReviewTabKeyboardLabelsValid => new[] { VaultTab, GeneratorTab, SendTab, ReportsTab }
+            .All(tab => tab.IsTabStop && tab.IsEnabled
+                && !string.IsNullOrWhiteSpace(Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(tab))
+                && ToolTipService.GetToolTip(tab) as string == Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(tab));
         internal void NativeReviewFocusChrome() => ThemeButton.Focus(FocusState.Programmatic);
 
         internal static void NativeReviewDisableNavigationTransitions(Frame frame) =>
@@ -80,6 +87,7 @@ namespace App
 
         internal void NativeReviewShowVault()
         {
+            NativeReviewStartupTrace.Record("show-vault-entered");
             _isLoginWindow = false;
             LoginHost.Visibility = Visibility.Collapsed;
             LoginFrame.Content = null;
@@ -87,9 +95,13 @@ namespace App
             SetShellSessionVisibility(true);
             SetSensitiveUiEnabled(true);
             UpdateAccountContext();
+            NativeReviewStartupTrace.Record("show-vault-account-updated");
             PopulateFolderNavigation();
+            NativeReviewStartupTrace.Record("show-vault-folders-populated");
             _nav.GoToVault("vault:allitems");
-            RefreshShellNavigation(force: true);
+            NativeReviewStartupTrace.Record("show-vault-navigation-returned");
+            // The production Navigated handler already refreshes the shell. Avoid an additional
+            // fixture-only native item-collection rebuild before the first rendered frame.
             UpdateResponsiveShell();
         }
 
@@ -124,7 +136,9 @@ namespace App
 
         internal void NativeReviewRefreshShell()
         {
+            NativeReviewStartupTrace.Record("explicit-shell-refresh-started");
             RefreshShellNavigation(force: true);
+            NativeReviewStartupTrace.Record("explicit-shell-refresh-completed");
             UpdateResponsiveShell();
         }
 

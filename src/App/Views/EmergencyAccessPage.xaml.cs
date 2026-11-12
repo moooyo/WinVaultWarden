@@ -2,6 +2,8 @@ using App.ViewModels;
 using App.Services;
 using App.ViewModels.Models;
 using Core.Models;
+using Core.Services;
+using Core.Session;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -32,24 +34,24 @@ public sealed partial class EmergencyAccessPage : Page
         status == EmergencyAccessStatus.RecoveryInitiated ? Visibility.Collapsed : Visibility.Visible;
 
     public static string FormatContactName(string? name, string? email) =>
-        string.IsNullOrWhiteSpace(name) ? email ?? "紧急联系人" : name;
+        string.IsNullOrWhiteSpace(name) ? email ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text16062E9CA95920EA) : name;
 
     public static string FormatContactAccess(EmergencyAccessType type) =>
-        type == EmergencyAccessType.Takeover ? "· 可以接管" : "· 可以查看";
+        type == EmergencyAccessType.Takeover ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBAE0C2C1C1CB03AE) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text791E312F7A4A02E7);
 
     public static string FormatGrantedAccess(EmergencyAccessType type) =>
-        type == EmergencyAccessType.Takeover ? "· 你可以接管" : "· 你可以查看";
+        type == EmergencyAccessType.Takeover ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextFA219171EF733549) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD25C36AB22A362BC);
 
     public static string FormatContactDetail(string? email, EmergencyAccessStatus status, int waitDays)
     {
         var detail = status switch
         {
-            EmergencyAccessStatus.Invited => "已发送邀请，等对方接受",
-            EmergencyAccessStatus.Accepted => "对方已接受，确认后才生效",
-            EmergencyAccessStatus.Confirmed => $"等待期 {waitDays} 天",
-            EmergencyAccessStatus.RecoveryInitiated => $"发起了访问请求 · 等待期 {waitDays} 天",
-            EmergencyAccessStatus.RecoveryApproved => "已获得访问权限",
-            _ => "未知状态",
+            EmergencyAccessStatus.Invited => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5D612381C8543EC8),
+            EmergencyAccessStatus.Accepted => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text18157D9EBC560323),
+            EmergencyAccessStatus.Confirmed => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text42A52DC62BF89E89,waitDays),
+            EmergencyAccessStatus.RecoveryInitiated => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextC858EBB7D4FC2A8E,waitDays),
+            EmergencyAccessStatus.RecoveryApproved => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE4733D431FA5A1D8),
+            _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEC0D9BDB00A4A8F6),
         };
         return string.IsNullOrWhiteSpace(email) ? detail : $"{email} · {detail}";
     }
@@ -58,43 +60,43 @@ public sealed partial class EmergencyAccessPage : Page
     {
         var detail = status switch
         {
-            EmergencyAccessStatus.Invited => "请通过邀请邮件接受",
-            EmergencyAccessStatus.Accepted => "已接受邀请，等对方确认",
-            EmergencyAccessStatus.RecoveryInitiated => $"已发起请求 · 等待期 {waitDays} 天",
-            EmergencyAccessStatus.RecoveryApproved => "已获得访问权限",
-            _ => $"等待期 {waitDays} 天",
+            EmergencyAccessStatus.Invited => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1577599B341D61A6),
+            EmergencyAccessStatus.Accepted => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4DD7A85ED1C8A5E3),
+            EmergencyAccessStatus.RecoveryInitiated => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text6C74025FB12F1739,waitDays),
+            EmergencyAccessStatus.RecoveryApproved => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE4733D431FA5A1D8),
+            _ => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text42A52DC62BF89E89,waitDays),
         };
         return string.IsNullOrWhiteSpace(email) ? detail : $"{email} · {detail}";
     }
 
     public static string FormatStatus(EmergencyAccessStatus status) => status switch
     {
-        EmergencyAccessStatus.Invited => "等待接受邀请",
-        EmergencyAccessStatus.Accepted => "等待确认联系人",
-        EmergencyAccessStatus.Confirmed => "已确认",
-        EmergencyAccessStatus.RecoveryInitiated => "等待访问授权",
-        EmergencyAccessStatus.RecoveryApproved => "已获准访问",
-        _ => "未知状态",
+        EmergencyAccessStatus.Invited => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF3D08AA6AF05BBD8),
+        EmergencyAccessStatus.Accepted => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextCCA6F7BCFE680C7F),
+        EmergencyAccessStatus.Confirmed => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD56A511F498F7E73),
+        EmergencyAccessStatus.RecoveryInitiated => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB87F824D61AC1726),
+        EmergencyAccessStatus.RecoveryApproved => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text84B381CBFE499AD9),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEC0D9BDB00A4A8F6),
     };
 
     public static string FormatAccessType(EmergencyAccessType type) =>
-        type == EmergencyAccessType.Takeover ? "接管账户" : "查看密码库";
+        type == EmergencyAccessType.Takeover ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text586389949E1BDCD3) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text678CD532990E3743);
 
-    public static string FormatWaitTime(int days) => $"等待期：{days} 天";
+    public static string FormatWaitTime(int days) => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text8351D713514A46AF,days);
 
     public static string FormatStatusHelp(EmergencyAccessStatus status, EmergencyAccessType type) => status switch
     {
-        EmergencyAccessStatus.Invited => "邀请需通过邮件接受，然后由账户所有者确认。",
-        EmergencyAccessStatus.Accepted => "账户所有者确认后，紧急访问授权才生效。",
-        EmergencyAccessStatus.RecoveryInitiated => "等待期结束或账户所有者提前批准后，才可访问。",
-        EmergencyAccessStatus.RecoveryApproved when type == EmergencyAccessType.Takeover => "可重置主密码并接管账户。请在继续前核对后果。",
-        EmergencyAccessStatus.RecoveryApproved => "已授权读取个人密码库。",
-        _ => "发起紧急访问请求后，按等待期和授权范围处理。",
+        EmergencyAccessStatus.Invited => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAC53D5FE08546E6B),
+        EmergencyAccessStatus.Accepted => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text56A46FFDDB6F52DE),
+        EmergencyAccessStatus.RecoveryInitiated => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC73AFF729DC3D7C8),
+        EmergencyAccessStatus.RecoveryApproved when type == EmergencyAccessType.Takeover => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBC38F5515324B9D0),
+        EmergencyAccessStatus.RecoveryApproved => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4F9E269979C5E5B7),
+        _ => global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA0E06C76EE11BA39),
     };
 
     private static string AccessConsequences(EmergencyAccessType type) => type == EmergencyAccessType.Takeover
-        ? "接管允许重置主密码并控制账户，同时停用该账户的两步登录，并移除该账户在非所有者组织中的成员资格。"
-        : "查看允许在访问获准后读取个人密码库，不会更改主密码。";
+        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text196FD22E95189BE3)
+        : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text80DAE00BEA500035);
 
     private static bool IsValidWaitTime(double value) =>
         double.IsFinite(value) && value >= 1 && value <= 90 && value == Math.Truncate(value);
@@ -112,7 +114,7 @@ public sealed partial class EmergencyAccessPage : Page
             Title = title,
             Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
             PrimaryButtonText = primaryText,
-            CloseButtonText = "取消",
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Close,
         };
         if (dangerous)
@@ -169,20 +171,20 @@ public sealed partial class EmergencyAccessPage : Page
     {
         var emailBox = new TextBox
         {
-            Header = "联系人邮箱",
-            PlaceholderText = "联系人邮箱",
+            Header = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text342BB33E19E06487),
+            PlaceholderText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text342BB33E19E06487),
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(emailBox, "InviteEmailBox");
 
-        var typeCombo = new ComboBox { MinWidth = 180, Header = "访问权限" };
-        typeCombo.Items.Add(new ComboBoxItem { Content = "查看", Tag = EmergencyAccessType.View });
-        typeCombo.Items.Add(new ComboBoxItem { Content = "接管", Tag = EmergencyAccessType.Takeover });
+        var typeCombo = new ComboBox { MinWidth = 180, Header = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text93F0F38887A80DB3) };
+        typeCombo.Items.Add(new ComboBoxItem { Content = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDB8DB0530432BD15), Tag = EmergencyAccessType.View });
+        typeCombo.Items.Add(new ComboBoxItem { Content = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEA878D5D090510DA), Tag = EmergencyAccessType.Takeover });
         typeCombo.SelectedIndex = 0;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(typeCombo, "InviteTypeCombo");
 
         var waitDaysBox = new NumberBox
         {
-            Header = "等待天数",
+            Header = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC745136D694620DE),
             Minimum = 1,
             Maximum = 90,
             Value = 7,
@@ -202,17 +204,17 @@ public sealed partial class EmergencyAccessPage : Page
         panel.Children.Add(waitDaysBox);
         panel.Children.Add(new TextBlock
         {
-            Text = "邀请被接受后，您还需要确认联系人，授权才会生效。等待期从联系人发起紧急访问时开始。",
+            Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2D111A2DDDD694B0),
             TextWrapping = TextWrapping.Wrap,
         });
         panel.Children.Add(errorText);
 
         var dialog = new ContentDialog
         {
-            Title = "添加紧急联系人",
+            Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEDAADB10E9ECA3B3),
             Content = new ScrollViewer { Content = panel, MaxHeight = 460 },
-            PrimaryButtonText = "发送邀请",
-            CloseButtonText = "取消",
+            PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3A3BCF41A1AB60FC),
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
             IsPrimaryButtonEnabled = false,
@@ -251,7 +253,7 @@ public sealed partial class EmergencyAccessPage : Page
             if (result.IsSuccess)
                 return;
 
-            errorText.Text = result.Error ?? "邀请失败";
+            errorText.Text = result.Error ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2135C2ACE997D92C);
             errorText.Visibility = Visibility.Visible;
         }
     }
@@ -261,8 +263,8 @@ public sealed partial class EmergencyAccessPage : Page
     {
         if ((sender as FrameworkElement)?.Tag is not EmergencyContact item)
             return;
-        if (!await DialogHelper.ConfirmAsync(XamlRoot, $"确认{FormatContactName(item.Name, item.Email)}为紧急联系人？",
-            $"{item.Email}\n{AccessConsequences(item.Type)}\n{FormatWaitTime(item.WaitTimeDays)}", "确认"))
+        if (!await DialogHelper.ConfirmAsync(XamlRoot, global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text0FF23F074A9F88D9,FormatContactName(item.Name, item.Email)),
+            $"{item.Email}\n{AccessConsequences(item.Type)}\n{FormatWaitTime(item.WaitTimeDays)}", global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text36F33ADAF0942634)))
             return;
         await ViewModel.ConfirmAsync(item);
     }
@@ -278,8 +280,8 @@ public sealed partial class EmergencyAccessPage : Page
     {
         if ((sender as FrameworkElement)?.Tag is not EmergencyContact item)
             return;
-        if (!await ConfirmEmergencyAsync($"现在就允许{FormatContactName(item.Name, item.Email)}访问你的密码库？",
-            $"{item.Email}\n不用等到等待期结束，对方马上就能获得访问权限。\n{AccessConsequences(item.Type)}", "批准",
+        if (!await ConfirmEmergencyAsync(global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextF555E4F9B97C51F9,FormatContactName(item.Name, item.Email)),
+            global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text574920067B4F1675,item.Email,AccessConsequences(item.Type)), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8CBE697B157364A5),
             dangerous: item.Type == EmergencyAccessType.Takeover))
             return;
         await ViewModel.ApproveAsync(item);
@@ -293,9 +295,9 @@ public sealed partial class EmergencyAccessPage : Page
             item,
             (contact, ct) => DialogHelper.ConfirmAsync(
                 XamlRoot,
-                "拒绝紧急访问请求",
-                $"确定要拒绝来自 {contact.Email} 的紧急访问请求吗？",
-                "拒绝",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text559BCFDF9F61A8BE),
+                global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text20950383A18936CD,contact.Email),
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text136DE7A8C46FC803),
                 ct: ct),
             CancellationToken.None);
     }
@@ -307,9 +309,9 @@ public sealed partial class EmergencyAccessPage : Page
         await ViewModel.RemoveAsync(
             item,
             (contact, ct) => ConfirmEmergencyAsync(
-                "移除紧急联系人",
-                $"移除 {contact.Email} 后，对方将失去紧急访问权限。如需恢复，必须重新邀请并确认。",
-                "移除",
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB92C01670A4005B4),
+                global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text433F7DB008613D0F,contact.Email),
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6135D4159E892541),
                 dangerous: true,
                 ct: ct),
             CancellationToken.None);
@@ -320,15 +322,15 @@ public sealed partial class EmergencyAccessPage : Page
         if ((sender as FrameworkElement)?.Tag is not EmergencyContact item)
             return;
 
-        var typeCombo = new ComboBox { MinWidth = 180, Header = "访问权限" };
-        typeCombo.Items.Add(new ComboBoxItem { Content = "查看", Tag = EmergencyAccessType.View });
-        typeCombo.Items.Add(new ComboBoxItem { Content = "接管", Tag = EmergencyAccessType.Takeover });
+        var typeCombo = new ComboBox { MinWidth = 180, Header = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text93F0F38887A80DB3) };
+        typeCombo.Items.Add(new ComboBoxItem { Content = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDB8DB0530432BD15), Tag = EmergencyAccessType.View });
+        typeCombo.Items.Add(new ComboBoxItem { Content = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextEA878D5D090510DA), Tag = EmergencyAccessType.Takeover });
         typeCombo.SelectedIndex = item.Type == EmergencyAccessType.Takeover ? 1 : 0;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(typeCombo, "UpdateTypeCombo");
 
         var waitDaysBox = new NumberBox
         {
-            Header = "等待天数",
+            Header = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC745136D694620DE),
             Minimum = 1,
             Maximum = 90,
             Value = item.WaitTimeDays,
@@ -349,10 +351,10 @@ public sealed partial class EmergencyAccessPage : Page
 
         var dialog = new ContentDialog
         {
-            Title = $"修改紧急访问 — {item.Email}",
+            Title = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextF49284F5654F4E9C,item.Email),
             Content = new ScrollViewer { Content = panel, MaxHeight = 460 },
-            PrimaryButtonText = "保存",
-            CloseButtonText = "取消",
+            PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA3030BF8F16DC63C),
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
         };
@@ -375,7 +377,7 @@ public sealed partial class EmergencyAccessPage : Page
             if (result.IsSuccess)
                 return;
 
-            errorText.Text = result.Error ?? "修改失败";
+            errorText.Text = result.Error ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text11252DA5CAA95E13);
             errorText.Visibility = Visibility.Visible;
         }
     }
@@ -385,8 +387,8 @@ public sealed partial class EmergencyAccessPage : Page
     {
         if ((sender as FrameworkElement)?.Tag is not GrantedAccess item)
             return;
-        if (!await DialogHelper.ConfirmAsync(XamlRoot, "发起紧急访问",
-            $"将通知 {item.Email}。等待期为 {item.WaitTimeDays} 天，期间对方可以批准或拒绝请求。\n{AccessConsequences(item.Type)}", "发起请求"))
+        if (!await DialogHelper.ConfirmAsync(XamlRoot, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text86243361EC69F55D),
+            global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text830FDE0A49FE8357,item.Email,item.WaitTimeDays,AccessConsequences(item.Type)), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBDE8FB856741242C)))
             return;
         await ViewModel.InitiateAsync(item);
     }
@@ -395,13 +397,35 @@ public sealed partial class EmergencyAccessPage : Page
     {
         if ((sender as FrameworkElement)?.Tag is not GrantedAccess item)
             return;
-        var result = await ViewModel.ViewAsync(item);
+        var session = global::App.App.Services.GetRequiredService<Vault.VaultSession>();
+        VaultSessionLease lease;
+        try { lease = session.CaptureLease(); }
+        catch (InvalidOperationException) { return; }
+        if (!session.IsUnlocked(lease))
+            return;
+        var result = await ViewModel.ViewAsync(item, lease.CancellationToken);
         if (result.IsSuccess && result.Value is { } recovered)
-            await ShowViewResultDialogAsync(recovered);
+        {
+            try
+            {
+                if (session.IsUnlocked(lease))
+                    await ShowViewResultDialogAsync(recovered, lease);
+            }
+            finally
+            {
+                ViewModel.RecoveredItems.Remove(recovered);
+            }
+        }
     }
 
-    private async Task ShowViewResultDialogAsync(RecoveredVault recovered)
+    private async Task ShowViewResultDialogAsync(RecoveredVault recovered, VaultSessionLease lease)
     {
+        var services = global::App.App.Services;
+        using var recovery = new RecoveredVaultViewSession(
+            services.GetRequiredService<Vault.VaultSession>(),
+            lease,
+            recovered,
+            services.GetRequiredService<IClipboardService>());
         var recoveredItems = recovered.Ciphers
             .Select(RecoveredCipherListItem.FromCipher)
             .ToArray();
@@ -409,26 +433,189 @@ public sealed partial class EmergencyAccessPage : Page
         {
             ItemsSource = recoveredItems,
             ItemTemplate = (DataTemplate)Resources["RecoveredCipherItemTemplate"],
-            SelectionMode = ListViewSelectionMode.None,
-            MaxHeight = 400,
+            SelectionMode = ListViewSelectionMode.Single,
+            MaxHeight = 180,
+            MinHeight = recoveredItems.Length == 0 ? 0 : 80,
         };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(list, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text36FCAE4C5D7B3270));
 
-        var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(new TextBlock
+        var panel = new StackPanel { Spacing = 12, MinWidth = 240 };
+        var summary = new TextBlock
         {
-            Text = $"授予方：{recovered.GrantorEmail}　共 {recovered.Ciphers.Count} 条目",
+            Text = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text9EEE96D332F064D3,recovered.GrantorEmail,recovered.Ciphers.Count),
+            TextWrapping = TextWrapping.Wrap,
+        };
+        panel.Children.Add(summary);
+        panel.Children.Add(list);
+        var selectionTitle = new TextBlock
+        {
+            Text = recoveredItems.Length == 0 ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text091EACCEA1621CD4) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0C3038CC76AFB221),
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        panel.Children.Add(selectionTitle);
+        var password = new PasswordBox { Header = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text56D4808B1D65DDFE), PasswordRevealMode = PasswordRevealMode.Hidden };
+        var verify = new Button { Content = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7C34FC0126F7E437) };
+        var verification = new StackPanel { Spacing = 8, Visibility = Visibility.Collapsed };
+        verification.Children.Add(new TextBlock
+        {
+            Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text45412CD695D29BEE),
             TextWrapping = TextWrapping.Wrap,
         });
-        panel.Children.Add(list);
+        verification.Children.Add(password);
+        verification.Children.Add(verify);
+        panel.Children.Add(verification);
+        var feedback = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetLiveSetting(
+            feedback, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
+        panel.Children.Add(feedback);
+        var fields = new StackPanel { Spacing = 12 };
+        panel.Children.Add(new ScrollViewer
+        {
+            Content = fields,
+            MaxHeight = 300,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalScrollMode = ScrollMode.Disabled,
+        });
+        var displayedValues = new List<TextBlock>();
+
+        void ClearDisplayedFields()
+        {
+            foreach (var value in displayedValues)
+                value.Text = string.Empty;
+            displayedValues.Clear();
+            fields.Children.Clear();
+        }
+
+        void RenderFields()
+        {
+            ClearDisplayedFields();
+            password.Password = string.Empty;
+            verification.Visibility = recovery.RequiresVerification ? Visibility.Visible : Visibility.Collapsed;
+            foreach (var field in recovery.Fields)
+            {
+                var row = new StackPanel { Spacing = 4 };
+                row.Children.Add(new TextBlock { Text = field.Label, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+                var value = new TextBlock { Text = field.DisplayValue, TextWrapping = TextWrapping.Wrap };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(value, field.Label);
+                displayedValues.Add(value);
+                row.Children.Add(value);
+                var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                if (field.IsSecret)
+                {
+                    var reveal = new Button { Content = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text36B830BDB447F8C7) };
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(reveal, global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text3B7C25E0D86BFBD8,field.Label));
+                    reveal.Click += (_, _) =>
+                    {
+                        if (!recovery.ToggleReveal(field))
+                            return;
+                        value.Text = field.DisplayValue;
+                        reveal.Content = field.IsRevealed ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextAC20A57BFDE0BBC4) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text36B830BDB447F8C7);
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+                            reveal, $"{(field.IsRevealed ? "Hide" : "Reveal")} {field.Label}");
+                    };
+                    actions.Children.Add(reveal);
+                }
+                var copy = new Button { Content = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE21F935F11D7E966) };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(copy, global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextD4C4DA1DA997415B,field.Label));
+                copy.Click += (_, _) =>
+                {
+                    try
+                    {
+                        if (recovery.Copy(field))
+                            feedback.Text = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text4EA2BF6F51B950E9,field.Label);
+                    }
+                    catch (Exception exception) when (exception is not OutOfMemoryException)
+                    {
+                        feedback.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text6392C2FBA78CE1C2);
+                    }
+                };
+                actions.Children.Add(copy);
+                row.Children.Add(actions);
+                fields.Children.Add(row);
+            }
+        }
+
+        list.SelectionChanged += (_, _) =>
+        {
+            feedback.Text = string.Empty;
+            if (list.SelectedIndex >= 0 && recovery.Select(list.SelectedIndex))
+            {
+                selectionTitle.Text = recoveredItems[list.SelectedIndex].Name;
+                RenderFields();
+            }
+        };
+        verify.Click += async (_, _) =>
+        {
+            var enteredPassword = password.Password;
+            password.Password = string.Empty;
+            verify.IsEnabled = false;
+            try
+            {
+                var authorized = await recovery.VerifySelectionAsync(
+                    token => services.GetRequiredService<IAccountService>().VerifyMasterPasswordAsync(enteredPassword, token),
+                    lease.CancellationToken);
+                if (authorized)
+                    RenderFields();
+                else if (!lease.CancellationToken.IsCancellationRequested)
+                    feedback.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1BF2970F07726585);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                if (!lease.CancellationToken.IsCancellationRequested)
+                    feedback.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text288413EFBDF841B8);
+            }
+            finally
+            {
+                enteredPassword = string.Empty;
+                password.Password = string.Empty;
+                verify.IsEnabled = true;
+            }
+        };
 
         var dialog = new ContentDialog
         {
-            Title = "已恢复的密码库",
-            Content = panel,
-            CloseButtonText = "关闭",
+            Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC70CD4C774FC23F9),
+            Content = new ScrollViewer
+            {
+                Content = panel,
+                MaxHeight = 620,
+                HorizontalScrollMode = ScrollMode.Disabled,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            },
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7D9EB7ACB13E2462),
             XamlRoot = XamlRoot,
         };
-        await DialogHelper.ShowTrackedAsync(dialog);
+        void ClearDialog()
+        {
+            recovery.ClearSensitive();
+            void ClearControls()
+            {
+                password.Password = string.Empty;
+                ClearDisplayedFields();
+                list.ItemsSource = null;
+                Array.Clear(recoveredItems);
+                summary.Text = string.Empty;
+                selectionTitle.Text = string.Empty;
+                feedback.Text = string.Empty;
+                verification.Visibility = Visibility.Collapsed;
+            }
+            if (dialog.DispatcherQueue.HasThreadAccess)
+                ClearControls();
+            else
+                dialog.DispatcherQueue.TryEnqueue(ClearControls);
+        }
+        recovery.Invalidated += ClearDialog;
+        try
+        {
+            await DialogHelper.ShowTrackedAsync(dialog, lease, clearSensitive: ClearDialog, ct: lease.CancellationToken);
+        }
+        finally
+        {
+            recovery.Invalidated -= ClearDialog;
+            ClearDialog();
+            dialog.Content = null;
+        }
     }
 
 
@@ -441,10 +628,10 @@ public sealed partial class EmergencyAccessPage : Page
 
     private async Task ShowTakeoverDialogAsync(GrantedAccess item)
     {
-        var pwBox = new PasswordBox { Header = "新主密码（为对方设置）" };
+        var pwBox = new PasswordBox { Header = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1F0AEF61509CC6C8) };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(pwBox, "TakeoverNewPasswordBox");
 
-        var confirmBox = new PasswordBox { Header = "确认新主密码" };
+        var confirmBox = new PasswordBox { Header = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3024A2967DBA66BC) };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(confirmBox, "TakeoverConfirmPasswordBox");
 
         var errorText = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
@@ -453,14 +640,14 @@ public sealed partial class EmergencyAccessPage : Page
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(new TextBlock
         {
-            Text = $"您即将接管 {item.Email}。\n{AccessConsequences(EmergencyAccessType.Takeover)}\n原主密码将失效，原账户所有者需要新主密码才能重新登录。",
+            Text = global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextA8C5D4804287C425,item.Email,AccessConsequences(EmergencyAccessType.Takeover)),
             TextWrapping = TextWrapping.Wrap,
         });
         panel.Children.Add(pwBox);
         panel.Children.Add(confirmBox);
         var acknowledgedBox = new CheckBox
         {
-            Content = new TextBlock { Text = "我已了解主密码、两步登录和组织成员资格将发生的变化。", TextWrapping = TextWrapping.Wrap },
+            Content = new TextBlock { Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1D61395635E90EB1), TextWrapping = TextWrapping.Wrap },
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(acknowledgedBox, "TakeoverConsequencesCheckBox");
         panel.Children.Add(acknowledgedBox);
@@ -468,10 +655,10 @@ public sealed partial class EmergencyAccessPage : Page
 
         var dialog = new ContentDialog
         {
-            Title = "接管账户 — 重置主密码",
+            Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8E4865FD24809D4C),
             Content = new ScrollViewer { Content = panel, MaxHeight = 460 },
-            PrimaryButtonText = "确认接管",
-            CloseButtonText = "取消",
+            PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8DF258D65B9A1593),
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
             IsPrimaryButtonEnabled = false,
@@ -501,7 +688,7 @@ public sealed partial class EmergencyAccessPage : Page
                 if (acknowledgedBox.IsChecked != true || string.IsNullOrWhiteSpace(pwBox.Password)
                     || pwBox.Password != confirmBox.Password)
                 {
-                    errorText.Text = "请确认后果，并输入两次相同的新主密码。";
+                    errorText.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text90C5893C9913EE6E);
                     errorText.Visibility = Visibility.Visible;
                     continue;
                 }
@@ -510,7 +697,7 @@ public sealed partial class EmergencyAccessPage : Page
                 if (result.IsSuccess)
                     return;
 
-                errorText.Text = result.Error ?? "接管失败";
+                errorText.Text = result.Error ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF64EBBFC3588F284);
                 errorText.Visibility = Visibility.Visible;
             }
         }

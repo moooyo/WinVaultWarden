@@ -46,7 +46,7 @@ public sealed class VaultHealthUiService(
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             ct,
             lease.CancellationToken);
-        progress?.Report(new HealthAnalysisProgress(0, 100, "正在分析密码库"));
+        progress?.Report(new HealthAnalysisProgress(0, 100, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextE87A2821CD2BB8D8)));
         HealthReport report;
         try
         {
@@ -60,11 +60,11 @@ public sealed class VaultHealthUiService(
         }
         catch (Exception ex) when (ex is InvalidDataException or FormatException)
         {
-            throw new VaultHealthUiException("本地安全报告分析失败", ex);
+            throw new VaultHealthUiException(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2F19A0A898CAA91B), ex);
         }
 
         session.ThrowIfExpired(lease);
-        progress?.Report(new HealthAnalysisProgress(100, 100, "分析完成"));
+        progress?.Report(new HealthAnalysisProgress(100, 100, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0FF9CC7E060EA234)));
         return report;
     }
 

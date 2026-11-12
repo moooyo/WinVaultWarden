@@ -1,5 +1,7 @@
 # WinVaultWarden
 
+The current source includes native vault workflows, encrypted backups, eight import formats, personal API-key login, V1/V2 local unlock, SSH signing, Windows passkey integration and localized UI. See the [implementation and verification ledger](docs/implementation-completion.md) for precise support boundaries and executed evidence. Source changes are separate from published release artifacts.
+
 ## 下载与安装
 
 预编译版本发布在 [Releases](https://github.com/moooyo/WinVaultWarden/releases),提供两种形式(x64 / arm64):

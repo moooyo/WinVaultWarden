@@ -79,7 +79,7 @@ public sealed partial class SecurityReportPage : Page
         _ => "\uE7BA",
     };
 
-    public static string EmptyIcon(bool exposureChecked) => exposureChecked ? "\uE73E" : "\uE946";
+    public static string EmptyIcon(bool reportComplete) => reportComplete ? "\uE73E" : "\uE946";
 
     private void OnSeverityIconLoaded(object sender, RoutedEventArgs e)
     {
@@ -116,12 +116,12 @@ public sealed partial class SecurityReportPage : Page
             global::App.App.Services.GetRequiredService<INavigationService>().GoToVault("vault:item:" + cipherId);
     }
 
-    public static string FormatOpenItem(string name) => $"查看条目：{name}";
-    public static string FormatIgnoreItem(string name) => $"忽略提醒：{name}";
+    public static string FormatOpenItem(string name) => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text186E9EE5811327A7,name);
+    public static string FormatIgnoreItem(string name) => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.Text44527D122F1237C8,name);
     public static string FormatIssueAction(string action, string name) => $"{action}：{name}";
 
     /// <summary>Formats a group without exposing the reused password.</summary>
-    public static string FormatReusedHeader(int count) => $"{count} 个条目共用同一密码";
+    public static string FormatReusedHeader(int count) => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextEAC88C1BED9DAA17,count);
 
     /// <summary>Shows a clean result only after a successful check.</summary>
     public static Visibility ShowNoExposedFound(bool exposedChecked, bool hasExposed) =>

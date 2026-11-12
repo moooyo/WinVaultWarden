@@ -173,6 +173,20 @@ public sealed class MasterPasswordPolicyEvaluatorTests
         Assert.DoesNotContain(secret, evidence.ToString(), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void OversizedInput_CannotSatisfyAComplexityPolicyThroughTruncation()
+    {
+        var evaluator = CreateEvaluator();
+        var password = "9xK#mq2Lp@7vWn4Tz!Rb"
+            + new string('a', PasswordStrengthEvaluator.MaximumAnalyzedLength);
+
+        var evidence = evaluator.CaptureEvidence(password);
+
+        Assert.Equal(0, evidence.StrengthScore);
+        Assert.False(evaluator.Evaluate(new MasterPasswordPolicyRequirements(MinComplexity: 1), evidence));
+        Assert.Equal(password.Length, evidence.Utf16Length);
+    }
+
     private MasterPasswordPolicyEvaluator CreateEvaluator() => new(_strength);
 
     private static MasterPasswordEvidence Evidence(

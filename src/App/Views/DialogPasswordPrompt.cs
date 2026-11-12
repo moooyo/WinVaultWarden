@@ -12,7 +12,7 @@ internal sealed partial class DialogPasswordPrompt : IDisposable
     private readonly FrameworkElement _originalContent;
     private readonly Func<bool> _isCurrent;
     private readonly StackPanel _promptPanel;
-    private readonly PasswordBox _password = new() { PlaceholderText = "主密码" };
+    private readonly PasswordBox _password = new() { PlaceholderText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF36F5F11EDEFB912) };
     private TaskCompletionSource<string?>? _pending;
     private bool _cleared;
     private bool _disposed;
@@ -25,9 +25,9 @@ internal sealed partial class DialogPasswordPrompt : IDisposable
         _promptPanel = new StackPanel { Spacing = 12, Visibility = Visibility.Collapsed };
         _promptPanel.Children.Add(new TextBlock
         {
-            Text = "请输入主密码以继续。", TextWrapping = TextWrapping.Wrap,
+            Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text207407E0A0375046), TextWrapping = TextWrapping.Wrap,
         });
-        AutomationProperties.SetName(_password, "主密码");
+        AutomationProperties.SetName(_password, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF36F5F11EDEFB912));
         AutomationProperties.SetAutomationId(_password, "DialogVerificationPassword");
         _promptPanel.Children.Add(_password);
         Content = new Grid();
@@ -58,9 +58,9 @@ internal sealed partial class DialogPasswordPrompt : IDisposable
         _password.Password = string.Empty;
         _originalContent.Visibility = Visibility.Collapsed;
         _promptPanel.Visibility = Visibility.Visible;
-        _dialog.Title = "确认是你本人";
-        _dialog.PrimaryButtonText = "验证";
-        _dialog.CloseButtonText = "取消";
+        _dialog.Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextD03D7594294E6F49);
+        _dialog.PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text154723A1AA0A09A4);
+        _dialog.CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C);
         _dialog.DefaultButton = ContentDialogButton.Primary;
         _password.Focus(FocusState.Programmatic);
         try

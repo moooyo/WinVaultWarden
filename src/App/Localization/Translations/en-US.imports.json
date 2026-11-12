@@ -1,0 +1,10 @@
+{
+  "Preserve source folders": "Preserve source folders",
+  "The import result is uncertain. Some or all items may already have been saved. Sync and check the vault before choosing the file to import again.": "The import result is uncertain. Some or all items may already have been saved. Sync and check the vault before choosing the file to import again.",
+  "Import destination folder": "Import destination folder",
+  "KeePass XML excludes the recycle bin. Password history is retained. Attachments and unsupported data stop the entire import.": "KeePass XML excludes the recycle bin. Password history is retained. Attachments and unsupported data stop the entire import.",
+  "1Password archives are processed only in memory. Attachments, archived records, documents and unsupported data stop the entire import.": "1Password archives are processed only in memory. Attachments, archived records, documents and unsupported data stop the entire import.",
+  "Imports add new items. Unsupported data stops the entire import so that information is not silently discarded.": "Imports add new items. Unsupported data stops the entire import so that information is not silently discarded.",
+  "Choose a backup file in one of the supported import formats.": "Choose a backup file in one of the supported import formats.",
+  "1Password (.1pux)": "1Password (.1pux)", "KeePass 2 (.xml)": "KeePass 2 (.xml)", "Chrome (.csv)": "Chrome (.csv)", "Edge (.csv)": "Edge (.csv)", "Firefox (.csv)": "Firefox (.csv)", "LastPass (.csv)": "LastPass (.csv)"
+}

@@ -118,7 +118,7 @@ public static class AppPreferences
         TrySaveToDisk(Current, FilePath);
     }
 
-    private static void TrySaveToDisk(AppPreferencesData data, string filePath)
+    private static bool TrySaveToDisk(AppPreferencesData data, string filePath)
     {
         lock (PersistenceLock)
         {
@@ -135,9 +135,10 @@ public static class AppPreferences
                     JsonSerializer.Serialize(data, AppJsonContext.Default.AppPreferencesData));
                 File.Move(temporaryPath, filePath, overwrite: true);
                 temporaryPath = null;
+                return true;
             }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            catch (IOException) { return false; }
+            catch (UnauthorizedAccessException) { return false; }
             finally
             {
                 if (temporaryPath is not null)
@@ -148,6 +149,19 @@ public static class AppPreferences
                 }
             }
         }
+    }
+
+    public static bool TrySetLanguagePreference(string preference)
+    {
+        if (!global::App.Localization.LanguagePreferencePolicy.TryNormalize(preference, out var normalized))
+            return false;
+        var current = Current;
+        var previous = current.LanguagePreference;
+        current.LanguagePreference = normalized;
+        if (Volatile.Read(ref _inMemoryTestData) is not null || TrySaveToDisk(current, FilePath))
+            return true;
+        current.LanguagePreference = previous;
+        return false;
     }
 
     internal static AppPreferencesData LoadFromPathForTesting(string filePath) => Load(filePath);
@@ -181,6 +195,24 @@ public static class AppPreferences
 
 public sealed class AppPreferencesData
 {
+    /// <summary>Stores an MRT Core language override independently of package identity.</summary>
+    public string LanguagePreference { get; set; } = global::App.Localization.LanguagePreferencePolicy.DefaultLanguage;
+
+    /// <summary>Requests a per-user startup registration; Windows remains authoritative.</summary>
+    public bool StartOnLogin { get; set; }
+
+    /// <summary>Allows a bounded official-release check after startup; no unattended installation.</summary>
+    public bool AutomaticallyCheckForUpdates { get; set; }
+
+    /// <summary>Records the last completed update attempt to avoid repeated background requests.</summary>
+    public DateTimeOffset? LastUpdateCheckUtc { get; set; }
+
+    /// <summary>Enables the opt-in OpenSSH signing-agent endpoint while the vault is unlocked.</summary>
+    public bool SshAgentEnabled { get; set; }
+
+    /// <summary>Retains an in-memory, read-only request token across ordinary lock after opt-in.</summary>
+    public bool MonitorDeviceRequestsWhileLocked { get; set; }
+
     /// <summary>Remembers only the sign-in email and server, independently of saved credentials.</summary>
     public bool RememberEmail { get; set; } = true;
     public string RememberedLoginEmail { get; set; } = string.Empty;

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="App.Views.AccountManagementPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:App.Converters">
+    <Page.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </Page.Resources>
+    <Grid Background="{ThemeResource WardenLayerBrush}">
+        <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel MaxWidth="680" HorizontalAlignment="Stretch" Padding="32" Spacing="24">
+                <Button x:Uid="L27F3A9C0E2CCC8E5" Content="Back to settings" Click="OnBackClick" />
+                <StackPanel Spacing="8">
+                    <TextBlock x:Uid="L4724635A922DB2A2" Text="Account management" FontSize="28" FontWeight="SemiBold"
+                               AutomationProperties.HeadingLevel="Level1" />
+                    <TextBlock Text="{x:Bind ViewModel.CurrentEmail, Mode=OneWay}" TextWrapping="Wrap" />
+                    <InfoBar x:Name="FeedbackBar" IsOpen="{x:Bind ViewModel.HasFeedback, Mode=OneWay}"
+                             Message="{x:Bind ViewModel.Feedback, Mode=OneWay}" IsClosable="False"
+                             Severity="{x:Bind FeedbackSeverity(ViewModel.FeedbackIsError), Mode=OneWay}" />
+                    <ProgressRing x:Uid="L068B10B61033B2B8" IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
+                                  Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                  HorizontalAlignment="Left" Width="24" Height="24"
+                                  AutomationProperties.Name="Updating account" />
+                </StackPanel>
+                <StackPanel Spacing="12">
+                    <TextBlock x:Uid="LCED35FD3927BC39A" Text="Verify email address" FontSize="18" FontWeight="SemiBold"
+                               AutomationProperties.HeadingLevel="Level2" />
+                    <TextBlock x:Uid="L0C513CC892BE0197" Text="Request a verification email from your server. It must support outgoing email delivery."
+                               TextWrapping="Wrap" />
+                    <Button x:Uid="L0D0C90E9A4945F02" Content="Send verification email" Click="OnRequestVerificationClick" IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}" />
+                    <TextBox x:Uid="L5141E15B536A3A4B" x:Name="VerificationTokenBox" Header="Verification token or email link" MaxLength="24576"
+                             AutomationProperties.Name="Email verification token or link" IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}" />
+                    <Button x:Uid="LE17744C2DCED6CCE" Content="Verify email" Click="OnVerifyEmailClick" IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}" />
+                </StackPanel>
+                <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" />
+                <StackPanel Spacing="12">
+                    <TextBlock x:Uid="L0F0536B8049B3593" Text="Change email address" FontSize="18" FontWeight="SemiBold"
+                               AutomationProperties.HeadingLevel="Level2" />
+                    <TextBlock x:Uid="LD9D4078959318231" Text="Changing the email address re-protects your account key and signs out every device, including this one. Your master password stays the same."
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="{x:Bind ViewModel.EmailChangeUnavailableReason, Mode=OneWay}" TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBox x:Uid="L99CDDC4AAC06BACD" x:Name="NewEmailBox" Header="New email address" MaxLength="254"
+                             IsEnabled="{x:Bind ViewModel.CanRequestEmailChange, Mode=OneWay}"
+                             TextChanged="OnNewEmailChanged" />
+                    <PasswordBox x:Uid="LE0836B6357DEEA5D" x:Name="EmailPasswordBox" Header="Current master password" MaxLength="1024"
+                                 IsEnabled="{x:Bind ViewModel.CanRequestEmailChange, Mode=OneWay}" />
+                    <Button x:Uid="LFBFA83B91808E34C" Content="Request email-change code" Click="OnRequestChangeClick"
+                            IsEnabled="{x:Bind ViewModel.CanRequestEmailChange, Mode=OneWay}" />
+                    <TextBox x:Uid="L12956F35B1703100" x:Name="EmailCodeBox" Header="Code sent to the new address" MaxLength="256"
+                             IsEnabled="{x:Bind ViewModel.CanConfirmEmailChange, Mode=OneWay}" />
+                    <Button x:Uid="LEE74672BFFA02059" Content="Change email and sign out" Click="OnChangeEmailClick"
+                            IsEnabled="{x:Bind ViewModel.CanConfirmEmailChange, Mode=OneWay}" />
+                </StackPanel>
+                <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" />
+                <StackPanel Spacing="12">
+                    <TextBlock x:Uid="L3F0972A4F153542E" Text="Sign out all sessions" FontSize="18" FontWeight="SemiBold"
+                               AutomationProperties.HeadingLevel="Level2" />
+                    <TextBlock x:Uid="L55794E65C32DCA3C" Text="Revoke sign-in tokens and registered sessions on every device. This device will also sign out and clear its saved vault. Other offline devices learn about revocation when they reconnect."
+                               TextWrapping="Wrap" />
+                    <PasswordBox x:Uid="LE0836B6357DEEA5D" x:Name="RevokePasswordBox" Header="Current master password" MaxLength="1024" IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}" />
+                    <Button x:Uid="L27ADAEBDD481E3F5" Content="Sign out every device" Click="OnRevokeSessionsClick"
+                            Foreground="{ThemeResource SystemFillColorCriticalBrush}" IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

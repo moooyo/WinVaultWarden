@@ -1,0 +1,9 @@
+{
+  "Device requests while locked": "Device requests while locked",
+  "Keep a short-lived access token in memory to read requests; approval always requires unlocking": "Keep a short-lived access token in memory to read requests; approval always requires unlocking",
+  "Monitor device sign-in requests while locked": "Monitor device sign-in requests while locked",
+  "Windows automatic updates": "Windows automatic updates",
+  "Install signed MSIX updates through Windows App Installer": "Install signed MSIX updates through Windows App Installer",
+  "Configure…": "Configure…",
+  "Device request monitoring could not be configured. Unlock and try again.": "Device request monitoring could not be configured. Unlock and try again."
+}

@@ -612,13 +612,106 @@ public sealed class AuthServiceV2PasswordTests
             Password,
             TestContext.Current.CancellationToken);
 
-        var failure = Assert.IsType<AuthResult.Failure>(result);
-        Assert.Equal(AuthFailureKind.SafeMessage, failure.Kind);
-        Assert.Contains("cannot complete yet", failure.Message, StringComparison.Ordinal);
+        var required = Assert.IsType<AuthResult.PasswordChangeRequired>(result);
+        Assert.Equal(RequiredPasswordChangeReason.AdministratorTemporaryPassword, required.Reason);
         Assert.False(store.TryLoad(out _));
         Assert.Equal(1, cacheStore.ClearCount);
-        Assert.Equal(VaultState.LoggedOut, fixture.Session.State);
+        Assert.Equal(VaultState.PasswordChangeRequired, fixture.Session.State);
+        Assert.False(fixture.Session.UsesV2UserKey);
         Assert.Equal(0, fixture.Network.TotalCalls);
+        await fixture.Auth.LockAsync(CancellationToken.None);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RequiredPasswordChange_V2_RewrapsTheAuthenticatedKeyAndUsesTheCorrectEndpoint(bool temporary)
+    {
+        if (!AccountSigningKey.IsMldsa44Supported)
+            return;
+
+        const string nextPassword = "An updated master password with enough length!2026";
+        using var material = V2AccountKeyMaterial.Generate();
+        var token = ValidLoginToken(material, ProtectUserKey(material.UserKey)) with
+        {
+            ForcePasswordReset = temporary,
+            MasterPasswordPolicy = new MasterPasswordPolicyResponse(MinLength: 32, EnforceOnLogin: true),
+        };
+        var accountApi = new FakeAccountApiClient();
+        var store = new MemoryTokenStore();
+        var fixture = CreateFixture([new ConnectTokenResult.Success(token)], store, accountApi: accountApi);
+        try
+        {
+            var required = Assert.IsType<AuthResult.PasswordChangeRequired>(await fixture.Auth.LoginAsync(
+                Server, Email, Password, TestContext.Current.CancellationToken));
+            Assert.False(store.TryLoad(out _));
+            Assert.Equal(0, fixture.Network.TotalCalls);
+
+            var changed = await fixture.Auth.CompleteRequiredPasswordChangeAsync(
+                required.Lease, nextPassword, "Updated reminder", TestContext.Current.CancellationToken);
+
+            Assert.IsType<AuthResult.PasswordChanged>(changed);
+            var unlock = temporary
+                ? Assert.IsType<UpdateTemporaryPasswordRequest>(accountApi.TemporaryPassword).UnlockData
+                : Assert.IsType<ChangePasswordRequest>(accountApi.Password).UnlockData!;
+            Assert.Equal(material.UserKey.KeyIdHex, unlock.ContainedKeyId);
+            var masterKey = _crypto.DeriveMasterKey(nextPassword, Email, KdfType.Pbkdf2, Iterations, null, null);
+            byte[]? actual = null;
+            byte[]? expected = null;
+            try
+            {
+                using var stretched = _crypto.StretchMasterKey(masterKey);
+                actual = _crypto.DecryptUserKeyMaterial(stretched, EncString.Parse(unlock.MasterKeyWrappedUserKey));
+                expected = material.UserKey.ExportTransport();
+                Assert.Equal(expected, actual);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(masterKey);
+                if (actual is not null)
+                    CryptographicOperations.ZeroMemory(actual);
+                if (expected is not null)
+                    CryptographicOperations.ZeroMemory(expected);
+            }
+            Assert.Equal(VaultState.LoggedOut, fixture.Session.State);
+            Assert.False(store.TryLoad(out _));
+        }
+        finally
+        {
+            await fixture.Auth.LockAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task RequiredPasswordChange_V2_RejectsTamperedAccountStateBeforePublishingRestrictedSession()
+    {
+        if (!AccountSigningKey.IsMldsa44Supported)
+            return;
+
+        using var material = V2AccountKeyMaterial.Generate();
+        var valid = ValidLoginToken(material, ProtectUserKey(material.UserKey));
+        var keys = valid.AccountKeys!;
+        var token = valid with
+        {
+            ForcePasswordReset = true,
+            AccountKeys = keys with
+            {
+                SecurityState = keys.SecurityState! with { SecurityState = "7.invalid" },
+            },
+        };
+        var fixture = CreateFixture([new ConnectTokenResult.Success(token)]);
+        try
+        {
+            var failure = Assert.IsType<AuthResult.Failure>(await fixture.Auth.LoginAsync(
+                Server, Email, Password, TestContext.Current.CancellationToken));
+            Assert.Equal(AuthFailureKind.InvalidResponse, failure.Kind);
+            Assert.NotEqual(VaultState.PasswordChangeRequired, fixture.Session.State);
+            Assert.Equal(0, fixture.Network.TotalCalls);
+        }
+        finally
+        {
+            await fixture.Auth.LockAsync(CancellationToken.None);
+        }
     }
 
     [Theory]
@@ -892,7 +985,8 @@ public sealed class AuthServiceV2PasswordTests
         IEnumerable<ConnectTokenResult> connectResults,
         ITokenStore? tokenStore = null,
         FakeCacheStore? cacheStore = null,
-        SyncResponse? sync = null)
+        SyncResponse? sync = null,
+        IAccountApiClient? accountApi = null)
     {
         var queue = new Queue<ConnectTokenResult>(connectResults);
         var identity = new ControlledIdentityApiClient(_ =>
@@ -912,14 +1006,15 @@ public sealed class AuthServiceV2PasswordTests
                 null,
                 null),
         };
-        return CreateFixture(identity, tokenStore, cacheStore, sync);
+        return CreateFixture(identity, tokenStore, cacheStore, sync, accountApi);
     }
 
     private static TestFixture CreateFixture(
         IIdentityApiClient identity,
         ITokenStore? tokenStore = null,
         FakeCacheStore? cacheStore = null,
-        SyncResponse? sync = null)
+        SyncResponse? sync = null,
+        IAccountApiClient? accountApi = null)
     {
         var effectiveTokenStore = tokenStore ?? new MemoryTokenStore();
         var effectiveCacheStore = cacheStore ?? new FakeCacheStore();
@@ -947,6 +1042,7 @@ public sealed class AuthServiceV2PasswordTests
         };
         var provider = new FakeVaultApiClientProvider()
             .AddAnonymous<IIdentityApiClient>(identity)
+            .AddAuthenticated<IAccountApiClient>(accountApi ?? new FakeAccountApiClient())
             .AddAuthenticated<IReadonlyApiClient>(read)
             .AddAuthenticated<IServerConfigApiClient>(read);
         var crypto = new CryptoService();

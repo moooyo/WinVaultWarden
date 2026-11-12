@@ -10,6 +10,9 @@ public sealed record HealthReport(
     IReadOnlyList<WeakFinding> Weak,
     IReadOnlyList<UnsecuredFinding> Unsecured)
 {
+    /// <summary>Items whose password strength could not be assessed within the analysis budget.</summary>
+    public IReadOnlyList<HealthItemRef> UnassessedPasswords { get; init; } = [];
+
     // 尚未执行在线 HIBP 检查时的初态；离线报告不得暗示"已确认零泄露"。
     public BreachCheckResult Exposure { get; init; } = BreachCheckResult.Unknown;
 }

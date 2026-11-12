@@ -1,10 +1,12 @@
 using Api;
 using Api.Dtos;
+using System.Text.Json;
 using Core.Enums;
 using Core.Models;
 using Core.Services;
 using Core.Session;
 using Crypto;
+using Crypto.V2;
 using Vault;
 using Xunit;
 
@@ -15,6 +17,9 @@ public class VaultImportServiceTests
     private sealed class CapturingImportApi : IVaultWriteApiClient
     {
         public ImportRequest? Last { get; private set; }
+        public int CommitCount { get; private set; }
+        public int CallCount { get; private set; }
+        public Action? AfterCommit { get; set; }
 
         public Task CreateCipherAsync(CipherRequest request, CancellationToken ct = default) => throw new NotSupportedException();
         public Task UpdateCipherAsync(string cipherId, CipherRequest request, CancellationToken ct = default) => throw new NotSupportedException();
@@ -31,7 +36,11 @@ public class VaultImportServiceTests
 
         public Task ImportCiphersAsync(ImportRequest request, CancellationToken ct = default)
         {
+            CallCount++;
+            ct.ThrowIfCancellationRequested();
             Last = request;
+            CommitCount++;
+            AfterCommit?.Invoke();
             return Task.CompletedTask;
         }
     }
@@ -220,7 +229,8 @@ public class VaultImportServiceTests
     private sealed record ImportFixture(
         VaultImportService Service,
         CapturingImportApi Api,
-        FakeSync Sync);
+        FakeSync Sync,
+        VaultSession Session);
 
     private static ImportFixture NewImportFixture(VaultCapabilities? capabilities = null)
     {
@@ -244,7 +254,7 @@ public class VaultImportServiceTests
             new CipherEncryptor(new CryptoService()),
             sync,
             session);
-        return new ImportFixture(service, api, sync);
+        return new ImportFixture(service, api, sync, session);
     }
 
     [Fact]
@@ -369,5 +379,328 @@ public class VaultImportServiceTests
 
         Assert.Null(api.Last);
         Assert.Equal(0, sync.Calls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ImportAsync_ExportedIdsBecomeIndependentNewCiphers(bool v2)
+    {
+        var api = new CapturingImportApi();
+        var sync = new FakeSync();
+        var session = new VaultSession();
+        session.BeginAccountSession("account", "me@example.com", ServerEndpoints.ForSelfHosted("https://vault.example"));
+        if (v2)
+            session.SetUnlockedKey(V2UserKey.Generate());
+        else
+            session.SetUnlockedKey(new SymmetricCryptoKey(new byte[64]));
+        var service = new VaultImportService(
+            new RecordingProvider(api), new CipherEncryptor(new CryptoService()), sync, session);
+        const string json =
+            """
+            {"encrypted":false,"folders":[{"id":"original-folder","name":"Work"}],"items":[
+              {"id":"original-item","type":1,"name":"Example","folderId":"original-folder",
+               "login":{"username":"user","password":"secret","uris":[{"uri":"https://example.com"}]},
+               "passwordHistory":[{"password":"previous","lastUsedDate":"2026-01-01T00:00:00Z"}],
+               "fields":[{"name":"custom","value":"retained","type":0}]}
+            ]}
+            """;
+        try
+        {
+            Assert.Null(service.Parse(ImportFormat.Json, json).Error);
+            Assert.Equal(1, await service.ImportAsync(ImportFormat.Json, json, TestContext.Current.CancellationToken));
+            var request = Assert.Single(api.Last!.Ciphers);
+            Assert.NotNull(request.Key);
+            Assert.StartsWith(v2 ? "7." : "2.", request.Key);
+            Assert.Null(request.OrganizationId);
+            Assert.Null(request.FolderId);
+            Assert.Null(request.LastKnownRevisionDate);
+            Assert.Equal(0, Assert.Single(api.Last.FolderRelationships).Key);
+            Assert.Equal(0, Assert.Single(api.Last.FolderRelationships).Value);
+            var requestElement = System.Text.Json.JsonSerializer.SerializeToElement(request, ApiJsonContext.Default.CipherRequest);
+            var dto = requestElement.Deserialize(ApiJsonContext.Default.CipherDto)! with { Id = "new-server-id" };
+            Assert.True(session.TryCopyUserKeyMaterial(session.CaptureLease(), out var copied));
+            using (copied)
+            {
+                var decryptor = new VaultDecryptor(new CryptoService());
+                var decrypted = copied!.Legacy is { } legacy
+                    ? decryptor.DecryptCipher(dto, legacy)
+                    : decryptor.DecryptCipher(dto, copied.V2!);
+                Assert.Equal("Example", decrypted.Name);
+                Assert.Equal("secret", decrypted.Login!.Password);
+                Assert.Equal("previous", Assert.Single(decrypted.PasswordHistory).Password);
+                Assert.Equal("retained", Assert.Single(decrypted.Fields).Value);
+            }
+            Assert.Equal(1, api.CommitCount);
+            Assert.Equal(1, sync.Calls);
+        }
+        finally
+        {
+            session.Logout();
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ImportAsync_ConfirmedWriteKeepsCommittedOutcomeWhenRefreshIsCancelled(bool lockSession)
+    {
+        var api = new CapturingImportApi();
+        var session = new VaultSession();
+        session.BeginAccountSession("account", "me@example.com", ServerEndpoints.ForSelfHosted("https://vault.example"));
+        session.SetUnlockedKey(new SymmetricCryptoKey(new byte[64]));
+        using var cancellation = new CancellationTokenSource();
+        api.AfterCommit = () =>
+        {
+            cancellation.Cancel();
+            if (lockSession)
+                session.Lock();
+        };
+        var service = new VaultImportService(
+            new RecordingProvider(api), new CipherEncryptor(new CryptoService()), new CancelledRefresh(), session);
+        const string json = "{\"encrypted\":false,\"folders\":[],\"items\":[{\"type\":1,\"name\":\"Example\",\"login\":{}}]}";
+        try
+        {
+            var exception = await Assert.ThrowsAsync<VaultRefreshException>(() =>
+                service.ImportAsync(ImportFormat.Json, json, cancellation.Token));
+            Assert.IsAssignableFrom<OperationCanceledException>(exception.InnerException);
+            Assert.Equal(1, api.CommitCount);
+        }
+        finally
+        {
+            session.Logout();
+        }
+    }
+
+    private sealed class CancelledRefresh : ISyncService
+    {
+        public Task<IReadOnlyList<Cipher>> SyncAsync(CancellationToken ct = default) =>
+            Task.FromCanceled<IReadOnlyList<Cipher>>(ct);
+
+        public Task<IReadOnlyList<Cipher>> SyncAsync(VaultSessionLease lease, CancellationToken ct = default) =>
+            SyncAsync(ct);
+    }
+
+    [Theory]
+    [MemberData(nameof(SupportedSourceFiles))]
+    public async Task PrepareFileAsync_AllEightFormatsReachEncryptedImport(ImportFormat format, byte[] input)
+    {
+        foreach (var v2 in new[] { false, true })
+        {
+            var fixture = NewImportFixture();
+            if (v2)
+                fixture.Session.SetUnlockedKey(V2UserKey.Generate());
+            try
+            {
+                var canonical = await fixture.Service.PrepareFileAsync(format, input, TestContext.Current.CancellationToken);
+                var preview = fixture.Service.Parse(ImportFormat.Json, canonical);
+                Assert.Null(preview.Error);
+                Assert.Equal(1, preview.Ciphers);
+                var restored = Assert.Single(Vault.Porting.BitwardenJsonCodec.Parse(canonical).Ciphers);
+                Assert.Equal("secret", restored.Login!.Password);
+                Assert.Equal(1, await fixture.Service.ImportAsync(ImportFormat.Json, canonical, TestContext.Current.CancellationToken));
+                var request = Assert.Single(fixture.Api.Last!.Ciphers);
+                Assert.StartsWith(v2 ? "7." : "2.", request.Key);
+                Assert.Equal(1, fixture.Api.CommitCount);
+            }
+            finally
+            {
+                fixture.Session.Logout();
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ImportAsync_ExistingOwnedDestinationOverridesSourceFolderRelations(bool v2)
+    {
+        var fixture = NewImportFixture();
+        if (v2)
+            fixture.Session.SetUnlockedKey(V2UserKey.Generate());
+        fixture.Session.SetSnapshot(new DecryptedVault(fixture.Session.Account,
+            [new Folder { Id = "owned-destination", Name = "Destination" }], [], 0, 0));
+        const string json = """
+            {"encrypted":false,"folders":[{"id":"original","name":"Original"}],"items":[
+              {"type":1,"name":"First","folderId":"original","login":{}},
+              {"type":1,"name":"Second","login":{}}
+            ]}
+            """;
+        var options = new VaultImportOptions("owned-destination");
+        try
+        {
+            Assert.Equal("owned-destination", Assert.Single(fixture.Service.GetDestinationFolders()).Id);
+            var preview = fixture.Service.Parse(ImportFormat.Json, json, options);
+            Assert.Null(preview.Error);
+            Assert.Equal(2, preview.Ciphers);
+            Assert.Equal(0, preview.Folders);
+            Assert.Equal(2, await fixture.Service.ImportAsync(ImportFormat.Json, json, options, TestContext.Current.CancellationToken));
+            var destination = Assert.Single(fixture.Api.Last!.Folders);
+            Assert.Equal("owned-destination", destination.Id);
+            Assert.StartsWith(v2 ? "7." : "2.", destination.Name);
+            Assert.Equal(new[] { 0, 1 }, fixture.Api.Last.FolderRelationships.Select(relation => relation.Key));
+            Assert.All(fixture.Api.Last.FolderRelationships, relation => Assert.Equal(0, relation.Value));
+        }
+        finally
+        {
+            fixture.Session.Logout();
+        }
+    }
+
+    [Fact]
+    public async Task ImportAsync_DestinationMustStillBelongToCurrentUnlockedAccount()
+    {
+        var fixture = NewImportFixture();
+        const string json = "{\"encrypted\":false,\"folders\":[],\"items\":[{\"type\":1,\"name\":\"A\",\"login\":{}}]}";
+        try
+        {
+            Assert.NotNull(fixture.Service.Parse(ImportFormat.Json, json, new VaultImportOptions("foreign-folder")).Error);
+            await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Service.ImportAsync(
+                ImportFormat.Json, json, new VaultImportOptions("foreign-folder"), TestContext.Current.CancellationToken));
+            Assert.Null(fixture.Api.Last);
+            fixture.Session.Lock();
+            Assert.Empty(fixture.Service.GetDestinationFolders());
+        }
+        finally
+        {
+            fixture.Session.Logout();
+        }
+    }
+
+    [Fact]
+    public async Task PrepareFileAsync_RejectsBinaryAndUnicodeFailuresWithoutNetwork()
+    {
+        var fixture = NewImportFixture();
+        try
+        {
+            await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Service.PrepareFileAsync(
+                ImportFormat.OnePasswordArchive, "not-a-zip"u8.ToArray(), TestContext.Current.CancellationToken));
+            await Assert.ThrowsAsync<System.Text.DecoderFallbackException>(() => fixture.Service.PrepareFileAsync(
+                ImportFormat.ChromeCsv, new byte[] { 0xff }, TestContext.Current.CancellationToken));
+            Assert.Null(fixture.Api.Last);
+        }
+        finally
+        {
+            fixture.Session.Logout();
+        }
+    }
+
+    [Theory]
+    [InlineData("cancel")]
+    [InlineData("transport")]
+    [InlineData("io")]
+    [InlineData("timeout")]
+    [InlineData("server-error")]
+    [InlineData("partial-bad-request")]
+    public async Task ImportAsync_DispatchedFailureReportsUncertainOutcomeWithoutRefresh(string failure)
+    {
+        var fixture = NewImportFixture();
+        fixture.Api.AfterCommit = () => throw failure switch
+        {
+            "cancel" => new TaskCanceledException("The synthetic response was lost."),
+            "transport" => new HttpRequestException("The synthetic connection was lost."),
+            "io" => new IOException("The synthetic response stream ended."),
+            "timeout" => new TimeoutException("The synthetic request timed out."),
+            "server-error" => new VaultWriteException(System.Net.HttpStatusCode.InternalServerError, "Synthetic failure", null),
+            _ => new VaultWriteException(System.Net.HttpStatusCode.BadRequest, "Synthetic error after one saved item", null),
+        };
+        const string json = "{\"encrypted\":false,\"folders\":[],\"items\":[{\"type\":1,\"name\":\"A\",\"login\":{}}]}";
+        try
+        {
+            var exception = await Assert.ThrowsAsync<VaultImportOutcomeUncertainException>(() => fixture.Service.ImportAsync(
+                ImportFormat.Json, json, TestContext.Current.CancellationToken));
+            Assert.Equal(1, exception.AttemptedCipherCount);
+            Assert.Equal(1, fixture.Api.CallCount);
+            Assert.Equal(1, fixture.Api.CommitCount);
+            Assert.Equal(0, fixture.Sync.Calls);
+            Assert.NotNull(exception.InnerException);
+        }
+        finally
+        {
+            fixture.Session.Logout();
+        }
+    }
+
+    [Fact]
+    public async Task ImportAsync_PreCancelledOperationDoesNotDispatchOrReportUncertainOutcome()
+    {
+        var fixture = NewImportFixture();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        const string json = "{\"encrypted\":false,\"folders\":[],\"items\":[{\"type\":1,\"name\":\"A\",\"login\":{}}]}";
+        try
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fixture.Service.ImportAsync(ImportFormat.Json, json, cancellation.Token));
+            Assert.Equal(0, fixture.Api.CallCount);
+            Assert.Equal(0, fixture.Api.CommitCount);
+            Assert.Equal(0, fixture.Sync.Calls);
+        }
+        finally
+        {
+            fixture.Session.Logout();
+        }
+    }
+
+    [Fact]
+    public async Task ImportAsync_PreDispatchClientFailureRemainsARegularFailure()
+    {
+        var fixture = NewImportFixture();
+        var failure = new HttpRequestException("Synthetic client preparation failed before dispatch.");
+        var service = new VaultImportService(new FailingClientProvider(failure), new CipherEncryptor(new CryptoService()), fixture.Sync, fixture.Session);
+        const string json = "{\"encrypted\":false,\"folders\":[],\"items\":[{\"type\":1,\"name\":\"A\",\"login\":{}}]}";
+        try
+        {
+            var actual = await Assert.ThrowsAsync<HttpRequestException>(() => service.ImportAsync(
+                ImportFormat.Json, json, TestContext.Current.CancellationToken));
+            Assert.Same(failure, actual);
+            Assert.Equal(0, fixture.Api.CallCount);
+            Assert.Equal(0, fixture.Sync.Calls);
+        }
+        finally
+        {
+            fixture.Session.Logout();
+        }
+    }
+
+    private sealed class FailingClientProvider(Exception failure) : IVaultApiClientProvider
+    {
+        public TClient GetAnonymous<TClient>(ServerOrigin origin) where TClient : class, IAnonymousApiRole => throw failure;
+        public TClient GetAuthenticated<TClient>(VaultSessionLease lease) where TClient : class, IAuthenticatedApiRole => throw failure;
+    }
+
+    public static IEnumerable<object[]> SupportedSourceFiles()
+    {
+        var files = new Dictionary<ImportFormat, string>
+        {
+            [ImportFormat.Json] = "{\"encrypted\":false,\"folders\":[],\"items\":[{\"type\":1,\"name\":\"Example\",\"login\":{\"username\":\"user\",\"password\":\"secret\"}}]}",
+            [ImportFormat.Csv] = "folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n" + string.Join(',', new[] { "Work", "0", "login", "Example", "Notes", "", "0", "https://example.test", "user", "secret", "" }),
+            [ImportFormat.ChromeCsv] = "name,url,username,password,note\r\nExample,https://example.test,user,secret,Notes",
+            [ImportFormat.EdgeCsv] = "name,url,username,password,note\r\nExample,https://example.test,user,secret,Notes",
+            [ImportFormat.FirefoxCsv] = "url,username,password,httpRealm,formActionOrigin,guid,timeCreated,timeLastUsed,timePasswordChanged\r\nhttps://example.test,user,secret,,,synthetic-guid,1600000000000,1600000000000,1600000000000",
+            [ImportFormat.LastPassCsv] = "url,username,password,extra,name,grouping,fav\r\nhttps://example.test,user,secret,Notes,Example,Work,0",
+            [ImportFormat.KeePassXml] = "<KeePassFile><Meta/><Root><Group><Name>Database</Name><Entry><String><Key>Title</Key><Value>Example</Value></String><String><Key>UserName</Key><Value>user</Value></String><String><Key>Password</Key><Value>secret</Value></String></Entry></Group></Root></KeePassFile>",
+        };
+        foreach (var (format, text) in files)
+            yield return [format, System.Text.Encoding.UTF8.GetBytes(text)];
+
+        using var buffer = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(buffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using (var attributes = new StreamWriter(zip.CreateEntry("export.attributes").Open(), new System.Text.UTF8Encoding(false)))
+                attributes.Write("{\"version\":3,\"description\":\"1Password Unencrypted Export\",\"createdAt\":1600000000}");
+            using var data = new StreamWriter(zip.CreateEntry("export.data").Open(), new System.Text.UTF8Encoding(false));
+            data.Write("""
+                {"accounts":[{"attrs":{"uuid":"account","accountName":"Account"},"vaults":[
+                  {"attrs":{"uuid":"vault","name":"Vault","type":"P"},"items":[
+                    {"uuid":"item","favIndex":0,"createdAt":1600000000,"updatedAt":1600000010,"state":"active","categoryUuid":"001",
+                     "overview":{"title":"Example","urls":[],"tags":[]},"details":{"notesPlain":"","sections":[],"passwordHistory":[],"loginFields":[
+                       {"designation":"username","name":"username","fieldType":"T","value":"user"},
+                       {"designation":"password","name":"password","fieldType":"P","value":"secret"}
+                     ]}}
+                  ]}
+                ]}]}
+                """);
+        }
+        yield return [ImportFormat.OnePasswordArchive, buffer.ToArray()];
     }
 }

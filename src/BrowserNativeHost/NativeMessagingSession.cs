@@ -124,6 +124,12 @@ public sealed class NativeMessagingSession : IAsyncDisposable
     // target's token and best-effort forwards upstream — both cheap).
     private async Task DispatchAsync(NativeRequest message, CancellationToken sessionToken)
     {
+        if (message.Version != 1)
+        {
+            await WriteResponseAsync(Error(message.Id, "invalid_request", "Unsupported protocol version."))
+                .ConfigureAwait(false);
+            return;
+        }
         switch (message.Type)
         {
             case "cancel":

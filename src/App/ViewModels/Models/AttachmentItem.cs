@@ -4,5 +4,5 @@ namespace App.ViewModels.Models;
 public sealed partial record AttachmentItem(string Id, string FileName, string SizeName)
 {
     public string Glyph => global::App.Services.AttachmentGlyph.ForFileName(FileName);
-    public string AccessibleLabel => $"附件 {FileName}，大小 {SizeName}";
+    public string AccessibleLabel => global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextCCD5A5A18F4F21DF,FileName,SizeName);
 }

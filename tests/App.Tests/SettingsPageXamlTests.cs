@@ -155,7 +155,8 @@ public class SettingsPageXamlTests
         Assert.Contains("ShowManageWebAuthnDialogAsync(page.ApplyWebAuthnSnapshot, addOnly: true)", parent, StringComparison.Ordinal);
         Assert.Contains("_manageWebAuthn = manageWebAuthn", child, StringComparison.Ordinal);
         Assert.Contains("_webAuthnSnapshot?.Credentials.Count", child, StringComparison.Ordinal);
-        Assert.Contains("\"添加…\", _manageWebAuthn!", child, StringComparison.Ordinal);
+        LocalizedSourceAssert.ContainsText("添加…", child);
+        Assert.Contains(", _manageWebAuthn!", child, StringComparison.Ordinal);
         Assert.Contains("_removeWebAuthn!(credential.Id)", child, StringComparison.Ordinal);
         Assert.Contains("WebAuthnRows.Children.Add", child, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.SetName(button", child, StringComparison.Ordinal);
@@ -197,7 +198,7 @@ public class SettingsPageXamlTests
     {
         var source = LoadCodeBehind();
         Assert.Contains("snapshot.Credentials.Count == 1", source, StringComparison.Ordinal);
-        Assert.Contains("将关闭 WebAuthn 双重验证", source, StringComparison.Ordinal);
+        LocalizedSourceAssert.ContainsText("将关闭 WebAuthn 双重验证", source);
         Assert.Contains("DeleteWebAuthnCredentialAsync", source, StringComparison.Ordinal);
     }
 
@@ -283,7 +284,9 @@ public class SettingsPageXamlTests
         var source = LoadCodeBehind();
         var start = source.IndexOf("var disableDialog = new ContentDialog", StringComparison.Ordinal);
         Assert.True(start >= 0);
-        var section = source[start..Math.Min(source.Length, start + 500)];
+        var end = source.IndexOf("};", start, StringComparison.Ordinal);
+        Assert.True(end > start);
+        var section = source[start..(end + 2)];
         Assert.Contains("DefaultButton = ContentDialogButton.Close", section, StringComparison.Ordinal);
     }
 }

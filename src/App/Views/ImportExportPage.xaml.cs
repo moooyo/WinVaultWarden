@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Security.Cryptography;
 using System.Text;
 using Vault;
 using Vault.Porting;
@@ -15,10 +16,10 @@ namespace App.Views;
 
 public sealed partial class ImportExportPage : Page
 {
-    private const string ExportFailureMessage = "导出失败，请稍后重试。";
-    private const string UnsupportedCipherCsvExportMessage =
-        "密码库包含 CSV 不支持的条目类型。为避免数据丢失，已取消导出；请改用 JSON 格式。";
-    private const string ImportReadFailureMessage = "无法读取所选文件，请确认文件可用后重试。";
+    private static readonly string ExportFailureMessage = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1C7CAB143BF6825A);
+    private static readonly string UnsupportedCipherCsvExportMessage =
+        global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5E6195611BA26976);
+    private static readonly string ImportReadFailureMessage = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text4A65B8539B066BCA);
 
     public ImportExportViewModel ViewModel { get; }
 
@@ -33,22 +34,23 @@ public sealed partial class ImportExportPage : Page
         _lifecycle = global::App.App.Services.GetRequiredService<IAppLifecycleCoordinator>();
         _lastImportFormat = ViewModel.SelectedImportFormat;
         InitializeComponent();
+        ViewModel.RefreshDestinationFolders();
     }
 
     public static string FormatImportFile(string content, string fileLabel) =>
-        string.IsNullOrEmpty(content) ? "还没有选择文件" : fileLabel;
+        string.IsNullOrEmpty(content) ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextDE583A9B303F6107) : fileLabel;
 
     public static string FormatChooseFileButton(string content) =>
-        string.IsNullOrEmpty(content) ? "选择文件…" : "更换…";
+        string.IsNullOrEmpty(content) ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text29D75B8EB8866BB4) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextA21A41E49DEB171D);
 
     public static string FormatImportHint(string content) =>
-        string.IsNullOrEmpty(content) ? "先选择要导入的文件" : string.Empty;
+        string.IsNullOrEmpty(content) ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8336AB102651B2C6) : string.Empty;
 
     public static string FormatImportButton(ImportExportOperationKind? operation) =>
-        operation == ImportExportOperationKind.Import ? "正在导入…" : "导入";
+        operation == ImportExportOperationKind.Import ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF6DC1B1641600DD0) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text576D81BB0631B165);
 
     public static string FormatExportButton(ImportExportOperationKind? operation) =>
-        operation == ImportExportOperationKind.Export ? "正在导出…" : "导出…";
+        operation == ImportExportOperationKind.Export ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text62731D95BC805803) : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text643E7408E6A75D97);
 
     private void OnImportFormatSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -80,8 +82,8 @@ public sealed partial class ImportExportPage : Page
 
             var passwordBox = new PasswordBox
             {
-                Header = "主密码",
-                PlaceholderText = "当前主密码",
+                Header = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF36F5F11EDEFB912),
+                PlaceholderText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5EE7B0789FB7EA3F),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
             };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(
@@ -107,7 +109,9 @@ public sealed partial class ImportExportPage : Page
             };
             panel.Children.Add(new TextBlock
             {
-                Text = "文件不加密，请妥善保管，用完尽快删除。导出前需要验证主密码。",
+                Text = operation.ExportFormat is ExportFormat.Json or ExportFormat.Csv
+                    ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text60159E1BA8F9D089)
+                    : global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0198C91B6AD227C0),
                 TextWrapping = TextWrapping.Wrap,
             });
             panel.Children.Add(passwordBox);
@@ -115,10 +119,10 @@ public sealed partial class ImportExportPage : Page
 
             var dialog = new ContentDialog
             {
-                Title = "导出密码库",
+                Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text90C7AA46BD0C326C),
                 Content = panel,
-                PrimaryButtonText = "导出",
-                CloseButtonText = "取消",
+                PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text76420433F22D1C80),
+                CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
                 DefaultButton = ContentDialogButton.Primary,
                 XamlRoot = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot,
                 IsPrimaryButtonEnabled = false,
@@ -156,7 +160,7 @@ public sealed partial class ImportExportPage : Page
 
                     if (!verified)
                     {
-                        errorText.Text = "主密码不正确";
+                        errorText.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text1F643C920B554BEB);
                         errorText.Visibility = Visibility.Visible;
                         continue;
                     }
@@ -165,7 +169,12 @@ public sealed partial class ImportExportPage : Page
                 }
 
                 var format = operation.ExportFormat;
-                var exportText = ViewModel.ExportToText(format);
+                var exportText = await CreateExportTextAsync(operation, sessionLease);
+                if (exportText is null || !_session.IsUnlocked(sessionLease))
+                {
+                    operation.Complete(UiOperationStatus.Cancelled);
+                    return;
+                }
                 var picker = new Windows.Storage.Pickers.FileSavePicker
                 {
                     SuggestedFileName = $"bitwarden_export_{DateTime.Now:yyyyMMddHHmm}",
@@ -173,6 +182,8 @@ public sealed partial class ImportExportPage : Page
                 switch (format)
                 {
                     case ExportFormat.Json:
+                    case ExportFormat.PasswordProtectedJson:
+                    case ExportFormat.AccountRestrictedJson:
                         picker.FileTypeChoices.Add("JSON", [".json"]);
                         break;
                     case ExportFormat.Csv:
@@ -234,7 +245,7 @@ public sealed partial class ImportExportPage : Page
 
                 if (!TryPublish(
                     sessionLease,
-                    () => operation.Complete(UiOperationStatus.Succeeded, $"已导出到“{file.Name}”。")))
+                    () => operation.Complete(UiOperationStatus.Succeeded, global::App.Localization.UiText.Format(global::App.Localization.UiStringKey.TextA46E8D59255856E0,file.Name))))
                 {
                     operation.Complete(UiOperationStatus.Cancelled);
                 }
@@ -260,7 +271,7 @@ public sealed partial class ImportExportPage : Page
             {
                 operation.Complete(
                     UiOperationStatus.Failed,
-                    "组织策略已禁用个人密码库导出。");
+                    global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0952F57C2E79C7C8));
             }
             catch (Exception ex) when (IsRecoverableFileOperationException(ex))
             {
@@ -275,6 +286,7 @@ public sealed partial class ImportExportPage : Page
 
     private async void OnChooseImportFileClick(object sender, RoutedEventArgs e)
     {
+        ViewModel.RefreshDestinationFolders();
         var started = ViewModel.BeginOperation(ImportExportOperationKind.ChooseImportFile);
         if (!started.IsSuccess || started.Value is not { } operation)
             return;
@@ -290,7 +302,7 @@ public sealed partial class ImportExportPage : Page
             try
             {
                 var picker = new Windows.Storage.Pickers.FileOpenPicker();
-                picker.FileTypeFilter.Add(operation.ImportFormat == ImportFormat.Json ? ".json" : ".csv");
+                picker.FileTypeFilter.Add(ImportExportViewModel.ImportFileExtension(operation.ImportFormat));
 
                 var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(global::App.App.MainWindow);
                 WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
@@ -302,34 +314,92 @@ public sealed partial class ImportExportPage : Page
                     return;
                 }
 
-                var content = await FilePickerHelper.RunTrackedAsync(
+                byte[]? bytes = null;
+                byte[]? readBytes = null;
+                CancellationToken readToken = default;
+                try
+                {
+                bytes = await FilePickerHelper.RunTrackedAsync(
                     async ct =>
                     {
+                        readToken = ct;
                         if (!_session.IsUnlocked(sessionLease))
                             throw ExpiredOperation();
 
-                        var readTask = Windows.Storage.FileIO.ReadTextAsync(file).AsTask(ct);
-                        var text = await CancelWinsTask.AwaitAsync(
-                            readTask,
+                        ct.ThrowIfCancellationRequested();
+                        var properties = await CancelWinsTask.AwaitAsync(
+                            file.GetBasicPropertiesAsync().AsTask(),
                             static _ => ValueTask.CompletedTask,
                             ct);
+                        if (properties.Size > VaultPortingLimits.MaximumFileSizeBytes)
+                            throw new InvalidDataException("The selected backup exceeds the import size limit.");
+
                         ct.ThrowIfCancellationRequested();
-                        if (!_session.IsUnlocked(sessionLease))
-                            throw ExpiredOperation();
-                        return text;
+                        using var input = await CancelWinsTask.AwaitAsync(
+                            file.OpenReadAsync().AsTask(),
+                            static lateStream =>
+                            {
+                                lateStream.Dispose();
+                                return ValueTask.CompletedTask;
+                            },
+                            ct);
+                        await using var source = input.AsStreamForRead();
+                        ct.ThrowIfCancellationRequested();
+                        readBytes = await CancelWinsTask.AwaitAsync(
+                            ReadImportBytesAsync(source, ct),
+                            static lateBytes =>
+                            {
+                                CryptographicOperations.ZeroMemory(lateBytes);
+                                return ValueTask.CompletedTask;
+                            },
+                            ct);
+                        return readBytes;
+                    },
+                    clearSensitive: () =>
+                    {
+                        if (readToken.IsCancellationRequested && readBytes is not null)
+                            CryptographicOperations.ZeroMemory(readBytes);
                     },
                     ct: operation.Token);
-                if (content is null)
+                if (bytes is null || !_session.IsUnlocked(sessionLease))
                 {
                     operation.Complete(UiOperationStatus.Cancelled);
                     return;
                 }
 
+                if (!ImportExportViewModel.TryResolveImportFormat(file.Name, operation.ImportFormat, out var selectedFormat))
+                    throw new InvalidDataException("The selected file type does not identify a supported import format.");
+                if (selectedFormat == ImportFormat.Json)
+                {
+                    using var memory = new MemoryStream(bytes, writable: false);
+                    using var reader = new StreamReader(memory, new UTF8Encoding(false, true), detectEncodingFromByteOrderMarks: true);
+                    var content = await reader.ReadToEndAsync(operation.Token);
+                    content = await UnlockImportContentAsync(content, operation, sessionLease);
+                    if (content is null || !_session.IsUnlocked(sessionLease))
+                    {
+                        operation.Complete(UiOperationStatus.Cancelled);
+                        return;
+                    }
+                    CryptographicOperations.ZeroMemory(bytes);
+                    bytes = new UTF8Encoding(false, true).GetBytes(content);
+                }
+
+                var canonicalJson = await ViewModel.PrepareImportFileAsync(selectedFormat, bytes, operation.Token);
+                var preview = await ViewModel.PrepareImportPreviewAsync(operation, canonicalJson);
+                if (!_session.IsUnlocked(sessionLease))
+                    throw ExpiredOperation();
+
                 if (!TryPublish(
                     sessionLease,
-                    () => ViewModel.ApplySelectedImportFile(operation, file.Name, content)))
+                    () => ViewModel.ApplyPreparedImportFile(operation, file.Name, selectedFormat, canonicalJson, preview)))
                 {
                     operation.Complete(UiOperationStatus.Cancelled);
+                }
+                }
+                finally
+                {
+                    if (bytes is not null)
+                        CryptographicOperations.ZeroMemory(bytes);
                 }
             }
             catch (OperationCanceledException ex)
@@ -341,6 +411,192 @@ public sealed partial class ImportExportPage : Page
             {
                 operation.Complete(UiOperationStatus.Failed, ImportReadFailureMessage);
             }
+        }
+    }
+
+    private static Task<byte[]> ReadImportBytesAsync(Stream source, CancellationToken ct) =>
+        BoundedImportReader.ReadAsync(source, ct);
+
+    private async Task<string?> CreateExportTextAsync(
+        ImportExportOperationScope operation,
+        VaultSessionLease sessionLease)
+    {
+        if (operation.ExportFormat != ExportFormat.PasswordProtectedJson)
+            return await ViewModel.ExportToTextAsync(operation.ExportFormat, null, operation.Token);
+
+        var backupPassword = new PasswordBox
+        {
+            Header = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text84CFFD4304EE3AE6),
+            PlaceholderText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text50A65A87586C1E1E),
+            MaxLength = 1024,
+        };
+        var confirmation = new PasswordBox
+        {
+            Header = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text411443F82B6292E3),
+            MaxLength = 1024,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(backupPassword, "ExportBackupPasswordBox");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(confirmation, "ExportBackupPasswordConfirmationBox");
+        var errorText = new TextBlock { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetLiveSetting(
+            errorText,
+            Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
+        errorText.SetValue(TextBlock.ForegroundProperty, Application.Current.Resources["SystemFillColorCriticalBrush"]);
+        var panel = new StackPanel { Spacing = 16 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8E66F1ECF7DD9C65),
+            TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(backupPassword);
+        panel.Children.Add(confirmation);
+        panel.Children.Add(errorText);
+        var dialog = new ContentDialog
+        {
+            Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text8FE24017BC5974A6),
+            Content = panel,
+            PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text353D7D85CDE29882),
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
+            DefaultButton = ContentDialogButton.Primary,
+            IsPrimaryButtonEnabled = false,
+            XamlRoot = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot,
+        };
+        void ClearPasswords()
+        {
+            backupPassword.Password = string.Empty;
+            confirmation.Password = string.Empty;
+        }
+        void UpdateValidation(object sender, RoutedEventArgs args)
+        {
+            dialog.IsPrimaryButtonEnabled = ImportExportViewModel.IsValidBackupPassword(
+                backupPassword.Password,
+                confirmation.Password);
+            errorText.Text = confirmation.Password.Length > 0
+                && !string.Equals(backupPassword.Password, confirmation.Password, StringComparison.Ordinal)
+                    ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextF007E1890A6AA80C)
+                    : backupPassword.Password.Length is > 0 and < 12
+                        ? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text652879DDCEFD860A)
+                        : string.Empty;
+            errorText.Visibility = errorText.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        }
+        backupPassword.PasswordChanged += UpdateValidation;
+        confirmation.PasswordChanged += UpdateValidation;
+        try
+        {
+            var answer = await DialogHelper.ShowTrackedAsync(dialog, sessionLease, ClearPasswords, operation.Token);
+            if (answer != ContentDialogResult.Primary || !_session.IsUnlocked(sessionLease))
+                return null;
+            if (!ImportExportViewModel.IsValidBackupPassword(backupPassword.Password, confirmation.Password))
+                return null;
+
+            var password = backupPassword.Password;
+            ClearPasswords();
+            try
+            {
+                return await ViewModel.ExportToTextAsync(operation.ExportFormat, password, operation.Token);
+            }
+            finally
+            {
+                password = string.Empty;
+            }
+        }
+        finally
+        {
+            backupPassword.PasswordChanged -= UpdateValidation;
+            confirmation.PasswordChanged -= UpdateValidation;
+            ClearPasswords();
+        }
+    }
+
+    private async Task<string?> UnlockImportContentAsync(
+        string content,
+        ImportExportOperationScope operation,
+        VaultSessionLease sessionLease)
+    {
+        var protection = ViewModel.InspectImportProtection(content);
+        if (protection == ImportProtection.None)
+            return content;
+        if (protection == ImportProtection.Account)
+        {
+            var approved = await DialogHelper.ConfirmAsync(
+                global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot,
+                sessionLease,
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text57043A43A27F358C),
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text54A17189C22E2C12),
+                global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text439537652398A0F3),
+                ct: operation.Token);
+            return approved && _session.IsUnlocked(sessionLease)
+                ? await ViewModel.UnlockImportJsonAsync(content, null, operation.Token)
+                : null;
+        }
+
+        var passwordBox = new PasswordBox
+        {
+            Header = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text84CFFD4304EE3AE6),
+            PlaceholderText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text7C960AC04A092F9B),
+            MaxLength = 1024,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(passwordBox, "ImportBackupPasswordBox");
+        var errorText = new TextBlock { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetLiveSetting(
+            errorText,
+            Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Assertive);
+        errorText.SetValue(TextBlock.ForegroundProperty, Application.Current.Resources["SystemFillColorCriticalBrush"]);
+        var panel = new StackPanel { Spacing = 16 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text3361B1E5D2658AF4),
+            TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(passwordBox);
+        panel.Children.Add(errorText);
+        var dialog = new ContentDialog
+        {
+            Title = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextB1093EDAD441EBBF),
+            Content = panel,
+            PrimaryButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text439537652398A0F3),
+            CloseButtonText = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
+            DefaultButton = ContentDialogButton.Primary,
+            IsPrimaryButtonEnabled = false,
+            XamlRoot = global::App.App.MainWindow?.Content?.XamlRoot ?? XamlRoot,
+        };
+        passwordBox.PasswordChanged += (_, _) =>
+        {
+            dialog.IsPrimaryButtonEnabled = passwordBox.Password.Length > 0;
+            errorText.Visibility = Visibility.Collapsed;
+        };
+        try
+        {
+            while (_session.IsUnlocked(sessionLease))
+            {
+                var answer = await DialogHelper.ShowTrackedAsync(
+                    dialog,
+                    sessionLease,
+                    () => passwordBox.Password = string.Empty,
+                    operation.Token);
+                if (answer != ContentDialogResult.Primary || !_session.IsUnlocked(sessionLease))
+                    return null;
+                var password = passwordBox.Password;
+                passwordBox.Password = string.Empty;
+                try
+                {
+                    return await ViewModel.UnlockImportJsonAsync(content, password, operation.Token);
+                }
+                catch (Exception exception) when (exception is CryptographicException or FormatException)
+                {
+                    errorText.Text = global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextC98A4A6626F66E3E);
+                    errorText.Visibility = Visibility.Visible;
+                }
+                finally
+                {
+                    password = string.Empty;
+                }
+            }
+            return null;
+        }
+        finally
+        {
+            passwordBox.Password = string.Empty;
         }
     }
 
@@ -370,6 +626,11 @@ public sealed partial class ImportExportPage : Page
             or HttpRequestException
             or TimeoutException
             or AccountOperationException
+            or FormatException
+            or DecoderFallbackException
+            or CryptographicException
+            or System.Text.Json.JsonException
+            or NotSupportedException
             or ObjectDisposedException
             or System.Runtime.InteropServices.COMException;
 

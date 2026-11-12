@@ -8,6 +8,153 @@ namespace App.Tests;
 
 public class ImportExportViewModelTests
 {
+    [Theory]
+    [InlineData("vault.1PUX", ImportFormat.OnePasswordArchive)]
+    [InlineData("vault.XML", ImportFormat.KeePassXml)]
+    public void TryGetImportFormat_RecognizesArchiveAndXml(string name, ImportFormat expected)
+    {
+        Assert.True(ImportExportViewModel.TryGetImportFormat(name, out var actual));
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData(ImportFormat.ChromeCsv)]
+    [InlineData(ImportFormat.EdgeCsv)]
+    [InlineData(ImportFormat.FirefoxCsv)]
+    [InlineData(ImportFormat.LastPassCsv)]
+    public void CsvSourceIdentityDoesNotDependOnSharedExtension(ImportFormat selected)
+    {
+        Assert.True(ImportExportViewModel.TryResolveImportFormat("vault.csv", selected, out var actual));
+        Assert.Equal(selected, actual);
+    }
+
+    [Theory]
+    [InlineData(ImportFormat.Json)]
+    [InlineData(ImportFormat.Csv)]
+    [InlineData(ImportFormat.OnePasswordArchive)]
+    [InlineData(ImportFormat.KeePassXml)]
+    [InlineData(ImportFormat.ChromeCsv)]
+    [InlineData(ImportFormat.EdgeCsv)]
+    [InlineData(ImportFormat.FirefoxCsv)]
+    [InlineData(ImportFormat.LastPassCsv)]
+    public async Task PreparedFileRetainsSourceFormatButImportsCanonicalJson(ImportFormat source)
+    {
+        var import = new PreparedImport();
+        var model = Build(import);
+        model.SelectedImportFormat = source;
+        using (var operation = model.BeginOperation(ImportExportOperationKind.ChooseImportFile).Value!)
+            Assert.True(model.ApplyPreparedImportFile(operation, "source" + ImportExportViewModel.ImportFileExtension(source), source, "canonical-json").IsSuccess);
+        Assert.Equal(source, model.SelectedImportFormat);
+        Assert.True(model.CanImport);
+
+        var result = await model.DoImportAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ImportFormat.Json, import.ImportedFormat);
+        Assert.Equal("canonical-json", import.ImportedContent);
+        Assert.Null(import.ImportedDestination);
+        Assert.False(model.CanImport);
+    }
+
+    [Fact]
+    public async Task DestinationChangeRequiresNewPreviewAndFreezesOwnedFolderId()
+    {
+        var import = new PreparedImport();
+        var model = Build(import);
+        model.RefreshDestinationFolders();
+        using (var operation = model.BeginOperation(ImportExportOperationKind.ChooseImportFile).Value!)
+            model.ApplyPreparedImportFile(operation, "source.1pux", ImportFormat.OnePasswordArchive, "canonical-json");
+        Assert.Equal(2, model.PreviewFolderCount);
+
+        model.ImportDestinationIndex = 1;
+        Assert.False(model.CanImport);
+        Assert.True(model.PreviewCurrentImport().IsSuccess);
+        Assert.Equal(0, model.PreviewFolderCount);
+        Assert.True((await model.DoImportAsync()).IsSuccess);
+        Assert.Equal("owned-folder", import.ImportedDestination);
+    }
+
+    [Fact]
+    public void SensitiveCleanupRejectsLatePreparedPublicationAndDropsFolderNames()
+    {
+        var model = Build(new PreparedImport());
+        model.RefreshDestinationFolders();
+        using var operation = model.BeginOperation(ImportExportOperationKind.ChooseImportFile).Value!;
+        model.ClearSensitive();
+
+        Assert.Equal(UiOperationStatus.Cancelled,
+            model.ApplyPreparedImportFile(operation, "source.1pux", ImportFormat.OnePasswordArchive, "private-json").Status);
+        Assert.Equal(string.Empty, model.ImportContent);
+        Assert.Single(model.DestinationFolders);
+        Assert.Null(model.SelectedDestinationFolderId);
+    }
+
+    [Fact]
+    public async Task PrepareImportFileAsyncForwardsBytesWithoutChangingPreview()
+    {
+        var import = new PreparedImport();
+        var model = Build(import);
+        byte[] source = [0x50, 0x4b, 0x03, 0x04];
+        Assert.Equal("canonical-json", await model.PrepareImportFileAsync(ImportFormat.OnePasswordArchive, source));
+        Assert.Equal(source, import.PreparedBytes);
+        Assert.Equal(ImportFormat.OnePasswordArchive, import.PreparedFormat);
+        Assert.Equal(string.Empty, model.ImportContent);
+    }
+
+    [Fact]
+    public void PreparedPreviewCanBePublishedWithoutReparsingOnTheUiThread()
+    {
+        var import = new PreparedImport();
+        var model = Build(import);
+        using var operation = model.BeginOperation(ImportExportOperationKind.ChooseImportFile).Value!;
+
+        var result = model.ApplyPreparedImportFile(
+            operation,
+            "source.1pux",
+            ImportFormat.OnePasswordArchive,
+            "canonical-json",
+            new ImportPreview(1, 2, null));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, import.ParseCalls);
+        Assert.Equal(1, model.PreviewCipherCount);
+        Assert.True(model.CanImport);
+    }
+
+    private sealed class PreparedImport : IVaultImportService
+    {
+        public ImportFormat? ImportedFormat { get; private set; }
+        public ImportFormat? PreparedFormat { get; private set; }
+        public byte[]? PreparedBytes { get; private set; }
+        public string? ImportedContent { get; private set; }
+        public string? ImportedDestination { get; private set; }
+        public int ParseCalls { get; private set; }
+        public IReadOnlyList<Core.Models.Folder> GetDestinationFolders() =>
+            [new Core.Models.Folder { Id = "owned-folder", Name = "Private folder" }];
+        public ImportPreview Parse(ImportFormat format, string content) => new(1, 2, null);
+        public ImportPreview Parse(ImportFormat format, string content, VaultImportOptions options)
+        {
+            ParseCalls++;
+            Assert.Equal(ImportFormat.Json, format);
+            return new(1, options.DestinationFolderId is null ? 2 : 0, null);
+        }
+        public Task<string> PrepareFileAsync(ImportFormat format, ReadOnlyMemory<byte> bytes, CancellationToken ct = default)
+        {
+            PreparedFormat = format;
+            PreparedBytes = bytes.ToArray();
+            return Task.FromResult("canonical-json");
+        }
+        public Task<int> ImportAsync(ImportFormat format, string content, CancellationToken ct = default) =>
+            throw new InvalidOperationException("The destination-aware overload is required.");
+        public Task<int> ImportAsync(ImportFormat format, string content, VaultImportOptions options, CancellationToken ct = default)
+        {
+            ImportedFormat = format;
+            ImportedContent = content;
+            ImportedDestination = options.DestinationFolderId;
+            return Task.FromResult(1);
+        }
+    }
+
     [Fact]
     public void SelectedFile_IsIdentifiedAndFormatChangeRequiresNewPreview()
     {
@@ -115,14 +262,14 @@ public class ImportExportViewModelTests
     }
 
     [Fact]
-    public void PreviewImport_UsesFormatCapturedAtStart()
+    public async Task PreviewImport_UsesFormatCapturedAtStart()
     {
         var import = new StubImport(2, 1);
         var vm = Build(import);
         vm.ImportContent = "a,b,c";
         vm.SelectedImportFormat = ImportFormat.Csv;
 
-        vm.PreviewImportCommand.Execute(null);
+        await vm.PreviewImportCommand.ExecuteAsync(null);
 
         Assert.Equal(ImportFormat.Csv, import.LastParseFormat);
     }
@@ -187,6 +334,56 @@ public class ImportExportViewModelTests
 
         Assert.Equal("csv-marker", vm.ExportToText(ExportFormat.Csv));
         Assert.Equal("json-marker", vm.ExportToText(ExportFormat.Json));
+    }
+
+    [Theory]
+    [InlineData("long-backup-password", "long-backup-password", true)]
+    [InlineData("long-backup-password", "different-password", false)]
+    [InlineData("short", "short", false)]
+    [InlineData("            ", "            ", false)]
+    [InlineData(null, null, false)]
+    public void BackupPassword_RequiresLengthAndExactConfirmation(
+        string? password,
+        string? confirmation,
+        bool expected) =>
+        Assert.Equal(expected, ImportExportViewModel.IsValidBackupPassword(password, confirmation));
+
+    [Fact]
+    public async Task ExportToTextAsync_ForwardsExplicitProtectionAndPassword()
+    {
+        var export = new ProtectedExport();
+        var viewModel = new ImportExportViewModel(export, new StubImport(0, 0), new StubAccount(true));
+        using var cancellation = new CancellationTokenSource();
+
+        var result = await viewModel.ExportToTextAsync(
+            ExportFormat.PasswordProtectedJson,
+            "independent-backup-password",
+            cancellation.Token);
+
+        Assert.Equal("encrypted-json", result);
+        Assert.Equal(ExportFormat.PasswordProtectedJson, export.Format);
+        Assert.Equal("independent-backup-password", export.Password);
+        Assert.Equal(cancellation.Token, export.Token);
+    }
+
+    [Fact]
+    public async Task UnlockImportJsonAsync_DoesNotStorePasswordOrPublishPlaintextBeforePreview()
+    {
+        var import = new ProtectedImport();
+        var viewModel = Build(import);
+        using var cancellation = new CancellationTokenSource();
+
+        Assert.Equal(ImportProtection.Password, viewModel.InspectImportProtection("encrypted-json"));
+        var plaintext = await viewModel.UnlockImportJsonAsync(
+            "encrypted-json",
+            "backup-password",
+            cancellation.Token);
+
+        Assert.Equal("decrypted-json", plaintext);
+        Assert.Equal("backup-password", import.Password);
+        Assert.Equal(cancellation.Token, import.Token);
+        Assert.Equal(string.Empty, viewModel.ImportContent);
+        Assert.False(viewModel.HasValidPreview);
     }
 
     [Fact]
@@ -302,6 +499,29 @@ public class ImportExportViewModelTests
         Assert.Equal(UiOperationStatus.Failed, retry.Status);
         Assert.Equal(1, import.ImportCalls);
         Assert.False(vm.CanImport);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DoImportAsync_CancellationAfterCommitConsumesPreviewAndPreventsRetry(bool refreshFails)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var import = new CommittedThenCancelledImport(cancellation, refreshFails);
+        var viewModel = Build(import);
+        viewModel.ImportContent = "payload";
+        viewModel.PreviewCurrentImport();
+
+        var result = await viewModel.DoImportAsync(cancellation.Token);
+        var warned = viewModel.HasWarningStatus;
+        var retry = await viewModel.DoImportAsync();
+
+        Assert.Equal(UiOperationStatus.Succeeded, result.Status);
+        Assert.True(warned);
+        Assert.Equal(1, import.Calls);
+        Assert.Equal(UiOperationStatus.Failed, retry.Status);
+        Assert.Equal(string.Empty, viewModel.ImportContent);
+        Assert.False(viewModel.CanImport);
     }
 
     [Fact]
@@ -529,6 +749,53 @@ public class ImportExportViewModelTests
             format == ExportFormat.Json ? "json-marker" : "csv-marker";
     }
 
+    private sealed class ProtectedExport : IVaultExportService
+    {
+        public ExportFormat? Format { get; private set; }
+        public string? Password { get; private set; }
+        public CancellationToken Token { get; private set; }
+        public string Export(ExportFormat format) => throw new InvalidOperationException("Unexpected plaintext export.");
+        public Task<string> ExportProtectedAsync(ExportFormat format, string? password, CancellationToken ct = default)
+        {
+            Format = format;
+            Password = password;
+            Token = ct;
+            return Task.FromResult("encrypted-json");
+        }
+    }
+
+    private sealed class ProtectedImport : IVaultImportService
+    {
+        public string? Password { get; private set; }
+        public CancellationToken Token { get; private set; }
+        public ImportPreview Parse(ImportFormat format, string content) => new(1, 0, null);
+        public ImportProtection InspectJsonProtection(string content) => ImportProtection.Password;
+        public Task<int> ImportAsync(ImportFormat format, string content, CancellationToken ct = default) =>
+            throw new InvalidOperationException("Unlock must not submit an import.");
+        public Task<string> UnlockJsonAsync(string content, string? password, CancellationToken ct = default)
+        {
+            Password = password;
+            Token = ct;
+            return Task.FromResult("decrypted-json");
+        }
+    }
+
+    private sealed class CommittedThenCancelledImport(
+        CancellationTokenSource cancellation,
+        bool refreshFails) : IVaultImportService
+    {
+        public int Calls { get; private set; }
+        public ImportPreview Parse(ImportFormat format, string content) => new(1, 0, null);
+        public Task<int> ImportAsync(ImportFormat format, string content, CancellationToken ct = default)
+        {
+            Calls++;
+            cancellation.Cancel();
+            return refreshFails
+                ? Task.FromException<int>(new VaultRefreshException("Committed import.", new OperationCanceledException(ct)))
+                : Task.FromResult(1);
+        }
+    }
+
     private sealed class StubImport(
         int ciphers,
         int folders,
@@ -678,6 +945,44 @@ public class ImportExportViewModelTests
                 new RequestTimeoutException(
                     RequestTimeoutPhase.ControlPlane,
                     TimeSpan.FromSeconds(30))));
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DoImportAsync_UncertainOutcomeConsumesPreviewAndDoesNotReportSuccess(bool cancelled)
+    {
+        var import = new UncertainOutcomeImport(cancelled);
+        var viewModel = Build(import);
+        viewModel.ImportContent = "synthetic source";
+        viewModel.PreviewCurrentImport();
+        var result = await viewModel.DoImportAsync();
+        var message = viewModel.OperationMessage;
+        var retry = await viewModel.DoImportAsync();
+
+        Assert.Equal(UiOperationStatus.Failed, result.Status);
+        Assert.False(viewModel.HasSucceededStatus);
+        Assert.False(viewModel.HasWarningStatus);
+        Assert.NotNull(message);
+        Assert.Equal(string.Empty, viewModel.ImportContent);
+        Assert.False(viewModel.CanImport);
+        Assert.False(viewModel.HasValidPreview);
+        Assert.Equal(UiOperationStatus.Failed, retry.Status);
+        Assert.Equal(1, import.Calls);
+    }
+
+    private sealed class UncertainOutcomeImport(bool cancelled) : IVaultImportService
+    {
+        public int Calls { get; private set; }
+        public ImportPreview Parse(ImportFormat format, string content) => new(1, 0, null);
+        public Task<int> ImportAsync(ImportFormat format, string content, CancellationToken ct = default)
+        {
+            Calls++;
+            Exception failure = cancelled
+                ? new TaskCanceledException("Synthetic response lost after commit.")
+                : new HttpRequestException("Synthetic connection lost after commit.");
+            return Task.FromException<int>(new VaultImportOutcomeUncertainException(1, failure));
         }
     }
 

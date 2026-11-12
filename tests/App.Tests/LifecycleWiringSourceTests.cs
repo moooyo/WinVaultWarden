@@ -121,9 +121,9 @@ public sealed class LifecycleWiringSourceTests
         Assert.True(guard >= 0);
         Assert.True(sendNavigation > guard);
         Assert.Contains("tag is not (\"gen\" or \"lock\" or \"logout\")", source);
-        Assert.Contains("Title = \"保存结果待确认\"", source);
-        Assert.Contains("请先同步确认新条目的保存结果，再离开密码库。", source);
-        Assert.Contains("CloseButtonText = \"知道了\"", source);
+        LocalizedSourceAssert.ContainsText("保存结果待确认", source);
+        LocalizedSourceAssert.ContainsText("请先同步确认新条目的保存结果，再离开密码库。", source);
+        LocalizedSourceAssert.ContainsText("知道了", source);
         Assert.Contains("DialogHelper.ShowTrackedAsync(dialog)", source);
     }
 

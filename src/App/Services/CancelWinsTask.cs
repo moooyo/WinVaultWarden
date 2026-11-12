@@ -13,11 +13,10 @@ public static class CancelWinsTask
     {
         ArgumentNullException.ThrowIfNull(operation);
         ArgumentNullException.ThrowIfNull(releaseLateResult);
-        ct.ThrowIfCancellationRequested();
-
         T result;
         try
         {
+            ct.ThrowIfCancellationRequested();
             result = await operation.WaitAsync(ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

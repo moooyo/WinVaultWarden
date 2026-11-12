@@ -51,6 +51,17 @@ public interface IAuthService
             LoginWithDeviceCancellationStatus.Cancelled);
     }
     Task<AuthResult> LoginAsync(AuthenticationAttemptLease attempt, string serverUrl, string email, string masterPassword, CancellationToken ct = default);
+    Task<AuthResult> LoginWithApiKeyAsync(
+        AuthenticationAttemptLease attempt,
+        string serverUrl,
+        string email,
+        string clientId,
+        string clientSecret,
+        string masterPassword,
+        CancellationToken ct = default) =>
+        Task.FromResult<AuthResult>(new AuthResult.Failure(
+            "Personal API key sign-in is unavailable.",
+            AuthFailureKind.SafeMessage));
     Task<AuthResult> LoginWithSsoAsync(AuthenticationAttemptLease attempt, string serverUrl, string email, SsoAuthorizationCode authorization, CancellationToken ct = default) =>
         Task.FromResult<AuthResult>(new AuthResult.Failure(
             "SSO authentication is not available.",

@@ -9,7 +9,9 @@ public sealed record ClientDataJson(
     [property: JsonPropertyName("type")] string Type,
     [property: JsonPropertyName("challenge")] string Challenge,
     [property: JsonPropertyName("origin")] string Origin,
-    [property: JsonPropertyName("crossOrigin")] bool CrossOrigin);
+    [property: JsonPropertyName("crossOrigin")] bool CrossOrigin,
+    [property: JsonPropertyName("topOrigin")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? TopOrigin = null);
 
 public sealed record WebAuthnGetAssertionRequest(
     string Origin,
@@ -17,7 +19,8 @@ public sealed record WebAuthnGetAssertionRequest(
     string? RpId,
     IReadOnlyList<string> AllowedCredentialIds,
     PasskeyApprovalEvidence ApprovalEvidence,
-    bool CrossOrigin = false);
+    bool CrossOrigin = false,
+    string? TopOrigin = null);
 
 public sealed record WebAuthnAssertionResult(
     string CredentialId,
@@ -72,7 +75,8 @@ public static class WebAuthnAssertionService
         var authenticatorData = WebAuthnCrypto.BuildAuthenticatorData(
             effectiveRpId,
             signatureCounter,
-            request.ApprovalEvidence);
+            request.ApprovalEvidence,
+            PasskeyBackupState.ForStoredCredential(storedCredentialId));
         var clientDataJson = BuildClientDataJson(request);
         var signature = WebAuthnCrypto.SignAssertion(keyValue, authenticatorData, clientDataJson);
 
@@ -87,8 +91,19 @@ public static class WebAuthnAssertionService
 
     private static byte[] BuildClientDataJson(WebAuthnGetAssertionRequest request) =>
         JsonSerializer.SerializeToUtf8Bytes(
-            new ClientDataJson("webauthn.get", request.Challenge, request.Origin, request.CrossOrigin),
+            new ClientDataJson("webauthn.get", request.Challenge, request.Origin, request.CrossOrigin,
+                ClientDataTopOrigin(request.CrossOrigin, request.TopOrigin)),
             PasskeyJsonContext.Default.ClientDataJson);
+
+    internal static string? ClientDataTopOrigin(bool crossOrigin, string? topOrigin)
+    {
+        if (!crossOrigin)
+            return null;
+        if (!ServerOrigin.TryParse(topOrigin, out var parsed)
+            || !string.Equals(topOrigin, parsed.Value, StringComparison.Ordinal))
+            throw new InvalidOperationException("Cross-origin client data requires a canonical top origin.");
+        return parsed.Value;
+    }
 
     private static string HostFromOrigin(string origin)
     {

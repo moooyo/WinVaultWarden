@@ -34,4 +34,38 @@ public class DictionaryMatcherTests
         var matches = _m.Match("x7q2zk9w");
         Assert.DoesNotContain(matches, x => x.Type == StrengthMatchType.Dictionary && x.Token.Length >= 4);
     }
+
+    [Fact]
+    public void SubstitutionOutsideToken_DoesNotMarkAnUnchangedWordAsL33t()
+    {
+        var matches = _m.Match("password!");
+
+        Assert.Contains(matches, match => match.Token == "password" && !match.L33t && !match.Reversed);
+        Assert.DoesNotContain(matches, match => match.Token == "password" && match.L33t);
+    }
+
+    [Fact]
+    public void ReversedMatch_UsesOriginalCoordinatesAndToken()
+    {
+        var matches = _m.Match("zzdrowssapzz");
+
+        Assert.Contains(matches, match => match.Reversed
+            && match.I == 2 && match.J == 9 && match.Token == "drowssap");
+    }
+
+    [Fact]
+    public void L33tSearch_StillFindsWordAfterManyAmbiguousCharacters()
+    {
+        var matches = _m.Match(new string('1', 100) + "p@ssw0rd");
+
+        Assert.Contains(matches, match => match.L33t
+            && match.I == 100 && match.J == 107 && match.Token == "p@ssw0rd");
+    }
+
+    [Fact]
+    public void OversizedDirectMatcherCall_FailsBeforeSearch()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => _m.Match(new string('x', PasswordStrengthEvaluator.MaximumAnalyzedLength + 1)));
+    }
 }

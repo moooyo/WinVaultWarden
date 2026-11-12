@@ -52,7 +52,7 @@ public sealed partial class GeneratorPage : Page
             await DialogHelper.ShowTrackedAsync(history, expectedSession);
             if (!_session.IsCurrent(expectedSession) || !history.ClearRequested)
                 return;
-            if (await DialogHelper.ConfirmAsync(XamlRoot, expectedSession, "清除历史记录", "清除本次解锁期间复制的全部记录？已保存到保险库的条目不受影响。", "清除"))
+            if (await DialogHelper.ConfirmAsync(XamlRoot, expectedSession, global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text0855A60751CB08D3), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text92FD0A1DFF6FC9B6), global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.TextBCE2377283C2455A)))
                 _lifecycle.TryRunSensitive(() => _session.TryRunIfUnlocked(expectedSession,
                     () => Workspace.ViewModel.ClearHistoryCommand.Execute(null)));
         }

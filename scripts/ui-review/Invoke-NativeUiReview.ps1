@@ -6,12 +6,24 @@ param(
     [string]$RoundName = 'standalone',
     [switch]$EssentialOnly,
     [switch]$PopupProbeOnly,
+    [switch]$LocalizationProbeOnly,
+    [switch]$NativeAot,
+    [ValidateSet('zh-CN', 'zh-TW', 'en-US', 'ja-JP')]
+    [string]$LanguagePreference = 'zh-CN',
+    [ValidateSet('full', 'empty', 'single-login')]
+    [string]$FixtureDataMode = 'full',
     [string]$ExistingBuildDirectory = '',
     [ValidateRange(1, 30)]
     [int]$TimeoutMinutes = 15
 )
 
 $ErrorActionPreference = 'Stop'
+if ($LanguagePreference -ne 'zh-CN' -and !$LocalizationProbeOnly) {
+    throw 'Non-default languages require the explicit localization-only profile; the full matrix contains zh-CN semantic assertions.'
+}
+if ($FixtureDataMode -ne 'full' -and !$LocalizationProbeOnly) {
+    throw 'Reduced synthetic datasets are only available in the explicit localization-only profile.'
+}
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $runId = [DateTime]::UtcNow.ToString("yyyyMMdd'T'HHmmssfff'Z'")
 $evidenceRoot = Join-Path $repositoryRoot 'artifacts\ui-review\v4\native-selftest'
@@ -32,7 +44,7 @@ function Get-SourceFingerprint {
     $sources = foreach ($sourceDirectory in @('src', 'tools\NativeUiReview')) {
         foreach ($sourceFile in [IO.Directory]::EnumerateFiles((Join-Path $repositoryRoot $sourceDirectory), '*', [IO.SearchOption]::AllDirectories)) {
             $extension = [IO.Path]::GetExtension($sourceFile)
-            if ($extension -notin @('.cs', '.xaml', '.csproj', '.targets', '.props', '.manifest')) { continue }
+            if ($extension -notin @('.cs', '.xaml', '.csproj', '.targets', '.props', '.manifest', '.resw', '.json')) { continue }
             if ($sourceFile -match '[\\/](bin|obj)[\\/]') { continue }
             [pscustomobject]@{
                 path = [IO.Path]::GetRelativePath($repositoryRoot, $sourceFile).Replace('\', '/')
@@ -50,13 +62,22 @@ Set-Content -LiteralPath (Join-Path $runDirectory 'source-fingerprint-before.jso
 
 if ($Action -ne 'Run') {
     $buildLog = Join-Path $runDirectory 'build.log'
+    $buildVerb = if ($NativeAot) { 'publish' } else { 'build' }
     $arguments = @(
-        'build', (Join-Path $repositoryRoot 'src\App\App.csproj'), '-c', 'Debug',
+        $buildVerb, (Join-Path $repositoryRoot 'src\App\App.csproj'), '-c', 'Debug',
         '-p:Platform=x64', '-p:WindowsPackageType=None',
         '-p:WindowsAppSDKSelfContained=true', '-p:SelfContained=true',
         '-p:ShipBrowserNativeHost=false', '-p:NativeUiReview=true',
         '-p:UseArtifactsOutput=true', "-p:ArtifactsPath=$buildDirectory", '--nologo'
     )
+    if ($NativeAot) {
+        $arguments += '-p:PublishAot=true'
+        # .NET 10 reference tracking requires optimized NativeAOT; unoptimized Debug AOT
+        # can recursively allocate inside GC callbacks (dotnet/runtime#121538, #132034).
+        # Keep the Debug-only synthetic entry point while matching production ILC optimization.
+        $arguments += '-p:Optimize=true'
+        $arguments += ('-p:PublishDir=' + (Join-Path $buildDirectory 'native-publish') + [IO.Path]::DirectorySeparatorChar)
+    }
     & dotnet @arguments *> $buildLog
     if ($LASTEXITCODE -ne 0) {
         Get-Content -LiteralPath $buildLog -Tail 35 | Write-Host
@@ -68,6 +89,13 @@ if ($Action -ne 'Run') {
         throw "The source changed during compilation; rebuild from a stable snapshot before using this evidence. See $runDirectory."
     }
     Set-Content -LiteralPath (Join-Path $buildDirectory 'source-fingerprint.json') -Value $afterJson -Encoding utf8
+    if ($NativeAot) {
+        $builtMarkers = @(Get-ChildItem -LiteralPath (Join-Path $buildDirectory 'bin\App') -Filter 'native-ui-review.marker' -File -Recurse)
+        if ($builtMarkers.Count -ne 1 -or !(Test-Path -LiteralPath (Join-Path $buildDirectory 'native-publish\App.exe'))) {
+            throw 'The opted-in Debug AOT publish is missing its build marker or native executable.'
+        }
+        Copy-Item -LiteralPath $builtMarkers[0].FullName -Destination (Join-Path $buildDirectory 'native-publish\native-ui-review.marker')
+    }
     Write-Host "Isolated native review build succeeded. Build directory: $buildDirectory"
 }
 
@@ -76,7 +104,7 @@ if ($Action -eq 'Build') {
     return
 }
 
-$candidateRoot = Join-Path $buildDirectory 'bin\App'
+$candidateRoot = Join-Path $buildDirectory $(if ($NativeAot) { 'native-publish' } else { 'bin\App' })
 $executables = @(Get-ChildItem -LiteralPath $candidateRoot -Filter 'App.exe' -File -Recurse)
 if ($executables.Count -ne 1) {
     throw "Expected one opted-in App.exe in the isolated build directory. Found $($executables.Count)."
@@ -89,9 +117,10 @@ $buildFingerprintPath = Join-Path $buildDirectory 'source-fingerprint.json'
 if (-not (Test-Path -LiteralPath $buildFingerprintPath) -or (Get-Content -LiteralPath $buildFingerprintPath -Raw).Trim() -ne $beforeJson) {
     throw 'The isolated build does not match the current source fingerprint. Rebuild before running a clean review.'
 }
-$runtimeArguments = @('--output', ('"{0}"' -f $runDirectory), '--source-root', ('"{0}"' -f $repositoryRoot), '--round', $RoundName)
+$runtimeArguments = @('--output', ('"{0}"' -f $runDirectory), '--source-root', ('"{0}"' -f $repositoryRoot), '--round', $RoundName, '--language', $LanguagePreference, '--data-mode', $FixtureDataMode)
 if ($EssentialOnly) { $runtimeArguments += '--essential' }
 if ($PopupProbeOnly) { $runtimeArguments += '--popup-probe' }
+if ($LocalizationProbeOnly) { $runtimeArguments += '--localization-probe' }
 $process = Start-Process -FilePath $executable -ArgumentList $runtimeArguments -WorkingDirectory $executables[0].Directory.FullName -WindowStyle Hidden -PassThru
 $heldProcessHandle = $process.Handle
 $processStartedUtc = $process.StartTime.ToUniversalTime().ToString('O')
@@ -138,6 +167,9 @@ if (-not (Test-Path -LiteralPath $manifestPath)) {
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if (-not $manifest.Completed -or -not $manifest.Passed -or $manifest.Captures.Count -eq 0) {
     throw "The native review did not complete successfully. See $manifestPath."
+}
+if ($NativeAot -and ($manifest.DynamicCodeSupported -or $manifest.DynamicCodeCompiled -or $manifest.BinaryPathKind -ne 'native-executable' -or $manifest.AssemblyMvid -ne 'unavailable-native-aot')) {
+    throw 'The AOT review did not prove an actual native executable with dynamic code disabled.'
 }
 $afterRunJson = ConvertTo-Json -InputObject (Get-SourceFingerprint) -Depth 4 -Compress
 Set-Content -LiteralPath (Join-Path $runDirectory 'source-fingerprint-after-run.json') -Value $afterRunJson -Encoding utf8

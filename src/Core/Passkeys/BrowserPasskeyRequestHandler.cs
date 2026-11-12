@@ -14,13 +14,15 @@ public sealed class BrowserPasskeyRequestHandler
     private readonly IPasskeyApprovalService _approval;
     private readonly WebAuthnRequestPolicy _policy;
     private readonly PasskeyRequestGate _requestGate;
+    private readonly Action<VaultSessionLease>? _vaultChanged;
 
     public BrowserPasskeyRequestHandler(
         IVaultService vault,
         IVaultWriteService write,
         IPasskeyApprovalService approval,
         WebAuthnRequestPolicy? policy = null,
-        PasskeyRequestGate? requestGate = null)
+        PasskeyRequestGate? requestGate = null,
+        Action<VaultSessionLease>? vaultChanged = null)
     {
         _vault = vault;
         _write = write;
@@ -30,6 +32,7 @@ public sealed class BrowserPasskeyRequestHandler
         // singletons via DI so the gate's in-flight/rate-limit state is process-wide.
         _policy = policy ?? WebAuthnRequestPolicy.CreateDefault();
         _requestGate = requestGate ?? new PasskeyRequestGate(TimeProvider.System);
+        _vaultChanged = vaultChanged;
     }
 
     public async Task<BrowserPasskeyResponse> HandleAsync(
@@ -117,6 +120,14 @@ public sealed class BrowserPasskeyRequestHandler
         // 完全不支持所请求的算法(客户端仅支持 ES256 / -7)→ 未接管,交平台 authenticator 兜底,
         // 且不消耗仪式槽/限流预算。这是"初始映射"的一部分,和 locked / 无候选一样折叠为 client_not_handled。
         if (!algorithms.Contains(-7))
+            return Error(requestId, PasskeyErrorCodes.ClientNotHandled);
+
+        // This bridge is a platform authenticator. Requests for a roaming authenticator,
+        // or invalid attachment values, must be handled by the browser's native API.
+        if (payload.AuthenticatorSelection is { ValueKind: JsonValueKind.Object } selection
+            && selection.TryGetProperty("authenticatorAttachment", out var attachment)
+            && (attachment.ValueKind != JsonValueKind.String
+                || attachment.GetString() != "platform"))
             return Error(requestId, PasskeyErrorCodes.ClientNotHandled);
 
         // lease-bound 快照:只读取本次请求 lease 对应会话的条目。
@@ -210,6 +221,14 @@ public sealed class BrowserPasskeyRequestHandler
             ct.ThrowIfCancellationRequested();
             _vault.ThrowIfExpired(lease);
 
+            try { _vaultChanged?.Invoke(lease); }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                // A failed presentation observer cannot undo an acknowledged credential write.
+            }
+            ct.ThrowIfCancellationRequested();
+            _vault.ThrowIfExpired(lease);
+
             return new BrowserPasskeyResponse(requestId, "passkey.create", true,
                 JsonSerializer.SerializeToElement(result.Payload, PasskeyJsonContext.Default.PasskeyCreateAttestationPayload));
         }
@@ -295,7 +314,8 @@ public sealed class BrowserPasskeyRequestHandler
                     validated.CanonicalRpId,
                     allowedCredentialIds,
                     ApprovalEvidence: approval.Evidence,
-                    CrossOrigin: validated.IsCrossOrigin));
+                    CrossOrigin: validated.IsCrossOrigin,
+                    TopOrigin: validated.IsCrossOrigin ? validated.TopOrigin.Value : null));
             _vault.ThrowIfExpired(lease);
 
             return new BrowserPasskeyResponse(
@@ -509,7 +529,8 @@ public sealed class BrowserPasskeyRequestHandler
 
     // extensions.credProps 存在即代表浏览器请求了 credProps 扩展结果。
     private static bool HasCredProps(JsonElement? extensions) =>
-        extensions is { } element && element.ValueKind == JsonValueKind.Object && element.TryGetProperty("credProps", out _);
+        extensions is { } element && element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty("credProps", out var requested) && requested.ValueKind == JsonValueKind.True;
 
     private static BrowserPasskeyResponse Error(string? id, BrowserPasskeyError error) =>
         Error(id, error.Code);

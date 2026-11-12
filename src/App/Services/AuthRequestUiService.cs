@@ -13,6 +13,10 @@ public interface IAuthRequestUiService
     /// <summary>列出当前账户所有待审批的设备登录请求。</summary>
     Task<IReadOnlyList<AuthRequestItem>> ListPendingAsync(CancellationToken ct = default);
 
+    /// <summary>Reloads one request, including the server's pending-state check.</summary>
+    async Task<AuthRequestItem?> GetPendingRequestAsync(string id, CancellationToken ct = default) =>
+        (await ListPendingAsync(ct)).SingleOrDefault(request => request.Id == id);
+
     /// <summary>批准指定登录请求。</summary>
     /// <param name="id">auth-request UUID。</param>
     /// <param name="publicKey">发起方公钥（Base64），用于构造加密响应体。</param>
@@ -38,7 +42,7 @@ public sealed class AuthRequestUiService : IAuthRequestUiService
     }
 
     private IAuthRequestService Require() =>
-        _service ?? throw new AuthRequestOperationException("设备登录授权服务不可用");
+        _service ?? throw new AuthRequestOperationException(global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text5024FEB74AE121B9));
 
     public async Task<IReadOnlyList<AuthRequestItem>> ListPendingAsync(CancellationToken ct = default)
     {
@@ -51,6 +55,12 @@ public sealed class AuthRequestUiService : IAuthRequestUiService
 
     public Task DenyAsync(string id, CancellationToken ct = default) =>
         Require().DenyAsync(id, ct);
+
+    public async Task<AuthRequestItem?> GetPendingRequestAsync(string id, CancellationToken ct = default)
+    {
+        var request = await Require().GetPendingRequestAsync(id, ct);
+        return request is null ? null : Map(request);
+    }
 
     private static AuthRequestItem Map(Core.Models.PendingAuthRequest r) =>
         new(

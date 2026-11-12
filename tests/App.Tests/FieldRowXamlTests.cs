@@ -40,9 +40,12 @@ public class FieldRowXamlTests
         Assert.Equal("字段，复制", copy.Attribute("AutomationProperties.Name")?.Value);
 
         var source = ReadCodeBehind();
-        Assert.Contains("$\"复制{label}\"", source);
-        Assert.Contains("$\"已{action}\"", source);
-        Assert.Contains("$\"{(_revealed ? \"隐藏\" : \"显示\")}{label}\"", source);
+        LocalizedSourceAssert.ContainsText("复制{0}", source);
+        LocalizedSourceAssert.ContainsText("已{0}", source);
+        LocalizedSourceAssert.ContainsText("隐藏", source);
+        LocalizedSourceAssert.ContainsText("显示", source);
+        Assert.Contains("_revealed ?", source);
+        Assert.Contains("}{label}", source);
     }
 
     [Fact]

@@ -96,7 +96,7 @@ public static class DialogHelper
         string title,
         string message,
         string primaryText,
-        string closeText = "取消",
+        string? closeText = null,
         CancellationToken ct = default)
     {
         var dialog = new ContentDialog
@@ -104,7 +104,7 @@ public static class DialogHelper
             Title = title,
             Content = message,
             PrimaryButtonText = primaryText,
-            CloseButtonText = closeText,
+            CloseButtonText = closeText ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = root,
         };
@@ -117,7 +117,7 @@ public static class DialogHelper
         string title,
         string message,
         string primaryText,
-        string closeText = "取消",
+        string? closeText = null,
         CancellationToken ct = default)
     {
         var dialog = new ContentDialog
@@ -125,7 +125,7 @@ public static class DialogHelper
             Title = title,
             Content = message,
             PrimaryButtonText = primaryText,
-            CloseButtonText = closeText,
+            CloseButtonText = closeText ?? global::App.Localization.UiText.Get(global::App.Localization.UiStringKey.Text2CD0F3BE8738A86C),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = root,
         };

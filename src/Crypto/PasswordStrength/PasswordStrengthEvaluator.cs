@@ -7,12 +7,18 @@ namespace Crypto.PasswordStrength;
 /// </summary>
 public sealed class PasswordStrengthEvaluator
 {
+    public const int MaximumAnalyzedLength = PasswordStrengthBudget.MaximumLength;
+
     private readonly Omnimatch _omnimatch;
 
     public PasswordStrengthEvaluator(Omnimatch omnimatch) => _omnimatch = omnimatch;
 
     public PasswordStrengthResult Evaluate(string password)
     {
+        ArgumentNullException.ThrowIfNull(password);
+        if (password.Length > MaximumAnalyzedLength)
+            return new PasswordStrengthResult(0, 0) { IsComplete = false };
+
         if (string.IsNullOrWhiteSpace(password))
             return new PasswordStrengthResult(0, 0);
 

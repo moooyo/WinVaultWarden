@@ -34,7 +34,8 @@ public sealed record PersistedSession
         string? keyConnectorUrl = null,
         int userKeySecurityVersion = 1,
         string? userKeyId = null,
-        PersistedAccountCryptographicState? accountCryptographicState = null)
+        PersistedAccountCryptographicState? accountCryptographicState = null,
+        bool isApiKeySession = false)
     {
         SchemaVersion = schemaVersion;
         AccountId = accountId;
@@ -55,6 +56,7 @@ public sealed record PersistedSession
         UserKeySecurityVersion = userKeySecurityVersion;
         UserKeyId = userKeyId;
         AccountCryptographicState = accountCryptographicState;
+        IsApiKeySession = isApiKeySession;
     }
 
     public PersistedSession(
@@ -149,6 +151,11 @@ public sealed record PersistedSession
     public string Email { get; init; }
     public string DeviceIdentifier { get; init; }
     public string RefreshToken { get; init; }
+    /// <summary>
+    /// Identifies a personal API-key session, whose server grant has no refresh token.
+    /// The API client secret is never part of a persisted session.
+    /// </summary>
+    public bool IsApiKeySession { get; init; }
     public string ProtectedUserKey { get; init; }
     public KdfType KdfType { get; init; }
     public int KdfIterations { get; init; }
@@ -179,6 +186,12 @@ public sealed record PersistedSession
 
     public string? PinProtectedUserKey { get; init; }
     public int PinFailedAttempts { get; init; }
+    /// <summary>
+    /// Requires a successful master-password verification in the current application
+    /// process before a saved PIN can unlock this account. Existing records default
+    /// to their previous restart-persistent behavior until the user enables this policy.
+    /// </summary>
+    public bool RequireMasterPasswordOnRestart { get; init; }
     public string? TwoFactorToken { get; init; }
     public string? HelloProtectedUserKey { get; init; }
     public string? HelloChallenge { get; init; }
@@ -332,7 +345,11 @@ public sealed record PersistedSession
     private bool HasValidUnlockBinding()
     {
         if (!MasterPasswordSaltPolicy.IsValid(MasterPasswordSalt)
-            || string.IsNullOrWhiteSpace(RefreshToken))
+            || (IsApiKeySession
+                ? RefreshToken != string.Empty
+                    || UnlockMethod != PersistedSessionUnlockMethod.MasterPassword
+                    || HasMasterPassword != true
+                : string.IsNullOrWhiteSpace(RefreshToken)))
             return false;
         return UnlockMethod switch
         {

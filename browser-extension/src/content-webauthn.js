@@ -1,8 +1,8 @@
 // ISOLATED-world relay. It runs in the extension's private world (manifest `world: ISOLATED`), so
 // its variables are unreachable from the page, but the window.postMessage medium it shares with the
 // MAIN shim is not — hence it treats the channel purely as correlation and lets the browser rebuild
-// the trusted context. It keeps a single long-lived runtime port to the service worker for the life
-// of the frame (never a one-shot message, never a dynamically injected script element). It reads
+// the trusted context. It keeps a long-lived runtime port while the document is active and replaces
+// it after disconnection or BFCache restoration. It reads
 // the frame's Permissions Policy verdict directly from the real document so a sub-frame can only get
 // a passkey when the top document delegated `publickey-credentials-get`. Page-supplied
 // origin/crossOrigin/context are stripped before anything leaves the frame; disconnect reasons and
@@ -29,7 +29,10 @@
 
   const channelId = randomChannelId();
   const active = new Set();
-  const port = chrome.runtime.connect({ name: PORT_NAME });
+  let port = null;
+  let suspended = false;
+  let reconnectTimer = null;
+  let reconnectAttempts = 0;
 
   function targetOrigin() {
     const origin = window.location.origin;
@@ -44,12 +47,73 @@
     return { v: 1, id, type: "error", ok: false, error: { code } };
   }
 
-  function publicKeyCredentialsGetAllowed() {
-    if (window.top === window) {
-      return true;
+  function allowsFeature(feature) {
+    try {
+      const policy = document.permissionsPolicy ?? document.featurePolicy;
+      // Top documents can explicitly disable WebAuthn too. Absence of the policy API is not a grant.
+      return policy?.allowsFeature?.(feature) === true;
+    } catch {
+      return false;
     }
-    const policy = document.permissionsPolicy ?? document.featurePolicy;
-    return Boolean(policy?.allowsFeature?.("publickey-credentials-get"));
+  }
+
+  function abortActive() {
+    const ids = [...active];
+    active.clear();
+    for (const id of ids) {
+      postToMain({ channelId, id, kind: "response", response: failure(id, "operation_aborted") });
+    }
+  }
+
+  function ensurePort() {
+    if (suspended) return null;
+    if (port) return port;
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    let connected;
+    try {
+      connected = chrome.runtime.connect({ name: PORT_NAME });
+    } catch {
+      scheduleReconnect();
+      return null;
+    }
+    port = connected;
+    connected.onMessage.addListener((message) => {
+      if (port === connected && message?.kind === "frame.ready") {
+        reconnectAttempts = 0;
+        return;
+      }
+      // A late message from an old connection must never settle a request on its replacement.
+      if (port !== connected || !message || typeof message.id !== "string" || !active.delete(message.id)) {
+        return;
+      }
+      const response =
+        message.response && typeof message.response === "object"
+          ? { ...message.response, v: 1, id: message.id }
+          : failure(message.id, "internal_error");
+      postToMain({ channelId, id: message.id, kind: "response", response });
+    });
+    connected.onDisconnect.addListener(() => {
+      // Browser diagnostics may include private paths. Only the stable code reaches the page.
+      void chrome.runtime.lastError;
+      if (port !== connected) return;
+      port = null;
+      abortActive();
+      // Rebuild ancestor identity after a worker restart without replaying interrupted ceremonies.
+      scheduleReconnect();
+    });
+    return connected;
+  }
+
+  function scheduleReconnect() {
+    if (suspended || port || reconnectTimer !== null || reconnectAttempts >= 5) return;
+    const delay = 100 * (2 ** reconnectAttempts++);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      ensurePort();
+    }, delay);
   }
 
   window.addEventListener("message", (event) => {
@@ -88,32 +152,38 @@
       delete request.origin;
       delete request.crossOrigin;
       delete request.context;
+      delete request.topOrigin;
+      delete request.sameOriginWithAncestors;
       if (request.payload && typeof request.payload === "object") {
         delete request.payload.origin;
         delete request.payload.crossOrigin;
         delete request.payload.context;
+        delete request.payload.frameOrigin;
+        delete request.payload.topOrigin;
+        delete request.payload.sameOriginWithAncestors;
       }
 
       active.add(message.id);
       try {
-        port.postMessage({
+        const connected = ensurePort();
+        if (!connected) throw new Error("Unavailable runtime port");
+        connected.postMessage({
           kind: "request",
           id: message.id,
           request,
-          publicKeyCredentialsGetAllowed: publicKeyCredentialsGetAllowed(),
+          publicKeyCredentialsGetAllowed: allowsFeature("publickey-credentials-get"),
+          publicKeyCredentialsCreateAllowed: allowsFeature("publickey-credentials-create"),
         });
       } catch {
-        active.delete(message.id);
-        postToMain({
-          channelId,
-          id: message.id,
-          kind: "response",
-          response: failure(message.id, "operation_aborted"),
-        });
+        const disconnected = port;
+        port = null;
+        abortActive();
+        try { disconnected?.disconnect(); } catch { /* Already disconnected. */ }
+        scheduleReconnect();
       }
     } else if (message.kind === "cancel" && active.delete(message.id)) {
       try {
-        port.postMessage({ kind: "cancel", id: message.id });
+        port?.postMessage({ kind: "cancel", id: message.id });
       } catch {
         // Cancellation already revoked response delivery. A concurrently disconnected port needs
         // no further action and must not surface an exception in the isolated world.
@@ -121,43 +191,29 @@
     }
   });
 
-  port.onMessage.addListener((message) => {
-    if (!message || typeof message.id !== "string" || !active.delete(message.id)) {
-      return;
+  window.addEventListener("pagehide", () => {
+    suspended = true;
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
     }
-    const response =
-      message.response && typeof message.response === "object"
-        ? { ...message.response, v: 1, id: message.id }
-        : failure(message.id, "internal_error");
-    postToMain({ channelId, id: message.id, kind: "response", response });
+    const disconnected = port;
+    port = null;
+    for (const id of [...active]) {
+      try { disconnected?.postMessage({ kind: "cancel", id }); } catch { /* Best effort. */ }
+    }
+    abortActive();
+    try { disconnected?.disconnect(); } catch { /* Already disconnected. */ }
   });
 
-  port.onDisconnect.addListener(() => {
-    // Acknowledge but never surface the disconnect reason: chrome.runtime.lastError.message must not
-    // reach the page. Every request still in flight ends as a code-only operation_aborted.
-    void chrome.runtime.lastError;
-    for (const id of active) {
-      postToMain({
-        channelId,
-        id,
-        kind: "response",
-        response: failure(id, "operation_aborted"),
-      });
-    }
-    active.clear();
+  window.addEventListener("pageshow", () => {
+    suspended = false;
+    reconnectAttempts = 0;
+    ensurePort();
+    postToMain({ kind: "isolated.ready", channelId });
   });
 
-  window.addEventListener(
-    "pagehide",
-    () => {
-      for (const id of active) {
-        port.postMessage({ kind: "cancel", id });
-      }
-      active.clear();
-      port.disconnect();
-    },
-    { once: true },
-  );
+  ensurePort();
 
   // Announce this frame's channel so a MAIN world that loaded first re-offers its bootstrap.
   postToMain({ kind: "isolated.ready", channelId });
